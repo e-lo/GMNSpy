@@ -1,0 +1,63 @@
+{
+    "primaryKey": "lane_id",
+    "missingValues": ["NaN"],
+    "fields": [
+        {
+            "name": "lane_id",
+            "type": "any",
+            "description": "Primary key",
+            "constraints": {
+              "required": true
+              }
+        },
+        {
+            "name": "road_link_id",
+            "type": "any",
+            "description": "Conditionally Required. Foreign key  to  road_link table."
+        },
+        {
+            "name": "segment_id",
+            "type": "any",
+            "description": "Conditionally Required. Associated segment (Blank = lane traverses entire link) Foreign key (Segment table)."
+        },
+        {
+            "name": "lane_num",
+            "type": "integer",
+            "description": "Required. e.g., -1, 1, 2 (use left-to-right numbering).",
+            "constraints": {
+              "required": true
+              }
+        },
+        {
+            "name": "allowed_uses",
+            "type": "string",
+            "description": "Required. Set of allowed uses from Use_set: SHOULDER, PARKING, WALK, ALL, BIKE, AUTO, HOV2, HOV3, TRUCK, BUS, etc.",
+            "constraints": {
+              "required": true
+              }
+        },
+        {
+            "name": "r_barrier",
+            "type": "any",
+            "description": "Optional. Whether a barrier exists to prevent vehicles from changing lanes to the right (default is None)"
+        },
+        {
+            "name": "l_barrier",
+            "type": "any",
+            "description": "Optional. Whether a barrier exists to prevent vehicles from changing lanes to the left (default is None)"
+        },
+        {
+            "name": "width",
+            "type": "number",
+            "description": "Optional. Width of the lane. (units?)",
+            "constraints": {
+              "minimum": 0
+              }
+        },
+        {
+            "name": "notes",
+            "type": "string",
+            "description": "Optional."
+        }
+    ]
+}

@@ -1,0 +1,103 @@
+{
+    "primaryKey": "segment_id",
+    "missingValues": ["NaN",""],
+    "fields": [
+        {
+            "name": "segment_id",
+            "type": "any",
+            "description": "Primary key.",
+            "constraints": {
+              "required": true
+              }
+        },
+        {
+            "name": "road_link_id",
+            "type": "any",
+            "description": "Required. Foreign key to road_links. The link that the segment is located on.",
+            "constraints": {
+              "required": true
+              }
+        },
+        {
+            "name": "ref_node_id",
+            "type": "any",
+            "description": "Required. Foreign key to node.",
+            "constraints": {
+              "required": true
+              }
+        },
+        {
+            "name": "start_lr",
+            "type": "number",
+            "description": "Required. Distance from ref_node_id.",
+            "constraints": {
+              "required": true,
+              "minimum": 0
+              }
+        },
+        {
+            "name": "end_lr",
+            "type": "number",
+            "description": "Required. Distance from ref_node_id.",
+            "constraints": {
+              "required": true,
+              "minimum": 0
+              }
+        },
+        {
+            "name": "capacity",
+            "type": "integer",
+            "description": "Optional. Capacity (veh/hr)",
+            "constraints": {
+              "minimum": 0
+              }
+        },
+        {
+            "name": "free_speed",
+            "type": "integer",
+            "description": "Optional. Free flow speed (mph)",
+            "constraints": {
+              "minimum": 0
+              }
+        },
+        {
+            "name": "l_lanes_added",
+            "type": "integer",
+            "description": "Optional. # of lanes added on the left of the road link (negative indicates a lane drop)."
+        },
+        {
+            "name": "r_lanes_added",
+            "type": "integer",
+            "description": "Optional. # of lanes added on the right of the road link (negative indicates a lane drop)."
+        },
+        {
+            "name": "bike_facility",
+            "type": "string",
+            "description": "Optional. Type of bicycle accommodation: unknown,none,wcl, bikelane,cycletrack,wide_shoulder, offstreet_path."
+            "constraints": {
+              "enum": ["unknown","none","wcl","bikelane","cycletrack","wide_shoulder","offstreet_path"]
+            }
+        },
+        {
+            "name": "ped_facility",
+            "type": "string",
+            "description": "Optional. Type of pedestrian accommodation: unknown,none,shoulder,sidewalk,offstreet_path."
+            "constraints": {
+              "enum": ["unknown","none","shoulder","sidewalk","offstreet_path"]
+            }
+        },
+        {
+            "name": "parking",
+            "type": "string",
+            "description": "Optional. Type of parking: unknown,none,shoulder,sidewalk,offstreet_path."
+            "constraints": {
+              "enum": ["unknown","none","shoulder","sidewalk","offstreet_path"]
+            }
+        },
+        {
+            "name": "allowed_uses",
+            "type": "string",
+            "description": "Optional. Set of allowed uses; comma-separated. Foreign key to use_definition or use sets."
+        }
+    ]
+}

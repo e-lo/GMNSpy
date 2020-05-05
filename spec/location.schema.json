@@ -1,0 +1,74 @@
+{
+    "primaryKey": "loc_id",
+    "missingValues": ["NaN"],
+    "fields": [
+        {
+            "name": "loc_id",
+            "type": "any",
+            "description": "Primary key. Location ID.",
+            "constraints": {
+              "required": true
+              }
+        },
+        {
+            "name": "road_link_id",
+            "type": "any",
+            "description": "Required. Road Link ID. Foreign Key from Road_Link.",
+            "constraints": {
+              "required": true
+              }
+        },
+        {
+            "name": "offroad_link_id",
+            "type": "any",
+            "description": "Required. Offroad Link ID. Foreign Key from Offroad_Link."
+        },
+        {
+            "name": "ref_node_id",
+            "type": "any",
+            "description": "Required. the From node of the link. Foreign Key from Node.",
+            "constraints": {
+              "required": true
+              }
+        },
+        {
+            "name": "lr",
+            "type": "number",
+            "description": "Required. Linear Reference of the location, measured as distance along the link from the reference node.  If link_geometry exists, it is used. Otherwise, link geometry is assumed to be a crow-fly distance from A node to B node.",
+            "constraints": {
+              "required": true,
+              "minimum": 0
+              }
+        },
+        {
+            "name": "x_coord",
+            "type": "number",
+            "description": "Optional. Linear Reference of the location, measured as distance along the link from the reference node."
+        },
+        {
+            "name": "y_coord",
+            "type": "number",
+            "description": "Required. Linear Reference of the location, measured as distance along the link from the reference node."
+        },
+        {
+            "name": "z_coord",
+            "type": "number",
+            "description": "Required."
+        },
+        {
+            "name": "loc_type",
+            "type": "string",
+            "description": "Optional. What it represents (driveway, bus stop, etc.)"
+        },
+        {
+            "name": "zone_id",
+            "type": "string",
+            "description": "Optional. Foreign Key, Associated zone"
+        },
+        {
+            "name": "gtfs_stop_id",
+            "type": "string",
+            "description": "Optional. Foreign Key to GTFS data. For bus stops and transit station entrances, provides a link to the General Transit Feed Specification."
+        }
+    ]
+}

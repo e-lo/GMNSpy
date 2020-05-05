@@ -1,0 +1,140 @@
+{
+	"fields": [{
+			"name": "link_id",
+			"type": "any",
+			"description": "Primary key – could be SharedStreets Reference ID",
+			"constraints": {
+				"required": true
+			}
+		},
+		{
+			"name": "name",
+			"type": "string",
+			"description": "Street or Path Name"
+		},
+		{
+			"name": "from_node_id",
+			"type": "any",
+			"foreign_key": "node.node_id",
+			"constraints": {
+				"required": true
+			}
+		},
+		{
+			"name": "to_node_id",
+			"type": "any",
+			"foreign_key": "node.node_id",
+			"constraints": {
+				"required": true
+			}
+		},
+		{
+			"name": "link_geom_id",
+			"type": "any",
+			"description": "Optional. Foreign key (Link_Geometry table)",
+			"foreign_key": "link_geometry.link_geom_id"
+		},
+		{
+			"name": "dir_flag",
+			"type": "integer",
+			"description": "Optional. 1 = flow follows direction of shapepoints in the Link_Geometry (forward); -1 = flow is against shapepoint direction (backward);  0 = Unspecified.",
+			"constraints": {
+				"enum": [-1, 0, 1]
+			}
+		},
+		{
+			"name": "parent_link_id",
+			"type": "any",
+			"description": "Optional. Associated link. For example, if this link is a sidewalk, a parent_link_id could represent the roadway it is along.",
+			"constraints": {
+				"enum": "link_id"
+			}
+		},
+		{
+			"name": "capacity",
+			"type": "integer",
+			"description": "Optional. Capacity (veh / hr)",
+			"constraints": {
+				"minimum": 0
+			},
+			"warnings": {
+				"minimum": 500
+			}
+		},
+		{
+			"name": "free_speed",
+			"type": "integer",
+			"description": "Optional. Free flow speed mph",
+			"constraints": {
+				"minimum": 0,
+				"maximum": 100
+			},
+			"warnings": {
+				"minimum": 10,
+				"maximum": 75
+			}
+		},
+		{
+			"name": "lanes",
+			"type": "integer",
+			"description": "Number of lanes in the direction of travel",
+			"constraints": {
+				"minimum": 0
+			}
+		},
+		{
+			"name": "bike_facility",
+			"type": "string",
+			"description": "Type of bicycle accommodation: unknown, none, WCL, sharrow, bikelane, cycletrack, offstreet path",
+			"constraints": {
+				"enum": ["unknown", "none", "WCL", "sharrow", "bikelane", "cycletrack", "offstreet path"]
+			}
+		},
+		{
+			"name": "ped_facility",
+			"type": "string",
+			"description": "Type of pedestrian accommodation: unknown, none, shoulder, sidewalk, offstreet path",
+			"constraints": {
+				"enum": ["unknown", "none", "shoulder", "sidewalk", "offstreet path"]
+			}
+		},
+		{
+			"name": "parking",
+			"type": "string",
+			"description": "Type of parking: unknown, none, parallel, angle, other",
+			"constraints": {
+				"enum": ["unknown", "none", "parallel", "angle", "other"]
+			}
+		},
+		{
+			"name": "allowed_uses",
+			"type": "string",
+			"description": "Set of allowed uses: SHOULDER, PARKING, WALK, ALL, BIKE, AUTO, HOV2, HOV3, TRUCK, BUS, etc. e.g. [AUTO,BIKE]"
+		},
+		{
+			"name": "facility_type",
+			"type": "string"
+		},
+		{
+			"name": "grade",
+			"type": "number",
+			"description": "% grade, negative is downhill",
+			"constraints": {
+				"maximum": 100,
+				"minimum": -100
+			},
+			"warnings": {
+				"maximum": 25,
+				"minimum": -25
+			}
+		}
+		,
+		{
+			"name": "notes",
+			"type": "any",
+			"description": "Additional relevant notes"
+		}
+	],
+  "primaryKey": "road_link_id",
+  "missingValues": ["NaN",""]
+}

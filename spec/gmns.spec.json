@@ -1,0 +1,58 @@
+{
+  "profile": "gmns-data-package",
+  "name": "my-dataset",
+  // here we list the data files in this dataset
+  "resources": [
+   {
+     "name":"links",
+     "description":"",
+     "path": "link.csv",
+     "schema": "link.schema.json",
+     "required": true
+   },
+   {
+     "name":"nodes",
+     "description":"",
+     "path": "node.csv",
+     "schema": "node.schema.json",
+     "required": true
+   },
+   {
+     "name":"link geometry",
+     "description":"",
+     "path": "link_geometry.csv",
+     "schema": "link_geometry.schema.json"
+   },
+   {
+     "name":"lane",
+     "description":"",
+     "path": "lane.csv",
+     "schema": "lane.schema.json"
+   },
+   {
+     "name":"link tod",
+     "description":"",
+     "path": "link_tod.csv",
+     "schema": "link_tod.schema.json"
+   },
+   ,
+   {
+     "name":"location",
+     "description":"",
+     "path": "location.csv",
+     "schema": "location.schema.json"
+   },
+   {
+     "name":"use definition",
+     "description":"",
+     "path": "use_definition.csv",
+     "schema": "use_definition.schema.json"
+   },
+   {
+     "name":"use group",
+     "description":"",
+     "path": "use_group.csv",
+     "schema": "use_group.schema.json"
+   }
+ ]
+}
