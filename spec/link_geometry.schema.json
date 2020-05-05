@@ -39,7 +39,7 @@
         {
             "name": "jurisdiction",
             "type": "string",
-            "description": "Optional	Owner/operator of the physical link."
+            "description": "Optional.	Owner operator of the physical link."
         }
     ]
 }

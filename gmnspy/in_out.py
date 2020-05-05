@@ -25,6 +25,6 @@ def read_gmns_csv(
 def read_gmns_network(folder: str, config: str = "../spec/gmns.spec.json"):
     config = read_config(config)
     required_files = [
-        f["name"] for f in config[]"resources"] if f.get("required", {}) == "true"
+        f["name"] for f in config["resources"] if f.get("required", {}) == "true"
     ]
     print(required_files)

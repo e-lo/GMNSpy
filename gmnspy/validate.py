@@ -10,7 +10,8 @@ def apply_schema_to_df(df: DataFrame, schema_file: str = None, originating_file:
 
     """
     if not schema_file:
-        schema_file = "../"+os.path.basename(os.path.splitext(originating_file))+".schema.json"
+        schema_filename = os.path.split(originating_file)[-1].split(".")[0]+".schema.json"
+        schema_file = os.path.join("spec",schema_filename)
     print("SCHEMA",schema_file)
     print("...validating {} against {}".format(df, schema_file))
     schema = read_schema(schema_file=schema_file)

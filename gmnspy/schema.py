@@ -20,7 +20,7 @@ def read_schema(schema_file: str) -> dict:
     ## todo validate schema
     return schema
 
-def read_config(config_file: str) --> dict:
+def read_config(config_file: str) -> dict:
     with open(config_file, encoding="utf-8") as f:
         config = json.load(f)
     ## todo validate config
