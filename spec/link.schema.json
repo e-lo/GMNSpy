@@ -53,7 +53,7 @@
 		{
 			"name": "capacity",
 			"type": "integer",
-			"description": "Optional. Capacity (veh / hr)",
+			"description": "Optional. Capacity (veh / hr / lane)",
 			"constraints": {
 				"minimum": 0
 			},

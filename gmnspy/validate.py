@@ -5,14 +5,19 @@ from pandas import DataFrame, Series
 
 from .schema import read_schema, SCHEMA_TO_PANDAS_TYPES, FORMAT_TO_REGEX
 
-def apply_schema_to_df(df: DataFrame, schema_file: str = None, originating_file: str = None):
+
+def apply_schema_to_df(
+    df: DataFrame, schema_file: str = None, originating_file: str = None
+):
     """
 
     """
     if not schema_file:
-        schema_filename = os.path.split(originating_file)[-1].split(".")[0]+".schema.json"
-        schema_file = os.path.join("spec",schema_filename)
-    print("SCHEMA",schema_file)
+        schema_filename = (
+            os.path.split(originating_file)[-1].split(".")[0] + ".schema.json"
+        )
+        schema_file = os.path.join("spec", schema_filename)
+    print("SCHEMA", schema_file)
     print("...validating {} against {}".format(df, schema_file))
     schema = read_schema(schema_file=schema_file)
 
@@ -77,7 +82,7 @@ def apply_schema_to_df(df: DataFrame, schema_file: str = None, originating_file:
     # iterate through all the constraints for all the fields
     error_list = []
     for field_name, field_constraints in zip(fields_with_constraints, constraints):
-        #print(field_name,field_constraints)
+        # print(field_name,field_constraints)
         error_list += [
             globals()["_" + c_name + "_constraint"](df[field_name], c_param)
             for c_name, c_param in field_constraints.items()
@@ -151,3 +156,38 @@ def validate_foreign_key(
 
     Returns:
     """
+
+
+def confirm_required_files(resource_df: DataFrame):
+    """
+    Check required files exist.
+    """
+    required_files = resource_df[resource_df["required"]]
+
+    print("Required Files: ", required_files)
+
+    missing_required_files = required_files[
+        required_files["fullpath"].apply(lambda x: not os.path.exists(x))
+    ][["name", "fullpath"]]
+
+    print("FAIL Missing Required Files: ", missing_required_files)
+
+
+def update_resources_based_on_existance(resource_df: DataFrame) -> DataFrame:
+    """
+    Update resource dictionary based on which files exist
+    """
+    updated_resource_df = resource_df[
+        resource_df["fullpath"].apply(lambda x: os.path.exists(x))
+    ]
+
+    print(
+        "Found following files to define network: \n - {}".format(
+            "\n - ".join(updated_resource_df["name"].to_list())
+        )
+    )
+    return updated_resource_df
+
+
+def validate_foreign_keys(gmns_net_d: dict[str:DataFrame], resource_df: DataFrame):
+    pass

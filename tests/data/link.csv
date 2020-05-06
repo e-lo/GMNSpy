@@ -1,4 +1,4 @@
-road_link_id,name,from_node_id,to_node_id,link_geom_id,dir_flag,capacity,free_speed,lanes,bike_facility,ped_facility,parking,allowed_uses,facility_type,grade,notes
+link_id,name,from_node_id,to_node_id,link_geom_id,dir_flag,capacity,free_speed,lanes,bike_facility,ped_facility,parking,allowed_uses,facility_type,grade,notes
 8614848,Broadway,3,11,8614848,1,1000,25,1,bikelane,sidewalk,parallel,"AUTO, BIKE",,,Broadway EB approaching Ames
 8615409,Third Street,22,29,8615409,1,1000,25,1,bikelane,sidewalk,parallel,"AUTO, BIKE",,,Third
 86154099,Third Street,29,22,8615409,-1,1000,25,1,bikelane,sidewalk,parallel,"AUTO, BIKE",,,

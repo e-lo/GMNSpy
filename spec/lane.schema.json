@@ -49,7 +49,7 @@
         {
             "name": "width",
             "type": "number",
-            "description": "Optional. Width of the lane. (units?)",
+            "description": "Optional. Width of the lane,feet.",
             "constraints": {
               "minimum": 0
               }

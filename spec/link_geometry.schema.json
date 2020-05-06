@@ -23,7 +23,7 @@
         {
             "name": "length",
             "type": "number",
-            "description": "Optional. The length of the link",
+            "description": "Optional. The length of the link, miles.",
             "constraints": {
               "minimum": 0.0
               }
@@ -39,7 +39,7 @@
         {
             "name": "jurisdiction",
             "type": "string",
-            "description": "Optional.	Owner operator of the physical link."
+            "description": "Optional. Owner operator of the physical link."
         }
     ]
 }

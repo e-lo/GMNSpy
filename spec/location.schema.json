@@ -26,7 +26,7 @@
         {
             "name": "ref_node_id",
             "type": "any",
-            "description": "Required. the From node of the link. Foreign Key from Node.",
+            "description": "Required. The From node of the link. Foreign Key from Node.",
             "constraints": {
               "required": true
               }
