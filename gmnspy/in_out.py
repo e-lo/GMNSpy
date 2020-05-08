@@ -16,9 +16,15 @@ def read_gmns_csv(
     filename: str, validate: bool = True, schema_file: str = None
 ) -> DataFrame:
     """
-    filename:
-    validate:
-    schema_file:
+    Reads csv and returns it as a dataframe; optionally coerced to the
+    types as specified in the data schema. 
+
+    Args:
+        filename: file location of the csv file to read in.
+        validate: boolean whether to apply the specified schema to the dataframe. Default is True.
+        schema_file: file location of the schema to validate the file to.
+
+    Returns: Validated dataframe with coerced types according to schema.
     """
 
     df = pd.read_csv(filename)
@@ -33,11 +39,36 @@ def read_gmns_csv(
 
 def read_gmns_network(
     data_directory: str, config: str = os.path.join("spec", "gmns.spec.json")
-):
+) -> dict:
     """
-    filename:
-    validate:
-    schema_file:
+    Reads each GMNS file as specified in the config and validates it to
+    their specified schema including foreign keys between the tables.
+
+    Args:
+        data_directory: Directory where GMNS data is.
+        config: Configuration file. A json file with a list of "resources"
+            specifying the "name", "path", and "schema" for each GMNS table as
+            well as a boolean value for "required". If not specified, assumes
+            it is in a subdirectory "spec/gmns.spec.json"
+            Example:
+            ::
+                {
+                  "resources": [
+                   {
+                     "name":"link",
+                     "path": "link.csv",
+                     "schema": "link.schema.json",
+                     "required": true
+                   },
+                   {
+                     "name":"node",
+                     "path": "node.csv",
+                     "schema": "node.schema.json",
+                     "required": true
+                   }
+                 }
+    returns: a dictionary mapping the name of each GMNS table to a
+        validated dataframe.
     """
     gmns_net_d = {}
     resource_df = read_config(config, data_dir=data_directory)
@@ -52,8 +83,6 @@ def read_gmns_network(
     # todo add paired schema
     for _, row in resource_df.iterrows():
         gmns_net_d[row["name"]] = read_gmns_csv(row["fullpath"])
-
-    # print(gmns_net_d["link"][0:5])
 
     # validate foreign keys
     validate_foreign_keys(gmns_net_d, resource_df)

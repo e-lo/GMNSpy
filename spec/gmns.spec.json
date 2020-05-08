@@ -11,7 +11,7 @@
      "required": true
    },
    {
-     "name":"nodes",
+     "name":"node",
      "description":"",
      "path": "node.csv",
      "schema": "node.schema.json",
