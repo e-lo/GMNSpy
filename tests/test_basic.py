@@ -8,19 +8,19 @@ base_path = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 
 test_data = ["link", "link_geometry", "node", "use_definition", "use_group"]
 
-
+@pytest.mark.travis
 def test_read_schema():
     schema_file = os.path.join(base_path, "spec", "link.schema.json")
     s = gmnspy.read_schema(schema_file)
     print(s)
 
-
+@pytest.mark.travis
 @pytest.mark.parametrize("test_data_name", test_data)
 def test_validate_dfs(test_data_name):
     df = gmnspy.in_out.read_gmns_csv("tests/data/" + test_data_name + ".csv",)
     print(df[0:3])
 
-
+@pytest.mark.travis
 @pytest.mark.elo
 def test_validate_relationships():
     net = gmnspy.in_out.read_gmns_network(os.path.join(base_path, "tests", "data"))

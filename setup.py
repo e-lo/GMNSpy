@@ -20,7 +20,7 @@ with open("requirements.txt") as f:
 install_requires = [r.strip() for r in requirements]
 
 setup(
-    name="GMNSpy",
+    name="gmnspy",
     version="0.0.1",
     description="",
     long_description=long_description,
@@ -28,7 +28,7 @@ setup(
     url="https://github.com/e-lo/GMNSpy",
     license="Apache 2",
     platforms="any",
-    packages=["GMNSpy"],
+    packages=["gmnspy"],
     include_package_data=True,
     install_requires=install_requires,
 )
