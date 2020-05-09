@@ -1,0 +1,23 @@
+gmnspy.in\_out
+==============
+
+.. automodule:: gmnspy.in_out
+
+   
+   
+   .. rubric:: Functions
+
+   .. autosummary::
+   
+      read_gmns_csv
+      read_gmns_network
+   
+   
+
+   
+   
+   
+
+   
+   
+   

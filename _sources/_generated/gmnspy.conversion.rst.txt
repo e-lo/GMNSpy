@@ -1,0 +1,22 @@
+gmnspy.conversion
+=================
+
+.. automodule:: gmnspy.conversion
+
+   
+   
+   .. rubric:: Functions
+
+   .. autosummary::
+   
+      osmnx_to_gmns
+   
+   
+
+   
+   
+   
+
+   
+   
+   

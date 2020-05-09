@@ -1,0 +1,435 @@
+
+
+<!DOCTYPE html>
+<!--[if IE 8]><html class="no-js lt-ie9" lang="en" > <![endif]-->
+<!--[if gt IE 8]><!--> <html class="no-js" lang="en" > <!--<![endif]-->
+<head>
+  <meta charset="utf-8">
+  
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  
+  <title>gmnspy.in_out &mdash; GMNSpy  documentation</title>
+  
+
+  
+  
+  
+  
+
+  
+  <script type="text/javascript" src="../_static/js/modernizr.min.js"></script>
+  
+    
+      <script type="text/javascript" id="documentation_options" data-url_root="../" src="../_static/documentation_options.js"></script>
+        <script src="../_static/jquery.js"></script>
+        <script src="../_static/underscore.js"></script>
+        <script src="../_static/doctools.js"></script>
+        <script src="../_static/language_data.js"></script>
+    
+    <script type="text/javascript" src="../_static/js/theme.js"></script>
+
+    
+
+  
+  <link rel="stylesheet" href="../_static/css/theme.css" type="text/css" />
+  <link rel="stylesheet" href="../_static/pygments.css" type="text/css" />
+  <link rel="stylesheet" href="../_static/graphviz.css" type="text/css" />
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="gmnspy.validate" href="gmnspy.validate.html" />
+    <link rel="prev" title="GMNSpy Classes and Functions" href="../autodoc.html" /> 
+</head>
+
+<body class="wy-body-for-nav">
+
+   
+  <div class="wy-grid-for-nav">
+    
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+          
+
+          
+            <a href="../index.html" class="icon icon-home"> GMNSpy
+          
+
+          
+          </a>
+
+          
+            
+            
+          
+
+          
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+
+          
+        </div>
+
+        <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="main navigation">
+          
+            
+            
+              
+            
+            
+              <p class="caption"><span class="caption-text">Contents:</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="../quickstart.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../quickstart.html#usage">Usage</a></li>
+<li class="toctree-l1 current"><a class="reference internal" href="../autodoc.html">GMNSpy Classes and Functions</a><ul class="current">
+<li class="toctree-l2 current"><a class="reference internal" href="../autodoc.html#core-functions">Core Functions</a><ul class="current">
+<li class="toctree-l3 current"><a class="current reference internal" href="#">gmnspy.in_out</a></li>
+<li class="toctree-l3"><a class="reference internal" href="gmnspy.validate.html">gmnspy.validate</a></li>
+<li class="toctree-l3"><a class="reference internal" href="gmnspy.schema.html">gmnspy.schema</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../autodoc.html#conversion-functions">Conversion Functions</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../autodoc.html#util-functions">Util Functions</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../schema.html">GMNS Schema</a></li>
+</ul>
+
+            
+          
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+
+      
+      <nav class="wy-nav-top" aria-label="top navigation">
+        
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">GMNSpy</a>
+        
+      </nav>
+
+
+      <div class="wy-nav-content">
+        
+        <div class="rst-content">
+        
+          
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div role="navigation" aria-label="breadcrumbs navigation">
+
+  <ul class="wy-breadcrumbs">
+    
+      <li><a href="../index.html">Docs</a> &raquo;</li>
+        
+          <li><a href="../autodoc.html">GMNSpy Classes and Functions</a> &raquo;</li>
+        
+      <li>gmnspy.in_out</li>
+    
+    
+      <li class="wy-breadcrumbs-aside">
+        
+            
+            <a href="../_sources/_generated/gmnspy.in_out.rst.txt" rel="nofollow"> View page source</a>
+          
+        
+      </li>
+    
+  </ul>
+
+  
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+            
+  <div class="section" id="module-gmnspy.in_out">
+<span id="gmnspy-in-out"></span><h1>gmnspy.in_out<a class="headerlink" href="#module-gmnspy.in_out" title="Permalink to this headline">¶</a></h1>
+<p class="rubric">Functions</p>
+<table class="longtable docutils align-default">
+<colgroup>
+<col style="width: 10%" />
+<col style="width: 90%" />
+</colgroup>
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gmnspy.in_out.read_gmns_csv" title="gmnspy.in_out.read_gmns_csv"><code class="xref py py-obj docutils literal notranslate"><span class="pre">read_gmns_csv</span></code></a>(filename[, validate, schema_file])</p></td>
+<td><p>Reads csv and returns it as a dataframe; optionally coerced to the types as specified in the data schema.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gmnspy.in_out.read_gmns_network" title="gmnspy.in_out.read_gmns_network"><code class="xref py py-obj docutils literal notranslate"><span class="pre">read_gmns_network</span></code></a>(data_directory[, config])</p></td>
+<td><p>Reads each GMNS file as specified in the config and validates it to their specified schema including foreign keys between the tables.</p></td>
+</tr>
+</tbody>
+</table>
+<dl class="py function">
+<dt id="gmnspy.in_out.apply_schema_to_df">
+<code class="sig-prename descclassname">gmnspy.in_out.</code><code class="sig-name descname">apply_schema_to_df</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">df</span></em>, <em class="sig-param"><span class="n">schema_file</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">originating_file</span><span class="o">=</span><span class="default_value">None</span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/gmnspy/validate.html#apply_schema_to_df"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#gmnspy.in_out.apply_schema_to_df" title="Permalink to this definition">¶</a></dt>
+<dd><p>Evaluates a gmns table against a specified data schema.
+(1) Checks required fields exist
+(2) Coerces field types
+(3) Evaluates constraints that are firmly enforced
+(4) Evaluates warnings for strange values</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>df</strong> – Dataframe of the gmns table</p></li>
+<li><p><strong>schema_file</strong> – The table schema that will be applied.  If not supplied,
+will look for the schema in the directory that matches the name in
+originating_file (i.e. link, node)</p></li>
+<li><p><strong>originating_file</strong> – base name of the originating file (i.e. link.csv, node)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p><dl class="simple">
+<dt>DataFrame with fields coerced to appropriate type and constraints</dt><dd><p>and warnings evaluated.</p>
+</dd>
+</dl>
+</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">DataFrame</span></code></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt id="gmnspy.in_out.confirm_required_files">
+<code class="sig-prename descclassname">gmnspy.in_out.</code><code class="sig-name descname">confirm_required_files</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">resource_df</span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/gmnspy/validate.html#confirm_required_files"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#gmnspy.in_out.confirm_required_files" title="Permalink to this definition">¶</a></dt>
+<dd><p>Check required files exist. Will fail if they don’t.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><p><strong>resource_df</strong> – Dataframe with a row for each GMNS table including
+the the columns “fullpath”, “name”, and “required” (boolean).</p>
+</dd>
+<dt class="field-even">Return type</dt>
+<dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">None</span></code></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt id="gmnspy.in_out.read_config">
+<code class="sig-prename descclassname">gmnspy.in_out.</code><code class="sig-name descname">read_config</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">config_file</span></em>, <em class="sig-param"><span class="n">data_dir</span><span class="o">=</span><span class="default_value">''</span></em>, <em class="sig-param"><span class="n">schema_dir</span><span class="o">=</span><span class="default_value">''</span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/gmnspy/schema.html#read_config"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#gmnspy.in_out.read_config" title="Permalink to this definition">¶</a></dt>
+<dd><p>Reads a GMNS config file, adds some full paths and returns as a dataframe.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>config_file</strong> – <p>Configuration file. A json file with a list of “resources”
+specifying the “name”, “path”, and “schema” for each GMNS table as
+well as a boolean value for “required”.
+Example:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+  <span class="s2">&quot;resources&quot;</span><span class="p">:</span> <span class="p">[</span>
+   <span class="p">{</span>
+     <span class="s2">&quot;name&quot;</span><span class="p">:</span><span class="s2">&quot;link&quot;</span><span class="p">,</span>
+     <span class="s2">&quot;path&quot;</span><span class="p">:</span> <span class="s2">&quot;link.csv&quot;</span><span class="p">,</span>
+     <span class="s2">&quot;schema&quot;</span><span class="p">:</span> <span class="s2">&quot;link.schema.json&quot;</span><span class="p">,</span>
+     <span class="s2">&quot;required&quot;</span><span class="p">:</span> <span class="n">true</span>
+   <span class="p">},</span>
+   <span class="p">{</span>
+     <span class="s2">&quot;name&quot;</span><span class="p">:</span><span class="s2">&quot;node&quot;</span><span class="p">,</span>
+     <span class="s2">&quot;path&quot;</span><span class="p">:</span> <span class="s2">&quot;node.csv&quot;</span><span class="p">,</span>
+     <span class="s2">&quot;schema&quot;</span><span class="p">:</span> <span class="s2">&quot;node.schema.json&quot;</span><span class="p">,</span>
+     <span class="s2">&quot;required&quot;</span><span class="p">:</span> <span class="n">true</span>
+   <span class="p">}</span>
+ <span class="p">}</span>
+</pre></div>
+</div>
+</p></li>
+<li><p><strong>data_dir</strong> – Directory where GMNS files are. If not specified, assumes
+the same directory as the config_file.</p></li>
+<li><p><strong>schema_dir</strong> – Directory where GMNS schema files are. If not specified, assumes
+the same directory as the config_file.</p></li>
+</ul>
+</dd>
+</dl>
+<p>Returns: GMNS configuration file as a DataFrame.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">DataFrame</span></code></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt id="gmnspy.in_out.read_gmns_csv">
+<code class="sig-prename descclassname">gmnspy.in_out.</code><code class="sig-name descname">read_gmns_csv</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">filename</span></em>, <em class="sig-param"><span class="n">validate</span><span class="o">=</span><span class="default_value">True</span></em>, <em class="sig-param"><span class="n">schema_file</span><span class="o">=</span><span class="default_value">None</span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/gmnspy/in_out.html#read_gmns_csv"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#gmnspy.in_out.read_gmns_csv" title="Permalink to this definition">¶</a></dt>
+<dd><p>Reads csv and returns it as a dataframe; optionally coerced to the
+types as specified in the data schema.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>filename</strong> – file location of the csv file to read in.</p></li>
+<li><p><strong>validate</strong> – boolean whether to apply the specified schema to the dataframe. Default is True.</p></li>
+<li><p><strong>schema_file</strong> – file location of the schema to validate the file to.</p></li>
+</ul>
+</dd>
+</dl>
+<p>Returns: Validated dataframe with coerced types according to schema.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">DataFrame</span></code></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt id="gmnspy.in_out.read_gmns_network">
+<code class="sig-prename descclassname">gmnspy.in_out.</code><code class="sig-name descname">read_gmns_network</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">data_directory</span></em>, <em class="sig-param"><span class="n">config</span><span class="o">=</span><span class="default_value">'spec/gmns.spec.json'</span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/gmnspy/in_out.html#read_gmns_network"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#gmnspy.in_out.read_gmns_network" title="Permalink to this definition">¶</a></dt>
+<dd><p>Reads each GMNS file as specified in the config and validates it to
+their specified schema including foreign keys between the tables.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>data_directory</strong> – Directory where GMNS data is.</p></li>
+<li><p><strong>config</strong> – <p>Configuration file. A json file with a list of “resources”
+specifying the “name”, “path”, and “schema” for each GMNS table as
+well as a boolean value for “required”. If not specified, assumes
+it is in a subdirectory “spec/gmns.spec.json”
+Example:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+  <span class="s2">&quot;resources&quot;</span><span class="p">:</span> <span class="p">[</span>
+   <span class="p">{</span>
+     <span class="s2">&quot;name&quot;</span><span class="p">:</span><span class="s2">&quot;link&quot;</span><span class="p">,</span>
+     <span class="s2">&quot;path&quot;</span><span class="p">:</span> <span class="s2">&quot;link.csv&quot;</span><span class="p">,</span>
+     <span class="s2">&quot;schema&quot;</span><span class="p">:</span> <span class="s2">&quot;link.schema.json&quot;</span><span class="p">,</span>
+     <span class="s2">&quot;required&quot;</span><span class="p">:</span> <span class="n">true</span>
+   <span class="p">},</span>
+   <span class="p">{</span>
+     <span class="s2">&quot;name&quot;</span><span class="p">:</span><span class="s2">&quot;node&quot;</span><span class="p">,</span>
+     <span class="s2">&quot;path&quot;</span><span class="p">:</span> <span class="s2">&quot;node.csv&quot;</span><span class="p">,</span>
+     <span class="s2">&quot;schema&quot;</span><span class="p">:</span> <span class="s2">&quot;node.schema.json&quot;</span><span class="p">,</span>
+     <span class="s2">&quot;required&quot;</span><span class="p">:</span> <span class="n">true</span>
+   <span class="p">}</span>
+ <span class="p">}</span>
+</pre></div>
+</div>
+</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="simple">
+<dt>returns: a dictionary mapping the name of each GMNS table to a</dt><dd><p>validated dataframe.</p>
+</dd>
+</dl>
+<dl class="field-list simple">
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">dict</span></code></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt id="gmnspy.in_out.update_resources_based_on_existance">
+<code class="sig-prename descclassname">gmnspy.in_out.</code><code class="sig-name descname">update_resources_based_on_existance</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">resource_df</span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/gmnspy/validate.html#update_resources_based_on_existance"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#gmnspy.in_out.update_resources_based_on_existance" title="Permalink to this definition">¶</a></dt>
+<dd><p>Update resource dataframe based on which files exist in the directory.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><p><strong>resource_df</strong> – Dataframe with a row for each GMNS table including
+the the columns “fullpath” and “name”.</p>
+</dd>
+</dl>
+<dl class="simple">
+<dt>Returns: Updated version of resource dataframe without non-existant</dt><dd><p>files.</p>
+</dd>
+</dl>
+<dl class="field-list simple">
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">DataFrame</span></code></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt id="gmnspy.in_out.validate_foreign_keys">
+<code class="sig-prename descclassname">gmnspy.in_out.</code><code class="sig-name descname">validate_foreign_keys</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">gmns_net_d</span></em>, <em class="sig-param"><span class="n">resource_df</span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/gmnspy/validate.html#validate_foreign_keys"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#gmnspy.in_out.validate_foreign_keys" title="Permalink to this definition">¶</a></dt>
+<dd><p>Finds foreign keys in schemas of each GMNS table and validates that
+they link to a valid series which has (1) unique IDs, and (2) contains
+the values of the referring series.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>gmns_net_d</strong> – Dictionary containing dataframes of all the GMNS tables
+for the network keyed to their file names (i.e. “link”).</p></li>
+<li><p><strong>resource_df</strong> – Dataframe with a row for each GMNS table which contains
+the field “fullpath_schema” for the schema locations for
+each GMNS table which is where foreign keys are specified.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type</dt>
+<dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">None</span></code></p>
+</dd>
+</dl>
+</dd></dl>
+
+</div>
+
+
+           </div>
+           
+          </div>
+          <footer>
+  
+    <div class="rst-footer-buttons" role="navigation" aria-label="footer navigation">
+      
+        <a href="gmnspy.validate.html" class="btn btn-neutral float-right" title="gmnspy.validate" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right"></span></a>
+      
+      
+        <a href="../autodoc.html" class="btn btn-neutral float-left" title="GMNSpy Classes and Functions" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left"></span> Previous</a>
+      
+    </div>
+  
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>
+        &copy; Copyright 2020, Elizabeth Sall
+
+    </p>
+  </div>
+  Built with <a href="http://sphinx-doc.org/">Sphinx</a> using a <a href="https://github.com/rtfd/sphinx_rtd_theme">theme</a> provided by <a href="https://readthedocs.org">Read the Docs</a>. 
+
+</footer>
+
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+  
+
+
+  <script type="text/javascript">
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script>
+
+  
+  
+    
+   
+
+</body>
+</html>

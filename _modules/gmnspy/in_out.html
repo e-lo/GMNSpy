@@ -1,0 +1,281 @@
+
+
+<!DOCTYPE html>
+<!--[if IE 8]><html class="no-js lt-ie9" lang="en" > <![endif]-->
+<!--[if gt IE 8]><!--> <html class="no-js" lang="en" > <!--<![endif]-->
+<head>
+  <meta charset="utf-8">
+  
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  
+  <title>gmnspy.in_out &mdash; GMNSpy  documentation</title>
+  
+
+  
+  
+  
+  
+
+  
+  <script type="text/javascript" src="../../_static/js/modernizr.min.js"></script>
+  
+    
+      <script type="text/javascript" id="documentation_options" data-url_root="../../" src="../../_static/documentation_options.js"></script>
+        <script src="../../_static/jquery.js"></script>
+        <script src="../../_static/underscore.js"></script>
+        <script src="../../_static/doctools.js"></script>
+        <script src="../../_static/language_data.js"></script>
+    
+    <script type="text/javascript" src="../../_static/js/theme.js"></script>
+
+    
+
+  
+  <link rel="stylesheet" href="../../_static/css/theme.css" type="text/css" />
+  <link rel="stylesheet" href="../../_static/pygments.css" type="text/css" />
+  <link rel="stylesheet" href="../../_static/graphviz.css" type="text/css" />
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav">
+
+   
+  <div class="wy-grid-for-nav">
+    
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+          
+
+          
+            <a href="../../index.html" class="icon icon-home"> GMNSpy
+          
+
+          
+          </a>
+
+          
+            
+            
+          
+
+          
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+
+          
+        </div>
+
+        <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="main navigation">
+          
+            
+            
+              
+            
+            
+              <p class="caption"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../quickstart.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../quickstart.html#usage">Usage</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../autodoc.html">GMNSpy Classes and Functions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../schema.html">GMNS Schema</a></li>
+</ul>
+
+            
+          
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+
+      
+      <nav class="wy-nav-top" aria-label="top navigation">
+        
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../index.html">GMNSpy</a>
+        
+      </nav>
+
+
+      <div class="wy-nav-content">
+        
+        <div class="rst-content">
+        
+          
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div role="navigation" aria-label="breadcrumbs navigation">
+
+  <ul class="wy-breadcrumbs">
+    
+      <li><a href="../../index.html">Docs</a> &raquo;</li>
+        
+          <li><a href="../index.html">Module code</a> &raquo;</li>
+        
+      <li>gmnspy.in_out</li>
+    
+    
+      <li class="wy-breadcrumbs-aside">
+        
+      </li>
+    
+  </ul>
+
+  
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+            
+  <h1>Source code for gmnspy.in_out</h1><div class="highlight"><pre>
+<span></span><span class="kn">import</span> <span class="nn">os</span>
+
+<span class="kn">import</span> <span class="nn">pandas</span> <span class="k">as</span> <span class="nn">pd</span>
+
+<span class="kn">from</span> <span class="nn">.validate</span> <span class="kn">import</span> <span class="p">(</span>
+    <span class="n">apply_schema_to_df</span><span class="p">,</span>
+    <span class="n">confirm_required_files</span><span class="p">,</span>
+    <span class="n">update_resources_based_on_existance</span><span class="p">,</span>
+    <span class="n">validate_foreign_keys</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="kn">from</span> <span class="nn">.schema</span> <span class="kn">import</span> <span class="n">read_config</span>
+
+
+<div class="viewcode-block" id="read_gmns_csv"><a class="viewcode-back" href="../../_generated/gmnspy.in_out.html#gmnspy.in_out.read_gmns_csv">[docs]</a><span class="k">def</span> <span class="nf">read_gmns_csv</span><span class="p">(</span>
+    <span class="n">filename</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">validate</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span> <span class="n">schema_file</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Reads csv and returns it as a dataframe; optionally coerced to the</span>
+<span class="sd">    types as specified in the data schema.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        filename: file location of the csv file to read in.</span>
+<span class="sd">        validate: boolean whether to apply the specified schema to the dataframe. Default is True.</span>
+<span class="sd">        schema_file: file location of the schema to validate the file to.</span>
+
+<span class="sd">    Returns: Validated dataframe with coerced types according to schema.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">read_csv</span><span class="p">(</span><span class="n">filename</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">validate</span><span class="p">:</span>
+        <span class="n">apply_schema_to_df</span><span class="p">(</span><span class="n">df</span><span class="p">,</span> <span class="n">schema_file</span><span class="o">=</span><span class="n">schema_file</span><span class="p">,</span> <span class="n">originating_file</span><span class="o">=</span><span class="n">filename</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;not validating </span><span class="si">{}</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">filename</span><span class="p">))</span>
+
+    <span class="k">return</span> <span class="n">df</span></div>
+
+
+<div class="viewcode-block" id="read_gmns_network"><a class="viewcode-back" href="../../_generated/gmnspy.in_out.html#gmnspy.in_out.read_gmns_network">[docs]</a><span class="k">def</span> <span class="nf">read_gmns_network</span><span class="p">(</span>
+    <span class="n">data_directory</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">config</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="s2">&quot;spec&quot;</span><span class="p">,</span> <span class="s2">&quot;gmns.spec.json&quot;</span><span class="p">)</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Reads each GMNS file as specified in the config and validates it to</span>
+<span class="sd">    their specified schema including foreign keys between the tables.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        data_directory: Directory where GMNS data is.</span>
+<span class="sd">        config: Configuration file. A json file with a list of &quot;resources&quot;</span>
+<span class="sd">            specifying the &quot;name&quot;, &quot;path&quot;, and &quot;schema&quot; for each GMNS table as</span>
+<span class="sd">            well as a boolean value for &quot;required&quot;. If not specified, assumes</span>
+<span class="sd">            it is in a subdirectory &quot;spec/gmns.spec.json&quot;</span>
+<span class="sd">            Example:</span>
+<span class="sd">            ::</span>
+<span class="sd">                {</span>
+<span class="sd">                  &quot;resources&quot;: [</span>
+<span class="sd">                   {</span>
+<span class="sd">                     &quot;name&quot;:&quot;link&quot;,</span>
+<span class="sd">                     &quot;path&quot;: &quot;link.csv&quot;,</span>
+<span class="sd">                     &quot;schema&quot;: &quot;link.schema.json&quot;,</span>
+<span class="sd">                     &quot;required&quot;: true</span>
+<span class="sd">                   },</span>
+<span class="sd">                   {</span>
+<span class="sd">                     &quot;name&quot;:&quot;node&quot;,</span>
+<span class="sd">                     &quot;path&quot;: &quot;node.csv&quot;,</span>
+<span class="sd">                     &quot;schema&quot;: &quot;node.schema.json&quot;,</span>
+<span class="sd">                     &quot;required&quot;: true</span>
+<span class="sd">                   }</span>
+<span class="sd">                 }</span>
+<span class="sd">    returns: a dictionary mapping the name of each GMNS table to a</span>
+<span class="sd">        validated dataframe.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">gmns_net_d</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="n">resource_df</span> <span class="o">=</span> <span class="n">read_config</span><span class="p">(</span><span class="n">config</span><span class="p">,</span> <span class="n">data_dir</span><span class="o">=</span><span class="n">data_directory</span><span class="p">)</span>
+
+    <span class="c1"># check required files exist,</span>
+    <span class="n">confirm_required_files</span><span class="p">(</span><span class="n">resource_df</span><span class="p">)</span>
+
+    <span class="c1"># update resource dictionary based on what files are in the directory</span>
+    <span class="n">resource_df</span> <span class="o">=</span> <span class="n">update_resources_based_on_existance</span><span class="p">(</span><span class="n">resource_df</span><span class="p">)</span>
+
+    <span class="c1"># read each csv to a df and validate format</span>
+    <span class="c1"># todo add paired schema</span>
+    <span class="k">for</span> <span class="n">_</span><span class="p">,</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">resource_df</span><span class="o">.</span><span class="n">iterrows</span><span class="p">():</span>
+        <span class="n">gmns_net_d</span><span class="p">[</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;name&quot;</span><span class="p">]]</span> <span class="o">=</span> <span class="n">read_gmns_csv</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;fullpath&quot;</span><span class="p">])</span>
+
+    <span class="c1"># validate foreign keys</span>
+    <span class="n">validate_foreign_keys</span><span class="p">(</span><span class="n">gmns_net_d</span><span class="p">,</span> <span class="n">resource_df</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">gmns_net_d</span></div>
+</pre></div>
+
+           </div>
+           
+          </div>
+          <footer>
+  
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>
+        &copy; Copyright 2020, Elizabeth Sall
+
+    </p>
+  </div>
+  Built with <a href="http://sphinx-doc.org/">Sphinx</a> using a <a href="https://github.com/rtfd/sphinx_rtd_theme">theme</a> provided by <a href="https://readthedocs.org">Read the Docs</a>. 
+
+</footer>
+
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+  
+
+
+  <script type="text/javascript">
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script>
+
+  
+  
+    
+   
+
+</body>
+</html>
