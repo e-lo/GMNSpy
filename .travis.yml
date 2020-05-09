@@ -25,3 +25,12 @@ deploy:
   edge: true
   on:
     branch: master #
+
+deploy:
+  provider: pypi
+  docs_dir: docs/build/html
+  username: $PYPI_USERNAME  # Set in the settings page of your repository, as a secure variable
+  password: $PYPI_PASSWORD
+  edge: true
+  on:
+    branch: master #
