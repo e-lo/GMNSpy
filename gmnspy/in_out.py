@@ -1,7 +1,6 @@
 import os
 
 import pandas as pd
-from pandas import DataFrame
 
 from .validate import (
     apply_schema_to_df,
@@ -14,10 +13,10 @@ from .schema import read_config
 
 def read_gmns_csv(
     filename: str, validate: bool = True, schema_file: str = None
-) -> DataFrame:
+) -> pd.DataFrame:
     """
     Reads csv and returns it as a dataframe; optionally coerced to the
-    types as specified in the data schema. 
+    types as specified in the data schema.
 
     Args:
         filename: file location of the csv file to read in.

@@ -1,14 +1,14 @@
 import os
 from typing import Union, Dict
 
-from pandas import DataFrame, Series
+import pandas as pd
 
 from .schema import read_schema, SCHEMA_TO_PANDAS_TYPES, FORMAT_TO_REGEX
 
 
 def apply_schema_to_df(
-    df: DataFrame, schema_file: str = None, originating_file: str = None
-) -> DataFrame:
+    df: pd.DataFrame, schema_file: str = None, originating_file: str = None
+) -> pd.DataFrame:
     """
     Evaluates a gmns table against a specified data schema.
     (1) Checks required fields exist
@@ -161,7 +161,7 @@ def _required_constraint(_s, _p) -> Union[None,str]:
     pass
 
 
-def _unique_constraint(s: Series, _) -> Union[None,str]:
+def _unique_constraint(s: pd.Series, _) -> Union[None,str]:
     """
     Checks if series contains unique values.
 
@@ -178,7 +178,7 @@ def _unique_constraint(s: Series, _) -> Union[None,str]:
         return "Values not unique."
 
 
-def _minimum_constraint(s: Series, minimum: Union[float, int]) -> Union[None,str]:
+def _minimum_constraint(s: pd.Series, minimum: Union[float, int]) -> Union[None,str]:
     """
     Checks if series contains value under the specified minimum.
 
@@ -195,7 +195,7 @@ def _minimum_constraint(s: Series, minimum: Union[float, int]) -> Union[None,str
         return "Values lower than minimum: {}".format(minimum)
 
 
-def _maximum_constraint(s: Series, maximum: Union[float, int]) -> Union[None,str]:
+def _maximum_constraint(s: pd.Series, maximum: Union[float, int]) -> Union[None,str]:
     """
     Checks if series contains value above the specified maximum.
 
@@ -212,7 +212,7 @@ def _maximum_constraint(s: Series, maximum: Union[float, int]) -> Union[None,str
         return "Values higher than maximum: {}".format(maximum)
 
 
-def _pattern_constraint(s: Series, pattern: str)-> Union[None,str]:
+def _pattern_constraint(s: pd.Series, pattern: str)-> Union[None,str]:
     """
     Checks if series contains values conforming to specified pattern.
 
@@ -229,7 +229,7 @@ def _pattern_constraint(s: Series, pattern: str)-> Union[None,str]:
         return "Doesn't match pattern: {}".format(pattern)
 
 
-def _enum_constraint(s: Series, enum: Union[str,list], sep: str=",") -> Union[None,str]:
+def _enum_constraint(s: pd.Series, enum: Union[str,list], sep: str=",") -> Union[None,str]:
     """
     Checks if series contains valid enum values.
 
@@ -254,7 +254,7 @@ def _enum_constraint(s: Series, enum: Union[str,list], sep: str=",") -> Union[No
 
 
 
-def confirm_required_files(resource_df: DataFrame) -> None:
+def confirm_required_files(resource_df: pd.DataFrame) -> None:
     """
     Check required files exist. Will fail if they don't.
 
@@ -273,7 +273,7 @@ def confirm_required_files(resource_df: DataFrame) -> None:
     print("FAIL Missing Required Files: ", missing_required_files)
 
 
-def update_resources_based_on_existance(resource_df: DataFrame) -> DataFrame:
+def update_resources_based_on_existance(resource_df: pd.DataFrame) -> pd.DataFrame:
     """
     Update resource dataframe based on which files exist in the directory.
 
@@ -297,7 +297,7 @@ def update_resources_based_on_existance(resource_df: DataFrame) -> DataFrame:
 
 
 def validate_foreign_key(
-    source_s: Series, reference_s: Series) -> list:
+    source_s: pd.Series, reference_s: pd.Series) -> list:
     """
     Checks that the source_s series links to a valid reference_s series
         which has (1) unique IDs, and (2) contains the values of the
@@ -326,7 +326,7 @@ def validate_foreign_key(
 
     return fkey_errors
 
-def validate_foreign_keys(gmns_net_d: Dict[str,DataFrame], resource_df: DataFrame) -> None:
+def validate_foreign_keys(gmns_net_d: Dict[str,pd.DataFrame], resource_df: pd.DataFrame) -> None:
     """
     Finds foreign keys in schemas of each GMNS table and validates that
     they link to a valid series which has (1) unique IDs, and (2) contains
