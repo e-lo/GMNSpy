@@ -17,9 +17,9 @@ after_success:
   - touch _build/html/.nojekyll
 
 deploy:
-  provider: pages
+  provider: pages:git
   skip_cleanup: true
-  local_dir: docs/_build/html
+  local_dir: _build/html
   github_token: $GITHUB_TOKEN  # Set in the settings page of your repository, as a secure variable
   keep_history: true
   edge: true
