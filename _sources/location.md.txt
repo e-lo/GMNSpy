@@ -1,0 +1,13 @@
+|name|required|type|foreign_key|description|constraints minimum|
+|---|---|---|---|---|---|
+|loc_id|True|any|-|Primary key. Location ID.|-|
+|road_link_id|True|any|-|Required. Road Link ID. Foreign Key from Road_Link.|-|
+|offroad_link_id|-|any|-|Required. Offroad Link ID. Foreign Key from Offroad_Link.|-|
+|ref_node_id|True|any|-|Required. The From node of the link. Foreign Key from Node.|-|
+|lr|True|number|-|Required. Linear Reference of the location, measured as distance along the link from the reference node.  If link_geometry exists, it is used. Otherwise, link geometry is assumed to be a crow-fly distance from A node to B node.|0|
+|x_coord|-|number|-|Optional. Linear Reference of the location, measured as distance along the link from the reference node.|-|
+|y_coord|-|number|-|Required. Linear Reference of the location, measured as distance along the link from the reference node.|-|
+|z_coord|-|number|-|Required.|-|
+|loc_type|-|string|-|Optional. What it represents (driveway, bus stop, etc.)|-|
+|zone_id|-|string|-|Optional. Foreign Key, Associated zone|-|
+|gtfs_stop_id|-|string|-|Optional. Foreign Key to GTFS data. For bus stops and transit station entrances, provides a link to the General Transit Feed Specification.|-|

@@ -9,7 +9,7 @@ gmnspy.utils
 
    .. autosummary::
    
-      spec_to_md
+      list_to_md_table
    
    
 

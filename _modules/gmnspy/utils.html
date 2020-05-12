@@ -84,7 +84,7 @@
 <li class="toctree-l1"><a class="reference internal" href="../../quickstart.html">Installation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../quickstart.html#usage">Usage</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../autodoc.html">GMNSpy Classes and Functions</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../schema.html">GMNS Schema</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../spec.html">GMNS Schema</a></li>
 </ul>
 
             
@@ -148,12 +148,60 @@
            <div itemprop="articleBody">
             
   <h1>Source code for gmnspy.utils</h1><div class="highlight"><pre>
-<div class="viewcode-block" id="spec_to_md"><a class="viewcode-back" href="../../_generated/gmnspy.utils.html#gmnspy.utils.spec_to_md">[docs]</a><span></span><span class="k">def</span> <span class="nf">spec_to_md</span><span class="p">(</span><span class="n">spec</span><span class="p">:</span> <span class="nb">dict</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span></span>
+
+<div class="viewcode-block" id="list_to_md_table"><a class="viewcode-back" href="../../_generated/gmnspy.utils.html#gmnspy.schema.list_to_md_table">[docs]</a><span class="k">def</span> <span class="nf">list_to_md_table</span><span class="p">(</span><span class="n">list_of_dicts</span><span class="p">:</span> <span class="nb">list</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
     <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Reads a list of dictionaries defining a schema and creates a markdown table.</span>
+
+<span class="sd">    args:</span>
+<span class="sd">        list_of_dicts: a list of dictionaries containing definition of fields.</span>
+
+<span class="sd">    returns: A markdown string representing the table.</span>
 
 <span class="sd">    &quot;&quot;&quot;</span>
-    <span class="n">md_str</span> <span class="o">=</span> <span class="s2">&quot;MARKDOWN_STRING&quot;</span>
-    <span class="k">return</span> <span class="n">md_str</span></div>
+    <span class="c1"># flatten dictionary</span>
+    <span class="n">flat_list</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">list_of_dicts</span><span class="p">:</span>
+        <span class="n">flat_list</span><span class="o">.</span><span class="n">append</span><span class="p">({</span><span class="n">k</span><span class="p">:</span><span class="n">v</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span><span class="n">v</span> <span class="ow">in</span> <span class="n">_recursive_items</span><span class="p">(</span><span class="n">i</span><span class="p">)})</span>
+
+    <span class="c1"># get all items listed</span>
+    <span class="n">standard_header_items</span> <span class="o">=</span>  <span class="p">[</span><span class="s2">&quot;name&quot;</span><span class="p">,</span><span class="s2">&quot;required&quot;</span><span class="p">,</span><span class="s2">&quot;type&quot;</span><span class="p">,</span><span class="s2">&quot;foreign_key&quot;</span><span class="p">,</span><span class="s2">&quot;description&quot;</span><span class="p">,]</span>
+    <span class="n">additional_header_items</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="nb">set</span><span class="p">([</span><span class="n">k</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">flat_list</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span><span class="n">v</span> <span class="ow">in</span> <span class="n">i</span><span class="o">.</span><span class="n">items</span><span class="p">()])</span><span class="o">-</span><span class="nb">set</span><span class="p">(</span><span class="n">standard_header_items</span><span class="p">))</span>
+    <span class="n">header_items</span> <span class="o">=</span> <span class="n">standard_header_items</span> <span class="o">+</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">additional_header_items</span><span class="p">)</span>
+
+    <span class="n">header_md</span> <span class="o">=</span> <span class="s2">&quot;|&quot;</span><span class="o">+</span><span class="s2">&quot;|&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">header_items</span><span class="p">)</span><span class="o">+</span><span class="s2">&quot;|</span><span class="se">\n</span><span class="s2">&quot;</span>
+    <span class="n">header_md</span> <span class="o">+=</span> <span class="s2">&quot;|---&quot;</span><span class="o">*</span><span class="nb">len</span><span class="p">(</span><span class="n">header_items</span><span class="p">)</span><span class="o">+</span><span class="s2">&quot;|</span><span class="se">\n</span><span class="s2">&quot;</span>
+
+    <span class="n">body_md</span> <span class="o">=</span> <span class="s1">&#39;&#39;</span>
+    <span class="k">for</span> <span class="n">d</span> <span class="ow">in</span> <span class="n">flat_list</span><span class="p">:</span>
+        <span class="n">body_md</span> <span class="o">+=</span> <span class="s2">&quot;|&quot;</span> <span class="o">+</span> <span class="s2">&quot;|&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">([</span><span class="n">_format_cell_by_type</span><span class="p">(</span><span class="n">d</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">i</span><span class="p">,</span><span class="s2">&quot;-&quot;</span><span class="p">),</span><span class="n">i</span><span class="p">)</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">header_items</span><span class="p">])</span> <span class="o">+</span>  <span class="s2">&quot;|</span><span class="se">\n</span><span class="s2">&quot;</span>
+
+    <span class="k">return</span> <span class="n">header_md</span> <span class="o">+</span> <span class="n">body_md</span></div>
+
+<span class="k">def</span> <span class="nf">_format_cell_by_type</span><span class="p">(</span><span class="n">x</span><span class="p">,</span><span class="n">header</span><span class="p">):</span>
+    <span class="k">if</span> <span class="s2">&quot;enum&quot;</span> <span class="ow">in</span> <span class="n">header</span><span class="p">:</span>
+        <span class="k">return</span> <span class="s2">&quot;Allowed Values: `&quot;</span><span class="o">+</span><span class="s2">&quot;,&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="nb">map</span><span class="p">(</span><span class="nb">str</span><span class="p">,</span><span class="n">x</span><span class="p">))</span><span class="o">+</span><span class="s2">&quot;`&quot;</span>
+    <span class="k">if</span> <span class="n">header</span> <span class="ow">is</span> <span class="s2">&quot;foreign_key&quot;</span> <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="n">x</span><span class="p">)</span><span class="o">&gt;</span><span class="mi">1</span><span class="p">:</span>
+        <span class="n">table</span><span class="p">,</span> <span class="n">var</span> <span class="o">=</span> <span class="n">x</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;.&quot;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="s2">&quot;Table: `</span><span class="si">{}</span><span class="s2">`, Variable: `</span><span class="si">{}</span><span class="s2">`&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">table</span><span class="p">,</span> <span class="n">var</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">return</span> <span class="nb">str</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+
+<span class="k">def</span> <span class="nf">_recursive_items</span><span class="p">(</span><span class="n">d</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span> <span class="n">key_prefix</span><span class="p">:</span> <span class="nb">str</span><span class="o">=</span><span class="s1">&#39;&#39;</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Recursively flattens a nested dictionary and returns a dictionary with key_prefixe</span>
+<span class="sd">    to represent original nesting structures.</span>
+
+<span class="sd">    Modified from https://stackoverflow.com/questions/39233973/get-all-keys-of-a-nested-dictionary</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">for</span> <span class="n">k</span><span class="p">,</span><span class="n">v</span> <span class="ow">in</span> <span class="n">d</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+        <span class="k">if</span> <span class="nb">type</span><span class="p">(</span><span class="n">v</span><span class="p">)</span> <span class="ow">is</span> <span class="nb">dict</span><span class="p">:</span>
+            <span class="k">yield from</span> <span class="n">_recursive_items</span><span class="p">(</span><span class="n">v</span><span class="p">,</span><span class="n">key_prefix</span><span class="o">=</span><span class="n">k</span><span class="o">+</span><span class="s2">&quot; &quot;</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">k</span><span class="o">==</span><span class="s2">&quot;required&quot;</span><span class="p">:</span>
+            <span class="k">yield</span> <span class="p">(</span><span class="n">k</span><span class="p">,</span><span class="n">v</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">yield</span> <span class="p">(</span><span class="n">key_prefix</span><span class="o">+</span><span class="n">k</span><span class="p">,</span><span class="n">v</span><span class="p">)</span>
 </pre></div>
 
            </div>

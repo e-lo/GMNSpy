@@ -1,0 +1,8 @@
+|name|required|type|foreign_key|description|constraints minimum|
+|---|---|---|---|---|---|
+|link_geom_id|True|any|-|Primary key – could be SharedStreets Geometry ID|-|
+|name|-|string|-|Optional.|-|
+|geometry|-|any|-|Optional. Link geometry, specific format could be WKT, GeoJSON, etc.|-|
+|length|-|number|-|Optional. The length of the link, miles.|0.0|
+|row_width|-|number|-|Optional. Width of the entire right-of-way. May be useful for predicting what changes might be possible in future years.|0.0|
+|jurisdiction|-|string|-|Optional. Owner operator of the physical link.|-|

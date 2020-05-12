@@ -1,0 +1,5 @@
+|name|required|type|foreign_key|description|
+|---|---|---|---|---|
+|use_group|True|string|-|Primary key.|
+|uses|True|string|-|Comma-separated list of uses.|
+|description|-|string|-|Optional.|

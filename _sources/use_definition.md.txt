@@ -1,0 +1,7 @@
+|name|required|type|foreign_key|description|constraints minimum|
+|---|---|---|---|---|---|
+|use|True|string|-|Primary key|-|
+|persons_per_vehicle|True|number|-|Required.|0|
+|pce|True|number|-|Required. Passenger car equivelent.|0|
+|special_conditions|-|string|-|Optional.|-|
+|description|-|string|-|Optional |-|

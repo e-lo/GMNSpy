@@ -36,7 +36,7 @@
   <link rel="stylesheet" href="../_static/graphviz.css" type="text/css" />
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
-    <link rel="next" title="GMNS Schema" href="../schema.html" />
+    <link rel="next" title="GMNS Schema" href="../spec.html" />
     <link rel="prev" title="gmnspy.conversion" href="gmnspy.conversion.html" /> 
 </head>
 
@@ -94,7 +94,7 @@
 </li>
 </ul>
 </li>
-<li class="toctree-l1"><a class="reference internal" href="../schema.html">GMNS Schema</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../spec.html">GMNS Schema</a></li>
 </ul>
 
             
@@ -170,20 +170,22 @@
 <col style="width: 90%" />
 </colgroup>
 <tbody>
-<tr class="row-odd"><td><p><a class="reference internal" href="#gmnspy.utils.spec_to_md" title="gmnspy.utils.spec_to_md"><code class="xref py py-obj docutils literal notranslate"><span class="pre">spec_to_md</span></code></a>(spec)</p></td>
-<td><p><dl class="field-list simple">
-<dt class="field-odd">rtype</dt>
-<dd class="field-odd"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></p>
-</dd>
-</dl>
-</p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gmnspy.utils.list_to_md_table" title="gmnspy.utils.list_to_md_table"><code class="xref py py-obj docutils literal notranslate"><span class="pre">list_to_md_table</span></code></a>(list_of_dicts)</p></td>
+<td><p>Reads a list of dictionaries defining a schema and creates a markdown table.</p></td>
 </tr>
 </tbody>
 </table>
 <dl class="py function">
-<dt id="gmnspy.utils.spec_to_md">
-<code class="sig-prename descclassname">gmnspy.utils.</code><code class="sig-name descname">spec_to_md</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">spec</span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/gmnspy/utils.html#spec_to_md"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#gmnspy.utils.spec_to_md" title="Permalink to this definition">¶</a></dt>
-<dd><dl class="field-list simple">
+<dt id="gmnspy.utils.list_to_md_table">
+<code class="sig-prename descclassname">gmnspy.utils.</code><code class="sig-name descname">list_to_md_table</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">list_of_dicts</span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/gmnspy/utils.html#list_to_md_table"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#gmnspy.utils.list_to_md_table" title="Permalink to this definition">¶</a></dt>
+<dd><p>Reads a list of dictionaries defining a schema and creates a markdown table.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><p><strong>list_of_dicts</strong> – a list of dictionaries containing definition of fields.</p>
+</dd>
+</dl>
+<p>returns: A markdown string representing the table.</p>
+<dl class="field-list simple">
 <dt class="field-odd">Return type</dt>
 <dd class="field-odd"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></p>
 </dd>
@@ -200,7 +202,7 @@
   
     <div class="rst-footer-buttons" role="navigation" aria-label="footer navigation">
       
-        <a href="../schema.html" class="btn btn-neutral float-right" title="GMNS Schema" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right"></span></a>
+        <a href="../spec.html" class="btn btn-neutral float-right" title="GMNS Schema" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right"></span></a>
       
       
         <a href="gmnspy.conversion.html" class="btn btn-neutral float-left" title="gmnspy.conversion" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left"></span> Previous</a>

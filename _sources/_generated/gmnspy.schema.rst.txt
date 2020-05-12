@@ -9,6 +9,7 @@ gmnspy.schema
 
    .. autosummary::
    
+      document_schema
       read_config
       read_schema
    

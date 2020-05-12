@@ -1,0 +1,10 @@
+|name|required|type|foreign_key|description|
+|---|---|---|---|---|
+|link_tod_id|True|any|-|Primary key|
+|road_link_id|True|any|-|Required. Foreign key, road_link table|
+|segment_id|-|any|-|Optional. Foreign key, segment table. If no value is entered, this table row applies to the entire road_link.|
+|lane_num|True|Integer|-|Optional. If no value is entered, this table row applies to all of the lanes on the road_link.|
+|time_day|True|Any|-|Required. TimeDay_Set Define the availability/role of lane at different dates and times|
+|allowed_uses|-|Any|-|Use_Set. Optional.|
+|toll|-|Integer|-|Optional. Toll in cents.|
+|notes|-|String|-|Optional.|

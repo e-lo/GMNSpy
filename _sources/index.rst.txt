@@ -12,7 +12,7 @@ Welcome to GMNSpy's documentation!
 
    quickstart
    autodoc
-   schema
+   spec
 
 
 

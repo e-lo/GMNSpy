@@ -8,7 +8,7 @@
   
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   
-  <title>Welcome to GMNSpy’s documentation! &mdash; GMNSpy  documentation</title>
+  <title>&lt;no title&gt; &mdash; GMNSpy  documentation</title>
   
 
   
@@ -35,8 +35,7 @@
   <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
   <link rel="stylesheet" href="_static/graphviz.css" type="text/css" />
     <link rel="index" title="Index" href="genindex.html" />
-    <link rel="search" title="Search" href="search.html" />
-    <link rel="next" title="Installation" href="quickstart.html" /> 
+    <link rel="search" title="Search" href="search.html" /> 
 </head>
 
 <body class="wy-body-for-nav">
@@ -50,7 +49,7 @@
           
 
           
-            <a href="#" class="icon icon-home"> GMNSpy
+            <a href="index.html" class="icon icon-home"> GMNSpy
           
 
           
@@ -100,7 +99,7 @@
       <nav class="wy-nav-top" aria-label="top navigation">
         
           <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
-          <a href="#">GMNSpy</a>
+          <a href="index.html">GMNSpy</a>
         
       </nav>
 
@@ -129,15 +128,15 @@
 
   <ul class="wy-breadcrumbs">
     
-      <li><a href="#">Docs</a> &raquo;</li>
+      <li><a href="index.html">Docs</a> &raquo;</li>
         
-      <li>Welcome to GMNSpy’s documentation!</li>
+      <li>&lt;no title&gt;</li>
     
     
       <li class="wy-breadcrumbs-aside">
         
             
-            <a href="_sources/index.rst.txt" rel="nofollow"> View page source</a>
+            <a href="_sources/location.md.txt" rel="nofollow"> View page source</a>
           
         
       </li>
@@ -150,64 +149,113 @@
           <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
            <div itemprop="articleBody">
             
-  <div class="section" id="welcome-to-gmnspy-s-documentation">
-<h1>Welcome to GMNSpy’s documentation!<a class="headerlink" href="#welcome-to-gmnspy-s-documentation" title="Permalink to this headline">¶</a></h1>
-<div class="toctree-wrapper compound">
-<p class="caption"><span class="caption-text">Contents:</span></p>
-<ul>
-<li class="toctree-l1"><a class="reference internal" href="quickstart.html">Installation</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="quickstart.html#install-development-tools">Install Development Tools</a></li>
-</ul>
-</li>
-<li class="toctree-l1"><a class="reference internal" href="quickstart.html#usage">Usage</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="quickstart.html#read-a-single-file">Read a single file</a></li>
-<li class="toctree-l2"><a class="reference internal" href="quickstart.html#read-a-network">Read a network</a></li>
-<li class="toctree-l2"><a class="reference internal" href="quickstart.html#data-table-schemas">Data Table schemas</a></li>
-<li class="toctree-l2"><a class="reference internal" href="quickstart.html#network-data-config">Network Data Config</a></li>
-</ul>
-</li>
-<li class="toctree-l1"><a class="reference internal" href="autodoc.html">GMNSpy Classes and Functions</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="autodoc.html#core-functions">Core Functions</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="_generated/gmnspy.in_out.html">gmnspy.in_out</a></li>
-<li class="toctree-l3"><a class="reference internal" href="_generated/gmnspy.validate.html">gmnspy.validate</a></li>
-<li class="toctree-l3"><a class="reference internal" href="_generated/gmnspy.schema.html">gmnspy.schema</a></li>
-</ul>
-</li>
-<li class="toctree-l2"><a class="reference internal" href="autodoc.html#conversion-functions">Conversion Functions</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="_generated/gmnspy.conversion.html">gmnspy.conversion</a></li>
-</ul>
-</li>
-<li class="toctree-l2"><a class="reference internal" href="autodoc.html#util-functions">Util Functions</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="_generated/gmnspy.utils.html">gmnspy.utils</a></li>
-</ul>
-</li>
-</ul>
-</li>
-<li class="toctree-l1"><a class="reference internal" href="spec.html">GMNS Schema</a></li>
-</ul>
-</div>
-</div>
-<div class="section" id="indices-and-tables">
-<h1>Indices and tables<a class="headerlink" href="#indices-and-tables" title="Permalink to this headline">¶</a></h1>
-<ul class="simple">
-<li><p><a class="reference internal" href="genindex.html"><span class="std std-ref">Index</span></a></p></li>
-<li><p><a class="reference internal" href="py-modindex.html"><span class="std std-ref">Module Index</span></a></p></li>
-<li><p><a class="reference internal" href="search.html"><span class="std std-ref">Search Page</span></a></p></li>
-</ul>
-</div>
-
+  <table border="1" class="docutils">
+<thead>
+<tr>
+<th>name</th>
+<th>required</th>
+<th>type</th>
+<th>foreign_key</th>
+<th>description</th>
+<th>constraints minimum</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>loc_id</td>
+<td>True</td>
+<td>any</td>
+<td>-</td>
+<td>Primary key. Location ID.</td>
+<td>-</td>
+</tr>
+<tr>
+<td>road_link_id</td>
+<td>True</td>
+<td>any</td>
+<td>-</td>
+<td>Required. Road Link ID. Foreign Key from Road_Link.</td>
+<td>-</td>
+</tr>
+<tr>
+<td>offroad_link_id</td>
+<td>-</td>
+<td>any</td>
+<td>-</td>
+<td>Required. Offroad Link ID. Foreign Key from Offroad_Link.</td>
+<td>-</td>
+</tr>
+<tr>
+<td>ref_node_id</td>
+<td>True</td>
+<td>any</td>
+<td>-</td>
+<td>Required. The From node of the link. Foreign Key from Node.</td>
+<td>-</td>
+</tr>
+<tr>
+<td>lr</td>
+<td>True</td>
+<td>number</td>
+<td>-</td>
+<td>Required. Linear Reference of the location, measured as distance along the link from the reference node.  If link_geometry exists, it is used. Otherwise, link geometry is assumed to be a crow-fly distance from A node to B node.</td>
+<td>0</td>
+</tr>
+<tr>
+<td>x_coord</td>
+<td>-</td>
+<td>number</td>
+<td>-</td>
+<td>Optional. Linear Reference of the location, measured as distance along the link from the reference node.</td>
+<td>-</td>
+</tr>
+<tr>
+<td>y_coord</td>
+<td>-</td>
+<td>number</td>
+<td>-</td>
+<td>Required. Linear Reference of the location, measured as distance along the link from the reference node.</td>
+<td>-</td>
+</tr>
+<tr>
+<td>z_coord</td>
+<td>-</td>
+<td>number</td>
+<td>-</td>
+<td>Required.</td>
+<td>-</td>
+</tr>
+<tr>
+<td>loc_type</td>
+<td>-</td>
+<td>string</td>
+<td>-</td>
+<td>Optional. What it represents (driveway, bus stop, etc.)</td>
+<td>-</td>
+</tr>
+<tr>
+<td>zone_id</td>
+<td>-</td>
+<td>string</td>
+<td>-</td>
+<td>Optional. Foreign Key, Associated zone</td>
+<td>-</td>
+</tr>
+<tr>
+<td>gtfs_stop_id</td>
+<td>-</td>
+<td>string</td>
+<td>-</td>
+<td>Optional. Foreign Key to GTFS data. For bus stops and transit station entrances, provides a link to the General Transit Feed Specification.</td>
+<td>-</td>
+</tr>
+</tbody>
+</table>
 
            </div>
            
           </div>
           <footer>
-  
-    <div class="rst-footer-buttons" role="navigation" aria-label="footer navigation">
-      
-        <a href="quickstart.html" class="btn btn-neutral float-right" title="Installation" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right"></span></a>
-      
-      
-    </div>
   
 
   <hr/>

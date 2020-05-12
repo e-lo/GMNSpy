@@ -8,7 +8,7 @@
   
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   
-  <title>GMNS Schema &mdash; GMNSpy  documentation</title>
+  <title>&lt;no title&gt; &mdash; GMNSpy  documentation</title>
   
 
   
@@ -35,8 +35,7 @@
   <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
   <link rel="stylesheet" href="_static/graphviz.css" type="text/css" />
     <link rel="index" title="Index" href="genindex.html" />
-    <link rel="search" title="Search" href="search.html" />
-    <link rel="prev" title="gmnspy.utils" href="_generated/gmnspy.utils.html" /> 
+    <link rel="search" title="Search" href="search.html" /> 
 </head>
 
 <body class="wy-body-for-nav">
@@ -81,11 +80,11 @@
             
             
               <p class="caption"><span class="caption-text">Contents:</span></p>
-<ul class="current">
+<ul>
 <li class="toctree-l1"><a class="reference internal" href="quickstart.html">Installation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="quickstart.html#usage">Usage</a></li>
 <li class="toctree-l1"><a class="reference internal" href="autodoc.html">GMNSpy Classes and Functions</a></li>
-<li class="toctree-l1 current"><a class="current reference internal" href="#">GMNS Schema</a></li>
+<li class="toctree-l1"><a class="reference internal" href="spec.html">GMNS Schema</a></li>
 </ul>
 
             
@@ -131,13 +130,13 @@
     
       <li><a href="index.html">Docs</a> &raquo;</li>
         
-      <li>GMNS Schema</li>
+      <li>&lt;no title&gt;</li>
     
     
       <li class="wy-breadcrumbs-aside">
         
             
-            <a href="_sources/schema.rst.txt" rel="nofollow"> View page source</a>
+            <a href="_sources/link_geometry.md.txt" rel="nofollow"> View page source</a>
           
         
       </li>
@@ -150,22 +149,73 @@
           <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
            <div itemprop="articleBody">
             
-  <div class="section" id="gmns-schema">
-<h1>GMNS Schema<a class="headerlink" href="#gmns-schema" title="Permalink to this headline">¶</a></h1>
-</div>
-
+  <table border="1" class="docutils">
+<thead>
+<tr>
+<th>name</th>
+<th>required</th>
+<th>type</th>
+<th>foreign_key</th>
+<th>description</th>
+<th>constraints minimum</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>link_geom_id</td>
+<td>True</td>
+<td>any</td>
+<td>-</td>
+<td>Primary key – could be SharedStreets Geometry ID</td>
+<td>-</td>
+</tr>
+<tr>
+<td>name</td>
+<td>-</td>
+<td>string</td>
+<td>-</td>
+<td>Optional.</td>
+<td>-</td>
+</tr>
+<tr>
+<td>geometry</td>
+<td>-</td>
+<td>any</td>
+<td>-</td>
+<td>Optional. Link geometry, specific format could be WKT, GeoJSON, etc.</td>
+<td>-</td>
+</tr>
+<tr>
+<td>length</td>
+<td>-</td>
+<td>number</td>
+<td>-</td>
+<td>Optional. The length of the link, miles.</td>
+<td>0.0</td>
+</tr>
+<tr>
+<td>row_width</td>
+<td>-</td>
+<td>number</td>
+<td>-</td>
+<td>Optional. Width of the entire right-of-way. May be useful for predicting what changes might be possible in future years.</td>
+<td>0.0</td>
+</tr>
+<tr>
+<td>jurisdiction</td>
+<td>-</td>
+<td>string</td>
+<td>-</td>
+<td>Optional. Owner operator of the physical link.</td>
+<td>-</td>
+</tr>
+</tbody>
+</table>
 
            </div>
            
           </div>
           <footer>
-  
-    <div class="rst-footer-buttons" role="navigation" aria-label="footer navigation">
-      
-      
-        <a href="_generated/gmnspy.utils.html" class="btn btn-neutral float-left" title="gmnspy.utils" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left"></span> Previous</a>
-      
-    </div>
   
 
   <hr/>

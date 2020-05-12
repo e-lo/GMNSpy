@@ -1,0 +1,14 @@
+# GMNS Schema
+Schema for General Network Feed Specification.
+
+
+|    | name                                    | description   | required   |
+|---:|:----------------------------------------|:--------------|:-----------|
+|  0 | [`link`](link.html)                     |               | True       |
+|  1 | [`node`](node.html)                     |               | True       |
+|  2 | [`link_geometry`](link_geometry.html)   |               | False      |
+|  3 | [`lane`](lane.html)                     |               | False      |
+|  4 | [`link_tod`](link_tod.html)             |               | False      |
+|  5 | [`location`](location.html)             |               | True       |
+|  6 | [`use_definition`](use_definition.html) |               | False      |
+|  7 | [`use_group`](use_group.html)           |               | False      |

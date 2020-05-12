@@ -96,7 +96,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../autodoc.html#util-functions">Util Functions</a></li>
 </ul>
 </li>
-<li class="toctree-l1"><a class="reference internal" href="../schema.html">GMNS Schema</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../spec.html">GMNS Schema</a></li>
 </ul>
 
             
@@ -172,14 +172,39 @@
 <col style="width: 90%" />
 </colgroup>
 <tbody>
-<tr class="row-odd"><td><p><a class="reference internal" href="#gmnspy.schema.read_config" title="gmnspy.schema.read_config"><code class="xref py py-obj docutils literal notranslate"><span class="pre">read_config</span></code></a>(config_file[, data_dir, schema_dir])</p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gmnspy.schema.document_schema" title="gmnspy.schema.document_schema"><code class="xref py py-obj docutils literal notranslate"><span class="pre">document_schema</span></code></a>([base_path, out_path])</p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gmnspy.schema.read_config" title="gmnspy.schema.read_config"><code class="xref py py-obj docutils literal notranslate"><span class="pre">read_config</span></code></a>(config_file[, data_dir, schema_dir])</p></td>
 <td><p>Reads a GMNS config file, adds some full paths and returns as a dataframe.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#gmnspy.schema.read_schema" title="gmnspy.schema.read_schema"><code class="xref py py-obj docutils literal notranslate"><span class="pre">read_schema</span></code></a>(schema_file)</p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gmnspy.schema.read_schema" title="gmnspy.schema.read_schema"><code class="xref py py-obj docutils literal notranslate"><span class="pre">read_schema</span></code></a>(schema_file)</p></td>
 <td><p>Reads in schema from schema json file and returns as dictionary.</p></td>
 </tr>
 </tbody>
 </table>
+<dl class="py function">
+<dt id="gmnspy.schema.document_schema">
+<code class="sig-prename descclassname">gmnspy.schema.</code><code class="sig-name descname">document_schema</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">base_path</span><span class="o">=</span><span class="default_value">''</span></em>, <em class="sig-param"><span class="n">out_path</span><span class="o">=</span><span class="default_value">''</span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/gmnspy/schema.html#document_schema"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#gmnspy.schema.document_schema" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt id="gmnspy.schema.list_to_md_table">
+<code class="sig-prename descclassname">gmnspy.schema.</code><code class="sig-name descname">list_to_md_table</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">list_of_dicts</span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/gmnspy/utils.html#list_to_md_table"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#gmnspy.schema.list_to_md_table" title="Permalink to this definition">¶</a></dt>
+<dd><p>Reads a list of dictionaries defining a schema and creates a markdown table.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><p><strong>list_of_dicts</strong> – a list of dictionaries containing definition of fields.</p>
+</dd>
+</dl>
+<p>returns: A markdown string representing the table.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></p>
+</dd>
+</dl>
+</dd></dl>
+
 <dl class="py function">
 <dt id="gmnspy.schema.read_config">
 <code class="sig-prename descclassname">gmnspy.schema.</code><code class="sig-name descname">read_config</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">config_file</span></em>, <em class="sig-param"><span class="n">data_dir</span><span class="o">=</span><span class="default_value">''</span></em>, <em class="sig-param"><span class="n">schema_dir</span><span class="o">=</span><span class="default_value">''</span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/gmnspy/schema.html#read_config"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#gmnspy.schema.read_config" title="Permalink to this definition">¶</a></dt>
