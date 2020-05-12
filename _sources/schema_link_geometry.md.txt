@@ -1,3 +1,5 @@
+# link_geometry
+
 |name|required|type|foreign_key|description|constraints minimum|
 |---|---|---|---|---|---|
 |link_geom_id|True|any|-|Primary key – could be SharedStreets Geometry ID|-|

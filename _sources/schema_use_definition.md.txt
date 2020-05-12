@@ -1,3 +1,5 @@
+# use_definition
+
 |name|required|type|foreign_key|description|constraints minimum|
 |---|---|---|---|---|---|
 |use|True|string|-|Primary key|-|

@@ -8,7 +8,7 @@
   
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   
-  <title>&lt;no title&gt; &mdash; GMNSpy  documentation</title>
+  <title>lane &mdash; GMNSpy  documentation</title>
   
 
   
@@ -130,13 +130,13 @@
     
       <li><a href="index.html">Docs</a> &raquo;</li>
         
-      <li>&lt;no title&gt;</li>
+      <li>lane</li>
     
     
       <li class="wy-breadcrumbs-aside">
         
             
-            <a href="_sources/location.md.txt" rel="nofollow"> View page source</a>
+            <a href="_sources/schema_lane.md.txt" rel="nofollow"> View page source</a>
           
         
       </li>
@@ -149,7 +149,9 @@
           <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
            <div itemprop="articleBody">
             
-  <table border="1" class="docutils">
+  <div class="section" id="lane">
+<h1>lane<a class="headerlink" href="#lane" title="Permalink to this headline">¶</a></h1>
+<table border="1" class="docutils">
 <thead>
 <tr>
 <th>name</th>
@@ -162,95 +164,80 @@
 </thead>
 <tbody>
 <tr>
-<td>loc_id</td>
+<td>lane_id</td>
 <td>True</td>
 <td>any</td>
 <td>-</td>
-<td>Primary key. Location ID.</td>
+<td>Primary key</td>
 <td>-</td>
 </tr>
 <tr>
 <td>road_link_id</td>
-<td>True</td>
-<td>any</td>
-<td>-</td>
-<td>Required. Road Link ID. Foreign Key from Road_Link.</td>
-<td>-</td>
-</tr>
-<tr>
-<td>offroad_link_id</td>
 <td>-</td>
 <td>any</td>
 <td>-</td>
-<td>Required. Offroad Link ID. Foreign Key from Offroad_Link.</td>
+<td>Conditionally Required. Foreign key  to  road_link table.</td>
 <td>-</td>
 </tr>
 <tr>
-<td>ref_node_id</td>
-<td>True</td>
+<td>segment_id</td>
+<td>-</td>
 <td>any</td>
 <td>-</td>
-<td>Required. The From node of the link. Foreign Key from Node.</td>
+<td>Conditionally Required. Associated segment (Blank = lane traverses entire link) Foreign key (Segment table).</td>
 <td>-</td>
 </tr>
 <tr>
-<td>lr</td>
+<td>lane_num</td>
 <td>True</td>
+<td>integer</td>
+<td>-</td>
+<td>Required. e.g., -1, 1, 2 (use left-to-right numbering).</td>
+<td>-</td>
+</tr>
+<tr>
+<td>allowed_uses</td>
+<td>True</td>
+<td>string</td>
+<td>-</td>
+<td>Required. Set of allowed uses from Use_set: SHOULDER, PARKING, WALK, ALL, BIKE, AUTO, HOV2, HOV3, TRUCK, BUS, etc.</td>
+<td>-</td>
+</tr>
+<tr>
+<td>r_barrier</td>
+<td>-</td>
+<td>any</td>
+<td>-</td>
+<td>Optional. Whether a barrier exists to prevent vehicles from changing lanes to the right (default is None)</td>
+<td>-</td>
+</tr>
+<tr>
+<td>l_barrier</td>
+<td>-</td>
+<td>any</td>
+<td>-</td>
+<td>Optional. Whether a barrier exists to prevent vehicles from changing lanes to the left (default is None)</td>
+<td>-</td>
+</tr>
+<tr>
+<td>width</td>
+<td>-</td>
 <td>number</td>
 <td>-</td>
-<td>Required. Linear Reference of the location, measured as distance along the link from the reference node.  If link_geometry exists, it is used. Otherwise, link geometry is assumed to be a crow-fly distance from A node to B node.</td>
+<td>Optional. Width of the lane,feet.</td>
 <td>0</td>
 </tr>
 <tr>
-<td>x_coord</td>
-<td>-</td>
-<td>number</td>
-<td>-</td>
-<td>Optional. Linear Reference of the location, measured as distance along the link from the reference node.</td>
-<td>-</td>
-</tr>
-<tr>
-<td>y_coord</td>
-<td>-</td>
-<td>number</td>
-<td>-</td>
-<td>Required. Linear Reference of the location, measured as distance along the link from the reference node.</td>
-<td>-</td>
-</tr>
-<tr>
-<td>z_coord</td>
-<td>-</td>
-<td>number</td>
-<td>-</td>
-<td>Required.</td>
-<td>-</td>
-</tr>
-<tr>
-<td>loc_type</td>
+<td>notes</td>
 <td>-</td>
 <td>string</td>
 <td>-</td>
-<td>Optional. What it represents (driveway, bus stop, etc.)</td>
-<td>-</td>
-</tr>
-<tr>
-<td>zone_id</td>
-<td>-</td>
-<td>string</td>
-<td>-</td>
-<td>Optional. Foreign Key, Associated zone</td>
-<td>-</td>
-</tr>
-<tr>
-<td>gtfs_stop_id</td>
-<td>-</td>
-<td>string</td>
-<td>-</td>
-<td>Optional. Foreign Key to GTFS data. For bus stops and transit station entrances, provides a link to the General Transit Feed Specification.</td>
+<td>Optional.</td>
 <td>-</td>
 </tr>
 </tbody>
-</table>
+</table></div>
+
 
            </div>
            

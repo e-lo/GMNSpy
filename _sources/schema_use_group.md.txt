@@ -1,3 +1,5 @@
+# use_group
+
 |name|required|type|foreign_key|description|
 |---|---|---|---|---|
 |use_group|True|string|-|Primary key.|

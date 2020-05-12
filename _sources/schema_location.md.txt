@@ -1,3 +1,5 @@
+# location
+
 |name|required|type|foreign_key|description|constraints minimum|
 |---|---|---|---|---|---|
 |loc_id|True|any|-|Primary key. Location ID.|-|

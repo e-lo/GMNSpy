@@ -8,7 +8,7 @@
   
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   
-  <title>&lt;no title&gt; &mdash; GMNSpy  documentation</title>
+  <title>segment &mdash; GMNSpy  documentation</title>
   
 
   
@@ -130,13 +130,13 @@
     
       <li><a href="index.html">Docs</a> &raquo;</li>
         
-      <li>&lt;no title&gt;</li>
+      <li>segment</li>
     
     
       <li class="wy-breadcrumbs-aside">
         
             
-            <a href="_sources/node.md.txt" rel="nofollow"> View page source</a>
+            <a href="_sources/schema_segment.md.txt" rel="nofollow"> View page source</a>
           
         
       </li>
@@ -149,7 +149,9 @@
           <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
            <div itemprop="articleBody">
             
-  <table border="1" class="docutils">
+  <div class="section" id="segment">
+<h1>segment<a class="headerlink" href="#segment" title="Permalink to this headline">¶</a></h1>
+<table border="1" class="docutils">
 <thead>
 <tr>
 <th>name</th>
@@ -157,74 +159,131 @@
 <th>type</th>
 <th>foreign_key</th>
 <th>description</th>
+<th>constraints enum</th>
+<th>constraints minimum</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>node_id</td>
+<td>segment_id</td>
 <td>True</td>
 <td>any</td>
 <td>-</td>
-<td>Primary key</td>
+<td>Primary key.</td>
+<td>-</td>
+<td>-</td>
 </tr>
 <tr>
-<td>name</td>
-<td>-</td>
-<td>string</td>
-<td>-</td>
-<td>Optional</td>
-</tr>
-<tr>
-<td>x_coord</td>
+<td>road_link_id</td>
 <td>True</td>
-<td>number</td>
-<td>-</td>
-<td>Required. Coordinate system specified in config file.</td>
-</tr>
-<tr>
-<td>y_coord</td>
-<td>True</td>
-<td>number</td>
-<td>-</td>
-<td>Required. Coordinate system specified in config file.</td>
-</tr>
-<tr>
-<td>z_coord</td>
-<td>True</td>
-<td>number</td>
-<td>-</td>
-<td>Optional. Coordinate system specified in config file.</td>
-</tr>
-<tr>
-<td>node_type</td>
-<td>-</td>
-<td>string</td>
-<td>-</td>
-<td>Optional. What it represents (intersection, transit station, park &amp; ride).</td>
-</tr>
-<tr>
-<td>ctrl_type</td>
-<td>-</td>
-<td>string</td>
-<td>-</td>
-<td>Optional. Intersection control type - one of ControlType_Set.</td>
-</tr>
-<tr>
-<td>zone_id</td>
-<td>-</td>
 <td>any</td>
 <td>-</td>
-<td>Optional. Could be a Transportation Analysis Zone (TAZ) or city, or census tract, or census block.</td>
+<td>Required. Foreign key to road_links. The link that the segment is located on.</td>
+<td>-</td>
+<td>-</td>
 </tr>
 <tr>
-<td>parent_node_id</td>
-<td>-</td>
+<td>ref_node_id</td>
+<td>True</td>
 <td>any</td>
-<td>Table: <code>`, Variable:</code>node_id`</td>
-<td>Optional. Associated node. For example, if this node is a sidewalk, a parent_nodek_id could represent the intersection  it is associated with.</td>
+<td>-</td>
+<td>Required. Foreign key to node.</td>
+<td>-</td>
+<td>-</td>
+</tr>
+<tr>
+<td>start_lr</td>
+<td>True</td>
+<td>number</td>
+<td>-</td>
+<td>Required. Distance from ref_node_id.</td>
+<td>-</td>
+<td>0</td>
+</tr>
+<tr>
+<td>end_lr</td>
+<td>True</td>
+<td>number</td>
+<td>-</td>
+<td>Required. Distance from ref_node_id.</td>
+<td>-</td>
+<td>0</td>
+</tr>
+<tr>
+<td>capacity</td>
+<td>-</td>
+<td>integer</td>
+<td>-</td>
+<td>Optional. Capacity (veh/hr)</td>
+<td>-</td>
+<td>0</td>
+</tr>
+<tr>
+<td>free_speed</td>
+<td>-</td>
+<td>integer</td>
+<td>-</td>
+<td>Optional. Free flow speed (mph)</td>
+<td>-</td>
+<td>0</td>
+</tr>
+<tr>
+<td>l_lanes_added</td>
+<td>-</td>
+<td>integer</td>
+<td>-</td>
+<td>Optional. # of lanes added on the left of the road link (negative indicates a lane drop).</td>
+<td>-</td>
+<td>-</td>
+</tr>
+<tr>
+<td>r_lanes_added</td>
+<td>-</td>
+<td>integer</td>
+<td>-</td>
+<td>Optional. # of lanes added on the right of the road link (negative indicates a lane drop).</td>
+<td>-</td>
+<td>-</td>
+</tr>
+<tr>
+<td>bike_facility</td>
+<td>-</td>
+<td>string</td>
+<td>-</td>
+<td>Optional. Type of bicycle accommodation: unknown,none,wcl, bikelane,cycletrack,wide_shoulder, offstreet_path.</td>
+<td>Allowed Values: <code>unknown,none,wcl,bikelane,cycletrack,wide_shoulder,offstreet_path</code></td>
+<td>-</td>
+</tr>
+<tr>
+<td>ped_facility</td>
+<td>-</td>
+<td>string</td>
+<td>-</td>
+<td>Optional. Type of pedestrian accommodation: unknown,none,shoulder,sidewalk,offstreet_path.</td>
+<td>Allowed Values: <code>unknown,none,shoulder,sidewalk,offstreet_path</code></td>
+<td>-</td>
+</tr>
+<tr>
+<td>parking</td>
+<td>-</td>
+<td>string</td>
+<td>-</td>
+<td>Optional. Type of parking: unknown,none,shoulder,sidewalk,offstreet_path.</td>
+<td>Allowed Values: <code>unknown,none,shoulder,sidewalk,offstreet_path</code></td>
+<td>-</td>
+</tr>
+<tr>
+<td>allowed_uses</td>
+<td>-</td>
+<td>string</td>
+<td>-</td>
+<td>Optional. Set of allowed uses; comma-separated. Foreign key to use_definition or use sets.</td>
+<td>-</td>
+<td>-</td>
 </tr>
 </tbody>
-</table>
+</table></div>
+
 
            </div>
            

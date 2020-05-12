@@ -8,7 +8,7 @@
   
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   
-  <title>&lt;no title&gt; &mdash; GMNSpy  documentation</title>
+  <title>node &mdash; GMNSpy  documentation</title>
   
 
   
@@ -130,13 +130,13 @@
     
       <li><a href="index.html">Docs</a> &raquo;</li>
         
-      <li>&lt;no title&gt;</li>
+      <li>node</li>
     
     
       <li class="wy-breadcrumbs-aside">
         
             
-            <a href="_sources/use_group.md.txt" rel="nofollow"> View page source</a>
+            <a href="_sources/schema_node.md.txt" rel="nofollow"> View page source</a>
           
         
       </li>
@@ -149,7 +149,9 @@
           <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
            <div itemprop="articleBody">
             
-  <table border="1" class="docutils">
+  <div class="section" id="node">
+<h1>node<a class="headerlink" href="#node" title="Permalink to this headline">¶</a></h1>
+<table border="1" class="docutils">
 <thead>
 <tr>
 <th>name</th>
@@ -161,28 +163,71 @@
 </thead>
 <tbody>
 <tr>
-<td>use_group</td>
+<td>node_id</td>
 <td>True</td>
-<td>string</td>
+<td>any</td>
 <td>-</td>
-<td>Primary key.</td>
+<td>Primary key</td>
 </tr>
 <tr>
-<td>uses</td>
-<td>True</td>
+<td>name</td>
+<td>-</td>
 <td>string</td>
 <td>-</td>
-<td>Comma-separated list of uses.</td>
+<td>Optional</td>
 </tr>
 <tr>
-<td>description</td>
+<td>x_coord</td>
+<td>True</td>
+<td>number</td>
+<td>-</td>
+<td>Required. Coordinate system specified in config file.</td>
+</tr>
+<tr>
+<td>y_coord</td>
+<td>True</td>
+<td>number</td>
+<td>-</td>
+<td>Required. Coordinate system specified in config file.</td>
+</tr>
+<tr>
+<td>z_coord</td>
+<td>True</td>
+<td>number</td>
+<td>-</td>
+<td>Optional. Coordinate system specified in config file.</td>
+</tr>
+<tr>
+<td>node_type</td>
 <td>-</td>
 <td>string</td>
 <td>-</td>
-<td>Optional.</td>
+<td>Optional. What it represents (intersection, transit station, park &amp; ride).</td>
+</tr>
+<tr>
+<td>ctrl_type</td>
+<td>-</td>
+<td>string</td>
+<td>-</td>
+<td>Optional. Intersection control type - one of ControlType_Set.</td>
+</tr>
+<tr>
+<td>zone_id</td>
+<td>-</td>
+<td>any</td>
+<td>-</td>
+<td>Optional. Could be a Transportation Analysis Zone (TAZ) or city, or census tract, or census block.</td>
+</tr>
+<tr>
+<td>parent_node_id</td>
+<td>-</td>
+<td>any</td>
+<td>Table: <code>`, Variable:</code>node_id`</td>
+<td>Optional. Associated node. For example, if this node is a sidewalk, a parent_nodek_id could represent the intersection  it is associated with.</td>
 </tr>
 </tbody>
-</table>
+</table></div>
+
 
            </div>
            
