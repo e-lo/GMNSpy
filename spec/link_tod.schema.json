@@ -13,7 +13,7 @@
         {
             "name": "road_link_id",
             "type": "any",
-            "description": "Required.	Foreign key, road_link table",
+            "description": "Required. Foreign key, road_link table",
             "constraints": {
               "required": true
               }
@@ -21,12 +21,12 @@
         {
             "name": "segment_id",
             "type": "any",
-            "description": "Optional.	Foreign key, segment table. If no value is entered, this table row applies to the entire road_link."
+            "description": "Optional. Foreign key, segment table. If no value is entered, this table row applies to the entire road_link."
         },
         {
             "name": "lane_num",
             "type": "Integer",
-            "description": "Optional.	If no value is entered, this table row applies to all of the lanes on the road_link.",
+            "description": "Optional. If no value is entered, this table row applies to all of the lanes on the road_link.",
             "constraints": {
               "required": true
               }
@@ -34,7 +34,7 @@
         {
             "name": "time_day",
             "type": "Any",
-            "description": "Required. TimeDay_Set	Define the availability/role of lane at different dates and times",
+            "description": "Required. TimeDay_Set Define the availability/role of lane at different dates and times",
             "constraints": {
               "required": true
               }

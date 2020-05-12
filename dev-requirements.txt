@@ -3,4 +3,5 @@ pytest
 sphinx-autodoc-typehints
 sphinx_rtd_theme
 black
-recommonmark 
+recommonmark
+sphinx-markdown-tables

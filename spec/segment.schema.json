@@ -73,7 +73,7 @@
         {
             "name": "bike_facility",
             "type": "string",
-            "description": "Optional. Type of bicycle accommodation: unknown,none,wcl, bikelane,cycletrack,wide_shoulder, offstreet_path."
+            "description": "Optional. Type of bicycle accommodation: unknown,none,wcl, bikelane,cycletrack,wide_shoulder, offstreet_path.",
             "constraints": {
               "enum": ["unknown","none","wcl","bikelane","cycletrack","wide_shoulder","offstreet_path"]
             }
@@ -81,7 +81,7 @@
         {
             "name": "ped_facility",
             "type": "string",
-            "description": "Optional. Type of pedestrian accommodation: unknown,none,shoulder,sidewalk,offstreet_path."
+            "description": "Optional. Type of pedestrian accommodation: unknown,none,shoulder,sidewalk,offstreet_path.",
             "constraints": {
               "enum": ["unknown","none","shoulder","sidewalk","offstreet_path"]
             }
@@ -89,7 +89,7 @@
         {
             "name": "parking",
             "type": "string",
-            "description": "Optional. Type of parking: unknown,none,shoulder,sidewalk,offstreet_path."
+            "description": "Optional. Type of parking: unknown,none,shoulder,sidewalk,offstreet_path.",
             "constraints": {
               "enum": ["unknown","none","shoulder","sidewalk","offstreet_path"]
             }

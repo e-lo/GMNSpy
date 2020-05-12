@@ -15,12 +15,18 @@ import sys
 sys.path.insert(0, os.path.abspath('.'))
 import gmnspy
 
+# -- Generate Schema Documentation -------------------------------------------
+
+gmnspy.document_schema(
+    base_path = os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))),"spec"),
+    out_path  = "."
+    )
+
 # -- Project information -----------------------------------------------------
 
 project = 'GMNSpy'
 copyright = '2020, Elizabeth Sall'
 author = 'Elizabeth Sall'
-
 
 # -- General configuration ---------------------------------------------------
 
@@ -39,8 +45,16 @@ extensions = [
     "sphinx.ext.autosummary",
     "sphinx.ext.viewcode",
     "sphinx.ext.napoleon",
+    "sphinx_markdown_tables",
+    "sphinx.ext.graphviz",
     "recommonmark",
 ]
+
+source_parsers = {
+    '.md': 'recommonmark.parser.CommonMarkParser',
+}
+
+source_suffix = ['.rst', '.md']
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']

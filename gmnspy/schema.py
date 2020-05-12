@@ -3,6 +3,8 @@ import os
 
 import pandas as pd
 
+from .utils import list_to_md_table
+
 SCHEMA_TO_PANDAS_TYPES = {
     "integer": "int64",
     "number": "float",
@@ -94,3 +96,38 @@ def read_config(config_file: str, data_dir: str = "", schema_dir: str = "") -> p
 
     resource_df.set_index("name", drop=False, inplace=True)
     return resource_df
+
+def document_schema(base_path:str = '', out_path: str = ''):
+    """
+
+    """
+    print("DOCUMENTING SCHEMA")
+    import os
+    import glob
+
+    if not base_path: base_path =  os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+    if not out_path: out_path = os.path.join(base_path,"docs")
+    print("Looking for specs in: {}".format(base_path))
+
+    schema_files = glob.glob(os.path.join(base_path,"**/*.schema.json"), recursive=True)
+    print("files: {}".format(schema_files))
+
+    for spec in schema_files:
+        print("Documenting Schema: {}".format(spec))
+        spec_filename = spec.split("/")[-1].split(".")[0]
+        schema = read_schema(spec)
+        filename = os.path.join(out_path,spec_filename+".md")
+        with open(filename,"w") as f:
+            f.write(list_to_md_table(schema["fields"]))
+
+    spec_file = glob.glob(os.path.join(base_path,"**/gmns.spec.json"), recursive=True)[0]
+    spec_df   = read_config(spec_file)
+    spec_df   = spec_df.drop(columns=["fullpath","fullpath_schema","path","schema","name"]).reset_index()
+    spec_df["name"]=spec_df["name"].apply(lambda x: "[`{}`]({}.html)".format(x,x))
+    spec_header = os.path.join(out_path,"spec_header.md")
+    spec_filename = os.path.join(out_path,"spec.md")
+    with open(spec_filename,"w") as f:
+        if os.path.exists(spec_header):
+            f.write(open(spec_header,'r',newline='').read())
+        f.write("\n\n")
+        f.write(spec_df.to_markdown())
