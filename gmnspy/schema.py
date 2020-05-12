@@ -116,14 +116,15 @@ def document_schema(base_path:str = '', out_path: str = ''):
         print("Documenting Schema: {}".format(spec))
         spec_filename = spec.split("/")[-1].split(".")[0]
         schema = read_schema(spec)
-        filename = os.path.join(out_path,spec_filename+".md")
+        filename = os.path.join(out_path,"schema_"+spec_filename+".md")
         with open(filename,"w") as f:
+            f.write("# {}\n\n".format(spec_filename))
             f.write(list_to_md_table(schema["fields"]))
 
     spec_file = glob.glob(os.path.join(base_path,"**/gmns.spec.json"), recursive=True)[0]
     spec_df   = read_config(spec_file)
     spec_df   = spec_df.drop(columns=["fullpath","fullpath_schema","path","schema","name"]).reset_index()
-    spec_df["name"]=spec_df["name"].apply(lambda x: "[`{}`]({}.html)".format(x,x))
+    spec_df["name"]=spec_df["name"].apply(lambda x: "[`{}`](schema_{}.html)".format(x,x))
     spec_header = os.path.join(out_path,"spec_header.md")
     spec_filename = os.path.join(out_path,"spec.md")
     with open(spec_filename,"w") as f:
@@ -131,3 +132,5 @@ def document_schema(base_path:str = '', out_path: str = ''):
             f.write(open(spec_header,'r',newline='').read())
         f.write("\n\n")
         f.write(spec_df.to_markdown())
+        f.write("\n\n## ")
+        f.write("\n## ".join(spec_df["name"].tolist()))
