@@ -11,9 +11,11 @@ Welcome to GMNSpy's documentation!
    :caption: Contents:
 
    quickstart
-   autodoc
    spec
+   autodoc
 
+
+.. mdinclude:: ../../README.md
 
 
 Indices and tables

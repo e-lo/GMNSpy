@@ -37,7 +37,7 @@
 
 # GMNS specification
  The GMNS specification is maintained in the `/spec` sub-directory as a
- series of
+ series of JSON tables. 
 
 ## Data Table schemas
  Data table schemas are specified in JSON and are compatible with the
@@ -140,7 +140,7 @@ Current feature roadmap includes:
  - auto documentation of schema to markdown files
  - tests tests tests
 
-Feel free to submit pull requests for consideration. 
+Feel free to submit pull requests for consideration.
 
 # Credits
 
