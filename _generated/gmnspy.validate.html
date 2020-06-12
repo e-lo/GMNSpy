@@ -85,6 +85,7 @@
 <ul class="current">
 <li class="toctree-l1"><a class="reference internal" href="../quickstart.html">Installation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../quickstart.html#usage">Usage</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../spec.html">GMNS Schema</a></li>
 <li class="toctree-l1 current"><a class="reference internal" href="../autodoc.html">GMNSpy Classes and Functions</a><ul class="current">
 <li class="toctree-l2 current"><a class="reference internal" href="../autodoc.html#core-functions">Core Functions</a><ul class="current">
 <li class="toctree-l3"><a class="reference internal" href="gmnspy.in_out.html">gmnspy.in_out</a></li>
@@ -96,7 +97,6 @@
 <li class="toctree-l2"><a class="reference internal" href="../autodoc.html#util-functions">Util Functions</a></li>
 </ul>
 </li>
-<li class="toctree-l1"><a class="reference internal" href="../spec.html">GMNS Schema</a></li>
 </ul>
 
             
@@ -312,6 +312,18 @@ each GMNS table which is where foreign keys are specified.</p></li>
 <dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">None</span></code></p>
 </dd>
 </dl>
+</dd></dl>
+
+<dl class="py data">
+<dt id="gmnspy.validate.Dict">
+<code class="sig-prename descclassname">gmnspy.validate.</code><code class="sig-name descname">Dict</code><a class="headerlink" href="#gmnspy.validate.Dict" title="Permalink to this definition">¶</a></dt>
+<dd><p>The central part of internal API.</p>
+<p>This represents a generic version of type ‘origin’ with type arguments ‘params’.
+There are two kind of these aliases: user defined and special. The special ones
+are wrappers around builtin collections and ABCs in collections.abc. These must
+have ‘name’ always set. If ‘inst’ is False, then the alias can’t be instantiated,
+this is used by e.g. typing.List and typing.Dict.</p>
+<p>alias of Dict</p>
 </dd></dl>
 
 </div>

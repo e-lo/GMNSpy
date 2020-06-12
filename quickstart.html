@@ -36,7 +36,7 @@
   <link rel="stylesheet" href="_static/graphviz.css" type="text/css" />
     <link rel="index" title="Index" href="genindex.html" />
     <link rel="search" title="Search" href="search.html" />
-    <link rel="next" title="GMNSpy Classes and Functions" href="autodoc.html" />
+    <link rel="next" title="GMNS Schema" href="spec.html" />
     <link rel="prev" title="Welcome to GMNSpy’s documentation!" href="index.html" /> 
 </head>
 
@@ -90,12 +90,10 @@
 <li class="toctree-l1"><a class="reference internal" href="#usage">Usage</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="#read-a-single-file">Read a single file</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#read-a-network">Read a network</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#data-table-schemas">Data Table schemas</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#network-data-config">Network Data Config</a></li>
 </ul>
 </li>
-<li class="toctree-l1"><a class="reference internal" href="autodoc.html">GMNSpy Classes and Functions</a></li>
 <li class="toctree-l1"><a class="reference internal" href="spec.html">GMNS Schema</a></li>
+<li class="toctree-l1"><a class="reference internal" href="autodoc.html">GMNSpy Classes and Functions</a></li>
 </ul>
 
             
@@ -191,93 +189,6 @@ and have been validated.</p>
 </pre></div>
 </div>
 </div>
-<div class="section" id="data-table-schemas">
-<h2>Data Table schemas<a class="headerlink" href="#data-table-schemas" title="Permalink to this headline">¶</a></h2>
-<p>Data table schemas are specified in JSON and are compatible with the
-<a class="reference external" href="https://specs.frictionlessdata.io/table-schema/">frictionless data</a> table
-schema standards.</p>
-<p>Example:</p>
-<div class="highlight-JSON notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
-    <span class="nt">&quot;primaryKey&quot;</span><span class="p">:</span> <span class="s2">&quot;segment_id&quot;</span><span class="p">,</span>
-    <span class="nt">&quot;missingValues&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;NaN&quot;</span><span class="p">,</span><span class="s2">&quot;&quot;</span><span class="p">],</span>
-    <span class="nt">&quot;fields&quot;</span><span class="p">:</span> <span class="p">[</span>
-        <span class="p">{</span>
-            <span class="nt">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;segment_id&quot;</span><span class="p">,</span>
-            <span class="nt">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;any&quot;</span><span class="p">,</span>
-            <span class="nt">&quot;description&quot;</span><span class="p">:</span> <span class="s2">&quot;Primary key.&quot;</span><span class="p">,</span>
-            <span class="nt">&quot;constraints&quot;</span><span class="p">:</span> <span class="p">{</span>
-              <span class="nt">&quot;required&quot;</span><span class="p">:</span> <span class="kc">true</span><span class="p">,</span>
-              <span class="nt">&quot;unique&quot;</span><span class="p">:</span> <span class="kc">true</span>
-              <span class="p">}</span>
-        <span class="p">},</span>
-        <span class="p">{</span>
-            <span class="nt">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;road_link_id&quot;</span><span class="p">,</span>
-            <span class="nt">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;any&quot;</span><span class="p">,</span>
-            <span class="nt">&quot;description&quot;</span><span class="p">:</span> <span class="s2">&quot;Required. Foreign key to road_links. The link that the segment is located on.&quot;</span><span class="p">,</span>
-            <span class="nt">&quot;foreign_key&quot;</span><span class="p">:</span> <span class="s2">&quot;link.link_id&quot;</span><span class="p">,</span>
-            <span class="nt">&quot;constraints&quot;</span><span class="p">:</span> <span class="p">{</span>
-              <span class="nt">&quot;required&quot;</span><span class="p">:</span> <span class="kc">true</span>
-              <span class="p">}</span>
-        <span class="p">},</span>
-        <span class="p">{</span>
-            <span class="nt">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;ref_node_id&quot;</span><span class="p">,</span>
-            <span class="nt">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;any&quot;</span><span class="p">,</span>
-            <span class="nt">&quot;description&quot;</span><span class="p">:</span> <span class="s2">&quot;Required. Foreign key to node.&quot;</span><span class="p">,</span>
-            <span class="nt">&quot;foreign_key&quot;</span><span class="p">:</span> <span class="s2">&quot;node.node_id&quot;</span><span class="p">,</span>
-            <span class="nt">&quot;constraints&quot;</span><span class="p">:</span> <span class="p">{</span>
-              <span class="nt">&quot;required&quot;</span><span class="p">:</span> <span class="kc">true</span>
-              <span class="p">}</span>
-        <span class="p">},</span>
-        <span class="p">{</span>
-            <span class="nt">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;start_lr&quot;</span><span class="p">,</span>
-            <span class="nt">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;number&quot;</span><span class="p">,</span>
-            <span class="nt">&quot;description&quot;</span><span class="p">:</span> <span class="s2">&quot;Required. Distance from ref_node_id.&quot;</span><span class="p">,</span>
-            <span class="nt">&quot;constraints&quot;</span><span class="p">:</span> <span class="p">{</span>
-              <span class="nt">&quot;required&quot;</span><span class="p">:</span> <span class="kc">true</span><span class="p">,</span>
-              <span class="nt">&quot;minimum&quot;</span><span class="p">:</span> <span class="mi">0</span>
-              <span class="p">}</span>
-        <span class="p">},</span>
-        <span class="p">{</span>
-            <span class="nt">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;end_lr&quot;</span><span class="p">,</span>
-            <span class="nt">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;number&quot;</span><span class="p">,</span>
-            <span class="nt">&quot;description&quot;</span><span class="p">:</span> <span class="s2">&quot;Required. Distance from ref_node_id.&quot;</span><span class="p">,</span>
-            <span class="nt">&quot;constraints&quot;</span><span class="p">:</span> <span class="p">{</span>
-              <span class="nt">&quot;required&quot;</span><span class="p">:</span> <span class="kc">true</span><span class="p">,</span>
-              <span class="nt">&quot;minimum&quot;</span><span class="p">:</span> <span class="mi">0</span>
-              <span class="p">}</span>
-          <span class="p">}</span>
-    <span class="p">]</span>
-<span class="p">}</span>
-</pre></div>
-</div>
-</div>
-<div class="section" id="network-data-config">
-<h2>Network Data Config<a class="headerlink" href="#network-data-config" title="Permalink to this headline">¶</a></h2>
-<p>Network data schemas are specified in JSON and are compatible with the
-<a class="reference external" href="https://specs.frictionlessdata.io/tabular-data-package/">frictionless data</a> data package standards.</p>
-<p>Example:</p>
-<div class="highlight-JSON notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
-  <span class="nt">&quot;profile&quot;</span><span class="p">:</span> <span class="s2">&quot;gmns-data-package&quot;</span><span class="p">,</span>
-  <span class="nt">&quot;profile_version&quot;</span><span class="p">:</span><span class="mf">0.0</span><span class="p">,</span>
-  <span class="nt">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;my-dataset&quot;</span><span class="p">,</span>
-  <span class="nt">&quot;resources&quot;</span><span class="p">:</span> <span class="p">[</span>
-   <span class="p">{</span>
-     <span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="s2">&quot;link&quot;</span><span class="p">,</span>
-     <span class="nt">&quot;path&quot;</span><span class="p">:</span> <span class="s2">&quot;link.csv&quot;</span><span class="p">,</span>
-     <span class="nt">&quot;schema&quot;</span><span class="p">:</span> <span class="s2">&quot;link.schema.json&quot;</span><span class="p">,</span>
-     <span class="nt">&quot;required&quot;</span><span class="p">:</span> <span class="kc">true</span>
-   <span class="p">},</span>
-   <span class="p">{</span>
-     <span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="s2">&quot;node&quot;</span><span class="p">,</span>
-     <span class="nt">&quot;path&quot;</span><span class="p">:</span> <span class="s2">&quot;node.csv&quot;</span><span class="p">,</span>
-     <span class="nt">&quot;schema&quot;</span><span class="p">:</span> <span class="s2">&quot;node.schema.json&quot;</span><span class="p">,</span>
-     <span class="nt">&quot;required&quot;</span><span class="p">:</span> <span class="kc">true</span>
-   <span class="p">}</span>
- <span class="p">]</span>
-<span class="p">}</span>
-</pre></div>
-</div>
-</div>
 </div>
 
 
@@ -288,7 +199,7 @@ schema standards.</p>
   
     <div class="rst-footer-buttons" role="navigation" aria-label="footer navigation">
       
-        <a href="autodoc.html" class="btn btn-neutral float-right" title="GMNSpy Classes and Functions" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right"></span></a>
+        <a href="spec.html" class="btn btn-neutral float-right" title="GMNS Schema" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right"></span></a>
       
       
         <a href="index.html" class="btn btn-neutral float-left" title="Welcome to GMNSpy’s documentation!" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left"></span> Previous</a>
