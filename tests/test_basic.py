@@ -7,7 +7,9 @@ base_path = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 
 # https://github.com/zephyr-data-specs/GMNS/edit/master/Small_Network_Examples/Multiple_Bike_Facilities/road_link.csv
 
-test_data = ["link", "link_geometry", "node", "use_definition", "use_group"]
+test_data = [
+    "link", "geometry", "node", "use_definition", "use_group",
+    ]
 schemas = glob.glob("**/*.schema.json", recursive=True)
 
 @pytest.mark.travis
