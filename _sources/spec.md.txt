@@ -7,16 +7,32 @@ GMNS consists of a package of files as defined in the following table.
 
 **The following table is automatically generated from `gmns.spec.json`**
 
-|    | name                                | description   | required   |
-|---:|:------------------------------------|:--------------|:-----------|
-|  0 | [`link`](#link)                     |               | True       |
-|  1 | [`node`](#node)                     |               | True       |
-|  2 | [`link_geometry`](#link_geometry)   |               | False      |
-|  3 | [`lane`](#lane)                     |               | False      |
-|  4 | [`link_tod`](#link_tod)             |               | False      |
-|  5 | [`location`](#location)             |               | True       |
-|  6 | [`use_definition`](#use_definition) |               | False      |
-|  7 | [`use_group`](#use_group)           |               | False      |
+|    | name                                                    | description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | required   |
+|---:|:--------------------------------------------------------|:-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|:-----------|
+|  0 | [`link`](#link)                                         | A link is an edge in a network, defined by the nodes it travels from and to. It may have associated geometry information. Links have three types of attributes:                                                                                                                                                                                                                                                                                                                                                                                                        | True       |
+|    |                                                         |   - Those that define the physical location of the link (e.g., `shape` `information`, `length`, `width`)                                                                                                                                                                                                                                                                                                                                                                                                                                                               |            |
+|    |                                                         |   - Those that define the link’s directionality: `from_node`, `to_node`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |            |
+|    |                                                         |   - Those that define properties in the direction of travel: capacity,free flow speed, number of lanes, permitted uses, grade, facility type                                                                                                                                                                                                                                                                                                                                                                                                                           |            |
+|  1 | [`node`](#node)                                         | A list of vertices that locate points on a map. Typically, they will represent intersections, but may also represent other points, such as a transition between divided and undivided highway. Nodes are the endpoints of a link (as opposed to the other type of vertex, location, which is used to represent points along a link)                                                                                                                                                                                                                                    | True       |
+|  2 | [`geometry`](#geometry)                                 | The geometry is an optional file that contains geometry information (shapepoints) for a line object. It is similar to Geometries in the SharedStreets reference system. The specification also allows for geometry information to be stored directly on the link table.                                                                                                                                                                                                                                                                                                | False      |
+|  3 | [`lane`](#lane)                                         | The lane file allocates portions of the physical right-of-waythat might be used for travel. It might be a travel lane, bike lane, or a parking lane. Lanes only are included in directed links; undirected links are assumed to have no lane controls or directionality. If a lane is added, dropped, or changes properties along the link, those changes are recorded on the `segment_link` table. Lanes are numbered sequentially, starting at either the centerline (two-way street) or the left shoulder (one-way street or divided highway with two centerlines). | False      |
+|  4 | [`link_tod`](#link_tod)                                 |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | False      |
+|  5 | [`location`](#location)                                 | A location is a vertex that is associated with a specific location along a link. Locations may be used to represent places where activities occur (e.g., driveways and bus stops). Its attributes are nearly the same as those for a node, except that the location includes an associated link and node, with location specified as distance along the link from the node.                                                                                                                                                                                            | True       |
+|  6 | [`movement`](#movement)                                 | Describes how inbound and outbound links connect at an intersection.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | False      |
+|  7 | [`movement_tod`](#movement_tod)                         | Handles day-of-week and time-of-day restrictions on movements.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | False      |
+|  8 | [`use_definition`](#use_definition)                     | The Use_Definition file defines the characteristics of each vehicle type or non-travel purpose (e.g., a shoulder or parking lane). A two-way left turn lane (TWLTL) is also a use.                                                                                                                                                                                                                                                                                                                                                                                     | False      |
+|  9 | [`use_group`](#use_group)                               | Defines groupings of uses, to reduce the size of the Allowed_Uses lists in the other tables.                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | False      |
+| 10 | [`segment`](#segment)                                   | A portion of a link defined by `link_id`,`ref_node_id`, `start_lr`, and `end_lr`. Values in the segment will override they value specified in the link table. When one segment is fully contained within another, its value prevails.                                                                                                                                                                                                                                                                                                                                  | False      |
+| 11 | [`segment_lane`](#segment_lane)                         | Defines added and dropped lanes, and changes to lane parameters. If a lane is added, it has no parent. If it is changed or dropped, the parent_lane_id field keys to the associated lane on the lane table.                                                                                                                                                                                                                                                                                                                                                            | False      |
+| 12 | [`signal_phase`](#signal_phase)                         | Associates Movements and pedestrian Links (e.g., crosswalks) with signal phases. A signal phase may be associated with several movements. A Movement may also run on more than one phase.                                                                                                                                                                                                                                                                                                                                                                              | False      |
+| 13 | [`signal_phase_concurrency`](#signal_phase_concurrency) | For signalized nodes, establishes phases that may run concurrently, using ring-barrier notation. Each phase is associated with a ring and a barrier. In order to run concurrently, two phases must be in: the same barrier, and different rings.                                                                                                                                                                                                                                                                                                                       | False      |
+| 14 | [`signal_timing_plan`](#signal_timing_plan)             | For signalized nodes, establishes timing plans and coordination.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | False      |
+| 15 | [`signal_timing_phase`](#signal_timing_phase)           | For signalizd nodes, provides signal timing.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | False      |
+| 16 | [`segment_tod`](#segment_tod)                           | segment_tod is an optional file that handles day-of-week and time-of-day restrictions on segments. It is used for part-time changes in segment capacity and number of lanes.                                                                                                                                                                                                                                                                                                                                                                                           | False      |
+| 17 | [`segment_tod`](#segment_tod)                           | An optional file that handles day-of-week and time-of-day restrictions on segments. It is used for part-time changes in segment capacity and number of lanes.                                                                                                                                                                                                                                                                                                                                                                                                          | False      |
+| 18 | [`link_lane_tod`](#link_lane_tod)                       | An optional file that handles day-of-week and time-of-day restrictions on lanes within links.                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | False      |
+| 19 | [`segment_lane_tod`](#segment_lane_tod)                 | An optional file that handles day-of-week and time-of-day restrictions on lanes within segments of links.                                                                                                                                                                                                                                                                                                                                                                                                                                                              | False      |
+| 20 | [`zone`](#zone)                                         | Locates zones (travel analysis zones, parcels) on a map. Zones are represented as polygons in geographic information systems.                                                                                                                                                                                                                                                                                                                                                                                                                                          | False      |
 
 File components for GMNS are specified in `gmns.spec.json` in a format compatible with the
 [frictionless data](https://specs.frictionlessdata.io/tabular-data-package/) data package standard.
@@ -119,20 +135,42 @@ Example:
 |description|-|string|-|Optional |-|
 
 
+## movement
+
+
+|name|required|type|foreign_key|description|constraints enum|
+|---|---|---|---|---|---|
+|mvmt_id|True|any|-|Primary key.|-|
+|node_id|True|any|Table: `node`, Variable: `node_id`|The node representing the junction.|-|
+|name|-|any|-|Optional.|-|
+|ib_link_id|True|any|Table: `link`, Variable: `link_id`|Inbound link id.|-|
+|ib_lane|-|integer|-|Inbound lane number.|-|
+|ob_link_id|True|any|Table: `link`, Variable: `link_id`|Outbound link id.|-|
+|ob_lane|-|integer|-|Inbound lane number.|-|
+|type|True|string|-|Optional. .|Allowed Values: `LEFT,RIGHT,UTURN,THRU,MERGE`|
+|penalty|-|any|-|Turn penalty (seconds)|-|
+|capacity|-|any|-|Capacity in vehicles per hour.|-|
+|ctrl_type|True|any|-|Optional. .|Allowed Values: `no control,stop,yield,signal`|
+
+
 ## lane
 
 
-|name|required|type|foreign_key|description|constraints minimum|
-|---|---|---|---|---|---|
-|lane_id|True|any|-|Primary key|-|
-|road_link_id|-|any|-|Conditionally Required. Foreign key  to  road_link table.|-|
-|segment_id|-|any|-|Conditionally Required. Associated segment (Blank = lane traverses entire link) Foreign key (Segment table).|-|
-|lane_num|True|integer|-|Required. e.g., -1, 1, 2 (use left-to-right numbering).|-|
-|allowed_uses|True|string|-|Required. Set of allowed uses from Use_set: SHOULDER, PARKING, WALK, ALL, BIKE, AUTO, HOV2, HOV3, TRUCK, BUS, etc.|-|
-|r_barrier|-|any|-|Optional. Whether a barrier exists to prevent vehicles from changing lanes to the right (default is None)|-|
-|l_barrier|-|any|-|Optional. Whether a barrier exists to prevent vehicles from changing lanes to the left (default is None)|-|
-|width|-|number|-|Optional. Width of the lane,feet.|0|
-|notes|-|string|-|Optional.|-|
+|name|required|type|foreign_key|description|constraints enum|constraints minimum|
+|---|---|---|---|---|---|---|
+|lane_id|True|any|-|Primary key|-|-|
+|link_id|True|any|Table: `link`, Variable: `link_id`|Required. Foreign key  to  road_link table.|-|-|
+|lane_num|True|integer|-|Required. e.g., -1, 1, 2 (use left-to-right numbering).|-|-|
+|allowed_uses|True|string|Table: `use_group`, Variable: `use_id`|Required. Set of allowed uses from Use_set: SHOULDER, PARKING, WALK, ALL, BIKE, AUTO, HOV2, HOV3, TRUCK, BUS, etc.|-|-|
+|r_barrier|-|any|-|Optional. Whether a barrier exists to prevent vehicles from changing lanes to the right (default is None).
+- '' (the default). Indicates that a vehicle can change lanes, provided that the vehicle-type is permitted in the destination lane
+- `Regulatory`. There is a regulatory prohibition (e.g., a double-white solid line) against changing lanes, but no physical barrier
+- `Physical`. A physical barrier (e.g., a curb, Jersey barrier) is in place.|Allowed Values: `,regulatory,physical`|-|
+|l_barrier|-|any|-|Optional. Whether a barrier exists to prevent vehicles from changing lanes to the right (default is None).
+- '' (the default). Indicates that a vehicle can change lanes, provided that the vehicle-type is permitted in the destination lane
+- `Regulatory`. There is a regulatory prohibition (e.g., a double-white solid line) against changing lanes, but no physical barrier
+- `Physical`. A physical barrier (e.g., a curb, Jersey barrier) is in place.|Allowed Values: `,regulatory,physical`|-|
+|width|-|number|-|Optional. Width of the lane, feet.|-|0|
 
 
 ## link_tod
@@ -150,6 +188,97 @@ Example:
 |notes|-|String|-|Optional.|
 
 
+## signal_timing_phase
+
+
+|name|required|type|foreign_key|description|constraints maximum|constraints minimum|
+|---|---|---|---|---|---|---|
+|timing_phase_id|True|any|-|Primary key.|-|-|
+|node_id|True|any|Table: `node`, Variable: `node_id`|Optional. Foreign key to node table.|-|-|
+|timing_plan_id|-|any|Table: `signal_timing_plan`, Variable: `timing_plan_id`||-|-|
+|phase_num|True|integer|-|Required. The phase number; each phase has one or more movements associated with it.|-|0|
+|min_green|True|integer|-|Required. The minimum green time in seconds for an actuated signal. Green time in seconds for a fixed time signal.|-|0|
+|max_green|-|integer|-|Optional.The maximum green time in seconds for an actuated signal; the default is minimum green plus one extension|-|0|
+|extension|-|integer|-|Optional. The number of seconds the green time is extended each time vehicles are detected.|120|0|
+|clearance|True|integer|-|Required. Yellow interval plus all red interval|120|0|
+|walk_time|-|integer|-|Required if have ped phase. If a pedestrian phase exists, the walk time in seconds|120|0|
+|ped_clearance|-|integer|-|Required if have ped phase. If a pedestrian phase exists, the flashing don’t walk time.|120|0|
+
+
+## geometry
+
+
+|name|required|type|foreign_key|description|
+|---|---|---|---|---|
+|geometry_id|True|any|-|Primary key – could be SharedStreets Geometry ID|
+|geometry|-|any|-|Optional. Link geometry, specific format could be WKT, GeoJSON, etc.|
+
+
+## link_lane_tod
+
+
+|name|required|type|foreign_key|description|constraints enum|constraints maximum|constraints minimum|
+|---|---|---|---|---|---|---|---|
+|link_lane_tod_id|True|any|-|Primary key.|-|-|-|
+|link_tod_id|-|any|Table: `link_tod`, Variable: `link_tod_id`|Foreign key to `link_tod`|-|-|-|
+|link_id|True|any|Table: `link`, Variable: `link_id`|Required. Foreign key to `link`|-|-|-|
+|timeday_id|True|any|Table: `time_set_definitions`, Variable: `timeday_id`|Required. Foreign key to road_links. The link that the segment is located on.|-|-|-|
+|time_day|-|any|-|Conditiomally required. XXXXXXXX_HHMM_HHMM,where XXXXXXXX is a bitmap of days of the week, Sunday-Saturday, Holiday. The HHMM are the start and end times.|-|-|-|
+|lane_num|True|integer|-|Required. Lane number identified as offset to the right from the centerline. i.e. -1, 1, 2 (use left-to-rightnumbering).|-|10|-10|
+|allowed_uses|-|string|Table: `use_group`, Variable: `use_group`|Optional. Set of allowed uses; comma-separated. Foreign key to use_definition or use sets.|-|-|-|
+|r_barrier|-|any|-|Optional. Whether a barrier exists to prevent vehicles from changing lanes to the right (default is None).
+- '' (the default). Indicates that a vehicle can change lanes, provided that the vehicle-type is permitted in the destination lane
+- `Regulatory`. There is a regulatory prohibition (e.g., a double-white solid line) against changing lanes, but no physical barrier
+- `Physical`. A physical barrier (e.g., a curb, Jersey barrier) is in place.|Allowed Values: `,regulatory,physical`|-|-|
+|l_barrier|-|any|-|Optional. Whether a barrier exists to prevent vehicles from changing lanes to the right (default is None).
+- '' (the default). Indicates that a vehicle can change lanes, provided that the vehicle-type is permitted in the destination lane
+- `Regulatory`. There is a regulatory prohibition (e.g., a double-white solid line) against changing lanes, but no physical barrier
+- `Physical`. A physical barrier (e.g., a curb, Jersey barrier) is in place.|Allowed Values: `,regulatory,physical`|-|-|
+|width|-|number|-|Optional. Width of the lane, feet.|-|-|0|
+
+
+## segment_lane_tod
+
+
+|name|required|type|foreign_key|description|constraints enum|constraints maximum|constraints minimum|
+|---|---|---|---|---|---|---|---|
+|segment_lane_tod_id|True|any|-|Primary key.|-|-|-|
+|segment_tod_id|True|any|Table: `segment_tod`, Variable: `segment_tod_id`||-|-|-|
+|timeday_id|True|any|Table: `time_set_definitions`, Variable: `timeday_id`|Required. Foreign key to road_links. The link that the segment is located on.|-|-|-|
+|time_day|-|any|-|Conditiomally required. XXXXXXXX_HHMM_HHMM, where XXXXXXXX is a bitmap of days of the week, Sunday-Saturday, Holiday. The HHMM are the start and end times.|-|-|-|
+|lane_num|True|integer|-|Required. Lane number identified as offset to the right from the centerline. i.e. -1, 1, 2 (use left-to-rightnumbering).|-|10|-10|
+|allowed_uses|-|string|Table: `use_group`, Variable: `use_group`|Optional. Set of allowed uses; comma-separated. Foreign key to use_definition or use sets.|-|-|-|
+|r_barrier|-|any|-|Optional. Whether a barrier exists to prevent vehicles from changing lanes to the right (default is None).
+- '' (the default). Indicates that a vehicle can change lanes, provided that the vehicle-type is permitted in the destination lane
+- `Regulatory`. There is a regulatory prohibition (e.g., a double-white solid line) against changing lanes, but no physical barrier
+- `Physical`. A physical barrier (e.g., a curb, Jersey barrier) is in place.|Allowed Values: `,regulatory,physical`|-|-|
+|l_barrier|-|any|-|Optional. Whether a barrier exists to prevent vehicles from changing lanes to the right (default is None).
+- '' (the default). Indicates that a vehicle can change lanes, provided that the vehicle-type is permitted in the destination lane
+- `Regulatory`. There is a regulatory prohibition (e.g., a double-white solid line) against changing lanes, but no physical barrier
+- `Physical`. A physical barrier (e.g., a curb, Jersey barrier) is in place.|Allowed Values: `,regulatory,physical`|-|-|
+|width|-|number|-|Optional. Width of the lane, feet.|-|-|0|
+
+
+## segment_tod
+
+
+|name|required|type|foreign_key|description|constraints enum|constraints minimum|
+|---|---|---|---|---|---|---|
+|segment_tod_id|True|any|-|Primary key.|-|-|
+|segment_id|True|any|Table: `segment`, Variable: `segment_id`|Foreign key to segment table.|-|-|
+|timeday_id|True|any|Table: `time_set_definitions`, Variable: `timeday_id`|Required. Foreign key to road_links. The link that the segment is located on.|-|-|
+|time_day|-|any|-|Conditiomally required. XXXXXXXX_HHMM_HHMM, where XXXXXXXX is a bitmap of days of the week, Sunday-Saturday, Holiday. The HHMM are the start and end times.|-|-|
+|capacity|-|integer|-|Optional. Capacity (veh/hr)|-|0|
+|free_speed|-|integer|-|Optional. Free flow speed (mph)|-|0|
+|l_lanes_added|-|integer|-|Optional. # of lanes added on the left of the road link (negative indicates a lane drop).|-|-|
+|r_lanes_added|-|integer|-|Optional. # of lanes added on the right of the road link (negative indicates a lane drop).|-|-|
+|bike_facility|-|string|-|Optional. Type of bicycle accommodation: unknown, none,wcl, bikelane,cycletrack,wide_shoulder, offstreet_path.|Allowed Values: `unknown,none,wcl,bikelane,cycletrack,wide_shoulder,offstreet_path`|-|
+|ped_facility|-|string|-|Optional. Type of pedestrian accommodation: unknown,none,shoulder,sidewalk,offstreet_path.|Allowed Values: `unknown,none,shoulder,sidewalk,offstreet_path`|-|
+|parking|-|string|-|Optional. Type of parking: unknown,none,shoulder,sidewalk,offstreet_path.|Allowed Values: `unknown,none,shoulder,sidewalk,offstreet_path`|-|
+|toll|-|integer|-|Optional. Toll in cents|-|-|
+|allowed_uses|-|string|Table: `use_group`, Variable: `use_group`|Optional. Set of allowed uses; comma-separated. Foreign key to use_definition or use sets.|-|-|
+
+
 ## use_group
 
 
@@ -160,44 +289,125 @@ Example:
 |description|-|string|-|Optional.|
 
 
+## signal_timing_plan
+
+
+|name|required|type|foreign_key|description|constraints maximum|constraints minimum|
+|---|---|---|---|---|---|---|
+|timing_plan_id|True|any|-|Primary key.|-|-|
+|node_id|True|any|Table: `node`, Variable: `node_id`|Required. Foreign key to node table.|-|-|
+|time_day|True|any|-|Required.|-|-|
+|cycle_length|True|integer|-|Required. Cycle length in seconds.|600|0|
+|coord_node_id|-|integer|Table: `node`, Variable: `node_id`|Optional. For coordinated signals, the “master” signal location for coordination.|-|-|
+|coord_phase|-|integer|-|Optional. For coordinated signals, the phase at which coordination starts (time 0).|32|0|
+|offset|-|integer|-|Optional. Offset in seconds.|32|0|
+
+
+## time_set_definitions
+
+
+|name|required|type|foreign_key|description|
+|---|---|---|---|---|
+|timeday_id|True|any|-|Primary key.Primary key, similar to `service_id` in GTFS. Unique name of the time of day. Preferable legible rather than a number.|
+|monday|True|boolean|-|Required. Whether Mondays are included.|
+|tuesday|True|boolean|-|Required. Whether Tuesdays are included.|
+|wednesday|True|boolean|-|Required. Whether Wednesdays are included.|
+|thursday|True|boolean|-|Required. Whether Thursdays are included.|
+|Friday|True|boolean|-|Required. Whether Fridays are included.|
+|saturday|True|boolean|-|Required. Whether Saturdays are included.|
+|sunday|True|boolean|-|Required. Whether Sundays are included.|
+|holiday|True|boolean|-|Required. Whether holidays are included.|
+|start_time|True|time|-|Required. Start time in HH:MM format.|
+|end_time|True|time|-|Required. End  time in HH:MM format.|
+
+
+## movement_tod
+
+
+|name|required|type|foreign_key|description|
+|---|---|---|---|---|
+|mvmt_tod_id|True|any|-|Primary key.|
+|mvmt_id|True|any|Table: `movement`, Variable: `mvmt_id`|The referenced movement.|
+|time_day|-|string|-|Time of day in ...format.|
+|timeday_id|-|string|Table: `timeday`, Variable: `timeday_id`|Time of day set|
+|allowed_uses|True|string|Table: `use_group`, Variable: `use_set`|A turn prohibition for all vehicles would have NONE as the allowed uses. ##ISSUE doesn't make sense that this is a restriction.|
+
+
+## segment_lane
+
+
+|name|required|type|foreign_key|description|constraints enum|constraints maximum|constraints minimum|
+|---|---|---|---|---|---|---|---|
+|lane_id|True|any|-|Primary key.|-|-|-|
+|link_id|True|any|Table: `link`, Variable: `link_id`|Required. Foreign key to road_links. The link that the segment is located on.|-|-|-|
+|segment_id|True|any|Table: `segment`, Variable: `segment_id`|Required. Foreign key to segments table.|-|-|-|
+|lane_num|True|integer|-|Required. -1, 1, 2 (use left-to-right numbering). 0 signifies a lane that is dropped on the segment.|-|10|-10|
+|parent_lane_id|-|any|-|Optional. If a lane drops or changes characteristics on the segment, the lane_id for that lane.|-|-|-|
+|allowed_uses|-|string|Table: `use_group`, Variable: `use_group`|Optional. Set of allowed uses; comma-separated. Foreign key for use group.|-|-|-|
+|r_barrier|-|any|-|Optional. Whether a barrier exists to prevent vehicles from changing lanes to the right (default is NONE)|['None']|-|-|
+|l_barrier|-|any|-|Optional. Whether a barrier exists to prevent vehicles from changing lanes to the left (default is NONE)|['None']|-|-|
+|width|-|number|-|Optional. Width of the lane (feet)|-|-|0|
+
+
 ## link
 
 
-|name|required|type|foreign_key|description|constraints enum|constraints maximum|constraints minimum|warnings maximum|warnings minimum|
-|---|---|---|---|---|---|---|---|---|---|
-|link_id|True|any|-|Primary key – could be SharedStreets Reference ID|-|-|-|-|-|
-|name|-|string|-|Street or Path Name|-|-|-|-|-|
-|from_node_id|True|any|Table: `node`, Variable: `node_id`|-|-|-|-|-|-|
-|to_node_id|True|any|Table: `node`, Variable: `node_id`|-|-|-|-|-|-|
-|link_geom_id|-|any|Table: `link_geometry`, Variable: `link_geom_id`|Optional. Foreign key (Link_Geometry table)|-|-|-|-|-|
-|dir_flag|-|integer|-|Optional. 1 = flow follows direction of shapepoints in the Link_Geometry (forward); -1 = flow is against shapepoint direction (backward);  0 = Unspecified.|Allowed Values: `-1,0,1`|-|-|-|-|
-|parent_link_id|-|any|-|Optional. Associated link. For example, if this link is a sidewalk, a parent_link_id could represent the roadway it is along.|Allowed Values: `l,i,n,k,_,i,d`|-|-|-|-|
-|capacity|-|integer|-|Optional. Capacity (veh / hr / lane)|-|-|0|-|500|
-|free_speed|-|integer|-|Optional. Free flow speed mph|-|100|0|75|10|
-|lanes|-|integer|-|Number of lanes in the direction of travel|-|-|0|-|-|
-|bike_facility|-|string|-|Type of bicycle accommodation: unknown, none, WCL, sharrow, bikelane, cycletrack, offstreet path|Allowed Values: `unknown,none,WCL,sharrow,bikelane,cycletrack,offstreet path`|-|-|-|-|
-|ped_facility|-|string|-|Type of pedestrian accommodation: unknown, none, shoulder, sidewalk, offstreet path|Allowed Values: `unknown,none,shoulder,sidewalk,offstreet path`|-|-|-|-|
-|parking|-|string|-|Type of parking: unknown, none, parallel, angle, other|Allowed Values: `unknown,none,parallel,angle,other`|-|-|-|-|
-|allowed_uses|-|string|-|Set of allowed uses: SHOULDER, PARKING, WALK, ALL, BIKE, AUTO, HOV2, HOV3, TRUCK, BUS, etc. e.g. [AUTO,BIKE]|-|-|-|-|-|
-|facility_type|-|string|-|-|-|-|-|-|-|
-|grade|-|number|-|% grade, negative is downhill|-|100|-100|25|-25|
-|notes|-|any|-|Additional relevant notes|-|-|-|-|-|
+|name|required|type|foreign_key|description|constraints enum|constraints maximum|constraints min|constraints minimum|warnings maximum|warnings min|warnings minimum|
+|---|---|---|---|---|---|---|---|---|---|---|---|
+|link_id|True|any|-|Primary key – could be SharedStreets Reference ID|-|-|-|-|-|-|-|
+|parent_link_id|-|any|Table: ``, Variable: `link_id`|Optional. The parent of this link. For example,for a sidewalk, this is the adjacent road.|-|-|-|-|-|-|-|
+|name|-|string|-|Optional. Street or Path Name|-|-|-|-|-|-|-|
+|from_node_id|True|any|Table: `node`, Variable: `node_id`|-|-|-|-|-|-|-|-|
+|to_node_id|True|any|Table: `node`, Variable: `node_id`|-|-|-|-|-|-|-|-|
+|directed|-|boolean|-|Required. Whether the link is directed (travel only occurs from the from_node to the to_node) or undirected.|-|-|-|-|-|-|-|
+|geometry_id|-|any|Table: `geometry`, Variable: `geometry_id`|Optional. Foreign key (Link_Geometry table).|-|-|-|-|-|-|-|
+|geometry|-|any|-|Optional. Link geometry, specific format could be WKT, GeoJSON, etc.|-|-|-|-|-|-|-|
+|dir_flag|-|integer|-|Optional. 
+1  shapepoints go from from_node to to_node;
+-1 shapepoints go in the reverse direction;
+0  link is undirected or no geometry information is provided.|Allowed Values: `-1,0,1`|-|-|-|-|-|-|
+|length|-|number|-|Optional. Length of the link in miles|-|-|-|0|-|-|-|
+|grade|-|number|-|% grade, negative is downhill|-|100|-|-100|25|-|-25|
+|facility_type|-|string|-|Facility type (e.g., freeway, arterial, etc.)|-|-|-|-|-|-|-|
+|capacity|-|integer|-|Optional. Capacity (veh / hr / lane)|-|-|-|0|-|-|500|
+|free_speed|-|integer|-|Optional. Free flow speed mph|-|100|-|0|75|-|10|
+|lanes|-|integer|-|Optional. Number of permanent lanes (not including turn p
+pockets) in the direction of travel open to motor vehicles.
+It does not include bike lanes, shoulders or parking lanes.|-|-|-|0|-|-|-|
+|bike_facility|-|string|-|Optional. Type of bicycle accommodation: unknown, none, WCL, sharrow, bikelane, cycletrack, offstreet path|Allowed Values: `unknown,none,WCL,sharrow,bikelane,cycletrack,offstreet path`|-|-|-|-|-|-|
+|ped_facility|-|string|-|Optional. Type of pedestrian accommodation: unknown, none, shoulder, sidewalk, offstreet path|Allowed Values: `unknown,none,shoulder,sidewalk,offstreet path`|-|-|-|-|-|-|
+|parking|-|string|-|Optional. Type of parking: unknown, none, parallel, angle, other|Allowed Values: `unknown,none,parallel,angle,other`|-|-|-|-|-|-|
+|allowed_uses|-|string|-|Optional. Set of allowed uses: SHOULDER, PARKING, WALK, ALL, BIKE, AUTO, HOV2, HOV3, TRUCK, BUS, etc. e.g. [AUTO,BIKE]|-|-|-|-|-|-|-|
+|jurisdiction|-|string|-|Optional.  Owner/operator of the link.|-|-|-|-|-|-|-|
+|row_width|-|string|-|Optional. Width (feet) of the entire right-of-way (both directions).|-|-|0|-|-|10|-|
 
 
 ## node
 
 
-|name|required|type|foreign_key|description|
-|---|---|---|---|---|
-|node_id|True|any|-|Primary key|
-|name|-|string|-|Optional|
-|x_coord|True|number|-|Required. Coordinate system specified in config file.|
-|y_coord|True|number|-|Required. Coordinate system specified in config file.|
-|z_coord|True|number|-|Optional. Coordinate system specified in config file.|
-|node_type|-|string|-|Optional. What it represents (intersection, transit station, park & ride).|
-|ctrl_type|-|string|-|Optional. Intersection control type - one of ControlType_Set.|
-|zone_id|-|any|-|Optional. Could be a Transportation Analysis Zone (TAZ) or city, or census tract, or census block.|
-|parent_node_id|-|any|Table: ``, Variable: `node_id`|Optional. Associated node. For example, if this node is a sidewalk, a parent_nodek_id could represent the intersection  it is associated with.|
+|name|required|type|foreign_key|description|constraints enum|
+|---|---|---|---|---|---|
+|node_id|True|any|-|Primary key|-|
+|name|-|string|-||-|
+|x_coord|True|number|-|Coordinate system specified in config file (longitude, UTM-easting etc.)|-|
+|y_coord|True|number|-|Coordinate system specified in config file (latitude, UTM-northing etc.)|-|
+|z_coord|True|number|-|Optional. Coordinate system specified in config file.|-|
+|node_type|-|string|-|Optional. What it represents (intersection, transit station, park & ride).|-|
+|ctrl_type|-|string|-|Optional. Intersection control type - one of ControlType_Set.|Allowed Values: `STOP,YIEDL,ROUNDABOUT,SIGNAL,NONE`|
+|zone_id|-|any|-|Optional. Could be a Transportation Analysis Zone (TAZ) or city, or census tract, or census block.|-|
+|parent_node_id|-|any|Table: ``, Variable: `node_id`|Optional. Associated node. For example, if this node is a sidewalk, a parent_nodek_id could represent the intersection  it is associated with.|-|
+
+
+## signal_phase_concurrency
+
+
+|name|required|type|foreign_key|description|constraints maximum|constraints minimum|
+|---|---|---|---|---|---|---|
+|signal_phase_id|True|any|-|Primary key.|-|-|
+|node_id|True|any|Table: `node`, Variable: `node_id`|Required. Foreign key to node table.|-|-|
+|signal_phase_id|True|any|Table: `signal_phase_id`, Variable: `mvmt_id`|Required. Foreign key to `signal_phase_id` table|-|-|
+|ring|True|integer|-|Required. Set of phases that conflict with each other. |12|0|
+|barrier|True|integer|-|Required. Set of phases that can operate other.|12|0|
 
 
 ## location
@@ -206,15 +416,14 @@ Example:
 |name|required|type|foreign_key|description|constraints minimum|
 |---|---|---|---|---|---|
 |loc_id|True|any|-|Primary key. Location ID.|-|
-|road_link_id|True|any|-|Required. Road Link ID. Foreign Key from Road_Link.|-|
-|offroad_link_id|-|any|-|Required. Offroad Link ID. Foreign Key from Offroad_Link.|-|
-|ref_node_id|True|any|-|Required. The From node of the link. Foreign Key from Node.|-|
+|link_id|True|any|Table: `link`, Variable: `link_id`|Required. Road Link ID. Foreign Key from Road_Link.|-|
+|ref_node_id|True|any|Table: `node`, Variable: `node_id`|Required. The From node of the link. Foreign Key from Node.|-|
 |lr|True|number|-|Required. Linear Reference of the location, measured as distance along the link from the reference node.  If link_geometry exists, it is used. Otherwise, link geometry is assumed to be a crow-fly distance from A node to B node.|0|
 |x_coord|-|number|-|Optional. Linear Reference of the location, measured as distance along the link from the reference node.|-|
-|y_coord|-|number|-|Required. Linear Reference of the location, measured as distance along the link from the reference node.|-|
-|z_coord|-|number|-|Required.|-|
-|loc_type|-|string|-|Optional. What it represents (driveway, bus stop, etc.)|-|
-|zone_id|-|string|-|Optional. Foreign Key, Associated zone|-|
+|y_coord|-|number|-|Optional. Linear Reference of the location, measured as distance along the link from the reference node.|-|
+|z_coord|-|number|-|Optional. Altitude.|-|
+|loc_type|-|string|-|Optional. What it represents (driveway, bus stop, etc.) OpenStreetMap map feature names are recommended.|-|
+|zone_id|-|any|-|Optional. Foreign Key, Associated zone|-|
 |gtfs_stop_id|-|string|-|Optional. Foreign Key to GTFS data. For bus stops and transit station entrances, provides a link to the General Transit Feed Specification.|-|
 
 
@@ -224,28 +433,46 @@ Example:
 |name|required|type|foreign_key|description|constraints enum|constraints minimum|
 |---|---|---|---|---|---|---|
 |segment_id|True|any|-|Primary key.|-|-|
-|road_link_id|True|any|-|Required. Foreign key to road_links. The link that the segment is located on.|-|-|
-|ref_node_id|True|any|-|Required. Foreign key to node.|-|-|
-|start_lr|True|number|-|Required. Distance from ref_node_id.|-|0|
-|end_lr|True|number|-|Required. Distance from ref_node_id.|-|0|
+|link_id|True|any|Table: `link`, Variable: `link_id`|Required. Foreign key to road_links. The link that the segment is located on.|-|-|
+|ref_node_id|True|any|Table: `node`, Variable: `node_id`|Required. Foreign key to node where distance is 0.|-|-|
+|start_lr|True|number|-|Required. Distance from `ref_node_id`.|-|0|
+|end_lr|True|number|-|Required. Distance from `ref_node_id`.|-|0|
 |capacity|-|integer|-|Optional. Capacity (veh/hr)|-|0|
 |free_speed|-|integer|-|Optional. Free flow speed (mph)|-|0|
 |l_lanes_added|-|integer|-|Optional. # of lanes added on the left of the road link (negative indicates a lane drop).|-|-|
 |r_lanes_added|-|integer|-|Optional. # of lanes added on the right of the road link (negative indicates a lane drop).|-|-|
-|bike_facility|-|string|-|Optional. Type of bicycle accommodation: unknown,none,wcl, bikelane,cycletrack,wide_shoulder, offstreet_path.|Allowed Values: `unknown,none,wcl,bikelane,cycletrack,wide_shoulder,offstreet_path`|-|
-|ped_facility|-|string|-|Optional. Type of pedestrian accommodation: unknown,none,shoulder,sidewalk,offstreet_path.|Allowed Values: `unknown,none,shoulder,sidewalk,offstreet_path`|-|
+|bike_facility|-|string|-|Optional. Type of bicycle accommodation: unknown, none,wcl, bikelane,cycletrack,wide_shoulder, offstreet_path.|Allowed Values: `unknown,none,wcl,bikelane,cycletrack,wide_shoulder,offstreet_path`|-|
+|ped_facility|-|string|-|Optional. Type of pedestrian accommodation:unknown,none,shoulder,sidewalk,offstreet_path.|Allowed Values: `unknown,none,shoulder,sidewalk,offstreet_path`|-|
 |parking|-|string|-|Optional. Type of parking: unknown,none,shoulder,sidewalk,offstreet_path.|Allowed Values: `unknown,none,shoulder,sidewalk,offstreet_path`|-|
-|allowed_uses|-|string|-|Optional. Set of allowed uses; comma-separated. Foreign key to use_definition or use sets.|-|-|
+|allowed_uses|-|string|Table: `use_group`, Variable: `use_group`|Optional. Set of allowed uses; comma-separated. Foreign key  to use_definition or use sets.|-|-|
 
 
-## link_geometry
+## signal_phase
 
 
-|name|required|type|foreign_key|description|constraints minimum|
-|---|---|---|---|---|---|
-|link_geom_id|True|any|-|Primary key – could be SharedStreets Geometry ID|-|
-|name|-|string|-|Optional.|-|
-|geometry|-|any|-|Optional. Link geometry, specific format could be WKT, GeoJSON, etc.|-|
-|length|-|number|-|Optional. The length of the link, miles.|0.0|
-|row_width|-|number|-|Optional. Width of the entire right-of-way. May be useful for predicting what changes might be possible in future years.|0.0|
-|jurisdiction|-|string|-|Optional. Owner operator of the physical link.|-|
+|name|required|type|foreign_key|description|constraints enum|constraints maximum|constraints minimum|
+|---|---|---|---|---|---|---|---|
+|mvmt_id|True|any|-|Primary key.|-|-|-|
+|link_id|-|any|Table: `link`, Variable: `link_id`|Optional. Foreign key to links.|-|-|-|
+|node_id|-|any|Table: `node`, Variable: `node_id`|Optional. Foreign key to node table.|-|-|-|
+|phase_num|True|integer|-|Required. The phase number; each phase has one or more Movements associated with it. The following conventions are typically used for phase numbers:
+2 & 6 Main street thru movements.
+1 & 5 Protected left turns from the main street.
+4 & 8 Side street thru movements.
+3 & 7 protected left turns from side street.
+Right turns either:
+- with associated thru
+- with non-conflicting left turn
+Exclusive pedestrian phase should have a phase number > 8.|-|32|0|
+|protection|-|any|-|Optional. Indicates whether the phase is protected, permitted, or right turn on red.|Allowed Values: `protected,permitted,rtor`|-|-|
+
+
+## zone
+
+
+|name|required|type|foreign_key|description|
+|---|---|---|---|---|
+|zone_id|True|any|-|Primary key.|
+|zone_name|-|any|-|Optional.|
+|boundary|-|any|-|Optional. The polygon geometry of the zone in WKT or Polygon.|
+|super_zone|-|string|Table: ``, Variable: `zone_id`|Optional. If there is a hierarchy of zones (e.g., parcels and TAZs), indicates the zone of next higher level.|
