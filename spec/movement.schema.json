@@ -1,0 +1,84 @@
+{
+    "primaryKey": "mvmt_id",
+    "missingValues": ["NaN"],
+    "fields": [
+        {
+            "name": "mvmt_id",
+            "type": "any",
+            "description": "Primary key.",
+            "constraints": {
+              "required": true
+              }
+        },
+        {
+            "name": "node_id",
+            "type": "any",
+            "foreign_key": "node.node_id",
+            "description": "The node representing the junction.",
+            "constraints": {
+              "required": true
+              }
+        },
+        {
+            "name": "name",
+            "type": "any",
+            "description": "Optional."
+        },
+        {
+            "name": "ib_link_id",
+            "type": "any",
+            "foreign_key": "link.link_id",
+            "description": "Inbound link id.",
+            "constraints": {
+              "required": true
+              }
+        },
+        {
+            "name": "ib_lane",
+            "type": "integer",
+            "description": "Inbound lane number."
+        },
+        {
+            "name": "ob_link_id",
+            "type": "any",
+            "foreign_key": "link.link_id",
+            "description": "Outbound link id.",
+            "constraints": {
+              "required": true
+              }
+        },
+        {
+            "name": "ob_lane",
+            "type": "integer",
+            "description": "Inbound lane number."
+        },
+        {
+            "name": "type",
+            "type": "string",
+            "description": "Optional. .",
+            "constraints": {
+              "required": true,
+              "enum": ["LEFT", "RIGHT", "UTURN", "THRU", "MERGE"]
+              }
+        },
+        {
+            "name": "penalty",
+            "type": "any",
+            "description": "Turn penalty (seconds)"
+        },
+        {
+            "name": "capacity",
+            "type": "any",
+            "description": "Capacity in vehicles per hour."
+        },
+        {
+            "name": "ctrl_type",
+            "type": "any",
+            "description": "Optional. .",
+            "constraints": {
+              "required": true,
+              "enum": ["no control", "stop", "yield", "signal"]
+              }
+        }
+    ]
+}

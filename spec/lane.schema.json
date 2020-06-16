@@ -11,14 +11,13 @@
               }
         },
         {
-            "name": "road_link_id",
+            "name": "link_id",
             "type": "any",
-            "description": "Conditionally Required. Foreign key  to  road_link table."
-        },
-        {
-            "name": "segment_id",
-            "type": "any",
-            "description": "Conditionally Required. Associated segment (Blank = lane traverses entire link) Foreign key (Segment table)."
+            "foreign_key": "link.link_id",
+            "description": "Required. Foreign key  to  road_link table.",
+            "constraints": {
+              "required": true
+              }
         },
         {
             "name": "lane_num",
@@ -31,6 +30,7 @@
         {
             "name": "allowed_uses",
             "type": "string",
+            "foreign_key": "use_group.use_id",
             "description": "Required. Set of allowed uses from Use_set: SHOULDER, PARKING, WALK, ALL, BIKE, AUTO, HOV2, HOV3, TRUCK, BUS, etc.",
             "constraints": {
               "required": true
@@ -39,25 +39,26 @@
         {
             "name": "r_barrier",
             "type": "any",
-            "description": "Optional. Whether a barrier exists to prevent vehicles from changing lanes to the right (default is None)"
+            "description": "Optional. Whether a barrier exists to prevent vehicles from changing lanes to the right (default is None).\n- '' (the default). Indicates that a vehicle can change lanes, provided that the vehicle-type is permitted in the destination lane\n- `Regulatory`. There is a regulatory prohibition (e.g., a double-white solid line) against changing lanes, but no physical barrier\n- `Physical`. A physical barrier (e.g., a curb, Jersey barrier) is in place.",
+            "constraints": {
+              "enum": ["","regulatory", "physical"]
+              }
         },
         {
             "name": "l_barrier",
             "type": "any",
-            "description": "Optional. Whether a barrier exists to prevent vehicles from changing lanes to the left (default is None)"
+            "description": "Optional. Whether a barrier exists to prevent vehicles from changing lanes to the right (default is None).\n- '' (the default). Indicates that a vehicle can change lanes, provided that the vehicle-type is permitted in the destination lane\n- `Regulatory`. There is a regulatory prohibition (e.g., a double-white solid line) against changing lanes, but no physical barrier\n- `Physical`. A physical barrier (e.g., a curb, Jersey barrier) is in place.",
+            "constraints": {
+              "enum": ["","regulatory", "physical"]
+              }
         },
         {
             "name": "width",
             "type": "number",
-            "description": "Optional. Width of the lane,feet.",
+            "description": "Optional. Width of the lane, feet.",
             "constraints": {
               "minimum": 0
               }
-        },
-        {
-            "name": "notes",
-            "type": "string",
-            "description": "Optional."
         }
     ]
 }

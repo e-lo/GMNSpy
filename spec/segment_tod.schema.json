@@ -1,50 +1,37 @@
 {
-    "primaryKey": "segment_id",
+    "primaryKey": "segment_tod_id",
     "missingValues": ["NaN",""],
     "fields": [
-        {
+      {
+          "name": "segment_tod_id",
+          "type": "any",
+          "description": "Primary key.",
+          "constraints": {
+            "required": true
+            }
+      },
+      {
             "name": "segment_id",
             "type": "any",
-            "description": "Primary key.",
+            "foreign_key": "segment.segment_id",
+            "description": "Foreign key to segment table.",
             "constraints": {
               "required": true
               }
         },
         {
-            "name": "link_id",
+            "name": "timeday_id",
             "type": "any",
-            "foreign_key": "link.link_id",
+            "foreign_key": "time_set_definitions.timeday_id",
             "description": "Required. Foreign key to road_links. The link that the segment is located on.",
             "constraints": {
               "required": true
               }
         },
         {
-            "name": "ref_node_id",
+            "name": "time_day",
             "type": "any",
-            "foreign_key": "node.node_id",
-            "description": "Required. Foreign key to node where distance is 0.",
-            "constraints": {
-              "required": true
-              }
-        },
-        {
-            "name": "start_lr",
-            "type": "number",
-            "description": "Required. Distance from `ref_node_id`.",
-            "constraints": {
-              "required": true,
-              "minimum": 0
-              }
-        },
-        {
-            "name": "end_lr",
-            "type": "number",
-            "description": "Required. Distance from `ref_node_id`.",
-            "constraints": {
-              "required": true,
-              "minimum": 0
-              }
+            "description": "Conditiomally required. XXXXXXXX_HHMM_HHMM, where XXXXXXXX is a bitmap of days of the week, Sunday-Saturday, Holiday. The HHMM are the start and end times."
         },
         {
             "name": "capacity",
@@ -83,7 +70,7 @@
         {
             "name": "ped_facility",
             "type": "string",
-            "description": "Optional. Type of pedestrian accommodation:unknown,none,shoulder,sidewalk,offstreet_path.",
+            "description": "Optional. Type of pedestrian accommodation: unknown,none,shoulder,sidewalk,offstreet_path.",
             "constraints": {
               "enum": ["unknown","none","shoulder","sidewalk","offstreet_path"]
             }
@@ -97,10 +84,15 @@
             }
         },
         {
+            "name": "toll",
+            "type": "integer",
+            "description": "Optional. Toll in cents"
+        },
+        {
             "name": "allowed_uses",
             "type": "string",
             "foreign_key": "use_group.use_group",
-            "description": "Optional. Set of allowed uses; comma-separated. Foreign key  to use_definition or use sets."
+            "description": "Optional. Set of allowed uses; comma-separated. Foreign key to use_definition or use sets."
         }
     ]
 }

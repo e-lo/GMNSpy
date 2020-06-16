@@ -1,0 +1,77 @@
+{
+    "primaryKey": "lane_id",
+    "missingValues": ["NaN",""],
+    "fields": [
+        {
+            "name": "lane_id",
+            "type": "any",
+            "description": "Primary key.",
+            "constraints": {
+              "required": true
+              }
+        },
+        {
+            "name": "link_id",
+            "type": "any",
+            "foreign_key": "link.link_id",
+            "description": "Required. Foreign key to road_links. The link that the segment is located on.",
+            "constraints": {
+              "required": true
+              }
+        },
+        {
+            "name": "segment_id",
+            "type": "any",
+            "foreign_key": "segment.segment_id",
+            "description": "Required. Foreign key to segments table.",
+            "constraints": {
+              "required": true
+              }
+        },
+        {
+            "name": "lane_num",
+            "type": "integer",
+            "description": "Required. -1, 1, 2 (use left-to-right numbering). 0 signifies a lane that is dropped on the segment.",
+            "constraints": {
+              "required": true,
+              "minimum":-10,
+              "maximum":10
+              }
+        },
+        {
+            "name": "parent_lane_id",
+            "type": "any",
+            "description": "Optional. If a lane drops or changes characteristics on the segment, the lane_id for that lane."
+        },
+        {
+            "name": "allowed_uses",
+            "type": "string",
+            "foreign_key": "use_group.use_group",
+            "description": "Optional. Set of allowed uses; comma-separated. Foreign key for use group."
+        },
+        {
+            "name": "r_barrier",
+            "type": "any",
+            "description": "Optional. Whether a barrier exists to prevent vehicles from changing lanes to the right (default is NONE)",
+            "constraints": {
+              "enum": ["None"]
+              }
+        },
+        {
+            "name": "l_barrier",
+            "type": "any",
+            "description": "Optional. Whether a barrier exists to prevent vehicles from changing lanes to the left (default is NONE)",
+            "constraints": {
+              "enum": ["None"]
+              }
+        },
+        {
+            "name": "width",
+            "type": "number",
+            "description": "Optional. Width of the lane (feet)",
+            "constraints": {
+              "minimum": 0
+              }
+        }
+    ]
+}

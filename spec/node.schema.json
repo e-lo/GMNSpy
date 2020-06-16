@@ -13,12 +13,12 @@
         {
             "name": "name",
             "type": "string",
-            "description": "Optional"
+            "description": ""
         },
         {
             "name": "x_coord",
             "type": "number",
-            "description": "Required. Coordinate system specified in config file.",
+            "description": "Coordinate system specified in config file (longitude, UTM-easting etc.)",
             "constraints": {
               "required": true
               }
@@ -26,7 +26,7 @@
         {
             "name": "y_coord",
             "type": "number",
-            "description": "Required. Coordinate system specified in config file.",
+            "description": "Coordinate system specified in config file (latitude, UTM-northing etc.)",
             "constraints": {
               "required": true
               }
@@ -47,7 +47,10 @@
         {
             "name": "ctrl_type",
             "type": "string",
-            "description": "Optional. Intersection control type - one of ControlType_Set."
+            "description": "Optional. Intersection control type - one of ControlType_Set.",
+            "constraints": {
+              "enum": ["STOP","YIEDL","ROUNDABOUT","SIGNAL","NONE"]
+              }
         },
         {
             "name": "zone_id",

@@ -1,0 +1,43 @@
+{
+    "primaryKey": "mvmt_tod_id",
+    "missingValues": ["NaN"],
+    "fields": [
+      {
+          "name": "mvmt_tod_id",
+          "type": "any",
+          "description": "Primary key.",
+          "constraints": {
+            "required": true
+            }
+      },
+      {
+            "name": "mvmt_id",
+            "type": "any",
+            "foreign_key": "movement.mvmt_id",
+            "description": "The referenced movement.",
+            "constraints": {
+              "required": true
+              }
+      },
+      {
+            "name": "time_day",
+            "type": "string",
+            "description": "Time of day in ...format."
+      },
+      {
+            "name": "timeday_id",
+            "type": "string",
+            "foreign_key": "timeday.timeday_id",
+            "description": "Time of day set"
+      },
+      {
+            "name": "allowed_uses",
+            "type": "string",
+            "foreign_key": "use_group.use_set",
+            "description": "A turn prohibition for all vehicles would have NONE as the allowed uses. ##ISSUE doesn't make sense that this is a restriction.",
+            "constraints": {
+               "required": true
+               }
+      }
+    ]
+}

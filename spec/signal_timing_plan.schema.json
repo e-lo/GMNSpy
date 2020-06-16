@@ -1,0 +1,65 @@
+{
+    "primaryKey": "signal_timing_plan",
+    "missingValues": ["NaN",""],
+    "fields": [
+        {
+            "name": "timing_plan_id",
+            "type": "any",
+            "description": "Primary key.",
+            "constraints": {
+              "required": true
+              }
+        },
+        {
+            "name": "node_id",
+            "type": "any",
+            "foreign_key": "node.node_id",
+            "description": "Required. Foreign key to node table.",
+            "constraints": {
+              "required": true
+              }
+        },
+        {
+            "name": "time_day",
+            "type": "any",
+            "description": "Required.",
+            "constraints": {
+              "required": true
+              }
+        },
+        {
+            "name": "cycle_length",
+            "type": "integer",
+            "description": "Required. Cycle length in seconds.",
+            "constraints": {
+              "required": true,
+              "minimum": 0,
+              "maximum": 600
+              }
+        },
+        {
+            "name": "coord_node_id",
+            "type": "integer",
+            "foreign_key": "node.node_id",
+            "description": "Optional. For coordinated signals, the “master” signal location for coordination."
+        },
+        {
+            "name": "coord_phase",
+            "type": "integer",
+            "description": "Optional. For coordinated signals, the phase at which coordination starts (time 0).",
+              "constraints": {
+                "minimum": 0,
+                "maximum": 32
+                }
+        },
+        {
+            "name": "offset",
+            "type": "integer",
+            "description": "Optional. Offset in seconds.",
+              "constraints": {
+                "minimum": 0,
+                "maximum": 32
+                }
+        }
+    ]
+}

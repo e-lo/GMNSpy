@@ -11,21 +11,18 @@
               }
         },
         {
-            "name": "road_link_id",
+            "name": "link_id",
             "type": "any",
+            "foreign_key": "link.link_id",
             "description": "Required. Road Link ID. Foreign Key from Road_Link.",
             "constraints": {
               "required": true
               }
         },
         {
-            "name": "offroad_link_id",
-            "type": "any",
-            "description": "Required. Offroad Link ID. Foreign Key from Offroad_Link."
-        },
-        {
             "name": "ref_node_id",
             "type": "any",
+            "foreign_key": "node.node_id",
             "description": "Required. The From node of the link. Foreign Key from Node.",
             "constraints": {
               "required": true
@@ -48,21 +45,21 @@
         {
             "name": "y_coord",
             "type": "number",
-            "description": "Required. Linear Reference of the location, measured as distance along the link from the reference node."
+            "description": "Optional. Linear Reference of the location, measured as distance along the link from the reference node."
         },
         {
             "name": "z_coord",
             "type": "number",
-            "description": "Required."
+            "description": "Optional. Altitude."
         },
         {
             "name": "loc_type",
             "type": "string",
-            "description": "Optional. What it represents (driveway, bus stop, etc.)"
+            "description": "Optional. What it represents (driveway, bus stop, etc.) OpenStreetMap map feature names are recommended."
         },
         {
             "name": "zone_id",
-            "type": "string",
+            "type": "any",
             "description": "Optional. Foreign Key, Associated zone"
         },
         {
