@@ -176,16 +176,22 @@ Example:
 ## link_tod
 
 
-|name|required|type|foreign_key|description|
-|---|---|---|---|---|
-|link_tod_id|True|any|-|Primary key|
-|road_link_id|True|any|-|Required. Foreign key, road_link table|
-|segment_id|-|any|-|Optional. Foreign key, segment table. If no value is entered, this table row applies to the entire road_link.|
-|lane_num|True|Integer|-|Optional. If no value is entered, this table row applies to all of the lanes on the road_link.|
-|time_day|True|Any|-|Required. TimeDay_Set Define the availability/role of lane at different dates and times|
-|allowed_uses|-|Any|-|Use_Set. Optional.|
-|toll|-|Integer|-|Optional. Toll in cents.|
-|notes|-|String|-|Optional.|
+|name|required|type|foreign_key|description|constraints enum|constraints maximum|constraints minimum|warning maximum|warning minimum|warnings maximum|warnings minimum|
+|---|---|---|---|---|---|---|---|---|---|---|---|
+|link_tod_id|True|any|-|Primary key|-|-|-|-|-|-|-|
+|link_id|True|any|Table: `link`, Variable: `link_id`|Required. Foreign key, link table|-|-|-|-|-|-|-|
+|timeday_id|True|any|Table: `time_set_definitions`, Variable: `timeday_id`|Required. Foreign key to road_links. The link that the segment is located on.|-|-|-|-|-|-|-|
+|time_day|-|any|-|Conditiomally required. XXXXXXXX_HHMM_HHMM, where XXXXXXXX is a bitmap of days of the week, Sunday-Saturday, Holiday. The HHMM are the start and end times.|-|-|-|-|-|-|-|
+|allowed_uses|-|Any|-|Use_Set. Optional.|-|-|-|-|-|-|-|
+|toll|-|integer|-|toll in cents.|-|-|-|2000|0|-|-|
+|capacity|-|integer|-|Optional. Capacity (veh / hr / lane)|-|-|0|-|-|-|500|
+|free_speed|-|integer|-|Optional. Free flow speed mph|-|100|0|-|-|75|10|
+|lanes|-|integer|-|Optional. Number of permanent lanes (not including turn p
+pockets) in the direction of travel open to motor vehicles.
+It does not include bike lanes, shoulders or parking lanes.|-|-|0|-|-|-|-|
+|bike_facility|-|string|-|Optional. Type of bicycle accommodation: unknown, none, WCL, sharrow, bikelane, cycletrack, offstreet path|Allowed Values: `unknown,none,WCL,sharrow,bikelane,cycletrack,offstreet path`|-|-|-|-|-|-|
+|ped_facility|-|string|-|Optional. Type of pedestrian accommodation: unknown, none, shoulder, sidewalk, offstreet path|Allowed Values: `unknown,none,shoulder,sidewalk,offstreet path`|-|-|-|-|-|-|
+|parking|-|string|-|Optional. Type of parking: unknown, none, parallel, angle, other|Allowed Values: `unknown,none,parallel,angle,other`|-|-|-|-|-|-|
 
 
 ## signal_timing_phase
