@@ -10,6 +10,7 @@ SCHEMA_TO_PANDAS_TYPES = {
     "number": "float",
     "string": "string",
     "any": "object",
+    "boolean": "bool",
 }
 
 FORMAT_TO_REGEX = {

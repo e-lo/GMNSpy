@@ -155,10 +155,10 @@
       "type": "string",
       "description": "Optional. Width (feet) of the entire right-of-way (both directions).",
       "constraints": {
-        "min": 0
+        "minimum": 0
       },
       "warnings": {
-        "min": 10
+        "minimum": 10
       }
     }
   ],
