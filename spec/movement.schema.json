@@ -58,7 +58,7 @@
             "description": "Optional. .",
             "constraints": {
               "required": true,
-              "enum": ["LEFT", "RIGHT", "UTURN", "THRU", "MERGE"]
+              "enum": ["left", "right", "uturn", "thru", "merge"]
               }
         },
         {

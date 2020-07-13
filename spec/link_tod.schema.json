@@ -85,7 +85,7 @@
               "type": "string",
               "description": "Optional. Type of bicycle accommodation: unknown, none, WCL, sharrow, bikelane, cycletrack, offstreet path",
               "constraints": {
-                "enum": ["unknown", "none", "WCL", "sharrow", "bikelane", "cycletrack", "offstreet path"]
+                "enum": ["unknown", "none", "wcl", "sharrow", "bikelane", "cycletrack", "offstreet path"]
               }
             },
             {
