@@ -1,9 +1,9 @@
 {
-    "primaryKey": "mvmt_id",
+    "primaryKey": "signal_phase_mvmt_id",
     "missingValues": ["NaN",""],
     "fields": [
         {
-            "name": "mvmt_id",
+            "name": "signal_phase_mvmt_id",
             "type": "any",
             "description": "Primary key.",
             "constraints": {
@@ -11,26 +11,40 @@
               }
         },
         {
-            "name": "link_id",
+            "name": "signal_phase_id",
             "type": "any",
-            "foreign_key": "link.link_id",
-            "description": "Optional. Foreign key to links."
+            "foreign_key": "signal_phase.signal_phase_id",
+            "description": "Required. Foreign key to signal_phase table.",
+			"constraints": {
+              "required": true
+              }
+        },
+		{
+            "name": "controller_id",
+            "type": "any",
+            "foreign_key": "signal_controller.controller_id",
+            "description": "Redundant with field in the signal_phase table."
         },
         {
-            "name": "node_id",
-            "type": "any",
-            "foreign_key": "node.node_id",
-            "description": "Optional. Foreign key to node table."
-        },
-        {
-            "name": "phase_num",
+            "name": "signal_phase_num",
             "type": "integer",
-            "description": "Required. The phase number; each phase has one or more Movements associated with it. The following conventions are typically used for phase numbers:\n2 & 6 Main street thru movements.\n1 & 5 Protected left turns from the main street.\n4 & 8 Side street thru movements.\n3 & 7 protected left turns from side street.\nRight turns either:\n- with associated thru\n- with non-conflicting left turn\nExclusive pedestrian phase should have a phase number > 8.",
+            "description": "Redundant with field in the signal_phase table. ; each phase has one or more Movements associated with it.",
             "constraints": {
-              "required": true,
               "minimum":0,
               "maximum":32
               }
+        },
+		        {
+            "name": "mvmt_id",
+            "type": "any",
+            "foreign_key": "movement.mvmt_id",
+            "description": "Foreign key. Either Movement_ID (for phases used by vehicles), or Link_id (for phases used by pedestrians) is required."
+        },        
+		{
+            "name": "link_id",
+            "type": "any",
+            "foreign_key": "link.link_id",
+            "description": "Foreign key. Either Movement_ID (for phases used by vehicles), or Link_id (for phases used by pedestrians) is required."
         },
         {
             "name": "protection",

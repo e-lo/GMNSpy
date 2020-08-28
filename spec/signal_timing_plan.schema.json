@@ -1,5 +1,5 @@
 {
-    "primaryKey": "signal_timing_plan",
+    "primaryKey": "timing_plan_id",
     "missingValues": ["NaN",""],
     "fields": [
         {
@@ -10,22 +10,25 @@
               "required": true
               }
         },
-        {
-            "name": "node_id",
+		{
+            "name": "controller_id",
             "type": "any",
-            "foreign_key": "node.node_id",
-            "description": "Required. Foreign key to node table.",
-            "constraints": {
+            "foreign_key": "signal_controller.controller_id",
+            "description": "Required. Foreign key (signal_controller table).",            
+			"constraints": {
               "required": true
               }
         },
         {
+            "name": "timeday_id",
+            "type": "any",
+            "foreign_key": "time_set_definitions.timeday_id",
+            "description": "Conditionally required (either timeday_id or time_day). Foreign key to time_set_definitions.",
+        },
+        {
             "name": "time_day",
             "type": "any",
-            "description": "Required.",
-            "constraints": {
-              "required": true
-              }
+            "description": "Conditionally required (either timeday_id or time_day). XXXXXXXX_HHMM_HHMM, where XXXXXXXX is a bitmap of days of the week, Sunday-Saturday, Holiday. The HHMM are the start and end times."
         },
         {
             "name": "cycle_length",
@@ -38,10 +41,10 @@
               }
         },
         {
-            "name": "coord_node_id",
-            "type": "integer",
-            "foreign_key": "node.node_id",
-            "description": "Optional. For coordinated signals, the “master” signal location for coordination."
+            "name": "coord_contr_id",
+            "type": "any",
+            "foreign_key": "signal_controller.controller_id",
+            "description": "Optional. For coordinated signals, the “master” signal controller for coordination."
         },
         {
             "name": "coord_phase",
@@ -50,6 +53,14 @@
               "constraints": {
                 "minimum": 0,
                 "maximum": 32
+                }
+        },
+		{
+            "name": "coord_ref_to",
+            "type": "text",
+            "description": "Optional. For coordinated signals, the part of the phase where coordination starts: begin_of_green, begin_of_yellow, begin_of_red.",
+            "constraints": {
+                "enum":["begin_of_green", "begin_of_yellow", "begin_of_red"]
                 }
         },
         {

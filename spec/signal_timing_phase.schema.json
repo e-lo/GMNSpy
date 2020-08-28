@@ -11,10 +11,10 @@
               }
         },
         {
-            "name": "node_id",
+            "name": "signal_phase_id",
             "type": "any",
-            "foreign_key": "node.node_id",
-            "description": "Optional. Foreign key to node table.",
+            "foreign_key": "signal_phase.signal_phase_id",
+            "description": "Optional. Foreign key, the associated sigal phase.",
             "constraints": {
               "required": true
               }
@@ -26,11 +26,10 @@
             "description": ""
         },
         {
-            "name": "phase_num",
+            "name": "signal_phase_num",
             "type": "integer",
-            "description": "Required. The phase number; each phase has one or more movements associated with it.",
+            "description": "Optional. Redundant with the record in the signal_phase table.",
             "constraints": {
-              "required": true,
               "minimum": 0
               }
         },

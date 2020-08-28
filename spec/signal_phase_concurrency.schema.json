@@ -11,19 +11,18 @@
               }
         },
         {
-            "name": "node_id",
+            "name": "timing_plan_id",
             "type": "any",
-            "foreign_key": "node.node_id",
-            "description": "Required. Foreign key to node table.",
+            "foreign_key": "signal_controller.controller_id",
+            "description": "Required. Foreign key (Signal_timing_plan table).",
             "constraints": {
               "required": true
               }
         },
         {
-            "name": "signal_phase_id",
+            "name": "signal_phase_num",
             "type": "any",
-            "foreign_key": "signal_phase_id.mvmt_id",
-            "description": "Required. Foreign key to `signal_phase_id` table",
+            "description": "Required. controller_id and signal_phase_num are unique",
             "constraints": {
               "required": true
               }
@@ -47,6 +46,14 @@
               "minimum": 0,
               "maximum": 12
               }
+        },
+		{
+            "name": "position",
+            "type": "integer",
+            "description": "Required. Position.",            
+			"constraints": {
+              "required": true
+            }
         }
     ]
 }
