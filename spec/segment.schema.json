@@ -46,6 +46,19 @@
               "minimum": 0
               }
         },
+		{
+			"name": "grade",
+			"type": "number",
+			"description": "% grade, negative is downhill",
+			"constraints": {
+			  "maximum": 100,
+			  "minimum": -100
+			},
+			"warnings": {
+			  "maximum": 25,
+			  "minimum": -25
+			}
+		},
         {
             "name": "capacity",
             "type": "integer",
@@ -61,6 +74,11 @@
             "constraints": {
               "minimum": 0
               }
+        },
+		{
+            "name": "l_lanes_added",
+            "type": "integer",
+            "description": "Optional. # of lanes added on the left of the road link (negative indicates a lane drop)."
         },
         {
             "name": "l_lanes_added",
@@ -101,6 +119,27 @@
             "type": "string",
             "foreign_key": "use_group.use_group",
             "description": "Optional. Set of allowed uses; comma-separated. Foreign key  to use_definition or use sets."
-        }
+        },
+		{
+            "name": "toll",
+			"type": "integer",
+			"description": "Optional.  Toll on the link, in cents."
+        },
+		{
+            "name": "jurisdiction",
+            "type": "string",
+            "description": "Optional. Optional.  Owner/operator of the link." 
+        },
+		{
+            "name": "row_width",
+            "type": "number",
+			"description": "Optional. Width (feet) of the entire right-of-way (both directions).",
+			"constraints": {
+			  "minimum": 0
+			},
+			"warnings": {
+			  "minimum": 10
+			}
+	  }		
     ]
 }

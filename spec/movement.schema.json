@@ -34,9 +34,14 @@
               }
         },
         {
-            "name": "ib_lane",
+            "name": "start_ib_lane",
             "type": "integer",
-            "description": "Inbound lane number."
+            "description": "Innermost lane number the movement applies to at the inbound end."
+        },
+        {
+            "name": "end_ib_lane",
+            "type": "integer",
+            "description": "Outermost lane number the movement applies to at the inbound end. Blank indicates a movement with a single inbound lane."
         },
         {
             "name": "ob_link_id",
@@ -48,14 +53,19 @@
               }
         },
         {
-            "name": "ob_lane",
+            "name": "start_ob_lane",
             "type": "integer",
-            "description": "Inbound lane number."
+            "description": "Innermost lane number the movement applies to at the outbound end."
+        },
+        {
+            "name": "end_ob_lane",
+            "type": "integer",
+            "description": "Outermost lane number the movement applies to at the outbound end. Blank indicates a movement with a single outbound lane."
         },
         {
             "name": "type",
             "type": "string",
-            "description": "Optional. .",
+            "description": "Optional. Describes the type of movement (left, right, thru, etc.).",
             "constraints": {
               "required": true,
               "enum": ["left", "right", "uturn", "thru", "merge"]

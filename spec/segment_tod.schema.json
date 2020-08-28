@@ -23,15 +23,12 @@
             "name": "timeday_id",
             "type": "any",
             "foreign_key": "time_set_definitions.timeday_id",
-            "description": "Required. Foreign key to road_links. The link that the segment is located on.",
-            "constraints": {
-              "required": true
-              }
+            "description": "Conditionally required (either timeday_id or time_day). Foreign key to time_set_definitions.",
         },
         {
             "name": "time_day",
             "type": "any",
-            "description": "Conditiomally required. XXXXXXXX_HHMM_HHMM, where XXXXXXXX is a bitmap of days of the week, Sunday-Saturday, Holiday. The HHMM are the start and end times."
+            "description": "Conditionally required (either timeday_id or time_day). XXXXXXXX_HHMM_HHMM, where XXXXXXXX is a bitmap of days of the week, Sunday-Saturday, Holiday. The HHMM are the start and end times."
         },
         {
             "name": "capacity",
@@ -48,6 +45,11 @@
             "constraints": {
               "minimum": 0
               }
+        },
+		{
+            "name": "lanes",
+            "type": "integer",
+            "description": "Optional. Number of lanes in the direction of travel (must be consistent with link lanes + lanes added)."
         },
         {
             "name": "l_lanes_added",

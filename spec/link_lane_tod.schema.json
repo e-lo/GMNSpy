@@ -1,9 +1,9 @@
 {
-    "primaryKey": "link_lane_tod_id",
+    "primaryKey": "lane_tod_id",
     "missingValues": ["NaN",""],
     "fields": [
       {
-          "name": "link_lane_tod_id",
+          "name": "lane_tod_id",
           "type": "any",
           "description": "Primary key.",
           "constraints": {
@@ -11,34 +11,25 @@
             }
       },
       {
-          "name": "link_tod_id",
+          "name": "lane_id",
           "type": "any",
-          "foreign_key": "link_tod.link_tod_id",
-          "description": "Foreign key to `link_tod`"
-      },
-      {
-          "name": "link_id",
-          "type": "any",
-          "foreign_key": "link.link_id",
-          "description": "Required. Foreign key to `link`",
+          "foreign_key": "lane.lane_id",
+          "description": "Required. Foreign key to `lane`",
           "constraints": {
             "required": true
             }
       },
-      {
-          "name": "timeday_id",
-          "type": "any",
-          "foreign_key": "time_set_definitions.timeday_id",
-          "description": "Required. Foreign key to road_links. The link that the segment is located on.",
-          "constraints": {
-            "required": true
-            }
-      },
-      {
-          "name": "time_day",
-          "type": "any",
-          "description": "Conditiomally required. XXXXXXXX_HHMM_HHMM,where XXXXXXXX is a bitmap of days of the week, Sunday-Saturday, Holiday. The HHMM are the start and end times."
-      },
+        {
+            "name": "timeday_id",
+            "type": "any",
+            "foreign_key": "time_set_definitions.timeday_id",
+            "description": "Conditionally required (either timeday_id or time_day). Foreign key to time_set_definitions.",
+        },
+        {
+            "name": "time_day",
+            "type": "any",
+            "description": "Conditionally required (either timeday_id or time_day). XXXXXXXX_HHMM_HHMM, where XXXXXXXX is a bitmap of days of the week, Sunday-Saturday, Holiday. The HHMM are the start and end times."
+        },
       {
           "name": "lane_num",
           "type": "integer",

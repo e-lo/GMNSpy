@@ -23,30 +23,12 @@
             "name": "timeday_id",
             "type": "any",
             "foreign_key": "time_set_definitions.timeday_id",
-            "description": "Required. Foreign key to road_links. The link that the segment is located on.",
-            "constraints": {
-              "required": true
-              }
+            "description": "Conditionally required (either timeday_id or time_day). Foreign key to time_set_definitions.",
         },
         {
             "name": "time_day",
             "type": "any",
-            "description": "Conditiomally required. XXXXXXXX_HHMM_HHMM, where XXXXXXXX is a bitmap of days of the week, Sunday-Saturday, Holiday. The HHMM are the start and end times."
-        },
-        {
-            "name": "allowed_uses",
-            "type": "Any",
-            "description": "Use_Set. Optional."
-        },
-        {
-            "name": "toll",
-            "type": "integer",
-            "description": "toll in cents.",
-            "warning":{
-              "minimum":0,
-              "maximum":2000
-            }
-
+            "description": "Conditionally required (either timeday_id or time_day). XXXXXXXX_HHMM_HHMM, where XXXXXXXX is a bitmap of days of the week, Sunday-Saturday, Holiday. The HHMM are the start and end times."
         },
         {
               "name": "capacity",
@@ -104,5 +86,19 @@
                 "enum": ["unknown", "none", "parallel", "angle", "other"]
               }
             }
+			{
+            "name": "allowed_uses",
+            "type": "Any",
+            "description": "Use_Set. Optional."
+        },
+        {
+            "name": "toll",
+            "type": "integer",
+            "description": "toll in cents.",
+            "warning":{
+              "minimum":0,
+              "maximum":2000
+            }
+        }
     ]
 }

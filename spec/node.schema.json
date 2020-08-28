@@ -55,6 +55,7 @@
         {
             "name": "zone_id",
             "type": "any",
+			"foreign_key": "zone.zone_id",
             "description": "Optional. Could be a Transportation Analysis Zone (TAZ) or city, or census tract, or census block."
         },
         {

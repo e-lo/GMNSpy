@@ -11,7 +11,7 @@
               }
         },
         {
-            "name": "zone_name",
+            "name": "name",
             "type": "any",
             "description": "Optional."
         },
