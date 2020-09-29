@@ -109,6 +109,10 @@
      "schema": "signal_timing_phase.schema.json"
    },
    {
+     "name":"signal_detector",
+     "description":"A signal detector is associated with a phase and a group of lanes.",
+     "path": "signal_detector.csv",
+     "schema": "signal_detector.schema.json"
    },
    {
      "name":"segment_tod",
