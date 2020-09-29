@@ -92,8 +92,7 @@
             "type": "any",
             "description": "Optional. .",
             "constraints": {
-              "required": true,
-              "enum": ["no control", "stop", "yield", "signal"]
+              "enum": ["none", "yield", "stop", "4_stop", "signal"]
               }
         }
     ]

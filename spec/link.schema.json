@@ -1,4 +1,6 @@
 {
+  "primaryKey": "link_id",
+  "missingValues": ["NaN"],
   "fields": [{
       "name": "link_id",
       "type": "any",
