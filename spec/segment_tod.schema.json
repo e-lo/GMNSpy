@@ -33,7 +33,7 @@
         {
             "name": "capacity",
             "type": "integer",
-            "description": "Optional. Capacity (veh/hr)",
+            "description": "Optional. Capacity (veh/hr/ln)",
             "constraints": {
               "minimum": 0
               }

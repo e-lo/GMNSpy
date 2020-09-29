@@ -14,7 +14,7 @@
             "name": "link_id",
             "type": "any",
             "foreign_key": "link.link_id",
-            "description": "Required. Foreign key  to  road_link table.",
+            "description": "Required. Foreign key to link table.",
             "constraints": {
               "required": true
               }

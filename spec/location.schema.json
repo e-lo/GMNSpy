@@ -40,12 +40,12 @@
         {
             "name": "x_coord",
             "type": "number",
-            "description": "Optional. Linear Reference of the location, measured as distance along the link from the reference node."
+            "description": "Optional. Either provided, or derived from Link, Ref_Node and LR."
         },
         {
             "name": "y_coord",
             "type": "number",
-            "description": "Optional. Linear Reference of the location, measured as distance along the link from the reference node."
+            "description": "Optional. Either provided, or derived from Link, Ref_Node and LR."
         },
         {
             "name": "z_coord",

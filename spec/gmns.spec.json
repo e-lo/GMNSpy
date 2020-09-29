@@ -109,10 +109,6 @@
      "schema": "signal_timing_phase.schema.json"
    },
    {
-     "name":"segment_tod",
-     "description":"segment_tod is an optional file that handles day-of-week and time-of-day restrictions on segments. It is used for part-time changes in segment capacity and number of lanes.",
-     "path": "segment_tod.csv",
-     "schema": "segment_tod.schema.json"
    },
    {
      "name":"segment_tod",

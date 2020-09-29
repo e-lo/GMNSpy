@@ -62,7 +62,7 @@
         {
             "name": "capacity",
             "type": "integer",
-            "description": "Optional. Capacity (veh/hr)",
+            "description": "Optional. Capacity (veh/hr/ln)",
             "constraints": {
               "minimum": 0
               }
@@ -74,6 +74,11 @@
             "constraints": {
               "minimum": 0
               }
+        },
+		{
+            "name": "lanes",
+            "type": "integer",
+            "description": "Optional. Number of lanes in the direction of travel (must be consistent with link lanes + lanes added)."
         },
 		{
             "name": "l_lanes_added",

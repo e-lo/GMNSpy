@@ -36,9 +36,6 @@
               "description": "Optional. Capacity (veh / hr / lane)",
               "constraints": {
                 "minimum": 0
-              },
-              "warnings": {
-                "minimum": 500
               }
             },
             {
@@ -50,7 +47,6 @@
                 "maximum": 100
               },
               "warnings": {
-                "minimum": 10,
                 "maximum": 75
               }
             },
@@ -97,7 +93,7 @@
             "description": "toll in cents.",
             "warning":{
               "minimum":0,
-              "maximum":2000
+              "maximum":10000
             }
         }
     ]

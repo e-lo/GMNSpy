@@ -68,8 +68,7 @@
             "type": "integer",
             "description": "Optional. Offset in seconds.",
               "constraints": {
-                "minimum": 0,
-                "maximum": 32
+                "minimum": 0
                 }
         }
     ]

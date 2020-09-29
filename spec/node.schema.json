@@ -34,7 +34,7 @@
         {
             "name": "z_coord",
             "type": "number",
-            "description": "Optional. Coordinate system specified in config file.",
+            "description": "Optional. Altitude.",
             "constraints": {
               "required": true
               }
