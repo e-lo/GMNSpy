@@ -67,6 +67,12 @@
      "schema": "use_group.schema.json"
    },
    {
+     "name":"time_set_definitions",
+     "description":"The time_set_definitions file is an optional representation of time-of-day and day-of-week sets to enable time restrictions through `_tod` files.",
+     "path": "time_set_definitions.csv",
+     "schema": "time_set_definitions.schema.json"
+   },
+   {
      "name":"segment",
      "description":"A portion of a link defined by `link_id`,`ref_node_id`, `start_lr`, and `end_lr`. Values in the segment will override they value specified in the link table. When one segment is fully contained within another, its value prevails.",
      "path": "segment.csv",
