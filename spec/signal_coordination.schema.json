@@ -32,7 +32,7 @@
             "name": "coord_contr_id",
             "type": "any",
             "foreign_key": "signal_controller.controller_id",
-            "description": "Optional. For coordinated signals, the “master” signal controller for coordination."
+            "description": "Optional. For coordinated signals, the master signal controller for coordination."
         },
         {
             "name": "coord_phase",
