@@ -10,11 +10,19 @@
               "required": true
               }
         },
-        {
-            "name": "signal_phase_id",
+		{
+            "name": "controller_id",
             "type": "any",
-            "foreign_key": "signal_phase.signal_phase_id",
-            "description": "Required. Foreign key to signal_phase table.",
+            "foreign_key": "signal_controller.controller_id",
+            "description": "Required. Foreign key to signal_controller table.",
+			"constraints": {
+              "required": true
+              }
+        },
+        {
+            "name": "signal_phase_num",
+            "type": "integer",
+            "description": "Required. Number of the associated phase.",
 			"constraints": {
               "required": true
               }
@@ -53,7 +61,7 @@
 		{
             "name": "det_zone_lr",
             "type": "number",
-            "description": "Required. Distance from from reference node to detector.",
+            "description": "Required. Distance from from the stop bar to detector.",
             "constraints": {
               "required": true
               }
@@ -64,9 +72,9 @@
             "description": "Optional. Linear reference of front of detection zone."
         },
 		{
-            "name": "det_zone_front",
+            "name": "det_zone_back",
             "type": "number",
-            "description": "Optional. Linear reference of front of detection zone."
+            "description": "Optional. Linear reference of back of detection zone."
         },
 		{
             "name": "det_type",

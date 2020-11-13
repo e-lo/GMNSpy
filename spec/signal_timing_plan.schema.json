@@ -33,43 +33,11 @@
         {
             "name": "cycle_length",
             "type": "integer",
-            "description": "Required. Cycle length in seconds.",
+            "description": "Cycle length in seconds.",
             "constraints": {
-              "required": true,
               "minimum": 0,
               "maximum": 600
               }
-        },
-        {
-            "name": "coord_contr_id",
-            "type": "any",
-            "foreign_key": "signal_controller.controller_id",
-            "description": "Optional. For coordinated signals, the “master” signal controller for coordination."
-        },
-        {
-            "name": "coord_phase",
-            "type": "integer",
-            "description": "Optional. For coordinated signals, the phase at which coordination starts (time 0).",
-              "constraints": {
-                "minimum": 0,
-                "maximum": 32
-                }
-        },
-		{
-            "name": "coord_ref_to",
-            "type": "string",
-            "description": "Optional. For coordinated signals, the part of the phase where coordination starts: begin_of_green, begin_of_yellow, begin_of_red.",
-            "constraints": {
-                "enum":["begin_of_green", "begin_of_yellow", "begin_of_red"]
-                }
-        },
-        {
-            "name": "offset",
-            "type": "integer",
-            "description": "Optional. Offset in seconds.",
-              "constraints": {
-                "minimum": 0
-                }
         }
     ]
 }
