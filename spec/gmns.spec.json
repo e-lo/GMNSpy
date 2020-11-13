@@ -79,16 +79,16 @@
      "schema": "segment_lane.schema.json"
    },
    {
-     "name":"signal_phase",
-     "description":"For signalized nodes, establishes phases that may run concurrently, using ring-barrier notation. Each phase is associated with a ring and a barrier. In order to run concurrently, two phases must be in: the same barrier, and different rings.",
-     "path": "signal_phase.csv",
-     "schema": "signal_phase.schema.json"
-   },
-   {
      "name":"signal_controller",
      "description":"The signal controller is associated with an intersection or a cluster of intersections.",
      "path": "signal_controller.csv",
      "schema": "signal_controller.schema.json"
+   },
+   {
+     "name":"signal_coordination",
+     "description":"Establishes coordination for several signal controllers, associated with a timing_plan.",
+     "path": "signal_coordination.csv",
+     "schema": "signal_coordination.schema.json"
    },
    {
      "name":"signal_phase_mvmt",
@@ -98,19 +98,19 @@
    },
    {
      "name":"signal_timing_plan",
-     "description":"For signalized nodes, establishes timing plans and coordination.",
+     "description":"For signalized nodes, establishes timing plans.",
      "path": "signal_timing_plan.csv",
      "schema": "signal_timing_plan.schema.json"
    },
    {
      "name":"signal_timing_phase",
-     "description":"For signalizd nodes, provides signal timing.",
+     "description":"For signalized nodes, provides signal timing and establishes phases that may run concurrently.",
      "path": "signal_timing_phase.csv",
      "schema": "signal_timing_phase.schema.json"
    },
    {
      "name":"signal_detector",
-     "description":"A signal detector is associated with a phase and a group of lanes.",
+     "description":"A signal detector is associated with a controller, a phase and a group of lanes.",
      "path": "signal_detector.csv",
      "schema": "signal_detector.schema.json"
    },
