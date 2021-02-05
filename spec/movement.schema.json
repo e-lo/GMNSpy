@@ -1,14 +1,16 @@
 {
     "primaryKey": "mvmt_id",
-    "missingValues": ["NaN"],
+    "missingValues": [
+        "NaN"
+    ],
     "fields": [
         {
             "name": "mvmt_id",
             "type": "any",
             "description": "Primary key.",
             "constraints": {
-              "required": true
-              }
+                "required": true
+            }
         },
         {
             "name": "node_id",
@@ -16,8 +18,8 @@
             "foreign_key": "node.node_id",
             "description": "The node representing the junction.",
             "constraints": {
-              "required": true
-              }
+                "required": true
+            }
         },
         {
             "name": "name",
@@ -30,13 +32,18 @@
             "foreign_key": "link.link_id",
             "description": "Inbound link id.",
             "constraints": {
-              "required": true
-              }
+                "required": true
+            }
         },
         {
-            "name": "ib_lane",
+            "name": "start_ib_lane",
             "type": "integer",
-            "description": "Inbound lane number."
+            "description": "Innermost lane number the movement applies to at the inbound end."
+        },
+        {
+            "name": "end_ib_lane",
+            "type": "integer",
+            "description": "Outermost lane number the movement applies to at the inbound end. Blank indicates a movement with a single inbound lane."
         },
         {
             "name": "ob_link_id",
@@ -44,22 +51,33 @@
             "foreign_key": "link.link_id",
             "description": "Outbound link id.",
             "constraints": {
-              "required": true
-              }
+                "required": true
+            }
         },
         {
-            "name": "ob_lane",
+            "name": "start_ob_lane",
             "type": "integer",
-            "description": "Inbound lane number."
+            "description": "Innermost lane number the movement applies to at the outbound end."
+        },
+        {
+            "name": "end_ob_lane",
+            "type": "integer",
+            "description": "Outermost lane number the movement applies to at the outbound end. Blank indicates a movement with a single outbound lane."
         },
         {
             "name": "type",
             "type": "string",
-            "description": "Optional. .",
+            "description": "Optional. Describes the type of movement (left, right, thru, etc.).",
             "constraints": {
-              "required": true,
-              "enum": ["LEFT", "RIGHT", "UTURN", "THRU", "MERGE"]
-              }
+                "required": true,
+                "enum": [
+                    "left",
+                    "right",
+                    "uturn",
+                    "thru",
+                    "merge"
+                ]
+            }
         },
         {
             "name": "penalty",
@@ -76,9 +94,18 @@
             "type": "any",
             "description": "Optional. .",
             "constraints": {
-              "required": true,
-              "enum": ["no control", "stop", "yield", "signal"]
-              }
+                "enum": [
+                    "no_control",
+                    "yield",
+                    "stop",
+                    "stop_2_way",
+                    "stop_4_way",
+                    "signal_with_RTOR",
+                    "signal"
+                ]
+            }
         }
-    ]
+    ],
+    "name": "movement.schema.json",
+    "description": "Describes how inbound and outbound links connect at an intersection."
 }

@@ -10,6 +10,7 @@ SCHEMA_TO_PANDAS_TYPES = {
     "number": "float",
     "string": "string",
     "any": "object",
+    "boolean": "bool",
 }
 
 FORMAT_TO_REGEX = {
@@ -127,7 +128,7 @@ def document_schema(base_path:str = '', out_path: str = ''):
     spec_df   = spec_df.drop(columns=["fullpath","fullpath_schema","path","schema","name"]).reset_index()
     spec_df["name"]=spec_df["name"].apply(lambda x: "[`{}`](#{})".format(x,x))
 
-    spec_markdown = spec_df.to_markdown()
+    spec_markdown = spec_df.to_markdown(index=False)
 
     # Write it out to file
     with open(os.path.join(out_path,"spec_template.md")) as spec_template:

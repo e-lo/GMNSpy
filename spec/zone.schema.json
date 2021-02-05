@@ -1,17 +1,19 @@
 {
     "primaryKey": "zone_id",
-    "missingValues": ["NaN"],
+    "missingValues": [
+        "NaN"
+    ],
     "fields": [
         {
             "name": "zone_id",
             "type": "any",
             "description": "Primary key.",
             "constraints": {
-              "required": true
-              }
+                "required": true
+            }
         },
         {
-            "name": "zone_name",
+            "name": "name",
             "type": "any",
             "description": "Optional."
         },
@@ -26,5 +28,7 @@
             "foreign_key": ".zone_id",
             "description": "Optional. If there is a hierarchy of zones (e.g., parcels and TAZs), indicates the zone of next higher level."
         }
-    ]
+    ],
+    "name": "zone.schema.json",
+    "description": "Locates zones (travel analysis zones, parcels) on a map. Zones are represented as polygons in geographic information systems."
 }

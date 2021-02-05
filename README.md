@@ -1,5 +1,5 @@
 # GMNSpy
- Python tool for [general model network specification (GMNS)](https://github.com/zephyr-data-specs/GMNS) developed
+ Python tool for [General Modeling Network Specification (GMNS)](https://github.com/zephyr-data-specs/GMNS) developed
  by [Zephyr  Foundation](http://zephyrtransport.org) for Travel Analysis.
 
 # Installation
