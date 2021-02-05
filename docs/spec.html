@@ -1,0 +1,2811 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="" xml:lang="">
+<head>
+  <meta charset="utf-8" />
+  <meta name="generator" content="pandoc" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+  <title>spec</title>
+  <style>
+    code{white-space: pre-wrap;}
+    span.smallcaps{font-variant: small-caps;}
+    span.underline{text-decoration: underline;}
+    div.column{display: inline-block; vertical-align: top; width: 50%;}
+    div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+    ul.task-list{list-style: none;}
+    pre > code.sourceCode { white-space: pre; position: relative; }
+    pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+    pre > code.sourceCode > span:empty { height: 1.2em; }
+    code.sourceCode > span { color: inherit; text-decoration: inherit; }
+    div.sourceCode { margin: 1em 0; }
+    pre.sourceCode { margin: 0; }
+    @media screen {
+    div.sourceCode { overflow: auto; }
+    }
+    @media print {
+    pre > code.sourceCode { white-space: pre-wrap; }
+    pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+    }
+    pre.numberSource code
+      { counter-reset: source-line 0; }
+    pre.numberSource code > span
+      { position: relative; left: -4em; counter-increment: source-line; }
+    pre.numberSource code > span > a:first-child::before
+      { content: counter(source-line);
+        position: relative; left: -1em; text-align: right; vertical-align: baseline;
+        border: none; display: inline-block;
+        -webkit-touch-callout: none; -webkit-user-select: none;
+        -khtml-user-select: none; -moz-user-select: none;
+        -ms-user-select: none; user-select: none;
+        padding: 0 4px; width: 4em;
+        color: #aaaaaa;
+      }
+    pre.numberSource { margin-left: 3em; border-left: 1px solid #aaaaaa;  padding-left: 4px; }
+    div.sourceCode
+      {   }
+    @media screen {
+    pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+    }
+    code span.al { color: #ff0000; font-weight: bold; } /* Alert */
+    code span.an { color: #60a0b0; font-weight: bold; font-style: italic; } /* Annotation */
+    code span.at { color: #7d9029; } /* Attribute */
+    code span.bn { color: #40a070; } /* BaseN */
+    code span.bu { } /* BuiltIn */
+    code span.cf { color: #007020; font-weight: bold; } /* ControlFlow */
+    code span.ch { color: #4070a0; } /* Char */
+    code span.cn { color: #880000; } /* Constant */
+    code span.co { color: #60a0b0; font-style: italic; } /* Comment */
+    code span.cv { color: #60a0b0; font-weight: bold; font-style: italic; } /* CommentVar */
+    code span.do { color: #ba2121; font-style: italic; } /* Documentation */
+    code span.dt { color: #902000; } /* DataType */
+    code span.dv { color: #40a070; } /* DecVal */
+    code span.er { color: #ff0000; font-weight: bold; } /* Error */
+    code span.ex { } /* Extension */
+    code span.fl { color: #40a070; } /* Float */
+    code span.fu { color: #06287e; } /* Function */
+    code span.im { } /* Import */
+    code span.in { color: #60a0b0; font-weight: bold; font-style: italic; } /* Information */
+    code span.kw { color: #007020; font-weight: bold; } /* Keyword */
+    code span.op { color: #666666; } /* Operator */
+    code span.ot { color: #007020; } /* Other */
+    code span.pp { color: #bc7a00; } /* Preprocessor */
+    code span.sc { color: #4070a0; } /* SpecialChar */
+    code span.ss { color: #bb6688; } /* SpecialString */
+    code span.st { color: #4070a0; } /* String */
+    code span.va { color: #19177c; } /* Variable */
+    code span.vs { color: #4070a0; } /* VerbatimString */
+    code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warning */
+  </style>
+  <!--[if lt IE 9]>
+    <script src="//cdnjs.cloudflare.com/ajax/libs/html5shiv/3.7.3/html5shiv-printshiv.min.js"></script>
+  <![endif]-->
+</head>
+<body>
+<h1 id="gmns-schema">GMNS Schema</h1>
+<p>Schema for General Network Feed Specification.</p>
+<h2 id="files-in-specification">Files in Specification</h2>
+<p>GMNS consists of a package of files as defined in the following table.</p>
+<p><strong>The following table is automatically generated from <code>gmns.spec.json</code></strong></p>
+<table>
+<thead>
+<tr class="header">
+<th style="text-align: right;"></th>
+<th style="text-align: left;">name</th>
+<th style="text-align: left;">description</th>
+<th style="text-align: left;">required</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: right;">0</td>
+<td style="text-align: left;"><a href="#link"><code>link</code></a></td>
+<td style="text-align: left;">A link is an edge in a network, defined by the nodes it travels from and to. It may have associated geometry information. Links have three types of attributes: those that define the physical location of the link (e.g., <code>shape</code> <code>information</code>, <code>length</code>, <code>width</code>); those that define the link's directionality: <code>from_node</code>, <code>to_node</code>; and those that define properties in the direction of travel: capacity,free flow speed, number of lanes, permitted uses, grade, facility type</td>
+<td style="text-align: left;">True</td>
+</tr>
+<tr class="even">
+<td style="text-align: right;">1</td>
+<td style="text-align: left;"><a href="#node"><code>node</code></a></td>
+<td style="text-align: left;">A list of vertices that locate points on a map. Typically, they will represent intersections, but may also represent other points, such as a transition between divided and undivided highway. Nodes are the endpoints of a link (as opposed to the other type of vertex, location, which is used to represent points along a link)</td>
+<td style="text-align: left;">True</td>
+</tr>
+<tr class="odd">
+<td style="text-align: right;">2</td>
+<td style="text-align: left;"><a href="#geometry"><code>geometry</code></a></td>
+<td style="text-align: left;">The geometry is an optional file that contains geometry information (shapepoints) for a line object. It is similar to Geometries in the SharedStreets reference system. The specification also allows for geometry information to be stored directly on the link table.</td>
+<td style="text-align: left;">False</td>
+</tr>
+<tr class="even">
+<td style="text-align: right;">3</td>
+<td style="text-align: left;"><a href="#lane"><code>lane</code></a></td>
+<td style="text-align: left;">The lane file allocates portions of the physical right-of-way that might be used for travel. It might be a travel lane, bike lane, or a parking lane. Lanes only are included in directed links; undirected links are assumed to have no lane controls or directionality. If a lane is added, dropped, or changes properties along the link, those changes are recorded on the <code>segment_link</code> table. Lanes are numbered sequentially, starting at either the centerline (two-way street) or the left shoulder (one-way street or divided highway with two centerlines).</td>
+<td style="text-align: left;">False</td>
+</tr>
+<tr class="odd">
+<td style="text-align: right;">4</td>
+<td style="text-align: left;"><a href="#link_tod"><code>link_tod</code></a></td>
+<td style="text-align: left;">Handles day-of-week and time-of-day restrictions on links</td>
+<td style="text-align: left;">False</td>
+</tr>
+<tr class="even">
+<td style="text-align: right;">5</td>
+<td style="text-align: left;"><a href="#location"><code>location</code></a></td>
+<td style="text-align: left;">A location is a vertex that is associated with a specific location along a link. Locations may be used to represent places where activities occur (e.g., driveways and bus stops). Its attributes are nearly the same as those for a node, except that the location includes an associated link and node, with location specified as distance along the link from the node.</td>
+<td style="text-align: left;">True</td>
+</tr>
+<tr class="odd">
+<td style="text-align: right;">6</td>
+<td style="text-align: left;"><a href="#movement"><code>movement</code></a></td>
+<td style="text-align: left;">Describes how inbound and outbound links connect at an intersection.</td>
+<td style="text-align: left;">False</td>
+</tr>
+<tr class="even">
+<td style="text-align: right;">7</td>
+<td style="text-align: left;"><a href="#movement_tod"><code>movement_tod</code></a></td>
+<td style="text-align: left;">Handles day-of-week and time-of-day restrictions on movements.</td>
+<td style="text-align: left;">False</td>
+</tr>
+<tr class="odd">
+<td style="text-align: right;">8</td>
+<td style="text-align: left;"><a href="#use_definition"><code>use_definition</code></a></td>
+<td style="text-align: left;">The Use_Definition file defines the characteristics of each vehicle type or non-travel purpose (e.g., a shoulder or parking lane). A two-way left turn lane (TWLTL) is also a use.</td>
+<td style="text-align: left;">False</td>
+</tr>
+<tr class="even">
+<td style="text-align: right;">9</td>
+<td style="text-align: left;"><a href="#use_group"><code>use_group</code></a></td>
+<td style="text-align: left;">Defines groupings of uses, to reduce the size of the allowed_uses lists in the other tables.</td>
+<td style="text-align: left;">False</td>
+</tr>
+<tr class="odd">
+<td style="text-align: right;">10</td>
+<td style="text-align: left;"><a href="#time_set_definitions"><code>time_set_definitions</code></a></td>
+<td style="text-align: left;">The time_set_definitions file is an optional representation of time-of-day and day-of-week sets to enable time restrictions through <code>_tod</code> files.</td>
+<td style="text-align: left;">False</td>
+</tr>
+<tr class="even">
+<td style="text-align: right;">11</td>
+<td style="text-align: left;"><a href="#segment"><code>segment</code></a></td>
+<td style="text-align: left;">A portion of a link defined by <code>link_id</code>,<code>ref_node_id</code>, <code>start_lr</code>, and <code>end_lr</code>. Values in the segment will override they value specified in the link table. When one segment is fully contained within another, its value prevails.</td>
+<td style="text-align: left;">False</td>
+</tr>
+<tr class="odd">
+<td style="text-align: right;">12</td>
+<td style="text-align: left;"><a href="#segment_lane"><code>segment_lane</code></a></td>
+<td style="text-align: left;">Defines added and dropped lanes, and changes to lane parameters. If a lane is added, it has no parent. If it is changed or dropped, the parent_lane_id field keys to the associated lane on the lane table.</td>
+<td style="text-align: left;">False</td>
+</tr>
+<tr class="even">
+<td style="text-align: right;">13</td>
+<td style="text-align: left;"><a href="#signal_controller"><code>signal_controller</code></a></td>
+<td style="text-align: left;">The signal controller is associated with an intersection or a cluster of intersections.</td>
+<td style="text-align: left;">False</td>
+</tr>
+<tr class="odd">
+<td style="text-align: right;">14</td>
+<td style="text-align: left;"><a href="#signal_coordination"><code>signal_coordination</code></a></td>
+<td style="text-align: left;">Establishes coordination for several signal controllers, associated with a timing_plan.</td>
+<td style="text-align: left;">False</td>
+</tr>
+<tr class="even">
+<td style="text-align: right;">15</td>
+<td style="text-align: left;"><a href="#signal_phase_mvmt"><code>signal_phase_mvmt</code></a></td>
+<td style="text-align: left;">Associates Movements and pedestrian Links (e.g., crosswalks) with signal phases. A signal phase may be associated with several movements. A Movement may also run on more than one phase.</td>
+<td style="text-align: left;">False</td>
+</tr>
+<tr class="odd">
+<td style="text-align: right;">16</td>
+<td style="text-align: left;"><a href="#signal_timing_plan"><code>signal_timing_plan</code></a></td>
+<td style="text-align: left;">For signalized nodes, establishes timing plans.</td>
+<td style="text-align: left;">False</td>
+</tr>
+<tr class="even">
+<td style="text-align: right;">17</td>
+<td style="text-align: left;"><a href="#signal_timing_phase"><code>signal_timing_phase</code></a></td>
+<td style="text-align: left;">For signalized nodes, provides signal timing and establishes phases that may run concurrently.</td>
+<td style="text-align: left;">False</td>
+</tr>
+<tr class="odd">
+<td style="text-align: right;">18</td>
+<td style="text-align: left;"><a href="#signal_detector"><code>signal_detector</code></a></td>
+<td style="text-align: left;">A signal detector is associated with a controller, a phase and a group of lanes.</td>
+<td style="text-align: left;">False</td>
+</tr>
+<tr class="even">
+<td style="text-align: right;">19</td>
+<td style="text-align: left;"><a href="#segment_tod"><code>segment_tod</code></a></td>
+<td style="text-align: left;">An optional file that handles day-of-week and time-of-day restrictions on segments. It is used for part-time changes in segment capacity and number of lanes.</td>
+<td style="text-align: left;">False</td>
+</tr>
+<tr class="odd">
+<td style="text-align: right;">20</td>
+<td style="text-align: left;"><a href="#lane_tod"><code>lane_tod</code></a></td>
+<td style="text-align: left;">An optional file that handles day-of-week and time-of-day restrictions on lanes that traverse entire links.</td>
+<td style="text-align: left;">False</td>
+</tr>
+<tr class="even">
+<td style="text-align: right;">21</td>
+<td style="text-align: left;"><a href="#segment_lane_tod"><code>segment_lane_tod</code></a></td>
+<td style="text-align: left;">An optional file that handles day-of-week and time-of-day restrictions on lanes within segments of links.</td>
+<td style="text-align: left;">False</td>
+</tr>
+<tr class="odd">
+<td style="text-align: right;">22</td>
+<td style="text-align: left;"><a href="#zone"><code>zone</code></a></td>
+<td style="text-align: left;">Locates zones (travel analysis zones, parcels) on a map. Zones are represented as polygons in geographic information systems.</td>
+<td style="text-align: left;">False</td>
+</tr>
+</tbody>
+</table>
+<p>File components for GMNS are specified in <code>gmns.spec.json</code> in a format compatible with the <a href="https://specs.frictionlessdata.io/tabular-data-package/">frictionless data</a> data package standard.</p>
+<p>Example <code>gmns.spec.json</code>:</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode JSON"><code class="sourceCode json"><span id="cb1-1"><a href="#cb1-1"></a><span class="fu">{</span></span>
+<span id="cb1-2"><a href="#cb1-2"></a>  <span class="dt">&quot;profile&quot;</span><span class="fu">:</span> <span class="st">&quot;gmns-data-package&quot;</span><span class="fu">,</span></span>
+<span id="cb1-3"><a href="#cb1-3"></a>  <span class="dt">&quot;profile_version&quot;</span><span class="fu">:</span><span class="fl">0.0</span><span class="fu">,</span></span>
+<span id="cb1-4"><a href="#cb1-4"></a>  <span class="dt">&quot;name&quot;</span><span class="fu">:</span> <span class="st">&quot;my-dataset&quot;</span><span class="fu">,</span></span>
+<span id="cb1-5"><a href="#cb1-5"></a>  <span class="dt">&quot;resources&quot;</span><span class="fu">:</span> <span class="ot">[</span></span>
+<span id="cb1-6"><a href="#cb1-6"></a>   <span class="fu">{</span></span>
+<span id="cb1-7"><a href="#cb1-7"></a>     <span class="dt">&quot;name&quot;</span><span class="fu">:</span><span class="st">&quot;link&quot;</span><span class="fu">,</span></span>
+<span id="cb1-8"><a href="#cb1-8"></a>     <span class="dt">&quot;path&quot;</span><span class="fu">:</span> <span class="st">&quot;link.csv&quot;</span><span class="fu">,</span></span>
+<span id="cb1-9"><a href="#cb1-9"></a>     <span class="dt">&quot;schema&quot;</span><span class="fu">:</span> <span class="st">&quot;link.schema.json&quot;</span><span class="fu">,</span></span>
+<span id="cb1-10"><a href="#cb1-10"></a>     <span class="dt">&quot;required&quot;</span><span class="fu">:</span> <span class="kw">true</span></span>
+<span id="cb1-11"><a href="#cb1-11"></a>   <span class="fu">}</span><span class="ot">,</span></span>
+<span id="cb1-12"><a href="#cb1-12"></a>   <span class="fu">{</span></span>
+<span id="cb1-13"><a href="#cb1-13"></a>     <span class="dt">&quot;name&quot;</span><span class="fu">:</span><span class="st">&quot;node&quot;</span><span class="fu">,</span></span>
+<span id="cb1-14"><a href="#cb1-14"></a>     <span class="dt">&quot;path&quot;</span><span class="fu">:</span> <span class="st">&quot;node.csv&quot;</span><span class="fu">,</span></span>
+<span id="cb1-15"><a href="#cb1-15"></a>     <span class="dt">&quot;schema&quot;</span><span class="fu">:</span> <span class="st">&quot;node.schema.json&quot;</span><span class="fu">,</span></span>
+<span id="cb1-16"><a href="#cb1-16"></a>     <span class="dt">&quot;required&quot;</span><span class="fu">:</span> <span class="kw">true</span></span>
+<span id="cb1-17"><a href="#cb1-17"></a>   <span class="fu">}</span></span>
+<span id="cb1-18"><a href="#cb1-18"></a> <span class="ot">]</span></span>
+<span id="cb1-19"><a href="#cb1-19"></a><span class="fu">}</span></span></code></pre></div>
+<h2 id="data-table-schemas">Data Table Schemas</h2>
+<p>Data table schemas are specified in JSON and are compatible with the <a href="https://specs.frictionlessdata.io/table-schema/">frictionless data</a> table schema standards.</p>
+<p>Example:</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode JSON"><code class="sourceCode json"><span id="cb2-1"><a href="#cb2-1"></a><span class="fu">{</span></span>
+<span id="cb2-2"><a href="#cb2-2"></a>    <span class="dt">&quot;primaryKey&quot;</span><span class="fu">:</span> <span class="st">&quot;segment_id&quot;</span><span class="fu">,</span></span>
+<span id="cb2-3"><a href="#cb2-3"></a>    <span class="dt">&quot;missingValues&quot;</span><span class="fu">:</span> <span class="ot">[</span><span class="st">&quot;NaN&quot;</span><span class="ot">,</span><span class="st">&quot;&quot;</span><span class="ot">]</span><span class="fu">,</span></span>
+<span id="cb2-4"><a href="#cb2-4"></a>    <span class="dt">&quot;fields&quot;</span><span class="fu">:</span> <span class="ot">[</span></span>
+<span id="cb2-5"><a href="#cb2-5"></a>        <span class="fu">{</span></span>
+<span id="cb2-6"><a href="#cb2-6"></a>            <span class="dt">&quot;name&quot;</span><span class="fu">:</span> <span class="st">&quot;segment_id&quot;</span><span class="fu">,</span></span>
+<span id="cb2-7"><a href="#cb2-7"></a>            <span class="dt">&quot;type&quot;</span><span class="fu">:</span> <span class="st">&quot;any&quot;</span><span class="fu">,</span></span>
+<span id="cb2-8"><a href="#cb2-8"></a>            <span class="dt">&quot;description&quot;</span><span class="fu">:</span> <span class="st">&quot;Primary key.&quot;</span><span class="fu">,</span></span>
+<span id="cb2-9"><a href="#cb2-9"></a>            <span class="dt">&quot;constraints&quot;</span><span class="fu">:</span> <span class="fu">{</span></span>
+<span id="cb2-10"><a href="#cb2-10"></a>              <span class="dt">&quot;required&quot;</span><span class="fu">:</span> <span class="kw">true</span><span class="fu">,</span></span>
+<span id="cb2-11"><a href="#cb2-11"></a>              <span class="dt">&quot;unique&quot;</span><span class="fu">:</span> <span class="kw">true</span></span>
+<span id="cb2-12"><a href="#cb2-12"></a>              <span class="fu">}</span></span>
+<span id="cb2-13"><a href="#cb2-13"></a>        <span class="fu">}</span><span class="ot">,</span></span>
+<span id="cb2-14"><a href="#cb2-14"></a>        <span class="fu">{</span></span>
+<span id="cb2-15"><a href="#cb2-15"></a>            <span class="dt">&quot;name&quot;</span><span class="fu">:</span> <span class="st">&quot;road_link_id&quot;</span><span class="fu">,</span></span>
+<span id="cb2-16"><a href="#cb2-16"></a>            <span class="dt">&quot;type&quot;</span><span class="fu">:</span> <span class="st">&quot;any&quot;</span><span class="fu">,</span></span>
+<span id="cb2-17"><a href="#cb2-17"></a>            <span class="dt">&quot;description&quot;</span><span class="fu">:</span> <span class="st">&quot;Required. Foreign key to road_links. The link that the segment is located on.&quot;</span><span class="fu">,</span></span>
+<span id="cb2-18"><a href="#cb2-18"></a>            <span class="dt">&quot;foreign_key&quot;</span><span class="fu">:</span> <span class="st">&quot;link.link_id&quot;</span><span class="fu">,</span></span>
+<span id="cb2-19"><a href="#cb2-19"></a>            <span class="dt">&quot;constraints&quot;</span><span class="fu">:</span> <span class="fu">{</span></span>
+<span id="cb2-20"><a href="#cb2-20"></a>              <span class="dt">&quot;required&quot;</span><span class="fu">:</span> <span class="kw">true</span></span>
+<span id="cb2-21"><a href="#cb2-21"></a>              <span class="fu">}</span></span>
+<span id="cb2-22"><a href="#cb2-22"></a>        <span class="fu">}</span><span class="ot">,</span></span>
+<span id="cb2-23"><a href="#cb2-23"></a>        <span class="fu">{</span></span>
+<span id="cb2-24"><a href="#cb2-24"></a>            <span class="dt">&quot;name&quot;</span><span class="fu">:</span> <span class="st">&quot;ref_node_id&quot;</span><span class="fu">,</span></span>
+<span id="cb2-25"><a href="#cb2-25"></a>            <span class="dt">&quot;type&quot;</span><span class="fu">:</span> <span class="st">&quot;any&quot;</span><span class="fu">,</span></span>
+<span id="cb2-26"><a href="#cb2-26"></a>            <span class="dt">&quot;description&quot;</span><span class="fu">:</span> <span class="st">&quot;Required. Foreign key to node.&quot;</span><span class="fu">,</span></span>
+<span id="cb2-27"><a href="#cb2-27"></a>            <span class="dt">&quot;foreign_key&quot;</span><span class="fu">:</span> <span class="st">&quot;node.node_id&quot;</span><span class="fu">,</span></span>
+<span id="cb2-28"><a href="#cb2-28"></a>            <span class="dt">&quot;constraints&quot;</span><span class="fu">:</span> <span class="fu">{</span></span>
+<span id="cb2-29"><a href="#cb2-29"></a>              <span class="dt">&quot;required&quot;</span><span class="fu">:</span> <span class="kw">true</span></span>
+<span id="cb2-30"><a href="#cb2-30"></a>              <span class="fu">}</span></span>
+<span id="cb2-31"><a href="#cb2-31"></a>        <span class="fu">}</span><span class="ot">,</span></span>
+<span id="cb2-32"><a href="#cb2-32"></a>        <span class="fu">{</span></span>
+<span id="cb2-33"><a href="#cb2-33"></a>            <span class="dt">&quot;name&quot;</span><span class="fu">:</span> <span class="st">&quot;start_lr&quot;</span><span class="fu">,</span></span>
+<span id="cb2-34"><a href="#cb2-34"></a>            <span class="dt">&quot;type&quot;</span><span class="fu">:</span> <span class="st">&quot;number&quot;</span><span class="fu">,</span></span>
+<span id="cb2-35"><a href="#cb2-35"></a>            <span class="dt">&quot;description&quot;</span><span class="fu">:</span> <span class="st">&quot;Required. Distance from ref_node_id.&quot;</span><span class="fu">,</span></span>
+<span id="cb2-36"><a href="#cb2-36"></a>            <span class="dt">&quot;constraints&quot;</span><span class="fu">:</span> <span class="fu">{</span></span>
+<span id="cb2-37"><a href="#cb2-37"></a>              <span class="dt">&quot;required&quot;</span><span class="fu">:</span> <span class="kw">true</span><span class="fu">,</span></span>
+<span id="cb2-38"><a href="#cb2-38"></a>              <span class="dt">&quot;minimum&quot;</span><span class="fu">:</span> <span class="dv">0</span></span>
+<span id="cb2-39"><a href="#cb2-39"></a>              <span class="fu">}</span></span>
+<span id="cb2-40"><a href="#cb2-40"></a>        <span class="fu">}</span><span class="ot">,</span></span>
+<span id="cb2-41"><a href="#cb2-41"></a>        <span class="fu">{</span></span>
+<span id="cb2-42"><a href="#cb2-42"></a>            <span class="dt">&quot;name&quot;</span><span class="fu">:</span> <span class="st">&quot;end_lr&quot;</span><span class="fu">,</span></span>
+<span id="cb2-43"><a href="#cb2-43"></a>            <span class="dt">&quot;type&quot;</span><span class="fu">:</span> <span class="st">&quot;number&quot;</span><span class="fu">,</span></span>
+<span id="cb2-44"><a href="#cb2-44"></a>            <span class="dt">&quot;description&quot;</span><span class="fu">:</span> <span class="st">&quot;Required. Distance from ref_node_id.&quot;</span><span class="fu">,</span></span>
+<span id="cb2-45"><a href="#cb2-45"></a>            <span class="dt">&quot;constraints&quot;</span><span class="fu">:</span> <span class="fu">{</span></span>
+<span id="cb2-46"><a href="#cb2-46"></a>              <span class="dt">&quot;required&quot;</span><span class="fu">:</span> <span class="kw">true</span><span class="fu">,</span></span>
+<span id="cb2-47"><a href="#cb2-47"></a>              <span class="dt">&quot;minimum&quot;</span><span class="fu">:</span> <span class="dv">0</span></span>
+<span id="cb2-48"><a href="#cb2-48"></a>              <span class="fu">}</span></span>
+<span id="cb2-49"><a href="#cb2-49"></a>          <span class="fu">}</span></span>
+<span id="cb2-50"><a href="#cb2-50"></a>    <span class="ot">]</span></span>
+<span id="cb2-51"><a href="#cb2-51"></a><span class="fu">}</span></span>
+<span id="cb2-52"><a href="#cb2-52"></a></span></code></pre></div>
+<h2 id="specgeometry">spec\geometry</h2>
+<table>
+<thead>
+<tr class="header">
+<th>name</th>
+<th>required</th>
+<th>type</th>
+<th>foreign_key</th>
+<th>description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>geometry_id</td>
+<td>True</td>
+<td>any</td>
+<td>-</td>
+<td>Primary key - could be SharedStreets Geometry ID</td>
+</tr>
+<tr class="even">
+<td>geometry</td>
+<td>-</td>
+<td>any</td>
+<td>-</td>
+<td>Optional. Link geometry, specific format could be WKT, GeoJSON, etc.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="speclane">spec\lane</h2>
+<table>
+<thead>
+<tr class="header">
+<th>name</th>
+<th>required</th>
+<th>type</th>
+<th>foreign_key</th>
+<th>description</th>
+<th>constraints enum</th>
+<th>constraints maximum</th>
+<th>constraints minimum</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>lane_id</td>
+<td>True</td>
+<td>any</td>
+<td>-</td>
+<td>Primary key</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+</tr>
+<tr class="even">
+<td>link_id</td>
+<td>True</td>
+<td>any</td>
+<td>Table: <code>link</code>, Variable: <code>link_id</code></td>
+<td>Required. Foreign key to link table.</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+</tr>
+<tr class="odd">
+<td>lane_num</td>
+<td>True</td>
+<td>integer</td>
+<td>-</td>
+<td>Required. e.g., -1, 1, 2 (use left-to-right numbering).</td>
+<td>-</td>
+<td>10</td>
+<td>-10</td>
+</tr>
+<tr class="even">
+<td>allowed_uses</td>
+<td>-</td>
+<td>string</td>
+<td>-</td>
+<td>Optional. Set of allowed uses that should appear in either the use_definition or use_group tables; comma-separated.</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+</tr>
+<tr class="odd">
+<td>r_barrier</td>
+<td>-</td>
+<td>any</td>
+<td>-</td>
+<td>Optional. Whether a barrier exists to prevent vehicles from changing lanes to the right (default is none).</td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li>'' (the default). Indicates that a vehicle can change lanes, provided that the vehicle-type is permitted in the destination lane</li>
+<li><code>regulatory</code>. There is a regulatory prohibition (e.g., a double-white solid line) against changing lanes, but no physical barrier</li>
+<li><code>physical</code>. A physical barrier (e.g., a curb, Jersey barrier) is in place.|Allowed Values: <code>,regulatory,physical</code>|-|-| |l_barrier|-|any|-|Optional. Whether a barrier exists to prevent vehicles from changing lanes to the right (default is none).</li>
+<li>'' (the default). Indicates that a vehicle can change lanes, provided that the vehicle-type is permitted in the destination lane</li>
+<li><code>regulatory</code>. There is a regulatory prohibition (e.g., a double-white solid line) against changing lanes, but no physical barrier</li>
+<li><code>physical</code>. A physical barrier (e.g., a curb, Jersey barrier) is in place.|Allowed Values: <code>,regulatory,physical</code>|-|-| |width|-|number|-|Optional. Width of the lane, feet.|-|-|0|</li>
+</ul>
+<h2 id="speclane_tod">spec\lane_tod</h2>
+<table>
+<thead>
+<tr class="header">
+<th>name</th>
+<th>required</th>
+<th>type</th>
+<th>foreign_key</th>
+<th>description</th>
+<th>constraints enum</th>
+<th>constraints maximum</th>
+<th>constraints minimum</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>lane_tod_id</td>
+<td>True</td>
+<td>any</td>
+<td>-</td>
+<td>Primary key.</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+</tr>
+<tr class="even">
+<td>lane_id</td>
+<td>True</td>
+<td>any</td>
+<td>Table: <code>lane</code>, Variable: <code>lane_id</code></td>
+<td>Required. Foreign key to <code>lane</code></td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+</tr>
+<tr class="odd">
+<td>timeday_id</td>
+<td>-</td>
+<td>any</td>
+<td>Table: <code>time_set_definitions</code>, Variable: <code>timeday_id</code></td>
+<td>Conditionally required (either timeday_id or time_day). Foreign key to time_set_definitions.</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+</tr>
+<tr class="even">
+<td>time_day</td>
+<td>-</td>
+<td>any</td>
+<td>-</td>
+<td>Conditionally required (either timeday_id or time_day). XXXXXXXX_HHMM_HHMM, where XXXXXXXX is a bitmap of days of the week, Sunday-Saturday, Holiday. The HHMM are the start and end times.</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+</tr>
+<tr class="odd">
+<td>lane_num</td>
+<td>True</td>
+<td>integer</td>
+<td>-</td>
+<td>Required. Lane number identified as offset to the right from the centerline. i.e. -1, 1, 2 (use left-to-rightnumbering).</td>
+<td>-</td>
+<td>10</td>
+<td>-10</td>
+</tr>
+<tr class="even">
+<td>allowed_uses</td>
+<td>-</td>
+<td>string</td>
+<td>-</td>
+<td>Optional. Set of allowed uses that should appear in either the use_definition or use_group tables; comma-separated.</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+</tr>
+<tr class="odd">
+<td>r_barrier</td>
+<td>-</td>
+<td>any</td>
+<td>-</td>
+<td>Optional. Whether a barrier exists to prevent vehicles from changing lanes to the right (default is None).</td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li>'' (the default). Indicates that a vehicle can change lanes, provided that the vehicle-type is permitted in the destination lane</li>
+<li><code>Regulatory</code>. There is a regulatory prohibition (e.g., a double-white solid line) against changing lanes, but no physical barrier</li>
+<li><code>Physical</code>. A physical barrier (e.g., a curb, Jersey barrier) is in place.|Allowed Values: <code>,regulatory,physical</code>|-|-| |l_barrier|-|any|-|Optional. Whether a barrier exists to prevent vehicles from changing lanes to the right (default is None).</li>
+<li>'' (the default). Indicates that a vehicle can change lanes, provided that the vehicle-type is permitted in the destination lane</li>
+<li><code>Regulatory</code>. There is a regulatory prohibition (e.g., a double-white solid line) against changing lanes, but no physical barrier</li>
+<li><code>Physical</code>. A physical barrier (e.g., a curb, Jersey barrier) is in place.|Allowed Values: <code>,regulatory,physical</code>|-|-| |width|-|number|-|Optional. Width of the lane, feet.|-|-|0|</li>
+</ul>
+<h2 id="speclink">spec\link</h2>
+<table>
+<thead>
+<tr class="header">
+<th>name</th>
+<th>required</th>
+<th>type</th>
+<th>foreign_key</th>
+<th>description</th>
+<th>constraints enum</th>
+<th>constraints maximum</th>
+<th>constraints minimum</th>
+<th>warning maximum</th>
+<th>warning minimum</th>
+<th>warnings maximum</th>
+<th>warnings minimum</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>link_id</td>
+<td>True</td>
+<td>any</td>
+<td>-</td>
+<td>Primary key - could be SharedStreets Reference ID</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+</tr>
+<tr class="even">
+<td>parent_link_id</td>
+<td>-</td>
+<td>any</td>
+<td>Table: ``, Variable: <code>link_id</code></td>
+<td>Optional. The parent of this link. For example,for a sidewalk, this is the adjacent road.</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+</tr>
+<tr class="odd">
+<td>name</td>
+<td>-</td>
+<td>string</td>
+<td>-</td>
+<td>Optional. Street or Path Name</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+</tr>
+<tr class="even">
+<td>from_node_id</td>
+<td>True</td>
+<td>any</td>
+<td>Table: <code>node</code>, Variable: <code>node_id</code></td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+</tr>
+<tr class="odd">
+<td>to_node_id</td>
+<td>True</td>
+<td>any</td>
+<td>Table: <code>node</code>, Variable: <code>node_id</code></td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+</tr>
+<tr class="even">
+<td>directed</td>
+<td>-</td>
+<td>boolean</td>
+<td>-</td>
+<td>Required. Whether the link is directed (travel only occurs from the from_node to the to_node) or undirected.</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+</tr>
+<tr class="odd">
+<td>geometry_id</td>
+<td>-</td>
+<td>any</td>
+<td>Table: <code>geometry</code>, Variable: <code>geometry_id</code></td>
+<td>Optional. Foreign key (Link_Geometry table).</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+</tr>
+<tr class="even">
+<td>geometry</td>
+<td>-</td>
+<td>any</td>
+<td>-</td>
+<td>Optional. Link geometry, specific format could be WKT, GeoJSON, etc.</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+</tr>
+<tr class="odd">
+<td>dir_flag</td>
+<td>-</td>
+<td>integer</td>
+<td>-</td>
+<td>Optional.</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr class="even">
+<td>1 shapepoints go from from_node to to_node;</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr class="odd">
+<td>-1 shapepoints go in the reverse direction;</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr class="even">
+<td>0 link is undirected or no geometry information is provided.</td>
+<td>Allowed Values: <code>-1,0,1</code></td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr class="odd">
+<td>length</td>
+<td>-</td>
+<td>number</td>
+<td>-</td>
+<td>Optional. Length of the link in miles</td>
+<td>-</td>
+<td>-</td>
+<td>0</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+</tr>
+<tr class="even">
+<td>grade</td>
+<td>-</td>
+<td>number</td>
+<td>-</td>
+<td>% grade, negative is downhill</td>
+<td>-</td>
+<td>100</td>
+<td>-100</td>
+<td>-</td>
+<td>-</td>
+<td>25</td>
+<td>-25</td>
+</tr>
+<tr class="odd">
+<td>facility_type</td>
+<td>-</td>
+<td>string</td>
+<td>-</td>
+<td>Facility type (e.g., freeway, arterial, etc.)</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+</tr>
+<tr class="even">
+<td>capacity</td>
+<td>-</td>
+<td>integer</td>
+<td>-</td>
+<td>Optional. Capacity (veh / hr / lane)</td>
+<td>-</td>
+<td>-</td>
+<td>0</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+</tr>
+<tr class="odd">
+<td>free_speed</td>
+<td>-</td>
+<td>integer</td>
+<td>-</td>
+<td>Optional. Free flow speed mph</td>
+<td>-</td>
+<td>100</td>
+<td>0</td>
+<td>-</td>
+<td>-</td>
+<td>75</td>
+<td>1</td>
+</tr>
+<tr class="even">
+<td>lanes</td>
+<td>-</td>
+<td>integer</td>
+<td>-</td>
+<td>Optional. Number of permanent lanes (not including turn pockets) in the direction of travel open to motor vehicles. It does not include bike lanes, shoulders or parking lanes.</td>
+<td>-</td>
+<td>-</td>
+<td>0</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+</tr>
+<tr class="odd">
+<td>bike_facility</td>
+<td>-</td>
+<td>string</td>
+<td>-</td>
+<td>Optional. Type of bicycle accommodation: unknown, none, wcl, sharrow, bikelane, cycletrack, offstreet path</td>
+<td>Allowed Values: <code>unknown,none,wcl,sharrow,bikelane,cycletrack,offstreet path</code></td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+</tr>
+<tr class="even">
+<td>ped_facility</td>
+<td>-</td>
+<td>string</td>
+<td>-</td>
+<td>Optional. Type of pedestrian accommodation: unknown, none, shoulder, sidewalk, offstreet path</td>
+<td>Allowed Values: <code>unknown,none,shoulder,sidewalk,offstreet path</code></td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+</tr>
+<tr class="odd">
+<td>parking</td>
+<td>-</td>
+<td>string</td>
+<td>-</td>
+<td>Optional. Type of parking: unknown, none, parallel, angle, other</td>
+<td>Allowed Values: <code>unknown,none,parallel,angle,other</code></td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+</tr>
+<tr class="even">
+<td>allowed_uses</td>
+<td>-</td>
+<td>string</td>
+<td>-</td>
+<td>Optional. Set of allowed uses that should appear in either the use_definition or use_group tables; comma-separated.</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+</tr>
+<tr class="odd">
+<td>toll</td>
+<td>-</td>
+<td>integer</td>
+<td>-</td>
+<td>Optional. Toll on the link, in cents.</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>10000</td>
+<td>0</td>
+<td>-</td>
+<td>-</td>
+</tr>
+<tr class="even">
+<td>jurisdiction</td>
+<td>-</td>
+<td>string</td>
+<td>-</td>
+<td>Optional. Owner/operator of the link.</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+</tr>
+<tr class="odd">
+<td>row_width</td>
+<td>-</td>
+<td>number</td>
+<td>-</td>
+<td>Optional. Width (feet) of the entire right-of-way (both directions).</td>
+<td>-</td>
+<td>-</td>
+<td>0</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>10</td>
+</tr>
+</tbody>
+</table>
+<h2 id="speclink_tod">spec\link_tod</h2>
+<table>
+<thead>
+<tr class="header">
+<th>name</th>
+<th>required</th>
+<th>type</th>
+<th>foreign_key</th>
+<th>description</th>
+<th>constraints enum</th>
+<th>constraints maximum</th>
+<th>constraints minimum</th>
+<th>warning maximum</th>
+<th>warning minimum</th>
+<th>warnings maximum</th>
+<th>warnings minimum</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>link_tod_id</td>
+<td>True</td>
+<td>any</td>
+<td>-</td>
+<td>Primary key</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+</tr>
+<tr class="even">
+<td>link_id</td>
+<td>True</td>
+<td>any</td>
+<td>Table: <code>link</code>, Variable: <code>link_id</code></td>
+<td>Required. Foreign key, link table</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+</tr>
+<tr class="odd">
+<td>timeday_id</td>
+<td>-</td>
+<td>any</td>
+<td>Table: <code>time_set_definitions</code>, Variable: <code>timeday_id</code></td>
+<td>Conditionally required (either timeday_id or time_day). Foreign key to time_set_definitions.</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+</tr>
+<tr class="even">
+<td>time_day</td>
+<td>-</td>
+<td>any</td>
+<td>-</td>
+<td>Conditionally required (either timeday_id or time_day). XXXXXXXX_HHMM_HHMM, where XXXXXXXX is a bitmap of days of the week, Sunday-Saturday, Holiday. The HHMM are the start and end times.</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+</tr>
+<tr class="odd">
+<td>capacity</td>
+<td>-</td>
+<td>integer</td>
+<td>-</td>
+<td>Optional. Capacity (veh / hr / lane)</td>
+<td>-</td>
+<td>-</td>
+<td>0</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+</tr>
+<tr class="even">
+<td>free_speed</td>
+<td>-</td>
+<td>integer</td>
+<td>-</td>
+<td>Optional. Free flow speed mph</td>
+<td>-</td>
+<td>100</td>
+<td>0</td>
+<td>-</td>
+<td>-</td>
+<td>75</td>
+<td>1</td>
+</tr>
+<tr class="odd">
+<td>lanes</td>
+<td>-</td>
+<td>integer</td>
+<td>-</td>
+<td>Optional. Number of permanent lanes (not including turn pockets) in the direction of travel open to motor vehicles. It does not include bike lanes, shoulders or parking lanes.</td>
+<td>-</td>
+<td>-</td>
+<td>0</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+</tr>
+<tr class="even">
+<td>bike_facility</td>
+<td>-</td>
+<td>string</td>
+<td>-</td>
+<td>Optional. Type of bicycle accommodation: unknown, none, WCL, sharrow, bikelane, cycletrack, offstreet path</td>
+<td>Allowed Values: <code>unknown,none,wcl,sharrow,bikelane,cycletrack,offstreet path</code></td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+</tr>
+<tr class="odd">
+<td>ped_facility</td>
+<td>-</td>
+<td>string</td>
+<td>-</td>
+<td>Optional. Type of pedestrian accommodation: unknown, none, shoulder, sidewalk, offstreet path</td>
+<td>Allowed Values: <code>unknown,none,shoulder,sidewalk,offstreet path</code></td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+</tr>
+<tr class="even">
+<td>parking</td>
+<td>-</td>
+<td>string</td>
+<td>-</td>
+<td>Optional. Type of parking: unknown, none, parallel, angle, other</td>
+<td>Allowed Values: <code>unknown,none,parallel,angle,other</code></td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+</tr>
+<tr class="odd">
+<td>allowed_uses</td>
+<td>-</td>
+<td>string</td>
+<td>-</td>
+<td>Optional. Set of allowed uses that should appear in either the use_definition or use_group tables; comma-separated.</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+</tr>
+<tr class="even">
+<td>toll</td>
+<td>-</td>
+<td>integer</td>
+<td>-</td>
+<td>toll in cents.</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>10000</td>
+<td>0</td>
+<td>-</td>
+<td>-</td>
+</tr>
+</tbody>
+</table>
+<h2 id="speclocation">spec\location</h2>
+<table>
+<thead>
+<tr class="header">
+<th>name</th>
+<th>required</th>
+<th>type</th>
+<th>foreign_key</th>
+<th>description</th>
+<th>constraints minimum</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>loc_id</td>
+<td>True</td>
+<td>any</td>
+<td>-</td>
+<td>Primary key. Location ID.</td>
+<td>-</td>
+</tr>
+<tr class="even">
+<td>link_id</td>
+<td>True</td>
+<td>any</td>
+<td>Table: <code>link</code>, Variable: <code>link_id</code></td>
+<td>Required. Road Link ID. Foreign Key from Road_Link.</td>
+<td>-</td>
+</tr>
+<tr class="odd">
+<td>ref_node_id</td>
+<td>True</td>
+<td>any</td>
+<td>Table: <code>node</code>, Variable: <code>node_id</code></td>
+<td>Required. The From node of the link. Foreign Key from Node.</td>
+<td>-</td>
+</tr>
+<tr class="even">
+<td>lr</td>
+<td>True</td>
+<td>number</td>
+<td>-</td>
+<td>Required. Linear Reference of the location, measured as distance along the link from the reference node. If link_geometry exists, it is used. Otherwise, link geometry is assumed to be a crow-fly distance from A node to B node.</td>
+<td>0</td>
+</tr>
+<tr class="odd">
+<td>x_coord</td>
+<td>-</td>
+<td>number</td>
+<td>-</td>
+<td>Optional. Either provided, or derived from Link, Ref_Node and LR.</td>
+<td>-</td>
+</tr>
+<tr class="even">
+<td>y_coord</td>
+<td>-</td>
+<td>number</td>
+<td>-</td>
+<td>Optional. Either provided, or derived from Link, Ref_Node and LR.</td>
+<td>-</td>
+</tr>
+<tr class="odd">
+<td>z_coord</td>
+<td>-</td>
+<td>number</td>
+<td>-</td>
+<td>Optional. Altitude.</td>
+<td>-</td>
+</tr>
+<tr class="even">
+<td>loc_type</td>
+<td>-</td>
+<td>string</td>
+<td>-</td>
+<td>Optional. What it represents (driveway, bus stop, etc.) OpenStreetMap map feature names are recommended.</td>
+<td>-</td>
+</tr>
+<tr class="odd">
+<td>zone_id</td>
+<td>-</td>
+<td>any</td>
+<td>-</td>
+<td>Optional. Foreign Key, Associated zone</td>
+<td>-</td>
+</tr>
+<tr class="even">
+<td>gtfs_stop_id</td>
+<td>-</td>
+<td>string</td>
+<td>-</td>
+<td>Optional. Foreign Key to GTFS data. For bus stops and transit station entrances, provides a link to the General Transit Feed Specification.</td>
+<td>-</td>
+</tr>
+</tbody>
+</table>
+<h2 id="specmovement">spec\movement</h2>
+<table>
+<thead>
+<tr class="header">
+<th>name</th>
+<th>required</th>
+<th>type</th>
+<th>foreign_key</th>
+<th>description</th>
+<th>constraints enum</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>mvmt_id</td>
+<td>True</td>
+<td>any</td>
+<td>-</td>
+<td>Primary key.</td>
+<td>-</td>
+</tr>
+<tr class="even">
+<td>node_id</td>
+<td>True</td>
+<td>any</td>
+<td>Table: <code>node</code>, Variable: <code>node_id</code></td>
+<td>The node representing the junction.</td>
+<td>-</td>
+</tr>
+<tr class="odd">
+<td>name</td>
+<td>-</td>
+<td>any</td>
+<td>-</td>
+<td>Optional.</td>
+<td>-</td>
+</tr>
+<tr class="even">
+<td>ib_link_id</td>
+<td>True</td>
+<td>any</td>
+<td>Table: <code>link</code>, Variable: <code>link_id</code></td>
+<td>Inbound link id.</td>
+<td>-</td>
+</tr>
+<tr class="odd">
+<td>start_ib_lane</td>
+<td>-</td>
+<td>integer</td>
+<td>-</td>
+<td>Innermost lane number the movement applies to at the inbound end.</td>
+<td>-</td>
+</tr>
+<tr class="even">
+<td>end_ib_lane</td>
+<td>-</td>
+<td>integer</td>
+<td>-</td>
+<td>Outermost lane number the movement applies to at the inbound end. Blank indicates a movement with a single inbound lane.</td>
+<td>-</td>
+</tr>
+<tr class="odd">
+<td>ob_link_id</td>
+<td>True</td>
+<td>any</td>
+<td>Table: <code>link</code>, Variable: <code>link_id</code></td>
+<td>Outbound link id.</td>
+<td>-</td>
+</tr>
+<tr class="even">
+<td>start_ob_lane</td>
+<td>-</td>
+<td>integer</td>
+<td>-</td>
+<td>Innermost lane number the movement applies to at the outbound end.</td>
+<td>-</td>
+</tr>
+<tr class="odd">
+<td>end_ob_lane</td>
+<td>-</td>
+<td>integer</td>
+<td>-</td>
+<td>Outermost lane number the movement applies to at the outbound end. Blank indicates a movement with a single outbound lane.</td>
+<td>-</td>
+</tr>
+<tr class="even">
+<td>type</td>
+<td>True</td>
+<td>string</td>
+<td>-</td>
+<td>Optional. Describes the type of movement (left, right, thru, etc.).</td>
+<td>Allowed Values: <code>left,right,uturn,thru,merge</code></td>
+</tr>
+<tr class="odd">
+<td>penalty</td>
+<td>-</td>
+<td>any</td>
+<td>-</td>
+<td>Turn penalty (seconds)</td>
+<td>-</td>
+</tr>
+<tr class="even">
+<td>capacity</td>
+<td>-</td>
+<td>any</td>
+<td>-</td>
+<td>Capacity in vehicles per hour.</td>
+<td>-</td>
+</tr>
+<tr class="odd">
+<td>ctrl_type</td>
+<td>-</td>
+<td>any</td>
+<td>-</td>
+<td>Optional. .</td>
+<td>Allowed Values: <code>no_control,yield,stop,stop_2_way,stop_4_way,signal_with_RTOR,signal</code></td>
+</tr>
+</tbody>
+</table>
+<h2 id="specmovement_tod">spec\movement_tod</h2>
+<table>
+<thead>
+<tr class="header">
+<th>name</th>
+<th>required</th>
+<th>type</th>
+<th>foreign_key</th>
+<th>description</th>
+<th>constraints enum</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>mvmt_tod_id</td>
+<td>True</td>
+<td>any</td>
+<td>-</td>
+<td>Primary key.</td>
+<td>-</td>
+</tr>
+<tr class="even">
+<td>mvmt_id</td>
+<td>True</td>
+<td>any</td>
+<td>Table: <code>movement</code>, Variable: <code>mvmt_id</code></td>
+<td>The referenced movement.</td>
+<td>-</td>
+</tr>
+<tr class="odd">
+<td>time_day</td>
+<td>-</td>
+<td>string</td>
+<td>-</td>
+<td>Time of day in XXXXXXXX_HHMM_HHMM format, where XXXXXXXX is a bitmap of days of the week, Sunday-Saturday, Holiday. The HHMM are the start and end times.</td>
+<td>-</td>
+</tr>
+<tr class="even">
+<td>timeday_id</td>
+<td>-</td>
+<td>string</td>
+<td>Table: <code>timeday</code>, Variable: <code>timeday_id</code></td>
+<td>Time of day set. Used if times-of-day are defined on the time_set_definitions table</td>
+<td>-</td>
+</tr>
+<tr class="odd">
+<td>ib_link_id</td>
+<td>True</td>
+<td>any</td>
+<td>Table: <code>link</code>, Variable: <code>link_id</code></td>
+<td>Inbound link id.</td>
+<td>-</td>
+</tr>
+<tr class="even">
+<td>start_ib_lane</td>
+<td>-</td>
+<td>integer</td>
+<td>-</td>
+<td>Innermost lane number the movement applies to at the inbound end.</td>
+<td>-</td>
+</tr>
+<tr class="odd">
+<td>end_ib_lane</td>
+<td>-</td>
+<td>integer</td>
+<td>-</td>
+<td>Outermost lane number the movement applies to at the inbound end. Blank indicates a movement with a single inbound lane.</td>
+<td>-</td>
+</tr>
+<tr class="even">
+<td>ob_link_id</td>
+<td>True</td>
+<td>any</td>
+<td>Table: <code>link</code>, Variable: <code>link_id</code></td>
+<td>Outbound link id.</td>
+<td>-</td>
+</tr>
+<tr class="odd">
+<td>start_ob_lane</td>
+<td>-</td>
+<td>integer</td>
+<td>-</td>
+<td>Innermost lane number the movement applies to at the outbound end.</td>
+<td>-</td>
+</tr>
+<tr class="even">
+<td>end_ob_lane</td>
+<td>-</td>
+<td>integer</td>
+<td>-</td>
+<td>Outermost lane number the movement applies to at the outbound end. Blank indicates a movement with a single outbound lane.</td>
+<td>-</td>
+</tr>
+<tr class="odd">
+<td>type</td>
+<td>True</td>
+<td>string</td>
+<td>-</td>
+<td>Optional. Describes the type of movement (left, right, thru, etc.).</td>
+<td>Allowed Values: <code>left,right,uturn,thru,merge</code></td>
+</tr>
+<tr class="even">
+<td>penalty</td>
+<td>-</td>
+<td>any</td>
+<td>-</td>
+<td>Turn penalty (seconds)</td>
+<td>-</td>
+</tr>
+<tr class="odd">
+<td>capacity</td>
+<td>-</td>
+<td>any</td>
+<td>-</td>
+<td>Capacity in vehicles per hour.</td>
+<td>-</td>
+</tr>
+<tr class="even">
+<td>ctrl_type</td>
+<td>-</td>
+<td>any</td>
+<td>-</td>
+<td>Optional. .</td>
+<td>Allowed Values: <code>no_control,yield,stop,stop_2_way,stop_4_way,signal_with_RTOR,signal</code></td>
+</tr>
+</tbody>
+</table>
+<h2 id="specnode">spec\node</h2>
+<table>
+<thead>
+<tr class="header">
+<th>name</th>
+<th>required</th>
+<th>type</th>
+<th>foreign_key</th>
+<th>description</th>
+<th>constraints enum</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>node_id</td>
+<td>True</td>
+<td>any</td>
+<td>-</td>
+<td>Primary key</td>
+<td>-</td>
+</tr>
+<tr class="even">
+<td>name</td>
+<td>-</td>
+<td>string</td>
+<td>-</td>
+<td></td>
+<td>-</td>
+</tr>
+<tr class="odd">
+<td>x_coord</td>
+<td>True</td>
+<td>number</td>
+<td>-</td>
+<td>Coordinate system specified in config file (longitude, UTM-easting etc.)</td>
+<td>-</td>
+</tr>
+<tr class="even">
+<td>y_coord</td>
+<td>True</td>
+<td>number</td>
+<td>-</td>
+<td>Coordinate system specified in config file (latitude, UTM-northing etc.)</td>
+<td>-</td>
+</tr>
+<tr class="odd">
+<td>z_coord</td>
+<td>True</td>
+<td>number</td>
+<td>-</td>
+<td>Optional. Altitude.</td>
+<td>-</td>
+</tr>
+<tr class="even">
+<td>node_type</td>
+<td>-</td>
+<td>string</td>
+<td>-</td>
+<td>Optional. What it represents (intersection, transit station, park &amp; ride).</td>
+<td>-</td>
+</tr>
+<tr class="odd">
+<td>ctrl_type</td>
+<td>-</td>
+<td>string</td>
+<td>-</td>
+<td>Optional. Intersection control type - one of ControlType_Set.</td>
+<td>Allowed Values: <code>none,yield,stop,4_stop,signal</code></td>
+</tr>
+<tr class="even">
+<td>zone_id</td>
+<td>-</td>
+<td>any</td>
+<td>Table: <code>zone</code>, Variable: <code>zone_id</code></td>
+<td>Optional. Could be a Transportation Analysis Zone (TAZ) or city, or census tract, or census block.</td>
+<td>-</td>
+</tr>
+<tr class="odd">
+<td>parent_node_id</td>
+<td>-</td>
+<td>any</td>
+<td>Table: ``, Variable: <code>node_id</code></td>
+<td>Optional. Associated node. For example, if this node is a sidewalk, a parent_nodek_id could represent the intersection it is associated with.</td>
+<td>-</td>
+</tr>
+</tbody>
+</table>
+<h2 id="specsegment">spec\segment</h2>
+<table>
+<thead>
+<tr class="header">
+<th>name</th>
+<th>required</th>
+<th>type</th>
+<th>foreign_key</th>
+<th>description</th>
+<th>constraints enum</th>
+<th>constraints maximum</th>
+<th>constraints minimum</th>
+<th>warnings maximum</th>
+<th>warnings minimum</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>segment_id</td>
+<td>True</td>
+<td>any</td>
+<td>-</td>
+<td>Primary key.</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+</tr>
+<tr class="even">
+<td>link_id</td>
+<td>True</td>
+<td>any</td>
+<td>Table: <code>link</code>, Variable: <code>link_id</code></td>
+<td>Required. Foreign key to road_links. The link that the segment is located on.</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+</tr>
+<tr class="odd">
+<td>ref_node_id</td>
+<td>True</td>
+<td>any</td>
+<td>Table: <code>node</code>, Variable: <code>node_id</code></td>
+<td>Required. Foreign key to node where distance is 0.</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+</tr>
+<tr class="even">
+<td>start_lr</td>
+<td>True</td>
+<td>number</td>
+<td>-</td>
+<td>Required. Distance from <code>ref_node_id</code>.</td>
+<td>-</td>
+<td>-</td>
+<td>0</td>
+<td>-</td>
+<td>-</td>
+</tr>
+<tr class="odd">
+<td>end_lr</td>
+<td>True</td>
+<td>number</td>
+<td>-</td>
+<td>Required. Distance from <code>ref_node_id</code>.</td>
+<td>-</td>
+<td>-</td>
+<td>0</td>
+<td>-</td>
+<td>-</td>
+</tr>
+<tr class="even">
+<td>grade</td>
+<td>-</td>
+<td>number</td>
+<td>-</td>
+<td>% grade, negative is downhill</td>
+<td>-</td>
+<td>100</td>
+<td>-100</td>
+<td>25</td>
+<td>-25</td>
+</tr>
+<tr class="odd">
+<td>capacity</td>
+<td>-</td>
+<td>integer</td>
+<td>-</td>
+<td>Optional. Capacity (veh/hr/ln)</td>
+<td>-</td>
+<td>-</td>
+<td>0</td>
+<td>-</td>
+<td>-</td>
+</tr>
+<tr class="even">
+<td>free_speed</td>
+<td>-</td>
+<td>integer</td>
+<td>-</td>
+<td>Optional. Free flow speed (mph)</td>
+<td>-</td>
+<td>100</td>
+<td>0</td>
+<td>75</td>
+<td>1</td>
+</tr>
+<tr class="odd">
+<td>lanes</td>
+<td>-</td>
+<td>integer</td>
+<td>-</td>
+<td>Optional. Number of lanes in the direction of travel (must be consistent with link lanes + lanes added).</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+</tr>
+<tr class="even">
+<td>l_lanes_added</td>
+<td>-</td>
+<td>integer</td>
+<td>-</td>
+<td>Optional. # of lanes added on the left of the road link (negative indicates a lane drop).</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+</tr>
+<tr class="odd">
+<td>l_lanes_added</td>
+<td>-</td>
+<td>integer</td>
+<td>-</td>
+<td>Optional. # of lanes added on the left of the road link (negative indicates a lane drop).</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+</tr>
+<tr class="even">
+<td>r_lanes_added</td>
+<td>-</td>
+<td>integer</td>
+<td>-</td>
+<td>Optional. # of lanes added on the right of the road link (negative indicates a lane drop).</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+</tr>
+<tr class="odd">
+<td>bike_facility</td>
+<td>-</td>
+<td>string</td>
+<td>-</td>
+<td>Optional. Type of bicycle accommodation: unknown, none,wcl, bikelane,cycletrack,wide_shoulder, offstreet_path.</td>
+<td>Allowed Values: <code>unknown,none,wcl,bikelane,cycletrack,wide_shoulder,offstreet_path</code></td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+</tr>
+<tr class="even">
+<td>ped_facility</td>
+<td>-</td>
+<td>string</td>
+<td>-</td>
+<td>Optional. Type of pedestrian accommodation:unknown,none,shoulder,sidewalk,offstreet_path.</td>
+<td>Allowed Values: <code>unknown,none,shoulder,sidewalk,offstreet_path</code></td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+</tr>
+<tr class="odd">
+<td>parking</td>
+<td>-</td>
+<td>string</td>
+<td>-</td>
+<td>Optional. Type of parking: unknown,none,shoulder,sidewalk,offstreet_path.</td>
+<td>Allowed Values: <code>unknown,none,shoulder,sidewalk,offstreet_path</code></td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+</tr>
+<tr class="even">
+<td>allowed_uses</td>
+<td>-</td>
+<td>string</td>
+<td>-</td>
+<td>Optional. Set of allowed uses that should appear in either the use_definition or use_group tables; comma-separated.</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+</tr>
+<tr class="odd">
+<td>toll</td>
+<td>-</td>
+<td>integer</td>
+<td>-</td>
+<td>Optional. Toll on the segment, in cents.</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+</tr>
+<tr class="even">
+<td>jurisdiction</td>
+<td>-</td>
+<td>string</td>
+<td>-</td>
+<td>Optional. Optional. Owner/operator of the segment.</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+</tr>
+<tr class="odd">
+<td>row_width</td>
+<td>-</td>
+<td>number</td>
+<td>-</td>
+<td>Optional. Width (feet) of the entire right-of-way (both directions).</td>
+<td>-</td>
+<td>-</td>
+<td>0</td>
+<td>-</td>
+<td>10</td>
+</tr>
+</tbody>
+</table>
+<h2 id="specsegment_lane">spec\segment_lane</h2>
+<table>
+<thead>
+<tr class="header">
+<th>name</th>
+<th>required</th>
+<th>type</th>
+<th>foreign_key</th>
+<th>description</th>
+<th>constraints enum</th>
+<th>constraints maximum</th>
+<th>constraints minimum</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>segment_lane_id</td>
+<td>True</td>
+<td>any</td>
+<td>-</td>
+<td>Primary key.</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+</tr>
+<tr class="even">
+<td>segment_id</td>
+<td>True</td>
+<td>any</td>
+<td>Table: <code>segment</code>, Variable: <code>segment_id</code></td>
+<td>Required. Foreign key to the associated segment.</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+</tr>
+<tr class="odd">
+<td>lane_num</td>
+<td>True</td>
+<td>integer</td>
+<td>-</td>
+<td>Required. -1, 1, 2 (use left-to-right numbering). 0 signifies a lane that is dropped on the segment.</td>
+<td>-</td>
+<td>10</td>
+<td>-10</td>
+</tr>
+<tr class="even">
+<td>parent_lane_id</td>
+<td>-</td>
+<td>any</td>
+<td>-</td>
+<td>Optional. If a lane drops or changes characteristics on the segment, the lane_id for that lane.</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+</tr>
+<tr class="odd">
+<td>allowed_uses</td>
+<td>-</td>
+<td>string</td>
+<td>-</td>
+<td>Optional. Set of allowed uses that should appear in either the use_definition or use_group tables; comma-separated.</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+</tr>
+<tr class="even">
+<td>r_barrier</td>
+<td>-</td>
+<td>any</td>
+<td>-</td>
+<td>Optional. Whether a barrier exists to prevent vehicles from changing lanes to the right (default is none)</td>
+<td>Allowed Values: <code>,regulatory,physical</code></td>
+<td>-</td>
+<td>-</td>
+</tr>
+<tr class="odd">
+<td>l_barrier</td>
+<td>-</td>
+<td>any</td>
+<td>-</td>
+<td>Optional. Whether a barrier exists to prevent vehicles from changing lanes to the left (default is none)</td>
+<td>Allowed Values: <code>,regulatory,physical</code></td>
+<td>-</td>
+<td>-</td>
+</tr>
+<tr class="even">
+<td>width</td>
+<td>-</td>
+<td>number</td>
+<td>-</td>
+<td>Optional. Width of the lane (feet)</td>
+<td>-</td>
+<td>-</td>
+<td>0</td>
+</tr>
+</tbody>
+</table>
+<h2 id="specsegment_lane_tod">spec\segment_lane_tod</h2>
+<table>
+<thead>
+<tr class="header">
+<th>name</th>
+<th>required</th>
+<th>type</th>
+<th>foreign_key</th>
+<th>description</th>
+<th>constraints enum</th>
+<th>constraints maximum</th>
+<th>constraints minimum</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>segment_lane_tod_id</td>
+<td>True</td>
+<td>any</td>
+<td>-</td>
+<td>Primary key.</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+</tr>
+<tr class="even">
+<td>segment_lane_id</td>
+<td>True</td>
+<td>any</td>
+<td>Table: <code>segment_lane</code>, Variable: <code>segment_lane_id</code></td>
+<td>Required. Foreign key, segment_lane table</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+</tr>
+<tr class="odd">
+<td>timeday_id</td>
+<td>-</td>
+<td>any</td>
+<td>Table: <code>time_set_definitions</code>, Variable: <code>timeday_id</code></td>
+<td>Conditionally required (either timeday_id or time_day). Foreign key to time_set_definitions.</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+</tr>
+<tr class="even">
+<td>time_day</td>
+<td>-</td>
+<td>any</td>
+<td>-</td>
+<td>Conditionally required (either timeday_id or time_day). XXXXXXXX_HHMM_HHMM, where XXXXXXXX is a bitmap of days of the week, Sunday-Saturday, Holiday. The HHMM are the start and end times.</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+</tr>
+<tr class="odd">
+<td>lane_num</td>
+<td>True</td>
+<td>integer</td>
+<td>-</td>
+<td>Required. Lane number identified as offset to the right from the centerline. i.e. -1, 1, 2 (use left-to-rightnumbering).</td>
+<td>-</td>
+<td>10</td>
+<td>-10</td>
+</tr>
+<tr class="even">
+<td>allowed_uses</td>
+<td>-</td>
+<td>string</td>
+<td>-</td>
+<td>Optional. Set of allowed uses that should appear in either the use_definition or use_group tables; comma-separated.</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+</tr>
+<tr class="odd">
+<td>r_barrier</td>
+<td>-</td>
+<td>any</td>
+<td>-</td>
+<td>Optional. Whether a barrier exists to prevent vehicles from changing lanes to the right (default is None).</td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li>'' (the default). Indicates that a vehicle can change lanes, provided that the vehicle-type is permitted in the destination lane</li>
+<li><code>Regulatory</code>. There is a regulatory prohibition (e.g., a double-white solid line) against changing lanes, but no physical barrier</li>
+<li><code>Physical</code>. A physical barrier (e.g., a curb, Jersey barrier) is in place.|Allowed Values: <code>,regulatory,physical</code>|-|-| |l_barrier|-|any|-|Optional. Whether a barrier exists to prevent vehicles from changing lanes to the right (default is None).</li>
+<li>'' (the default). Indicates that a vehicle can change lanes, provided that the vehicle-type is permitted in the destination lane</li>
+<li><code>Regulatory</code>. There is a regulatory prohibition (e.g., a double-white solid line) against changing lanes, but no physical barrier</li>
+<li><code>Physical</code>. A physical barrier (e.g., a curb, Jersey barrier) is in place.|Allowed Values: <code>,regulatory,physical</code>|-|-| |width|-|number|-|Optional. Width of the lane, feet.|-|-|0|</li>
+</ul>
+<h2 id="specsegment_tod">spec\segment_tod</h2>
+<table>
+<thead>
+<tr class="header">
+<th>name</th>
+<th>required</th>
+<th>type</th>
+<th>foreign_key</th>
+<th>description</th>
+<th>constraints enum</th>
+<th>constraints maximum</th>
+<th>constraints minimum</th>
+<th>warnings maximum</th>
+<th>warnings minimum</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>segment_tod_id</td>
+<td>True</td>
+<td>any</td>
+<td>-</td>
+<td>Primary key.</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+</tr>
+<tr class="even">
+<td>segment_id</td>
+<td>True</td>
+<td>any</td>
+<td>Table: <code>segment</code>, Variable: <code>segment_id</code></td>
+<td>Foreign key to segment table.</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+</tr>
+<tr class="odd">
+<td>timeday_id</td>
+<td>-</td>
+<td>any</td>
+<td>Table: <code>time_set_definitions</code>, Variable: <code>timeday_id</code></td>
+<td>Conditionally required (either timeday_id or time_day). Foreign key to time_set_definitions.</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+</tr>
+<tr class="even">
+<td>time_day</td>
+<td>-</td>
+<td>any</td>
+<td>-</td>
+<td>Conditionally required (either timeday_id or time_day). XXXXXXXX_HHMM_HHMM, where XXXXXXXX is a bitmap of days of the week, Sunday-Saturday, Holiday. The HHMM are the start and end times.</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+</tr>
+<tr class="odd">
+<td>capacity</td>
+<td>-</td>
+<td>integer</td>
+<td>-</td>
+<td>Optional. Capacity (veh/hr/ln)</td>
+<td>-</td>
+<td>-</td>
+<td>0</td>
+<td>-</td>
+<td>-</td>
+</tr>
+<tr class="even">
+<td>free_speed</td>
+<td>-</td>
+<td>integer</td>
+<td>-</td>
+<td>Optional. Free flow speed (mph)</td>
+<td>-</td>
+<td>100</td>
+<td>0</td>
+<td>75</td>
+<td>1</td>
+</tr>
+<tr class="odd">
+<td>lanes</td>
+<td>-</td>
+<td>integer</td>
+<td>-</td>
+<td>Optional. Number of lanes in the direction of travel (must be consistent with link lanes + lanes added).</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+</tr>
+<tr class="even">
+<td>l_lanes_added</td>
+<td>-</td>
+<td>integer</td>
+<td>-</td>
+<td>Optional. # of lanes added on the left of the road link (negative indicates a lane drop).</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+</tr>
+<tr class="odd">
+<td>r_lanes_added</td>
+<td>-</td>
+<td>integer</td>
+<td>-</td>
+<td>Optional. # of lanes added on the right of the road link (negative indicates a lane drop).</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+</tr>
+<tr class="even">
+<td>bike_facility</td>
+<td>-</td>
+<td>string</td>
+<td>-</td>
+<td>Optional. Type of bicycle accommodation: unknown, none,wcl, bikelane,cycletrack,wide_shoulder, offstreet_path.</td>
+<td>Allowed Values: <code>unknown,none,wcl,bikelane,cycletrack,wide_shoulder,offstreet_path</code></td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+</tr>
+<tr class="odd">
+<td>ped_facility</td>
+<td>-</td>
+<td>string</td>
+<td>-</td>
+<td>Optional. Type of pedestrian accommodation: unknown,none,shoulder,sidewalk,offstreet_path.</td>
+<td>Allowed Values: <code>unknown,none,shoulder,sidewalk,offstreet_path</code></td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+</tr>
+<tr class="even">
+<td>parking</td>
+<td>-</td>
+<td>string</td>
+<td>-</td>
+<td>Optional. Type of parking: unknown,none,shoulder,sidewalk,offstreet_path.</td>
+<td>Allowed Values: <code>unknown,none,shoulder,sidewalk,offstreet_path</code></td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+</tr>
+<tr class="odd">
+<td>toll</td>
+<td>-</td>
+<td>integer</td>
+<td>-</td>
+<td>Optional. Toll in cents</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+</tr>
+<tr class="even">
+<td>allowed_uses</td>
+<td>-</td>
+<td>string</td>
+<td>-</td>
+<td>Optional. Set of allowed uses that should appear in either the use_definition or use_group tables; comma-separated.</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+</tr>
+</tbody>
+</table>
+<h2 id="specsignal_controller">spec\signal_controller</h2>
+<table>
+<thead>
+<tr class="header">
+<th>name</th>
+<th>required</th>
+<th>type</th>
+<th>foreign_key</th>
+<th>description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>controller_id</td>
+<td>True</td>
+<td>any</td>
+<td>-</td>
+<td>Primary key.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="specsignal_coordination">spec\signal_coordination</h2>
+<table>
+<thead>
+<tr class="header">
+<th>name</th>
+<th>required</th>
+<th>type</th>
+<th>foreign_key</th>
+<th>description</th>
+<th>constraints enum</th>
+<th>constraints maximum</th>
+<th>constraints minimum</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>coordination_id</td>
+<td>True</td>
+<td>any</td>
+<td>-</td>
+<td>Primary key.</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+</tr>
+<tr class="even">
+<td>timing_plan_id</td>
+<td>True</td>
+<td>any</td>
+<td>Table: <code>signal_timing_plan</code>, Variable: <code>timing_plan_id</code></td>
+<td>Required. Foreign key (Signal_timing_plan table).</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+</tr>
+<tr class="odd">
+<td>controller_id</td>
+<td>True</td>
+<td>any</td>
+<td>Table: <code>signal_controller</code>, Variable: <code>controller_id</code></td>
+<td>Required. Foreign key (signal_controller table).</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+</tr>
+<tr class="even">
+<td>coord_contr_id</td>
+<td>-</td>
+<td>any</td>
+<td>Table: <code>signal_controller</code>, Variable: <code>controller_id</code></td>
+<td>Optional. For coordinated signals, the master signal controller for coordination.</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+</tr>
+<tr class="odd">
+<td>coord_phase</td>
+<td>-</td>
+<td>integer</td>
+<td>-</td>
+<td>Optional. For coordinated signals, the phase at which coordination starts (time 0).</td>
+<td>-</td>
+<td>32</td>
+<td>0</td>
+</tr>
+<tr class="even">
+<td>coord_ref_to</td>
+<td>-</td>
+<td>string</td>
+<td>-</td>
+<td>Optional. For coordinated signals, the part of the phase where coordination starts: begin_of_green, begin_of_yellow, begin_of_red.</td>
+<td>Allowed Values: <code>begin_of_green,begin_of_yellow,begin_of_red</code></td>
+<td>-</td>
+<td>-</td>
+</tr>
+<tr class="odd">
+<td>offset</td>
+<td>-</td>
+<td>integer</td>
+<td>-</td>
+<td>Optional. Offset in seconds.</td>
+<td>-</td>
+<td>-</td>
+<td>0</td>
+</tr>
+</tbody>
+</table>
+<h2 id="specsignal_detector">spec\signal_detector</h2>
+<table>
+<thead>
+<tr class="header">
+<th>name</th>
+<th>required</th>
+<th>type</th>
+<th>foreign_key</th>
+<th>description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>detector_id</td>
+<td>True</td>
+<td>any</td>
+<td>-</td>
+<td>Primary key.</td>
+</tr>
+<tr class="even">
+<td>controller_id</td>
+<td>True</td>
+<td>any</td>
+<td>Table: <code>signal_controller</code>, Variable: <code>controller_id</code></td>
+<td>Required. Foreign key to signal_controller table.</td>
+</tr>
+<tr class="odd">
+<td>signal_phase_num</td>
+<td>True</td>
+<td>integer</td>
+<td>-</td>
+<td>Required. Number of the associated phase.</td>
+</tr>
+<tr class="even">
+<td>link_id</td>
+<td>True</td>
+<td>any</td>
+<td>Table: <code>link</code>, Variable: <code>link_id</code></td>
+<td>Foreign key. The link covered by the detector.</td>
+</tr>
+<tr class="odd">
+<td>start_lane</td>
+<td>True</td>
+<td>integer</td>
+<td>-</td>
+<td>Left-most lane covered by the detector.</td>
+</tr>
+<tr class="even">
+<td>end_lane</td>
+<td>-</td>
+<td>integer</td>
+<td>-</td>
+<td>Right-most lane covered by the detector (blank if only one lane).</td>
+</tr>
+<tr class="odd">
+<td>ref_node_id</td>
+<td>True</td>
+<td>any</td>
+<td>Table: <code>node</code>, Variable: <code>node_id</code></td>
+<td>The detector is on the approach to this node.</td>
+</tr>
+<tr class="even">
+<td>det_zone_lr</td>
+<td>True</td>
+<td>number</td>
+<td>-</td>
+<td>Required. Distance from from the stop bar to detector.</td>
+</tr>
+<tr class="odd">
+<td>det_zone_front</td>
+<td>-</td>
+<td>number</td>
+<td>-</td>
+<td>Optional. Linear reference of front of detection zone.</td>
+</tr>
+<tr class="even">
+<td>det_zone_back</td>
+<td>-</td>
+<td>number</td>
+<td>-</td>
+<td>Optional. Linear reference of back of detection zone.</td>
+</tr>
+<tr class="odd">
+<td>det_type</td>
+<td>-</td>
+<td>string</td>
+<td>-</td>
+<td>Optional. Type of detector.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="specsignal_phase_mvmt">spec\signal_phase_mvmt</h2>
+<table>
+<thead>
+<tr class="header">
+<th>name</th>
+<th>required</th>
+<th>type</th>
+<th>foreign_key</th>
+<th>description</th>
+<th>constraints enum</th>
+<th>constraints maximum</th>
+<th>constraints minimum</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>signal_phase_mvmt_id</td>
+<td>True</td>
+<td>any</td>
+<td>-</td>
+<td>Primary key.</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+</tr>
+<tr class="even">
+<td>controller_id</td>
+<td>True</td>
+<td>any</td>
+<td>Table: <code>signal_controller</code>, Variable: <code>controller_id</code></td>
+<td>Associated controller.</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+</tr>
+<tr class="odd">
+<td>signal_phase_num</td>
+<td>True</td>
+<td>integer</td>
+<td>-</td>
+<td>Each phase has one or more Movements associated with it.</td>
+<td>-</td>
+<td>32</td>
+<td>0</td>
+</tr>
+<tr class="even">
+<td>mvmt_id</td>
+<td>-</td>
+<td>any</td>
+<td>Table: <code>movement</code>, Variable: <code>mvmt_id</code></td>
+<td>Foreign key. Either Movement_ID (for phases used by vehicles), or Link_id (for phases used by pedestrians) is required.</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+</tr>
+<tr class="odd">
+<td>link_id</td>
+<td>-</td>
+<td>any</td>
+<td>Table: <code>link</code>, Variable: <code>link_id</code></td>
+<td>Foreign key. Either Movement_ID (for phases used by vehicles), or Link_id (for phases used by pedestrians) is required.</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+</tr>
+<tr class="even">
+<td>protection</td>
+<td>-</td>
+<td>any</td>
+<td>-</td>
+<td>Optional. Indicates whether the phase is protected, permitted, or right turn on red.</td>
+<td>Allowed Values: <code>protected,permitted,rtor</code></td>
+<td>-</td>
+<td>-</td>
+</tr>
+</tbody>
+</table>
+<h2 id="specsignal_timing_phase">spec\signal_timing_phase</h2>
+<table>
+<thead>
+<tr class="header">
+<th>name</th>
+<th>required</th>
+<th>type</th>
+<th>foreign_key</th>
+<th>description</th>
+<th>constraints maximum</th>
+<th>constraints minimum</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>timing_phase_id</td>
+<td>True</td>
+<td>any</td>
+<td>-</td>
+<td>Primary key.</td>
+<td>-</td>
+<td>-</td>
+</tr>
+<tr class="even">
+<td>timing_plan_id</td>
+<td>-</td>
+<td>any</td>
+<td>Table: <code>signal_timing_plan</code>, Variable: <code>timing_plan_id</code></td>
+<td>Foreign key; connects to a timing_plan associated with a controller.</td>
+<td>-</td>
+<td>-</td>
+</tr>
+<tr class="odd">
+<td>signal_phase_num</td>
+<td>True</td>
+<td>integer</td>
+<td>-</td>
+<td>Signal phase number.</td>
+<td>-</td>
+<td>0</td>
+</tr>
+<tr class="even">
+<td>min_green</td>
+<td>-</td>
+<td>integer</td>
+<td>-</td>
+<td>The minimum green time in seconds for an actuated signal. Green time in seconds for a fixed time signal.</td>
+<td>-</td>
+<td>0</td>
+</tr>
+<tr class="odd">
+<td>max_green</td>
+<td>-</td>
+<td>integer</td>
+<td>-</td>
+<td>Optional.The maximum green time in seconds for an actuated signal; the default is minimum green plus one extension</td>
+<td>-</td>
+<td>0</td>
+</tr>
+<tr class="even">
+<td>extension</td>
+<td>-</td>
+<td>integer</td>
+<td>-</td>
+<td>Optional. The number of seconds the green time is extended each time vehicles are detected.</td>
+<td>120</td>
+<td>0</td>
+</tr>
+<tr class="odd">
+<td>clearance</td>
+<td>-</td>
+<td>integer</td>
+<td>-</td>
+<td>Yellow interval plus all red interval</td>
+<td>120</td>
+<td>0</td>
+</tr>
+<tr class="even">
+<td>walk_time</td>
+<td>-</td>
+<td>integer</td>
+<td>-</td>
+<td>If a pedestrian phase exists, the walk time in seconds</td>
+<td>120</td>
+<td>0</td>
+</tr>
+<tr class="odd">
+<td>ped_clearance</td>
+<td>-</td>
+<td>integer</td>
+<td>-</td>
+<td>If a pedestrian phase exists, the flashing don't walk time.</td>
+<td>120</td>
+<td>0</td>
+</tr>
+<tr class="even">
+<td>ring</td>
+<td>True</td>
+<td>integer</td>
+<td>-</td>
+<td>Required. Set of phases that conflict with each other.</td>
+<td>12</td>
+<td>0</td>
+</tr>
+<tr class="odd">
+<td>barrier</td>
+<td>True</td>
+<td>integer</td>
+<td>-</td>
+<td>Required. Set of phases that can operate other.</td>
+<td>12</td>
+<td>0</td>
+</tr>
+<tr class="even">
+<td>position</td>
+<td>True</td>
+<td>integer</td>
+<td>-</td>
+<td>Required. Position.</td>
+<td>-</td>
+<td>-</td>
+</tr>
+</tbody>
+</table>
+<h2 id="specsignal_timing_plan">spec\signal_timing_plan</h2>
+<table>
+<thead>
+<tr class="header">
+<th>name</th>
+<th>required</th>
+<th>type</th>
+<th>foreign_key</th>
+<th>description</th>
+<th>constraints maximum</th>
+<th>constraints minimum</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>timing_plan_id</td>
+<td>True</td>
+<td>any</td>
+<td>-</td>
+<td>Primary key.</td>
+<td>-</td>
+<td>-</td>
+</tr>
+<tr class="even">
+<td>controller_id</td>
+<td>True</td>
+<td>any</td>
+<td>Table: <code>signal_controller</code>, Variable: <code>controller_id</code></td>
+<td>Required. Foreign key (signal_controller table).</td>
+<td>-</td>
+<td>-</td>
+</tr>
+<tr class="odd">
+<td>timeday_id</td>
+<td>-</td>
+<td>any</td>
+<td>Table: <code>time_set_definitions</code>, Variable: <code>timeday_id</code></td>
+<td>Conditionally required (either timeday_id or time_day). Foreign key to time_set_definitions.</td>
+<td>-</td>
+<td>-</td>
+</tr>
+<tr class="even">
+<td>time_day</td>
+<td>-</td>
+<td>any</td>
+<td>-</td>
+<td>Conditionally required (either timeday_id or time_day). XXXXXXXX_HHMM_HHMM, where XXXXXXXX is a bitmap of days of the week, Sunday-Saturday, Holiday. The HHMM are the start and end times.</td>
+<td>-</td>
+<td>-</td>
+</tr>
+<tr class="odd">
+<td>cycle_length</td>
+<td>-</td>
+<td>integer</td>
+<td>-</td>
+<td>Cycle length in seconds.</td>
+<td>600</td>
+<td>0</td>
+</tr>
+</tbody>
+</table>
+<h2 id="spectime_set_definitions">spec\time_set_definitions</h2>
+<table>
+<thead>
+<tr class="header">
+<th>name</th>
+<th>required</th>
+<th>type</th>
+<th>foreign_key</th>
+<th>description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>timeday_id</td>
+<td>True</td>
+<td>any</td>
+<td>-</td>
+<td>Primary key.Primary key, similar to <code>service_id</code> in GTFS. Unique name of the time of day. Preferable legible rather than a number.</td>
+</tr>
+<tr class="even">
+<td>monday</td>
+<td>True</td>
+<td>boolean</td>
+<td>-</td>
+<td>Required. Whether Mondays are included.</td>
+</tr>
+<tr class="odd">
+<td>tuesday</td>
+<td>True</td>
+<td>boolean</td>
+<td>-</td>
+<td>Required. Whether Tuesdays are included.</td>
+</tr>
+<tr class="even">
+<td>wednesday</td>
+<td>True</td>
+<td>boolean</td>
+<td>-</td>
+<td>Required. Whether Wednesdays are included.</td>
+</tr>
+<tr class="odd">
+<td>thursday</td>
+<td>True</td>
+<td>boolean</td>
+<td>-</td>
+<td>Required. Whether Thursdays are included.</td>
+</tr>
+<tr class="even">
+<td>Friday</td>
+<td>True</td>
+<td>boolean</td>
+<td>-</td>
+<td>Required. Whether Fridays are included.</td>
+</tr>
+<tr class="odd">
+<td>saturday</td>
+<td>True</td>
+<td>boolean</td>
+<td>-</td>
+<td>Required. Whether Saturdays are included.</td>
+</tr>
+<tr class="even">
+<td>sunday</td>
+<td>True</td>
+<td>boolean</td>
+<td>-</td>
+<td>Required. Whether Sundays are included.</td>
+</tr>
+<tr class="odd">
+<td>holiday</td>
+<td>True</td>
+<td>boolean</td>
+<td>-</td>
+<td>Required. Whether holidays are included.</td>
+</tr>
+<tr class="even">
+<td>start_time</td>
+<td>True</td>
+<td>time</td>
+<td>-</td>
+<td>Required. Start time in HH:MM format.</td>
+</tr>
+<tr class="odd">
+<td>end_time</td>
+<td>True</td>
+<td>time</td>
+<td>-</td>
+<td>Required. End time in HH:MM format.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="specuse_definition">spec\use_definition</h2>
+<table>
+<thead>
+<tr class="header">
+<th>name</th>
+<th>required</th>
+<th>type</th>
+<th>foreign_key</th>
+<th>description</th>
+<th>constraints minimum</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>use</td>
+<td>True</td>
+<td>string</td>
+<td>-</td>
+<td>Primary key</td>
+<td>-</td>
+</tr>
+<tr class="even">
+<td>persons_per_vehicle</td>
+<td>True</td>
+<td>number</td>
+<td>-</td>
+<td>Required.</td>
+<td>0</td>
+</tr>
+<tr class="odd">
+<td>pce</td>
+<td>True</td>
+<td>number</td>
+<td>-</td>
+<td>Required. Passenger car equivelent.</td>
+<td>0</td>
+</tr>
+<tr class="even">
+<td>special_conditions</td>
+<td>-</td>
+<td>string</td>
+<td>-</td>
+<td>Optional.</td>
+<td>-</td>
+</tr>
+<tr class="odd">
+<td>description</td>
+<td>-</td>
+<td>string</td>
+<td>-</td>
+<td>Optional</td>
+<td>-</td>
+</tr>
+</tbody>
+</table>
+<h2 id="specuse_group">spec\use_group</h2>
+<table>
+<thead>
+<tr class="header">
+<th>name</th>
+<th>required</th>
+<th>type</th>
+<th>foreign_key</th>
+<th>description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>use_group</td>
+<td>True</td>
+<td>string</td>
+<td>-</td>
+<td>Primary key.</td>
+</tr>
+<tr class="even">
+<td>uses</td>
+<td>True</td>
+<td>string</td>
+<td>-</td>
+<td>Comma-separated list of uses.</td>
+</tr>
+<tr class="odd">
+<td>description</td>
+<td>-</td>
+<td>string</td>
+<td>-</td>
+<td>Optional.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="speczone">spec\zone</h2>
+<table>
+<thead>
+<tr class="header">
+<th>name</th>
+<th>required</th>
+<th>type</th>
+<th>foreign_key</th>
+<th>description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>zone_id</td>
+<td>True</td>
+<td>any</td>
+<td>-</td>
+<td>Primary key.</td>
+</tr>
+<tr class="even">
+<td>name</td>
+<td>-</td>
+<td>any</td>
+<td>-</td>
+<td>Optional.</td>
+</tr>
+<tr class="odd">
+<td>boundary</td>
+<td>-</td>
+<td>any</td>
+<td>-</td>
+<td>Optional. The polygon geometry of the zone in WKT or Polygon.</td>
+</tr>
+<tr class="even">
+<td>super_zone</td>
+<td>-</td>
+<td>string</td>
+<td>Table: ``, Variable: <code>zone_id</code></td>
+<td>Optional. If there is a hierarchy of zones (e.g., parcels and TAZs), indicates the zone of next higher level.</td>
+</tr>
+</tbody>
+</table>
+</body>
+</html>

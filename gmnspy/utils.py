@@ -34,6 +34,8 @@ def _format_cell_by_type(x,header):
         return "Allowed Values: `"+",".join(map(str,x))+"`"
     if header is "foreign_key" and len(x)>1:
         table, var = x.split(".")
+        if table == "":
+            return "Variable: `{}`".format(var)
         return "Table: `{}`, Variable: `{}`".format(table, var)
     else:
         return str(x)
