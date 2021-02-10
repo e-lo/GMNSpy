@@ -1,5 +1,5 @@
 # GMNS Schema
-Schema for General Network Feed Specification.
+Schema for General Network Modeling Specification.
 
 ## Files in Specification
 
@@ -57,9 +57,9 @@ Example:
               }
         },
         {
-            "name": "road_link_id",
+            "name": "link_id",
             "type": "any",
-            "description": "Required. Foreign key to road_links. The link that the segment is located on.",
+            "description": "Required. Foreign key to link table. The link that the segment is located on.",
             "foreign_key": "link.link_id",
             "constraints": {
               "required": true
