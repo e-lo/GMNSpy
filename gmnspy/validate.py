@@ -247,7 +247,7 @@ def _enum_constraint(s: pd.Series, enum: Union[str,list], sep: str=",") -> Union
     """
     if not isinstance(enum, list):
         enum = enum.split(sep)
-    err_i = (s[~s.isin(enum)]).to_list()
+    err_i = (s[~s.isin(enum)]).drop_duplicates().dropna().to_list()
     if err_i:
         return "Values: {} not in enumerated list: {}".format(err_i, enum)
 
