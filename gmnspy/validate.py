@@ -78,8 +78,9 @@ def apply_schema_to_df(
     try:
         df = df.astype(field_types)
         print("Passed field type coercion")
-    except:
+    except Exception as e:
         print("ouch")
+        print(e)
 
     """
     3. Check field constraints
@@ -264,7 +265,7 @@ def confirm_required_files(resource_df: pd.DataFrame) -> None:
     """
     required_files = resource_df[resource_df["required"]]
 
-    print("Required Files: ", required_files)
+    #print("Required Files: ", required_files)
 
     missing_required_files = required_files[
         required_files["fullpath"].apply(lambda x: not os.path.exists(x))
