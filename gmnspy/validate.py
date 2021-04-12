@@ -271,7 +271,8 @@ def confirm_required_files(resource_df: pd.DataFrame) -> None:
         required_files["fullpath"].apply(lambda x: not os.path.exists(x))
     ][["name", "fullpath"]]
 
-    print("FAIL Missing Required Files: ", missing_required_files)
+    if not missing_required_files.empty:
+        print("FAIL Missing Required Files: ", missing_required_files)
 
 
 def update_resources_based_on_existance(resource_df: pd.DataFrame) -> pd.DataFrame:
@@ -340,7 +341,7 @@ def validate_foreign_keys(gmns_net_d: Dict[str,pd.DataFrame], resource_df: pd.Da
             the field "fullpath_schema" for the schema locations for
             each GMNS table which is where foreign keys are specified.
     """
-    print(gmns_net_d["node"]["node_id"])
+    #print(gmns_net_d["node"]["node_id"])
 
     fkey_errors =  []
     for table_name,df in gmns_net_d.items():
