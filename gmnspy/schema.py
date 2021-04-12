@@ -93,7 +93,7 @@ def read_config(config_file: str, data_dir: str = "", schema_dir: str = "") -> p
     resource_df["fullpath_schema"] = resource_df["schema"].apply(
         lambda x: os.path.join(schema_dir, x)
     )
-    print(resource_df)
+    #print(resource_df)
 
     resource_df.set_index("name", drop=False, inplace=True)
     return resource_df
