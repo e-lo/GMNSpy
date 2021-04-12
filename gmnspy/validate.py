@@ -34,7 +34,7 @@ def apply_schema_to_df(
         )
         schema_file = os.path.join("spec", schema_filename)
     print("SCHEMA", schema_file)
-    print("...validating {} against {}".format(df, schema_file))
+    print("...validating {} against {}".format(originating_file, schema_file))
     schema = read_schema(schema_file=schema_file)
 
     """
@@ -42,7 +42,7 @@ def apply_schema_to_df(
     - Required fields present (strict)
     - Extra fields that aren't in spec (warn)
     """
-    print(schema)
+    #print(schema)
 
     required_fields = [
         f["name"] for f in schema["fields"] if f.get("constraints", {}).get("required")
