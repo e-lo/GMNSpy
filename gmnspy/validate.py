@@ -193,7 +193,8 @@ def _minimum_constraint(s: pd.Series, minimum: Union[float, int]) -> Union[None,
         An error string if there is an error. Otherwise, None.
     """
     if s[s < minimum].dropna().to_list():
-        return "Values lower than minimum: {}".format(minimum)
+        err_keys = list(s[s < minimum].dropna().index)
+        return "Values lower than minimum: {} \n Index of row(s) with bad values: {}".format(minimum, err_keys)
 
 
 def _maximum_constraint(s: pd.Series, maximum: Union[float, int]) -> Union[None,str]:
@@ -210,7 +211,8 @@ def _maximum_constraint(s: pd.Series, maximum: Union[float, int]) -> Union[None,
         An error string if there is an error. Otherwise, None.
     """
     if s[s > maximum].dropna().to_list():
-        return "Values higher than maximum: {}".format(maximum)
+        err_keys = list(s[s > maximum].dropna().index)
+        return "Values higher than maximum: {}. \n Index of row(s) with bad values: {}".format(maximum, err_keys)
 
 
 def _pattern_constraint(s: pd.Series, pattern: str)-> Union[None,str]:
@@ -249,8 +251,9 @@ def _enum_constraint(s: pd.Series, enum: Union[str,list], sep: str=",") -> Union
     if not isinstance(enum, list):
         enum = enum.split(sep)
     err_i = (s[~s.isin(enum)]).drop_duplicates().dropna().to_list()
+    err_keys = list(s[~s.isin(enum)].dropna().index)
     if err_i:
-        return "Values: {} not in enumerated list: {}".format(err_i, enum)
+        return "Values: {} not in enumerated list: {} \n Index of row(s) with bad values: {}".format(err_i, enum, err_keys)
 
 
 
