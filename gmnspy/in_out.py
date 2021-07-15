@@ -79,9 +79,8 @@ def read_gmns_network(
     resource_df = update_resources_based_on_existance(resource_df)
 
     # read each csv to a df and validate format
-    # todo add paired schema
     for _, row in resource_df.iterrows():
-        gmns_net_d[row["name"]] = read_gmns_csv(row["fullpath"])
+        gmns_net_d[row["name"]] = read_gmns_csv(row["fullpath"], schema_file=row["fullpath_schema"])
 
     # validate foreign keys
     validate_foreign_keys(gmns_net_d, resource_df)
