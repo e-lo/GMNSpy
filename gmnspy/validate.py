@@ -97,17 +97,18 @@ def apply_schema_to_df(
     ]
 
     # iterate through all the constraints for all the fields
-    error_list = []
+    error_dict = {}
     for field_name, field_constraints in zip(fields_with_constraints, constraints):
         # print(field_name,field_constraints)
-        error_list += [
+        field_error_list = [
             globals()["_" + c_name + "_constraint"](df[field_name], c_param)
             for c_name, c_param in field_constraints.items()
         ]
-    error_list = [i for i in error_list if i]
-
-    if error_list:
-        print(error_list)
+        if [i for i in field_error_list if i]:
+            error_dict[field_name] = [i for i in field_error_list if i]
+        
+    if error_dict:
+        print(error_dict)
     else:
         print("Passed Field Required Constraint Validation")
 
@@ -125,17 +126,18 @@ def apply_schema_to_df(
         if f["name"] in df.columns and f.get("warnings")
     ]
 
-    warning_list = []
+    warning_dict = {}
     for field_name, field_warnings in zip(fields_with_warnings, warnings):
         # print(field_name,field_constraints)
-        warning_list += [
+        field_warning_list = [
             globals()["_" + c_name + "_constraint"](df[field_name], c_param)
             for c_name, c_param in field_warnings.items()
         ]
-    warning_list = [i for i in warning_list if i]
+        if [i for i in field_warning_list if i]:
+            warning_dict[field_name] = [i for i in field_warning_list if i]
 
-    if warning_list:
-        print(warning_list)
+    if warning_dict:
+        print(warning_dict)
     else:
         print("No Field Warnings")
 
