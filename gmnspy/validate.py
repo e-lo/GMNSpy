@@ -108,7 +108,8 @@ def apply_schema_to_df(
             error_dict[field_name] = [i for i in field_error_list if i]
         
     if error_dict:
-        print(error_dict)
+        for i in error_dict:
+            print("FAIL. {} field has errors. {}".format(i, error_dict[i]))
     else:
         print("Passed Field Required Constraint Validation")
 
@@ -137,7 +138,8 @@ def apply_schema_to_df(
             warning_dict[field_name] = [i for i in field_warning_list if i]
 
     if warning_dict:
-        print(warning_dict)
+        for i in warning_dict:
+            print("WARN. {} field has warnings. {}".format(i, warning_dict[i]))
     else:
         print("No Field Warnings")
 
