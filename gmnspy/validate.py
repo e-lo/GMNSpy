@@ -159,11 +159,14 @@ Constraints are specified in the gmns spec files for each field are treated
 """
 
 
-def _required_constraint(_s, _p) -> Union[None,str]:
+def _required_constraint(s: pd.Series, required: bool) -> Union[None,str]:
     """
-    Currently tested somewhere else.
+    Checks if a required field contains all non-null values.
     """
-    pass
+    if s.isna().any():
+        err_keys = list(s.isna().index)
+        return "Required field has missing values. Index of row(s) with missing values: {}".format(minimum, err_keys)
+
 
 
 def _unique_constraint(s: pd.Series, _) -> Union[None,str]:
