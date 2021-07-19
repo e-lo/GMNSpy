@@ -132,7 +132,7 @@ def apply_schema_to_df(
             globals()["_" + c_name + "_constraint"](df[field_name], c_param)
             for c_name, c_param in field_warnings.items()
         ]
-    warning_list = [i for i in error_list if i]
+    warning_list = [i for i in warning_list if i]
 
     if warning_list:
         print(warning_list)
@@ -250,8 +250,8 @@ def _enum_constraint(s: pd.Series, enum: Union[str,list], sep: str=",") -> Union
     """
     if not isinstance(enum, list):
         enum = enum.split(sep)
-    err_i = (s[~s.isin(enum)]).drop_duplicates().dropna().to_list()
-    err_keys = list(s[~s.isin(enum)].dropna().index)
+    err_i = (s[(~s[s.notna()].isin(enum)).reindex(index=s.index, fill_value=False)]).drop_duplicates().to_list()
+    err_keys = list(s[(~s[s.notna()].isin(enum)).reindex(index=s.index, fill_value=False)].index)
     if err_i:
         return "Values: {} not in enumerated list: {} \n Index of row(s) with bad values: {}".format(err_i, enum, err_keys)
 
