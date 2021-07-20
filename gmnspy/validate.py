@@ -358,9 +358,9 @@ def validate_foreign_keys(gmns_net_d: Dict[str,pd.DataFrame], resource_df: pd.Da
         schema = read_schema(schema_file=resource_df[resource_df["name"]==table_name]["fullpath_schema"][0])
 
         foreign_keys = [
-            (f["name"],f["foreign_key"]) for f in schema["fields"] if (f.get("foreign_key") and f["name"] in df.columns)
+            (f["name"],f["foreign_key"]) for f in schema["fields"] if (f.get("foreign_key") and f["name"] in df.dropna(axis="columns", how="all").columns)
         ]
-        print("FKEYS: ",foreign_keys)
+        print("FKEYS in use: ",foreign_keys)
 
         # find the series for the foreign key
         for field,f_key in foreign_keys:
