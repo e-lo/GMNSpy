@@ -275,7 +275,7 @@ def confirm_required_files(resource_df: pd.DataFrame) -> None:
     """
     required_files = resource_df[resource_df["required"]]
 
-    print("Checking Presence of Required Files: ", required_files["name"])
+    print("Checking Presence of Required Files: ", list(required_files["name"]))
 
     missing_required_files = required_files[
         required_files["fullpath"].apply(lambda x: not os.path.exists(x))
@@ -285,7 +285,7 @@ def confirm_required_files(resource_df: pd.DataFrame) -> None:
         print("FAIL Missing Required Files: ", missing_required_files)
 
 
-def update_resources_based_on_existance(resource_df: pd.DataFrame) -> pd.DataFrame:
+def update_resources_based_on_existence(resource_df: pd.DataFrame) -> pd.DataFrame:
     """
     Update resource dataframe based on which files exist in the directory.
 
@@ -293,7 +293,7 @@ def update_resources_based_on_existance(resource_df: pd.DataFrame) -> pd.DataFra
         resource_df:Dataframe with a row for each GMNS table including
             the the columns "fullpath" and "name".
 
-    Returns: Updated version of resource dataframe without non-existant
+    Returns: Updated version of resource dataframe without non-existent
         files.
     """
     updated_resource_df = resource_df[
