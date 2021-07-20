@@ -326,7 +326,7 @@ def validate_foreign_key(
     # Make sure reference_s is unique
     dupes = reference_s.dropna().duplicated()
     if dupes.any():
-        msg = "FAIL. Duplicates exist in foreign key series: {}".format(dupes)
+        msg = "FAIL. Duplicates exist in foreign key series: {}".format(reference_s[dupes].to_list())
         print(msg)
         fkey_errors.append(msg)
 
