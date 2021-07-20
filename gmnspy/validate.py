@@ -165,7 +165,7 @@ def _required_constraint(s: pd.Series, required: bool) -> Union[None,str]:
     """
     if s.isna().any():
         err_keys = list(s.isna().index)
-        return "Required field has missing values. Index of row(s) with missing values: {}".format(minimum, err_keys)
+        return "Required field has missing values. Index of row(s) with missing values: {}".format(err_keys)
 
 
 
