@@ -33,7 +33,7 @@ def apply_schema_to_df(
             os.path.split(originating_file)[-1].split(".")[0] + ".schema.json"
         )
         schema_file = os.path.join("spec", schema_filename)
-    print("SCHEMA", schema_file)
+    print("\nSCHEMA", schema_file)
     print("...validating {} against {}".format(originating_file, schema_file))
     schema = read_schema(schema_file=schema_file)
 
@@ -201,7 +201,7 @@ def _minimum_constraint(s: pd.Series, minimum: Union[float, int]) -> Union[None,
     """
     if s[s < minimum].dropna().to_list():
         err_keys = list(s[s < minimum].dropna().index)
-        return "Values lower than minimum: {} \n Index of row(s) with bad values: {}".format(minimum, err_keys)
+        return "Values lower than minimum: {}. Index of row(s) with bad values: {}".format(minimum, err_keys)
 
 
 def _maximum_constraint(s: pd.Series, maximum: Union[float, int]) -> Union[None,str]:
@@ -219,7 +219,7 @@ def _maximum_constraint(s: pd.Series, maximum: Union[float, int]) -> Union[None,
     """
     if s[s > maximum].dropna().to_list():
         err_keys = list(s[s > maximum].dropna().index)
-        return "Values higher than maximum: {}. \n Index of row(s) with bad values: {}".format(maximum, err_keys)
+        return "Values higher than maximum: {}. Index of row(s) with bad values: {}".format(maximum, err_keys)
 
 
 def _pattern_constraint(s: pd.Series, pattern: str)-> Union[None,str]:
@@ -260,7 +260,7 @@ def _enum_constraint(s: pd.Series, enum: Union[str,list], sep: str=",") -> Union
     err_i = (s[(~s[s.notna()].isin(enum)).reindex(index=s.index, fill_value=False)]).drop_duplicates().to_list()
     err_keys = list(s[(~s[s.notna()].isin(enum)).reindex(index=s.index, fill_value=False)].index)
     if err_i:
-        return "Values: {} not in enumerated list: {} \n Index of row(s) with bad values: {}".format(err_i, enum, err_keys)
+        return "Values: {} not in enumerated list: {}. Index of row(s) with bad values: {}".format(err_i, enum, err_keys)
 
 
 
@@ -275,7 +275,7 @@ def confirm_required_files(resource_df: pd.DataFrame) -> None:
     """
     required_files = resource_df[resource_df["required"]]
 
-    #print("Required Files: ", required_files)
+    print("Checking Required Files: ", required_files)
 
     missing_required_files = required_files[
         required_files["fullpath"].apply(lambda x: not os.path.exists(x))
