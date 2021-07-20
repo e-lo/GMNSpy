@@ -360,7 +360,7 @@ def validate_foreign_keys(gmns_net_d: Dict[str,pd.DataFrame], resource_df: pd.Da
         foreign_keys = [
             (f["name"],f["foreign_key"]) for f in schema["fields"] if (f.get("foreign_key") and f["name"] in df.dropna(axis="columns", how="all").columns)
         ]
-        print("FKEYS in use: ",foreign_keys)
+        print("FKEYS in use for {} table: ".format(table_name),foreign_keys)
 
         # find the series for the foreign key
         for field,f_key in foreign_keys:
