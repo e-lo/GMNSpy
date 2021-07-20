@@ -275,7 +275,7 @@ def confirm_required_files(resource_df: pd.DataFrame) -> None:
     """
     required_files = resource_df[resource_df["required"]]
 
-    print("Checking Required Files: ", required_files)
+    print("Checking Presence of Required Files: ", required_files["name"])
 
     missing_required_files = required_files[
         required_files["fullpath"].apply(lambda x: not os.path.exists(x))
