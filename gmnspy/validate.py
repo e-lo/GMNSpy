@@ -79,7 +79,7 @@ def apply_schema_to_df(
         df = df.astype(field_types)
         print("Passed field type coercion")
     except Exception as e:
-        print("ouch")
+        print("FAIL. Field did not conform to datatype required by spec.")
         print(e)
 
     """
