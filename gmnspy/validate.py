@@ -186,8 +186,8 @@ def _unique_constraint(s: pd.Series, _) -> Union[None,str]:
     Returns:
         An error string if there is an error. Otherwise, None.
     """
-    if s.dropna().duplicated():
-        dupes = s.dropna().duplicated()
+    dupes = reference_s.dropna().duplicated()
+    if dupes.any():
         return "Values not unique. List of duplicated values: {}. Index of row(s) with bad values: {}.".format(s[dupes].to_list(), dupes.to_list())
 
 
