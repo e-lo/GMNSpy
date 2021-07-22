@@ -95,6 +95,10 @@ def apply_schema_to_df(
         for f in schema["fields"]
         if f["name"] in df.columns and f.get("constraints")
     ]
+    
+    # add uniqueness constraint to primary key
+    if schema.get("primaryKey"):
+        constraints[fields_with_constraints.index(schema["primaryKey"])]["unique"] = True
 
     # iterate through all the constraints for all the fields
     error_dict = {}
@@ -183,7 +187,8 @@ def _unique_constraint(s: pd.Series, _) -> Union[None,str]:
         An error string if there is an error. Otherwise, None.
     """
     if s.dropna().duplicated():
-        return "Values not unique."
+        dupes = s.dropna().duplicated()
+        return "Values not unique. List of duplicated values: {}. Index of row(s) with bad values: {}.".format(s[dupes].to_list(), dupes.to_list())
 
 
 def _minimum_constraint(s: pd.Series, minimum: Union[float, int]) -> Union[None,str]:
