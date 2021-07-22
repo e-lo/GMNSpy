@@ -188,7 +188,7 @@ def _unique_constraint(s: pd.Series, _) -> Union[None,str]:
     """
     dupes = s.dropna().duplicated()
     if dupes.any():
-        return "Values not unique. List of duplicated values: {}. Index of row(s) with bad values: {}.".format(s[dupes].to_list(), dupes.to_list())
+        return "Values not unique. List of duplicated values: {}. Index of row(s) with bad values: {}.".format(s[dupes].to_list(), s[dupes].index.to_list())
 
 
 def _minimum_constraint(s: pd.Series, minimum: Union[float, int]) -> Union[None,str]:
