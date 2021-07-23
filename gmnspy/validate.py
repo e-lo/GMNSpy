@@ -263,8 +263,8 @@ def _enum_constraint(s: pd.Series, enum: Union[str,list], sep: str=",") -> Union
     """
     if not isinstance(enum, list):
         enum = enum.split(sep)
-    err_i = (s[(~s[s.notna()].isin(enum)).reindex(index=s.index, fill_value=False)]).drop_duplicates().to_list()
-    err_keys = list(s[(~s[s.notna()].isin(enum)).reindex(index=s.index, fill_value=False)].index)
+    err_i = (s[(~s.dropna().isin(enum)).reindex(index=s.index, fill_value=False)]).drop_duplicates().to_list()
+    err_keys = list(s[(~s.dropna().isin(enum)).reindex(index=s.index, fill_value=False)].index)
     if err_i:
         return "Values: {} not in enumerated list: {}. Index of row(s) with bad values: {}".format(err_i, enum, err_keys)
 
@@ -337,9 +337,9 @@ def validate_foreign_key(
         fkey_errors.append(msg)
 
     # Make sure all source have a valid reference
-    if not source_s.isin(reference_s.dropna().to_list()).all():
-        bad_values = source_s[~source_s.isin(reference_s.dropna().to_list())].drop_duplicates().to_list()
-        msg = "FAIL. Values exist in source table {} which are not in foreign key reference {}. Bad values: {}".format(source_s.name, reference_s.name, bad_values)
+    if not source_s.dropna().isin(reference_s.dropna().to_list()).all():
+        bad_values = (source_s[(~source_s.dropna().isin(reference_s.dropna().to_list())).reindex(index=source_s.index, fill_value=False)]).drop_duplicates().to_list()
+        msg = "FAIL. Values exist in source field {} which are not in foreign key reference field {}. Bad values: {}".format(source_s.name, reference_s.name, bad_values)
         print(msg)
         fkey_errors.append(msg)
 
