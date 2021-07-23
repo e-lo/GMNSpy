@@ -337,7 +337,7 @@ def validate_foreign_key(
         fkey_errors.append(msg)
 
     # Make sure all source have a valid reference
-    if not source_s.isin(reference_s.dropna().to_list()).any():
+    if not source_s.isin(reference_s.dropna().to_list()).all():
         bad_values = source_s[~source_s.isin(reference_s.dropna().to_list())].drop_duplicates().to_list()
         msg = "FAIL. Values exist in source table {} which are not in foreign key reference {}. Bad values: {}".format(source_s.name, reference_s.name, bad_values)
         print(msg)
