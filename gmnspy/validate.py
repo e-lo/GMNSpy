@@ -387,7 +387,7 @@ def validate_foreign_keys(gmns_net_d: Dict[str,pd.DataFrame], resource_df: pd.Da
             
 
 def check_allowed_uses(gmns_net_d: Dict[str,pd.DataFrame]):
-"""
+    """
     Checks allowed_uses fields to make sure that they only contain values (or lists of
     values) which are defined in use_definition or use_group.
 

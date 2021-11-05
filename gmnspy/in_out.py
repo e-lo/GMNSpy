@@ -7,7 +7,7 @@ from .validate import (
     confirm_required_files,
     update_resources_based_on_existence,
     validate_foreign_keys,
-    check_allowed_uses
+    check_allowed_uses,
 )
 from .schema import read_config
 
