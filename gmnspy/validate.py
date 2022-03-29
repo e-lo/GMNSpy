@@ -398,7 +398,7 @@ def check_allowed_uses(gmns_net_d: Dict[str,pd.DataFrame]):
 
     allowable = list(gmns_net_d.get("use_definition", {}).get("use",[])) + list(gmns_net_d.get("use_group", {}).get("use_group",[]))
     if not allowable:
-        print("Allowed uses enumeration not specified in gmns_net_dwork files.")
+        print("No enumeration specified for allowed_uses fields.")
         return
     
     for table_name, df in gmns_net_d.items():
