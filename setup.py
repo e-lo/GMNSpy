@@ -12,6 +12,7 @@ classifiers = [
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
 ]
+pkg_data = {"gmnspy.spec": ["*.json"]}
 
 with open("README.md") as f:
     long_description = f.read()
@@ -31,6 +32,7 @@ setup(
     license="Apache 2",
     platforms="any",
     packages=["gmnspy"],
+    package_data=pkg_data,
     include_package_data=True,
     install_requires=install_requires,
 )
