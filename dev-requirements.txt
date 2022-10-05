@@ -5,3 +5,5 @@ sphinx_rtd_theme
 black
 recommonmark
 sphinx-markdown-tables
+flake8
+graphviz

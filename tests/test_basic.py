@@ -10,7 +10,11 @@ base_path = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 # https://github.com/zephyr-data-specs/GMNS/edit/master/Small_Network_Examples/Multiple_Bike_Facilities/road_link.csv
 
 test_data = [
-    "link", "geometry", "node", "use_definition", "use_group",
+    "link",
+    "geometry",
+    "node",
+    "use_definition",
+    "use_group",
 ]
 schemas = glob.glob("../gmnspy/**/*.schema.json", recursive=True)
 
@@ -31,15 +35,16 @@ def test_validate_dfs(test_data_name):
 
 @pytest.mark.travis
 def test_validate_relationships():
-    net = gmnspy.in_out.read_gmns_network(os.path.join(base_path, "tests", "data"))
+    _ = gmnspy.in_out.read_gmns_network(os.path.join(base_path, "tests", "data"))
+
 
 
 @pytest.mark.travis
 @pytest.mark.elo
 @pytest.mark.parametrize("schema_file", schemas)
-def test_read_schema(schema_file):
+def test_read_schema2(schema_file):
     # schema_file = os.path.join(base_path, "spec", "link.schema.json")
     print("reading" + schema_file)
     s = gmnspy.read_schema(schema_file)
-    s_md = gmnspy.list_to_md_table(s['fields'])
+    s_md = gmnspy.list_to_md_table(s["fields"])
     print(s_md)
