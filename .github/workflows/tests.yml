@@ -19,3 +19,8 @@ jobs:
       run: |
         pip install flake8
         flake8
+        -
+    - name: Check code format with Black
+      run: |
+        pip install black
+        black --check .
