@@ -19,9 +19,7 @@ import gmnspy
 # -- Generate Schema Documentation -------------------------------------------
 
 gmnspy.document_schema(
-    base_path=os.path.join(
-        os.path.dirname(os.path.dirname(os.path.realpath(__file__))), "spec"
-    ),
+    base_path=os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))), "spec"),
     out_path=".",
 )
 

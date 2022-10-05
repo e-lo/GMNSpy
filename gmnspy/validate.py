@@ -3,12 +3,10 @@ from typing import Union, Dict
 
 import pandas as pd
 
-from .schema import read_schema, SCHEMA_TO_PANDAS_TYPES, FORMAT_TO_REGEX
+from .schema import read_schema, SCHEMA_TO_PANDAS_TYPES
 
 
-def apply_schema_to_df(
-    df: pd.DataFrame, schema_file: str = None, originating_file: str = None
-) -> pd.DataFrame:
+def apply_schema_to_df(df: pd.DataFrame, schema_file: str = None, originating_file: str = None) -> pd.DataFrame:
     """
     Evaluates a gmns table against a specified data schema.
     (1) Checks required fields exist
@@ -29,9 +27,7 @@ def apply_schema_to_df(
             and warnings evaluated.
     """
     if not schema_file:
-        schema_filename = (
-            os.path.split(originating_file)[-1].split(".")[0] + ".schema.json"
-        )
+        schema_filename = os.path.split(originating_file)[-1].split(".")[0] + ".schema.json"
         schema_file = os.path.join("spec", schema_filename)
     print("SCHEMA", schema_file)
     print("...validating {} against {}".format(df, schema_file))
@@ -44,9 +40,7 @@ def apply_schema_to_df(
     """
     print(schema)
 
-    required_fields = [
-        f["name"] for f in schema["fields"] if f.get("constraints", {}).get("required")
-    ]
+    required_fields = [f["name"] for f in schema["fields"] if f.get("constraints", {}).get("required")]
     missing_required_fields = set(required_fields) - set(df.columns)
     if missing_required_fields:
         msg = "FAIL. Missing required fields {}".format(missing_required_fields)
@@ -64,36 +58,24 @@ def apply_schema_to_df(
     ##TODO: enforce formats
     """
     used_fields = [f["name"] for f in schema["fields"] if f["name"] in df.columns]
-    types = [
-        SCHEMA_TO_PANDAS_TYPES[f["type"]]
-        for f in schema["fields"]
-        if f["name"] in df.columns
-    ]
-    fmt = [FORMAT_TO_REGEX.get(f.get("format", None), None) for f in schema["fields"]]
+    types = [SCHEMA_TO_PANDAS_TYPES[f["type"]] for f in schema["fields"] if f["name"] in df.columns]
+    # fmt = [FORMAT_TO_REGEX.get(f.get("format", None), None) for f in schema["fields"]]
 
     field_types = dict(zip(used_fields, types))
-    field_formats = dict(zip(used_fields, fmt))
+    # field_formats = dict(zip(used_fields, fmt))
 
     # print(field_types)
     try:
         df = df.astype(field_types)
         print("Passed field type coercion")
-    except:
-        print("ouch")
+    except Exception as e:
+        print(f"ouch. {e.args}")
 
     """
     3. Check field constraints
     """
-    fields_with_constraints = [
-        f["name"]
-        for f in schema["fields"]
-        if f["name"] in df.columns and f.get("constraints")
-    ]
-    constraints = [
-        f["constraints"]
-        for f in schema["fields"]
-        if f["name"] in df.columns and f.get("constraints")
-    ]
+    fields_with_constraints = [f["name"] for f in schema["fields"] if f["name"] in df.columns and f.get("constraints")]
+    constraints = [f["constraints"] for f in schema["fields"] if f["name"] in df.columns and f.get("constraints")]
 
     # iterate through all the constraints for all the fields
     error_list = []
@@ -113,16 +95,8 @@ def apply_schema_to_df(
     """
     4. Check field warnings
     """
-    fields_with_warnings = [
-        f["name"]
-        for f in schema["fields"]
-        if f["name"] in df.columns and f.get("warnings")
-    ]
-    warnings = [
-        f["warnings"]
-        for f in schema["fields"]
-        if f["name"] in df.columns and f.get("warnings")
-    ]
+    fields_with_warnings = [f["name"] for f in schema["fields"] if f["name"] in df.columns and f.get("warnings")]
+    warnings = [f["warnings"] for f in schema["fields"] if f["name"] in df.columns and f.get("warnings")]
 
     warning_list = []
     for field_name, field_warnings in zip(fields_with_warnings, warnings):
@@ -154,14 +128,14 @@ Constraints are specified in the gmns spec files for each field are treated
 """
 
 
-def _required_constraint(_s, _p) -> Union[None,str]:
+def _required_constraint(_s, _p) -> Union[None, str]:
     """
     Currently tested somewhere else.
     """
     pass
 
 
-def _unique_constraint(s: pd.Series, _) -> Union[None,str]:
+def _unique_constraint(s: pd.Series, _) -> Union[None, str]:
     """
     Checks if series contains unique values.
 
@@ -178,7 +152,7 @@ def _unique_constraint(s: pd.Series, _) -> Union[None,str]:
         return "Values not unique."
 
 
-def _minimum_constraint(s: pd.Series, minimum: Union[float, int]) -> Union[None,str]:
+def _minimum_constraint(s: pd.Series, minimum: Union[float, int]) -> Union[None, str]:
     """
     Checks if series contains value under the specified minimum.
 
@@ -195,7 +169,7 @@ def _minimum_constraint(s: pd.Series, minimum: Union[float, int]) -> Union[None,
         return "Values lower than minimum: {}".format(minimum)
 
 
-def _maximum_constraint(s: pd.Series, maximum: Union[float, int]) -> Union[None,str]:
+def _maximum_constraint(s: pd.Series, maximum: Union[float, int]) -> Union[None, str]:
     """
     Checks if series contains value above the specified maximum.
 
@@ -212,7 +186,7 @@ def _maximum_constraint(s: pd.Series, maximum: Union[float, int]) -> Union[None,
         return "Values higher than maximum: {}".format(maximum)
 
 
-def _pattern_constraint(s: pd.Series, pattern: str)-> Union[None,str]:
+def _pattern_constraint(s: pd.Series, pattern: str) -> Union[None, str]:
     """
     Checks if series contains values conforming to specified pattern.
 
@@ -229,7 +203,7 @@ def _pattern_constraint(s: pd.Series, pattern: str)-> Union[None,str]:
         return "Doesn't match pattern: {}".format(pattern)
 
 
-def _enum_constraint(s: pd.Series, enum: Union[str,list], sep: str=",") -> Union[None,str]:
+def _enum_constraint(s: pd.Series, enum: Union[str, list], sep: str = ",") -> Union[None, str]:
     """
     Checks if series contains valid enum values.
 
@@ -252,8 +226,6 @@ def _enum_constraint(s: pd.Series, enum: Union[str,list], sep: str=",") -> Union
         return "Values: {} not in enumerated list: {}".format(err_i, enum)
 
 
-
-
 def confirm_required_files(resource_df: pd.DataFrame) -> None:
     """
     Check required files exist. Will fail if they don't.
@@ -266,9 +238,9 @@ def confirm_required_files(resource_df: pd.DataFrame) -> None:
 
     print("Required Files: ", required_files)
 
-    missing_required_files = required_files[
-        required_files["fullpath"].apply(lambda x: not os.path.exists(x))
-    ][["name", "fullpath"]]
+    missing_required_files = required_files[required_files["fullpath"].apply(lambda x: not os.path.exists(x))][
+        ["name", "fullpath"]
+    ]
 
     print("FAIL Missing Required Files: ", missing_required_files)
 
@@ -284,20 +256,15 @@ def update_resources_based_on_existance(resource_df: pd.DataFrame) -> pd.DataFra
     Returns: Updated version of resource dataframe without non-existant
         files.
     """
-    updated_resource_df = resource_df[
-        resource_df["fullpath"].apply(lambda x: os.path.exists(x))
-    ]
+    updated_resource_df = resource_df[resource_df["fullpath"].apply(lambda x: os.path.exists(x))]
 
     print(
-        "Found following files to define network: \n - {}".format(
-            "\n - ".join(updated_resource_df["name"].to_list())
-        )
+        "Found following files to define network: \n - {}".format("\n - ".join(updated_resource_df["name"].to_list()))
     )
     return updated_resource_df
 
 
-def validate_foreign_key(
-    source_s: pd.Series, reference_s: pd.Series) -> list:
+def validate_foreign_key(source_s: pd.Series, reference_s: pd.Series) -> list:
     """
     Checks that the source_s series links to a valid reference_s series
         which has (1) unique IDs, and (2) contains the values of the
@@ -326,7 +293,8 @@ def validate_foreign_key(
 
     return fkey_errors
 
-def validate_foreign_keys(gmns_net_d: Dict[str,pd.DataFrame], resource_df: pd.DataFrame) -> None:
+
+def validate_foreign_keys(gmns_net_d: Dict[str, pd.DataFrame], resource_df: pd.DataFrame) -> None:
     """
     Finds foreign keys in schemas of each GMNS table and validates that
     they link to a valid series which has (1) unique IDs, and (2) contains
@@ -341,27 +309,27 @@ def validate_foreign_keys(gmns_net_d: Dict[str,pd.DataFrame], resource_df: pd.Da
     """
     print(gmns_net_d["node"]["node_id"])
 
-    fkey_errors =  []
-    for table_name,df in gmns_net_d.items():
-        schema = read_schema(schema_file=resource_df[resource_df["name"]==table_name]["fullpath_schema"][0])
+    fkey_errors = []
+    for table_name, df in gmns_net_d.items():
+        schema = read_schema(schema_file=resource_df[resource_df["name"] == table_name]["fullpath_schema"][0])
 
         foreign_keys = [
-            (f["name"],f["foreign_key"]) for f in schema["fields"] if (f.get("foreign_key") and f["name"] in df.columns)
+            (f["name"], f["foreign_key"])
+            for f in schema["fields"]
+            if (f.get("foreign_key") and f["name"] in df.columns)
         ]
-        print("FKEYS: ",foreign_keys)
+        print("FKEYS: ", foreign_keys)
 
         # find the series for the foreign key
-        for field,f_key in foreign_keys:
-            #NOTE this requires that field names that are foreign keys not have '.'
-            t,f = f_key.split(".")
+        for field, f_key in foreign_keys:
+            # NOTE this requires that field names that are foreign keys not have '.'
+            t, f = f_key.split(".")
             # if it is in same table
             if not t:
                 reference_s = df[f]
-            # or not...
             else:
-                try:
-                    reference_s = gmns_net_d[t][f]
-                except:
-                    print("FAIL. {} field in table {} does not exist".format(f,t))
+                reference_s = gmns_net_d.get(t, {}).get(f, None)
+                if reference_s is None:
+                    print(f"FAIL. {f} field in table {t} does not exist")
                     continue
-            fkey_errors+=validate_foreign_key(df[field], reference_s)
+            fkey_errors += validate_foreign_key(df[field], reference_s)
