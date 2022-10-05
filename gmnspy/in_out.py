@@ -2,18 +2,16 @@ import os
 
 import pandas as pd
 
+from .schema import read_config
 from .validate import (
     apply_schema_to_df,
     confirm_required_files,
     update_resources_based_on_existance,
     validate_foreign_keys,
 )
-from .schema import read_config
 
 
-def read_gmns_csv(
-    filename: str, validate: bool = True, schema_file: str = None
-) -> pd.DataFrame:
+def read_gmns_csv(filename: str, validate: bool = True, schema_file: str = None) -> pd.DataFrame:
     """
     Reads csv and returns it as a dataframe; optionally coerced to the
     types as specified in the data schema.
@@ -36,9 +34,7 @@ def read_gmns_csv(
     return df
 
 
-def read_gmns_network(
-    data_directory: str, config: str = os.path.join("spec", "gmns.spec.json")
-) -> dict:
+def read_gmns_network(data_directory: str, config: str = os.path.join("spec", "gmns.spec.json")) -> dict:
     """
     Reads each GMNS file as specified in the config and validates it to
     their specified schema including foreign keys between the tables.
