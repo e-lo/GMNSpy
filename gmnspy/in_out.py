@@ -3,8 +3,8 @@ from os.path import join, dirname, realpath
 import pandas as pd
 
 from gmnspy.utils import logger
-from gmnspy.validation import update_resources_based_on_existance
 from gmnspy.validation import validate_foreign_keys, check_required_files, apply_schema_to_df
+from gmnspy.validation import check_allowed_uses, update_resources_based_on_existance
 from .schema import read_config
 
 spec_folder = join(dirname(realpath(__file__)), "spec")
@@ -44,7 +44,7 @@ def read_gmns_network(data_directory: str, config: str = None, raise_error=False
             specifying the "name", "path", and "schema" for each GMNS table as
             well as a boolean value for "required". If not specified, assumes
             it is in a subdirectory "spec/gmns.spec.json"
-        raise_error: Raises error if missing folder
+        raise_error: Raises error if error found
 
             Example:
             ::
@@ -79,11 +79,13 @@ def read_gmns_network(data_directory: str, config: str = None, raise_error=False
     resource_df = update_resources_based_on_existance(resource_df)
 
     # read each csv to a df and validate format
-    # todo add paired schema
     for _, row in resource_df.iterrows():
-        gmns_net_d[row["name"]] = read_gmns_csv(row["fullpath"])
+        gmns_net_d[row["name"]] = read_gmns_csv(row["fullpath"], schema_file=row["fullpath_schema"])
 
     # validate foreign keys
     validate_foreign_keys(gmns_net_d, resource_df, raise_error)
+
+    # check allowed uses
+    check_allowed_uses(gmns_net_d, raise_error)
 
     return gmns_net_d

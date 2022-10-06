@@ -7,7 +7,7 @@ import pandas as pd
 from .utils import list_to_md_table, logger
 
 SCHEMA_TO_PANDAS_TYPES = {
-    "integer": "int64",
+    "integer": "Int64",
     "number": "float",
     "string": "string",
     "any": "object",
