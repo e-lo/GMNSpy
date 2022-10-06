@@ -4,7 +4,7 @@ from os.path import dirname, realpath, join
 
 import pandas as pd
 
-from .utils import list_to_md_table
+from .utils import list_to_md_table, logger
 
 SCHEMA_TO_PANDAS_TYPES = {
     "integer": "int64",
@@ -73,13 +73,11 @@ def read_config(config_file: str, data_dir: str = "", schema_dir: str = "") -> p
     with open(config_file, "r", encoding="utf-8") as f:
         config = json.load(f)
     ## todo validate config
-    # resource_dict = {i["name"]: i for i in config["resources"]}
-    # print(config["resources"])
 
     resource_df = pd.DataFrame(config["resources"])
     resource_df["required"].fillna(False, inplace=True)
 
-    print(resource_df)
+    logger.info(str(resource_df))
 
     # Add full paths to data files
     if not data_dir:
@@ -90,7 +88,7 @@ def read_config(config_file: str, data_dir: str = "", schema_dir: str = "") -> p
     if not schema_dir:
         schema_dir = dirname(config_file)
     resource_df["fullpath_schema"] = resource_df["schema"].apply(lambda x: join(schema_dir, x))
-    print(resource_df)
+    logger.info(str(resource_df))
 
     resource_df.set_index("name", drop=False, inplace=True)
     return resource_df
@@ -98,19 +96,19 @@ def read_config(config_file: str, data_dir: str = "", schema_dir: str = "") -> p
 
 def document_schema(base_path: str = None, out_path: str = None):
     """ """
-    print("DOCUMENTING SCHEMA")
+    logger.info("DOCUMENTING SCHEMA")
 
     base_path = base_path or join(dirname(realpath(__file__)), "spec")
     out_path = out_path or join(base_path, "docs")
-    print("Looking for specs in: {}".format(base_path))
+    logger.info(f"Looking for specs in: {base_path}")
 
     # Create markdown with a table for each schema file
     file_schema_markdown = ""
     schema_files = glob.glob(join(base_path, "**/*.schema.json"), recursive=True)
-    print("files: {}".format(schema_files))
+    logger.info(f"files: {schema_files}")
 
     for s in schema_files:
-        print("Documenting Schema: {}".format(s))
+        logger.info(f"Documenting Schema: {s}")
         spec_name = s.split("/")[-1].split(".")[0]
         schema = read_schema(s)
         file_schema_markdown += "\n\n## {}\n".format(spec_name)

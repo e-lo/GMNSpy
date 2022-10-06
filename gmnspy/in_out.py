@@ -2,13 +2,10 @@ from os.path import join, dirname, realpath
 
 import pandas as pd
 
+from gmnspy.utils import logger
+from gmnspy.validation import update_resources_based_on_existance
+from gmnspy.validation import validate_foreign_keys, check_required_files, apply_schema_to_df
 from .schema import read_config
-from .validate import (
-    apply_schema_to_df,
-    confirm_required_files,
-    update_resources_based_on_existance,
-    validate_foreign_keys,
-)
 
 spec_folder = join(dirname(realpath(__file__)), "spec")
 
@@ -31,12 +28,12 @@ def read_gmns_csv(filename: str, validate: bool = True, schema_file: str = None)
     if validate:
         apply_schema_to_df(df, schema_file=schema_file, originating_file=filename)
     else:
-        print("not validating {}".format(filename))
+        logger.info(f"not validating {filename}")
 
     return df
 
 
-def read_gmns_network(data_directory: str, config: str = join(spec_folder, "gmns.spec.json")) -> dict:
+def read_gmns_network(data_directory: str, config: str = None, raise_error=False) -> dict:
     """
     Reads each GMNS file as specified in the config and validates it to
     their specified schema including foreign keys between the tables.
@@ -47,6 +44,8 @@ def read_gmns_network(data_directory: str, config: str = join(spec_folder, "gmns
             specifying the "name", "path", and "schema" for each GMNS table as
             well as a boolean value for "required". If not specified, assumes
             it is in a subdirectory "spec/gmns.spec.json"
+        raise_error: Raises error if missing folder
+
             Example:
             ::
                 {
@@ -67,14 +66,14 @@ def read_gmns_network(data_directory: str, config: str = join(spec_folder, "gmns
     returns: a dictionary mapping the name of each GMNS table to a
         validated dataframe.
     """
+
+    config = config or join(spec_folder, "gmns.spec.json")
     gmns_net_d = {}
 
-    if config:
-        resource_df = read_config(config, data_dir=data_directory)
-    else:
-        resource_df = 1
+    resource_df = read_config(config, data_dir=data_directory) if config else 1
+
     # check required files exist,
-    confirm_required_files(resource_df)
+    check_required_files(resource_df, raise_error)
 
     # update resource dictionary based on what files are in the directory
     resource_df = update_resources_based_on_existance(resource_df)
@@ -85,6 +84,6 @@ def read_gmns_network(data_directory: str, config: str = join(spec_folder, "gmns
         gmns_net_d[row["name"]] = read_gmns_csv(row["fullpath"])
 
     # validate foreign keys
-    validate_foreign_keys(gmns_net_d, resource_df)
+    validate_foreign_keys(gmns_net_d, resource_df, raise_error)
 
     return gmns_net_d
