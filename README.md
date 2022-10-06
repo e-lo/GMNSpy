@@ -135,7 +135,7 @@ Please add issues, bugs, and feature requests [to Github](https://github.com/e-l
 
 Current feature roadmap includes:
 
- - converion tools from open street map
+ - conversion tools from open street map
  - network connectivity checks
  - auto documentation of schema to markdown files
  - tests tests tests
