@@ -6,7 +6,7 @@ import pandas as pd
 from .utils import list_to_md_table
 
 SCHEMA_TO_PANDAS_TYPES = {
-    "integer": "int64",
+    "integer": "Int64",
     "number": "float",
     "string": "string",
     "any": "object",
@@ -78,7 +78,7 @@ def read_config(config_file: str, data_dir: str = "", schema_dir: str = "") -> p
     resource_df = pd.DataFrame(config["resources"])
     resource_df["required"].fillna(False, inplace=True)
 
-    print(resource_df)
+    #print(resource_df)
 
     # Add full paths to data files
     if not data_dir:
@@ -93,7 +93,7 @@ def read_config(config_file: str, data_dir: str = "", schema_dir: str = "") -> p
     resource_df["fullpath_schema"] = resource_df["schema"].apply(
         lambda x: os.path.join(schema_dir, x)
     )
-    print(resource_df)
+    #print(resource_df)
 
     resource_df.set_index("name", drop=False, inplace=True)
     return resource_df
@@ -117,7 +117,7 @@ def document_schema(base_path:str = '', out_path: str = ''):
 
     for s in schema_files:
         print("Documenting Schema: {}".format(s))
-        spec_name = s.split("/")[-1].split(".")[0]
+        spec_name = s.split("\\")[-1].split(".")[0]
         schema = read_schema(s)
         file_schema_markdown+="\n\n## {}\n".format(spec_name)
         file_schema_markdown+="\n\n{}".format(list_to_md_table(schema["fields"]))

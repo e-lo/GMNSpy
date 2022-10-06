@@ -33,8 +33,8 @@ def apply_schema_to_df(
             os.path.split(originating_file)[-1].split(".")[0] + ".schema.json"
         )
         schema_file = os.path.join("spec", schema_filename)
-    print("SCHEMA", schema_file)
-    print("...validating {} against {}".format(df, schema_file))
+    print("\nSCHEMA", schema_file)
+    print("...validating {} against {}".format(originating_file, schema_file))
     schema = read_schema(schema_file=schema_file)
 
     """
@@ -42,7 +42,7 @@ def apply_schema_to_df(
     - Required fields present (strict)
     - Extra fields that aren't in spec (warn)
     """
-    print(schema)
+    #print(schema)
 
     required_fields = [
         f["name"] for f in schema["fields"] if f.get("constraints", {}).get("required")
@@ -78,8 +78,9 @@ def apply_schema_to_df(
     try:
         df = df.astype(field_types)
         print("Passed field type coercion")
-    except:
-        print("ouch")
+    except Exception as e:
+        print("FAIL. Field did not conform to datatype required by spec.")
+        print(e)
 
     """
     3. Check field constraints
@@ -94,19 +95,25 @@ def apply_schema_to_df(
         for f in schema["fields"]
         if f["name"] in df.columns and f.get("constraints")
     ]
+    
+    # add uniqueness constraint to primary key
+    if schema.get("primaryKey"):
+        constraints[fields_with_constraints.index(schema["primaryKey"])]["unique"] = True
 
     # iterate through all the constraints for all the fields
-    error_list = []
+    error_dict = {}
     for field_name, field_constraints in zip(fields_with_constraints, constraints):
         # print(field_name,field_constraints)
-        error_list += [
+        field_error_list = [
             globals()["_" + c_name + "_constraint"](df[field_name], c_param)
             for c_name, c_param in field_constraints.items()
         ]
-    error_list = [i for i in error_list if i]
-
-    if error_list:
-        print(error_list)
+        if [i for i in field_error_list if i]:
+            error_dict[field_name] = [i for i in field_error_list if i]
+        
+    if error_dict:
+        for i in error_dict:
+            print("FAIL. {} field has errors. {}".format(i, error_dict[i]))
     else:
         print("Passed Field Required Constraint Validation")
 
@@ -124,17 +131,19 @@ def apply_schema_to_df(
         if f["name"] in df.columns and f.get("warnings")
     ]
 
-    warning_list = []
+    warning_dict = {}
     for field_name, field_warnings in zip(fields_with_warnings, warnings):
         # print(field_name,field_constraints)
-        warning_list += [
+        field_warning_list = [
             globals()["_" + c_name + "_constraint"](df[field_name], c_param)
             for c_name, c_param in field_warnings.items()
         ]
-    warning_list = [i for i in error_list if i]
+        if [i for i in field_warning_list if i]:
+            warning_dict[field_name] = [i for i in field_warning_list if i]
 
-    if warning_list:
-        print(warning_list)
+    if warning_dict:
+        for i in warning_dict:
+            print("WARN. {} field has warnings. {}".format(i, warning_dict[i]))
     else:
         print("No Field Warnings")
 
@@ -154,11 +163,14 @@ Constraints are specified in the gmns spec files for each field are treated
 """
 
 
-def _required_constraint(_s, _p) -> Union[None,str]:
+def _required_constraint(s: pd.Series, required: bool) -> Union[None,str]:
     """
-    Currently tested somewhere else.
+    Checks if a required field contains all non-null values.
     """
-    pass
+    if s.isna().any():
+        err_keys = list(s.isna().index)
+        return "Required field has missing values. Index of row(s) with missing values: {}".format(err_keys)
+
 
 
 def _unique_constraint(s: pd.Series, _) -> Union[None,str]:
@@ -174,8 +186,10 @@ def _unique_constraint(s: pd.Series, _) -> Union[None,str]:
     Returns:
         An error string if there is an error. Otherwise, None.
     """
-    if s.dropna().duplicated():
-        return "Values not unique."
+    dupes = s.dropna().duplicated()
+    if dupes.any():
+        err_keys = s[s.dropna().duplicated(keep=False)].index.to_list()
+        return "Values not unique. List of duplicated values: {}. Index of row(s) with bad values: {}.".format(s[dupes].to_list(), err_keys)
 
 
 def _minimum_constraint(s: pd.Series, minimum: Union[float, int]) -> Union[None,str]:
@@ -192,7 +206,8 @@ def _minimum_constraint(s: pd.Series, minimum: Union[float, int]) -> Union[None,
         An error string if there is an error. Otherwise, None.
     """
     if s[s < minimum].dropna().to_list():
-        return "Values lower than minimum: {}".format(minimum)
+        err_keys = list(s[s < minimum].dropna().index)
+        return "Values lower than minimum: {}. Index of row(s) with bad values: {}".format(minimum, err_keys)
 
 
 def _maximum_constraint(s: pd.Series, maximum: Union[float, int]) -> Union[None,str]:
@@ -209,7 +224,8 @@ def _maximum_constraint(s: pd.Series, maximum: Union[float, int]) -> Union[None,
         An error string if there is an error. Otherwise, None.
     """
     if s[s > maximum].dropna().to_list():
-        return "Values higher than maximum: {}".format(maximum)
+        err_keys = list(s[s > maximum].dropna().index)
+        return "Values higher than maximum: {}. Index of row(s) with bad values: {}".format(maximum, err_keys)
 
 
 def _pattern_constraint(s: pd.Series, pattern: str)-> Union[None,str]:
@@ -247,9 +263,10 @@ def _enum_constraint(s: pd.Series, enum: Union[str,list], sep: str=",") -> Union
     """
     if not isinstance(enum, list):
         enum = enum.split(sep)
-    err_i = (s[~s.isin(enum)]).drop_duplicates().dropna().to_list()
+    err_i = (s[(~s.dropna().isin(enum)).reindex(index=s.index, fill_value=False)]).drop_duplicates().to_list()
+    err_keys = list(s[(~s.dropna().isin(enum)).reindex(index=s.index, fill_value=False)].index)
     if err_i:
-        return "Values: {} not in enumerated list: {}".format(err_i, enum)
+        return "Values: {} not in enumerated list: {}. Index of row(s) with bad values: {}".format(err_i, enum, err_keys)
 
 
 
@@ -264,16 +281,17 @@ def confirm_required_files(resource_df: pd.DataFrame) -> None:
     """
     required_files = resource_df[resource_df["required"]]
 
-    print("Required Files: ", required_files)
+    print("Checking Presence of Required Files: ", list(required_files["name"]))
 
     missing_required_files = required_files[
         required_files["fullpath"].apply(lambda x: not os.path.exists(x))
     ][["name", "fullpath"]]
 
-    print("FAIL Missing Required Files: ", missing_required_files)
+    if not missing_required_files.empty:
+        print("FAIL Missing Required Files: ", missing_required_files)
 
 
-def update_resources_based_on_existance(resource_df: pd.DataFrame) -> pd.DataFrame:
+def update_resources_based_on_existence(resource_df: pd.DataFrame) -> pd.DataFrame:
     """
     Update resource dataframe based on which files exist in the directory.
 
@@ -281,7 +299,7 @@ def update_resources_based_on_existance(resource_df: pd.DataFrame) -> pd.DataFra
         resource_df:Dataframe with a row for each GMNS table including
             the the columns "fullpath" and "name".
 
-    Returns: Updated version of resource dataframe without non-existant
+    Returns: Updated version of resource dataframe without non-existent
         files.
     """
     updated_resource_df = resource_df[
@@ -314,13 +332,14 @@ def validate_foreign_key(
     # Make sure reference_s is unique
     dupes = reference_s.dropna().duplicated()
     if dupes.any():
-        msg = "FAIL. Duplicates exist in foreign key series: {}".format(dupes)
+        msg = "FAIL. Duplicates exist in foreign key series: {}".format(reference_s[dupes].to_list())
         print(msg)
         fkey_errors.append(msg)
 
     # Make sure all source have a valid reference
-    if not source_s.isin(reference_s.dropna().to_list()).any():
-        msg = "FAIL. {} not in foreign key reference.".format(source_s[source_s.isin(reference_s.dropna().to_list())])
+    if not source_s.dropna().isin(reference_s.dropna().to_list()).all():
+        bad_values = (source_s[(~source_s.dropna().isin(reference_s.dropna().to_list())).reindex(index=source_s.index, fill_value=False)]).drop_duplicates().to_list()
+        msg = "FAIL. Values exist in source field {} which are not in foreign key reference field {}. Bad values: {}".format(source_s.name, reference_s.name, bad_values)
         print(msg)
         fkey_errors.append(msg)
 
@@ -339,16 +358,16 @@ def validate_foreign_keys(gmns_net_d: Dict[str,pd.DataFrame], resource_df: pd.Da
             the field "fullpath_schema" for the schema locations for
             each GMNS table which is where foreign keys are specified.
     """
-    print(gmns_net_d["node"]["node_id"])
+    #print(gmns_net_d["node"]["node_id"])
 
     fkey_errors =  []
     for table_name,df in gmns_net_d.items():
         schema = read_schema(schema_file=resource_df[resource_df["name"]==table_name]["fullpath_schema"][0])
 
         foreign_keys = [
-            (f["name"],f["foreign_key"]) for f in schema["fields"] if (f.get("foreign_key") and f["name"] in df.columns)
+            (f["name"],f["foreign_key"]) for f in schema["fields"] if (f.get("foreign_key") and f["name"] in df.dropna(axis="columns", how="all").columns)
         ]
-        print("FKEYS: ",foreign_keys)
+        print("FKEYS in use for {} table: ".format(table_name),foreign_keys)
 
         # find the series for the foreign key
         for field,f_key in foreign_keys:
@@ -365,3 +384,33 @@ def validate_foreign_keys(gmns_net_d: Dict[str,pd.DataFrame], resource_df: pd.Da
                     print("FAIL. {} field in table {} does not exist".format(f,t))
                     continue
             fkey_errors+=validate_foreign_key(df[field], reference_s)
+            
+
+def check_allowed_uses(gmns_net_d: Dict[str,pd.DataFrame]):
+    """
+    Checks allowed_uses fields to make sure that they only contain values (or lists of
+    values) which are defined in use_definition or use_group.
+
+    Args:
+        gmns_net_d: Dictionary containing dataframes of all the GMNS tables
+            for the network keyed to their file names (i.e. "link").
+    """
+
+    allowable = list(gmns_net_d.get("use_definition", {}).get("use",[])) + list(gmns_net_d.get("use_group", {}).get("use_group",[]))
+    if not allowable:
+        print("No enumeration specified for allowed_uses fields.")
+        return
+    
+    for table_name, df in gmns_net_d.items():
+        au_values = df.get("allowed_uses", pd.Series(dtype="object")).dropna()
+        if au_values.empty:
+            continue
+        print("Checking allowed use values on {} table".format(table_name))
+        
+        bad_au = au_values[~au_values.apply(lambda f: {s.strip() for s in f.lower().split(",")}.issubset(allowable))]
+        if bad_au.empty:
+            print("   PASS.")
+            continue
+        print ("   FAIL. {} include values outside of the use_definition or use_group names.".format(set(bad_au)))
+
+

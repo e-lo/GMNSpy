@@ -5,8 +5,9 @@ import pandas as pd
 from .validate import (
     apply_schema_to_df,
     confirm_required_files,
-    update_resources_based_on_existance,
+    update_resources_based_on_existence,
     validate_foreign_keys,
+    check_allowed_uses,
 )
 from .schema import read_config
 
@@ -76,14 +77,16 @@ def read_gmns_network(
     confirm_required_files(resource_df)
 
     # update resource dictionary based on what files are in the directory
-    resource_df = update_resources_based_on_existance(resource_df)
+    resource_df = update_resources_based_on_existence(resource_df)
 
     # read each csv to a df and validate format
-    # todo add paired schema
     for _, row in resource_df.iterrows():
-        gmns_net_d[row["name"]] = read_gmns_csv(row["fullpath"])
+        gmns_net_d[row["name"]] = read_gmns_csv(row["fullpath"], schema_file=row["fullpath_schema"])
 
     # validate foreign keys
     validate_foreign_keys(gmns_net_d, resource_df)
+    
+    # check allowed uses
+    check_allowed_uses(gmns_net_d)
 
     return gmns_net_d
