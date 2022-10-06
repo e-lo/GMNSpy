@@ -1,4 +1,4 @@
-gmnspy.schema
+﻿gmnspy.schema
 =============
 
 .. automodule:: gmnspy.schema

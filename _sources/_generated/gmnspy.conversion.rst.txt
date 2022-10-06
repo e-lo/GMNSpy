@@ -1,4 +1,4 @@
-gmnspy.conversion
+﻿gmnspy.conversion
 =================
 
 .. automodule:: gmnspy.conversion

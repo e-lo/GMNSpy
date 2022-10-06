@@ -1,4 +1,4 @@
-gmnspy.utils
+﻿gmnspy.utils
 ============
 
 .. automodule:: gmnspy.utils
