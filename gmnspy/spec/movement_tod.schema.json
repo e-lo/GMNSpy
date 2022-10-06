@@ -1,11 +1,11 @@
 {
-    "primaryKey": "mvmt_id",
+    "primaryKey": "mvmt_tod_id",
     "missingValues": [
         "NaN"
     ],
     "fields": [
         {
-            "name": "mvmt_id",
+            "name": "mvmt_tod_id",
             "type": "any",
             "description": "Primary key.",
             "constraints": {
@@ -13,18 +13,24 @@
             }
         },
         {
-            "name": "node_id",
+            "name": "mvmt_id",
             "type": "any",
-            "foreign_key": "node.node_id",
-            "description": "The node representing the junction.",
+            "foreign_key": "movement.mvmt_id",
+            "description": "The referenced movement.",
             "constraints": {
                 "required": true
             }
         },
         {
-            "name": "name",
+            "name": "time_day",
+            "type": "string",
+            "description": "Time of day in XXXXXXXX_HHMM_HHMM format, where XXXXXXXX is a bitmap of days of the week, Sunday-Saturday, Holiday. The HHMM are the start and end times."
+        },
+        {
+            "name": "timeday_id",
             "type": "any",
-            "description": "Optional."
+            "foreign_key": "timeday.timeday_id",
+            "description": "Time of day set. Used if times-of-day are defined on the time_set_definitions table"
         },
         {
             "name": "ib_link_id",
@@ -81,12 +87,12 @@
         },
         {
             "name": "penalty",
-            "type": "any",
+            "type": "number",
             "description": "Turn penalty (seconds)"
         },
         {
             "name": "capacity",
-            "type": "any",
+            "type": "number",
             "description": "Capacity in vehicles per hour."
         },
         {
@@ -104,8 +110,18 @@
                     "signal"
                 ]
             }
+        },
+        {
+            "name": "mvmt_code",
+            "type": "string",
+            "description": "Optional. Movement code (e.g., SBL).  Syntax is DDTN, where DD is the direction (e.g., SB, NB, EB, WB, NE, NW, SE, SW). T is the turning movement (e.g., R, L, T) and N is an optional turning movement number (e.g., distinguishing between bearing right and a sharp right at a 6-way intersection)"
+        },
+        {
+            "name": "allowed_uses",
+            "type": "string",
+            "description": "Optional. Set of allowed uses that should appear in either the use_definition or use_group tables; comma-separated."
         }
-    ],
-    "name": "movement.schema.json",
-    "description": "Describes how inbound and outbound links connect at an intersection."
+     ],
+    "name": "movement_tod.schema.json",
+    "description": "Handles day-of-week and time-of-day restrictions on movements."
 }
