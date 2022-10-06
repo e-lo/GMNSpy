@@ -9,8 +9,9 @@ from gmnspy.schema import read_schema, SCHEMA_TO_PANDAS_TYPES
 from gmnspy.utils import logger
 
 
-def apply_schema_to_df(df: pd.DataFrame, schema_file: str = None, originating_file: str = None,
-                       raise_error=False) -> pd.DataFrame:
+def apply_schema_to_df(
+    df: pd.DataFrame, schema_file: str = None, originating_file: str = None, raise_error=False
+) -> pd.DataFrame:
     """
     Evaluates a gmns table against a specified data schema.
     (1) Checks required fields exist
