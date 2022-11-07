@@ -15,7 +15,7 @@ classifiers = [
 
 pkgs = [pkg for pkg in find_packages()]
 
-pkg_data = {"gmnspy.spec": ["*.*"]}
+pkg_data = {"gmnspy": ["spec/*.*"]}
 
 with open("README.md") as f:
     long_description = f.read()
