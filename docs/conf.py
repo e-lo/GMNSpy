@@ -13,17 +13,12 @@
 import os
 import sys
 
-sys.path.insert(0, os.path.abspath("."))
+sys.path.insert(0, os.path.abspath(".."))
 import gmnspy
 
 # -- Generate Schema Documentation -------------------------------------------
 
-gmnspy.document_schema(
-    base_path=os.path.join(
-        os.path.dirname(os.path.dirname(os.path.realpath(__file__))), "spec"
-    ),
-    out_path=".",
-)
+gmnspy.document_schema(out_path=".")
 
 # -- Project information -----------------------------------------------------
 
