@@ -36,7 +36,7 @@ def apply_schema_to_df(
     if not schema_file:
         schema_filename = os.path.split(originating_file)[-1].split(".")[0] + ".schema.json"
         schema_file = join(join(dirname(realpath(__file__)), "../spec"), schema_filename)
-    logger.info("SCHEMA", schema_file)
+    logger.info(f"SCHEMA: {schema_file}")
     logger.info("...validating {} against {}".format(df, schema_file))
     schema = read_schema(schema_file=schema_file)
 
@@ -88,16 +88,20 @@ def apply_schema_to_df(
     constraints = [f["constraints"] for f in schema["fields"] if f["name"] in df.columns and f.get("constraints")]
 
     # iterate through all the constraints for all the fields
-    error_list = []
+    error_dict = {}
 
     for field_name, fld_constr in zip(fields_with_constraints, constraints):
-        error_list += [globals()[f"_{c_name}_constraint"](df[field_name], cpar) for c_name, cpar in fld_constr.items()]
-    error_list = [i for i in error_list if i]
+        field_error_list = [
+            globals()["_" + c_name + "_constraint"](df[field_name], c_param) for c_name, c_param in fld_constr.items()
+        ]
+        if [i for i in field_error_list if i]:
+            error_dict[field_name] = [i for i in field_error_list if i]
 
-    if error_list:
-        logger.error(error_list)
+    if error_dict:
+        for i in error_dict:
+            logger.error("FAIL. {} field has errors. {}".format(i, error_dict[i]))
         if raise_error:
-            raise Exception(error_list)
+            raise Exception(error_dict)
     else:
         logger.info("Passed Field Required Constraint Validation")
 
@@ -107,14 +111,19 @@ def apply_schema_to_df(
     fields_with_warnings = [f["name"] for f in schema["fields"] if f["name"] in df.columns and f.get("warnings")]
     warnings = [f["warnings"] for f in schema["fields"] if f["name"] in df.columns and f.get("warnings")]
 
-    warning_list = []
+    warning_dict = {}
     for field_name, field_warnings in zip(fields_with_warnings, warnings):
-        # print(field_name,field_constraints)
-        warning_list += [
+        field_warning_list = [
             globals()["_" + c_name + "_constraint"](df[field_name], c_param)
             for c_name, c_param in field_warnings.items()
         ]
-    warning_list = [i for i in error_list if i]
+        if [i for i in field_warning_list if i]:
+            warning_dict[field_name] = [i for i in field_warning_list if i]
 
-    logger.info(warning_list if warning_list else "No Field Warnings")
+    if warning_dict:
+        for i in warning_dict:
+            logger.info("WARN. {} field has warnings. {}".format(i, warning_dict[i]))
+
+    else:
+        logger.info("No Field Warnings")
     return df

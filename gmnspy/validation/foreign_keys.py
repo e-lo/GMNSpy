@@ -29,9 +29,9 @@ def validate_foreign_keys(gmns_net_d: Dict[str, pd.DataFrame], resource_df: pd.D
         foreign_keys = [
             (f["name"], f["foreign_key"])
             for f in schema["fields"]
-            if (f.get("foreign_key") and f["name"] in df.columns)
+            if (f.get("foreign_key") and f["name"] in df.dropna(axis="columns", how="all").columns)
         ]
-        logger.debug("FKEYS: ", foreign_keys)
+        logger.debug("FKEYS in use for {} table: ".format(table_name), foreign_keys)
 
         # find the series for the foreign keyl
         for field, f_key in foreign_keys:
@@ -67,15 +67,28 @@ def validate_foreign_key(source_s: pd.Series, reference_s: pd.Series, raise_erro
     # Make sure reference_s is unique
     dupes = reference_s.dropna().duplicated()
     if dupes.any():
-        msg = "FAIL. Duplicates exist in foreign key series: {}".format(dupes)
+        msg = "FAIL. Duplicates exist in foreign key series: {}".format(reference_s[dupes].to_list())
         logger.error(msg)
         if raise_error:
             raise Exception(msg)
         fkey_errors.append(msg)
 
     # Make sure all source have a valid reference
-    if not source_s.isin(reference_s.dropna().to_list()).any():
-        msg = "FAIL. {} not in foreign key reference.".format(source_s[source_s.isin(reference_s.dropna().to_list())])
+    if not source_s.dropna().isin(reference_s.dropna().to_list()).all():
+        bad_values = (
+            (
+                source_s[
+                    (~source_s.dropna().isin(reference_s.dropna().to_list())).reindex(
+                        index=source_s.index, fill_value=False
+                    )
+                ]
+            )
+            .drop_duplicates()
+            .to_list()
+        )
+        msg = "FAIL. Values exist in source field {} which are not in foreign key reference field {}. Bad values: {}".format(
+            source_s.name, reference_s.name, bad_values
+        )
         logger.error(msg)
         if raise_error:
             raise Exception(msg)
