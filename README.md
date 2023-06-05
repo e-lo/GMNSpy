@@ -37,7 +37,7 @@
 
 # GMNS specification
  The GMNS specification is maintained in the `/spec` sub-directory as a
- series of JSON tables.
+ series of JSON tables. 
 
 ## Data Table schemas
  Data table schemas are specified in JSON and are compatible with the

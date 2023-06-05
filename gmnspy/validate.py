@@ -154,14 +154,14 @@ Constraints are specified in the gmns spec files for each field are treated
 """
 
 
-def _required_constraint(_s, _p) -> Union[None, str]:
+def _required_constraint(_s, _p) -> Union[None,str]:
     """
     Currently tested somewhere else.
     """
     pass
 
 
-def _unique_constraint(s: pd.Series, _) -> Union[None, str]:
+def _unique_constraint(s: pd.Series, _) -> Union[None,str]:
     """
     Checks if series contains unique values.
 
@@ -178,7 +178,7 @@ def _unique_constraint(s: pd.Series, _) -> Union[None, str]:
         return "Values not unique."
 
 
-def _minimum_constraint(s: pd.Series, minimum: Union[float, int]) -> Union[None, str]:
+def _minimum_constraint(s: pd.Series, minimum: Union[float, int]) -> Union[None,str]:
     """
     Checks if series contains value under the specified minimum.
 
@@ -195,7 +195,7 @@ def _minimum_constraint(s: pd.Series, minimum: Union[float, int]) -> Union[None,
         return "Values lower than minimum: {}".format(minimum)
 
 
-def _maximum_constraint(s: pd.Series, maximum: Union[float, int]) -> Union[None, str]:
+def _maximum_constraint(s: pd.Series, maximum: Union[float, int]) -> Union[None,str]:
     """
     Checks if series contains value above the specified maximum.
 
@@ -212,7 +212,7 @@ def _maximum_constraint(s: pd.Series, maximum: Union[float, int]) -> Union[None,
         return "Values higher than maximum: {}".format(maximum)
 
 
-def _pattern_constraint(s: pd.Series, pattern: str) -> Union[None, str]:
+def _pattern_constraint(s: pd.Series, pattern: str)-> Union[None,str]:
     """
     Checks if series contains values conforming to specified pattern.
 
@@ -229,9 +229,7 @@ def _pattern_constraint(s: pd.Series, pattern: str) -> Union[None, str]:
         return "Doesn't match pattern: {}".format(pattern)
 
 
-def _enum_constraint(
-    s: pd.Series, enum: Union[str, list], sep: str = ","
-) -> Union[None, str]:
+def _enum_constraint(s: pd.Series, enum: Union[str,list], sep: str=",") -> Union[None,str]:
     """
     Checks if series contains valid enum values.
 
@@ -252,6 +250,8 @@ def _enum_constraint(
     err_i = (s[~s.isin(enum)]).to_list()
     if err_i:
         return "Values: {} not in enumerated list: {}".format(err_i, enum)
+
+
 
 
 def confirm_required_files(resource_df: pd.DataFrame) -> None:
@@ -296,7 +296,8 @@ def update_resources_based_on_existance(resource_df: pd.DataFrame) -> pd.DataFra
     return updated_resource_df
 
 
-def validate_foreign_key(source_s: pd.Series, reference_s: pd.Series) -> list:
+def validate_foreign_key(
+    source_s: pd.Series, reference_s: pd.Series) -> list:
     """
     Checks that the source_s series links to a valid reference_s series
         which has (1) unique IDs, and (2) contains the values of the
@@ -319,18 +320,13 @@ def validate_foreign_key(source_s: pd.Series, reference_s: pd.Series) -> list:
 
     # Make sure all source have a valid reference
     if not source_s.isin(reference_s.dropna().to_list()).any():
-        msg = "FAIL. {} not in foreign key reference.".format(
-            source_s[source_s.isin(reference_s.dropna().to_list())]
-        )
+        msg = "FAIL. {} not in foreign key reference.".format(source_s[source_s.isin(reference_s.dropna().to_list())])
         print(msg)
         fkey_errors.append(msg)
 
     return fkey_errors
 
-
-def validate_foreign_keys(
-    gmns_net_d: Dict[str, pd.DataFrame], resource_df: pd.DataFrame
-) -> None:
+def validate_foreign_keys(gmns_net_d: Dict[str,pd.DataFrame], resource_df: pd.DataFrame) -> None:
     """
     Finds foreign keys in schemas of each GMNS table and validates that
     they link to a valid series which has (1) unique IDs, and (2) contains
@@ -345,25 +341,19 @@ def validate_foreign_keys(
     """
     print(gmns_net_d["node"]["node_id"])
 
-    fkey_errors = []
-    for table_name, df in gmns_net_d.items():
-        schema = read_schema(
-            schema_file=resource_df[resource_df["name"] == table_name][
-                "fullpath_schema"
-            ][0]
-        )
+    fkey_errors =  []
+    for table_name,df in gmns_net_d.items():
+        schema = read_schema(schema_file=resource_df[resource_df["name"]==table_name]["fullpath_schema"][0])
 
         foreign_keys = [
-            (f["name"], f["foreign_key"])
-            for f in schema["fields"]
-            if (f.get("foreign_key") and f["name"] in df.columns)
+            (f["name"],f["foreign_key"]) for f in schema["fields"] if (f.get("foreign_key") and f["name"] in df.columns)
         ]
-        print("FKEYS: ", foreign_keys)
+        print("FKEYS: ",foreign_keys)
 
         # find the series for the foreign key
-        for field, f_key in foreign_keys:
-            # NOTE this requires that field names that are foreign keys not have '.'
-            t, f = f_key.split(".")
+        for field,f_key in foreign_keys:
+            #NOTE this requires that field names that are foreign keys not have '.'
+            t,f = f_key.split(".")
             # if it is in same table
             if not t:
                 reference_s = df[f]
@@ -372,11 +362,6 @@ def validate_foreign_keys(
                 try:
                     reference_s = gmns_net_d[t][f]
                 except:
-                    print("FAIL. {} field in table {} does not exist".format(f, t))
+                    print("FAIL. {} field in table {} does not exist".format(f,t))
                     continue
-            fkey_errors += validate_foreign_key(df[field], reference_s)
-
-def validate_connectivity(
-    gmns_net_d: Dict[str, pd.DataFrame], resource_df: pd.DataFrame
-) -> None:
-    pass
+            fkey_errors+=validate_foreign_key(df[field], reference_s)

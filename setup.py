@@ -1,5 +1,4 @@
 from setuptools import setup
-from distutils.util import convert_path
 
 classifiers = [
     "Development Status :: 1 - Planning",
@@ -18,17 +17,11 @@ with open("README.md") as f:
 with open("requirements.txt") as f:
     requirements = f.readlines()
 
-stored_vars = {}
-version_path = convert_path('gmnspy/_version.py')
-with open(version_path) as version_file:
-    exec(version_file.read(), stored_vars)
-
-
 install_requires = [r.strip() for r in requirements]
 
 setup(
     name="gmnspy",
-    version=stored_vars['__version__'],
+    version="0.0.2",
     description="",
     long_description=long_description,
     long_description_content_type="text/markdown",
