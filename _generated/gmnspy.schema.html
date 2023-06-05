@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="writer-html5" lang="en" >
 <head>
-  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.17.1: http://docutils.sourceforge.net/" />
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.18.1: http://docutils.sourceforge.net/" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>gmnspy.schema &mdash; GMNSpy  documentation</title>
@@ -12,17 +12,16 @@
     <script src="../_static/js/html5shiv.min.js"></script>
   <![endif]-->
   
-        <script data-url_root="../" id="documentation_options" src="../_static/documentation_options.js"></script>
         <script src="../_static/jquery.js"></script>
-        <script src="../_static/underscore.js"></script>
         <script src="../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script data-url_root="../" id="documentation_options" src="../_static/documentation_options.js"></script>
         <script src="../_static/doctools.js"></script>
         <script src="../_static/sphinx_highlight.js"></script>
     <script src="../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
-    <link rel="next" title="gmnspy.conversion" href="gmnspy.conversion.html" />
-    <link rel="prev" title="gmnspy.validate" href="gmnspy.validate.html" /> 
+    <link rel="next" title="gmnspy.utils" href="gmnspy.utils.html" />
+    <link rel="prev" title="gmnspy.in_out" href="gmnspy.in_out.html" /> 
 </head>
 
 <body class="wy-body-for-nav"> 
@@ -30,11 +29,15 @@
     <nav data-toggle="wy-nav-shift" class="wy-nav-side">
       <div class="wy-side-scroll">
         <div class="wy-side-nav-search" >
-            <a href="../index.html" class="icon icon-home"> GMNSpy
+
+          
+          
+          <a href="../index.html" class="icon icon-home">
+            GMNSpy
           </a>
 <div role="search">
   <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
-    <input type="text" name="q" placeholder="Search docs" />
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
     <input type="hidden" name="check_keywords" value="yes" />
     <input type="hidden" name="area" value="default" />
   </form>
@@ -48,7 +51,6 @@
 <li class="toctree-l1 current"><a class="reference internal" href="../autodoc.html">GMNSpy Classes and Functions</a><ul class="current">
 <li class="toctree-l2 current"><a class="reference internal" href="../autodoc.html#core-functions">Core Functions</a><ul class="current">
 <li class="toctree-l3"><a class="reference internal" href="gmnspy.in_out.html">gmnspy.in_out</a></li>
-<li class="toctree-l3"><a class="reference internal" href="gmnspy.validate.html">gmnspy.validate</a></li>
 <li class="toctree-l3 current"><a class="current reference internal" href="#">gmnspy.schema</a><ul>
 <li class="toctree-l4"><a class="reference internal" href="#gmnspy.schema.dirname"><code class="docutils literal notranslate"><span class="pre">dirname()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#gmnspy.schema.document_schema"><code class="docutils literal notranslate"><span class="pre">document_schema()</span></code></a></li>
@@ -80,9 +82,9 @@
         <div class="rst-content">
           <div role="navigation" aria-label="Page navigation">
   <ul class="wy-breadcrumbs">
-      <li><a href="../index.html" class="icon icon-home"></a> &raquo;</li>
-          <li><a href="../autodoc.html">GMNSpy Classes and Functions</a> &raquo;</li>
-      <li>gmnspy.schema</li>
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../autodoc.html">GMNSpy Classes and Functions</a></li>
+      <li class="breadcrumb-item active">gmnspy.schema</li>
       <li class="wy-breadcrumbs-aside">
             <a href="../_sources/_generated/gmnspy.schema.rst.txt" rel="nofollow"> View page source</a>
       </li>
@@ -96,10 +98,6 @@
 <span id="gmnspy-schema"></span><h1>gmnspy.schema<a class="headerlink" href="#module-gmnspy.schema" title="Permalink to this heading"></a></h1>
 <p class="rubric">Functions</p>
 <table class="autosummary longtable docutils align-default">
-<colgroup>
-<col style="width: 10%" />
-<col style="width: 90%" />
-</colgroup>
 <tbody>
 <tr class="row-odd"><td><p><a class="reference internal" href="#gmnspy.schema.document_schema" title="gmnspy.schema.document_schema"><code class="xref py py-obj docutils literal notranslate"><span class="pre">document_schema</span></code></a>([base_path, out_path])</p></td>
 <td><p></p></td>
@@ -134,19 +132,17 @@ ends with a separator.</p>
 
 <dl class="py function">
 <dt class="sig sig-object py" id="gmnspy.schema.list_to_md_table">
-<span class="sig-prename descclassname"><span class="pre">gmnspy.schema.</span></span><span class="sig-name descname"><span class="pre">list_to_md_table</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">list_of_dicts</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/gmnspy/utils.html#list_to_md_table"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gmnspy.schema.list_to_md_table" title="Permalink to this definition"></a></dt>
+<span class="sig-prename descclassname"><span class="pre">gmnspy.schema.</span></span><span class="sig-name descname"><span class="pre">list_to_md_table</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">list_of_dicts</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/gmnspy/utils/list_to_md_table.html#list_to_md_table"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gmnspy.schema.list_to_md_table" title="Permalink to this definition"></a></dt>
 <dd><p>Reads a list of dictionaries defining a schema and creates a markdown table.</p>
 <dl class="field-list simple">
-<dt class="field-odd">Parameters</dt>
-<dd class="field-odd"><p><strong>list_of_dicts</strong> – a list of dictionaries containing definition of fields.</p>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></p>
+</dd>
+<dt class="field-even">Parameters<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>list_of_dicts</strong> – a list of dictionaries containing definition of fields.</p>
 </dd>
 </dl>
 <p>returns: A markdown string representing the table.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Return type</dt>
-<dd class="field-odd"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></p>
-</dd>
-</dl>
 </dd></dl>
 
 <dl class="py function">
@@ -154,8 +150,11 @@ ends with a separator.</p>
 <span class="sig-prename descclassname"><span class="pre">gmnspy.schema.</span></span><span class="sig-name descname"><span class="pre">read_config</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">config_file</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">data_dir</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">''</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">schema_dir</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">''</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/gmnspy/schema.html#read_config"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gmnspy.schema.read_config" title="Permalink to this definition"></a></dt>
 <dd><p>Reads a GMNS config file, adds some full paths and returns as a dataframe.</p>
 <dl class="field-list simple">
-<dt class="field-odd">Parameters</dt>
-<dd class="field-odd"><ul class="simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="http://pandas.pydata.org/pandas-docs/stable/reference/api/pandas.DataFrame.html#pandas.DataFrame" title="(in pandas v2.0.2)"><code class="xref py py-class docutils literal notranslate"><span class="pre">DataFrame</span></code></a></p>
+</dd>
+<dt class="field-even">Parameters<span class="colon">:</span></dt>
+<dd class="field-even"><ul class="simple">
 <li><p><strong>config_file</strong> – <p>Configuration file. A json file with a list of “resources”
 specifying the “name”, “path”, and “schema” for each GMNS table as
 well as a boolean value for “required”.
@@ -186,11 +185,6 @@ the same directory as the config_file.</p></li>
 </dd>
 </dl>
 <p>Returns: GMNS configuration file as a DataFrame.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Return type</dt>
-<dd class="field-odd"><p><a class="reference external" href="https://pandas.pydata.org/pandas-docs/stable/reference/api/pandas.DataFrame.html#pandas.DataFrame" title="(in pandas v1.5.0)"><code class="xref py py-class docutils literal notranslate"><span class="pre">DataFrame</span></code></a></p>
-</dd>
-</dl>
 </dd></dl>
 
 <dl class="py function">
@@ -199,16 +193,14 @@ the same directory as the config_file.</p></li>
 <dd><p>Reads in schema from schema json file and returns as dictionary.</p>
 <p>##TODO validate schema itself</p>
 <dl class="field-list simple">
-<dt class="field-odd">Parameters</dt>
-<dd class="field-odd"><p><strong>schema_file</strong> – File location of the schema json file.</p>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">dict</span></code></p>
+</dd>
+<dt class="field-even">Parameters<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>schema_file</strong> – File location of the schema json file.</p>
 </dd>
 </dl>
 <p>Returns: The schema as a dictionary</p>
-<dl class="field-list simple">
-<dt class="field-odd">Return type</dt>
-<dd class="field-odd"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">dict</span></code></p>
-</dd>
-</dl>
 </dd></dl>
 
 <dl class="py function">
@@ -224,8 +216,8 @@ symbolic links encountered in the path.</p>
            </div>
           </div>
           <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
-        <a href="gmnspy.validate.html" class="btn btn-neutral float-left" title="gmnspy.validate" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
-        <a href="gmnspy.conversion.html" class="btn btn-neutral float-right" title="gmnspy.conversion" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+        <a href="gmnspy.in_out.html" class="btn btn-neutral float-left" title="gmnspy.in_out" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="gmnspy.utils.html" class="btn btn-neutral float-right" title="gmnspy.utils" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
     </div>
 
   <hr/>
