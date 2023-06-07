@@ -36,8 +36,8 @@ def apply_schema_to_df(
     if not schema_file:
         schema_filename = os.path.split(originating_file)[-1].split(".")[0] + ".schema.json"
         schema_file = join(join(dirname(realpath(__file__)), "../spec"), schema_filename)
-    logger.info("SCHEMA", schema_file)
-    logger.info("...validating {} against {}".format(df, schema_file))
+    logger.info(f"SCHEMA: {schema_file}")
+    logger.info(f"...validating {df} against {schema_file}")
     schema = read_schema(schema_file=schema_file)
 
     """

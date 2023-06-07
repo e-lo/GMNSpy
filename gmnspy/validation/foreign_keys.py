@@ -31,7 +31,7 @@ def validate_foreign_keys(gmns_net_d: Dict[str, pd.DataFrame], resource_df: pd.D
             for f in schema["fields"]
             if (f.get("foreign_key") and f["name"] in df.columns)
         ]
-        logger.debug("FKEYS: ", foreign_keys)
+        logger.debug(f"FKEYS: {foreign_keys}")
 
         # find the series for the foreign keyl
         for field, f_key in foreign_keys:
