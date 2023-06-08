@@ -1,7 +1,7 @@
 """Functions used to create documentation by mkdocs-macros.
 
 Typical Usage:
-   
+
     ```markdown
     {{ include_file(`file_path`) }}
     {{ frictionless_spec(`file_path`) }}
@@ -15,7 +15,7 @@ from typing import Union
 
 import pandas as pd
 
-from gmnspy import document_spec_to_md, document_schemas_to_md
+from gmnspy import document_schemas_to_md, document_spec_to_md
 
 FIND_REPLACE = {  # original relative to /docs : redirect target
     "<CONTRIBUTING.md>": "[Contributing Section](development/#CONTRIBUTING)",

@@ -1,6 +1,6 @@
 name: Build docs on push
 
-on: 
+on:
   pull_request:
   release:
     types: [created]

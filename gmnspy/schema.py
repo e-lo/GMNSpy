@@ -2,7 +2,7 @@
 Functions related to Frictionless Data Schemas for GMNS.
 
 Typical usage:
-   
+
     ```python
     read_schema(schema_file)
     read_config(config_file)
@@ -13,11 +13,10 @@ Typical usage:
 
 import glob
 import json
+from os.path import dirname, join, realpath
 from pathlib import Path
-from os.path import dirname, realpath, join
 
 import frictionless
-
 import pandas as pd
 
 from .utils import list_to_md_table, logger

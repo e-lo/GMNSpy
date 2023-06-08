@@ -1,20 +1,25 @@
 """Functions used to read in GMNS files and networks.
 
 Typical Usage:
-   
+
     ```python
     read_gmns_csv('csv_file',validate=True)
     read_gmns_network('gmns_dir_path')
     ```
 """
 
-from os.path import join, dirname, realpath
+from os.path import dirname, join, realpath
 
 import pandas as pd
 
 from gmnspy.utils import logger
-from gmnspy.validation import update_resources_based_on_existance
-from gmnspy.validation import validate_foreign_keys, check_required_files, apply_schema_to_df
+from gmnspy.validation import (
+    apply_schema_to_df,
+    check_required_files,
+    update_resources_based_on_existance,
+    validate_foreign_keys,
+)
+
 from .schema import read_config
 
 spec_folder = join(dirname(realpath(__file__)), "spec")

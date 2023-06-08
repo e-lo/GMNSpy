@@ -44,6 +44,7 @@ Generally:
 - Be compatable with Numpy 2+, Pandas 2+, OSMNX 1+, PyProj 3.3+
 - Use PEP8 and autoformat with `black`
 - Use Google-style docstrings for all classes and methods
+- Test formatting and autoformat using `pre-commit`
 - Use logging
 - All code should have an associated test
 - [Documentation](#documentation) is in the `docs` folder and is built using `mkdocs`
