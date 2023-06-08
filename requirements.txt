@@ -1,1 +1,2 @@
+frictionless
 pandas >= 1.0

@@ -1,6 +1,9 @@
 import glob
 import json
+from pathlib import Path
 from os.path import dirname, realpath, join
+
+import frictionless
 
 import pandas as pd
 
@@ -94,40 +97,67 @@ def read_config(config_file: str, data_dir: str = "", schema_dir: str = "") -> p
     return resource_df
 
 
-def document_schema(base_path: str = None, out_path: str = None):
-    """ """
-    logger.info("DOCUMENTING SCHEMA")
+def document_schemas_to_md(schema_path: str = None, out_path: str = None) -> str:
+    """Creates markdown for each **.schema.json file in schema_path.
 
-    base_path = base_path or join(dirname(realpath(__file__)), "spec")
-    out_path = out_path or join(base_path, "docs")
-    logger.info(f"Looking for specs in: {base_path}")
+    Args:
+        schema_path (str, optional): Path fo tlook for schema files.
+            Defaults to join(dirname(realpath(__file__)), "spec")
+        out_path (str, optional): If specified, will write out resulting markdown to this file.
+            Defaults to None.
+
+    Returns:
+        str: Markdown string
+    """
+
+    schema_path = schema_path or join(dirname(realpath(__file__)), "spec")
+    logger.info(f"Documenting Schemas in:\n {schema_path}")
+
+    schema_files = glob.glob(join(schema_path, "**/*.schema.json"), recursive=True)
 
     # Create markdown with a table for each schema file
-    file_schema_markdown = ""
-    schema_files = glob.glob(join(base_path, "**/*.schema.json"), recursive=True)
-    logger.info(f"files: {schema_files}")
+    schema_markdown = ""
 
     for s in schema_files:
-        logger.info(f"Documenting Schema: {s}")
-        spec_name = s.split("/")[-1].split(".")[0]
-        schema = read_schema(s)
-        file_schema_markdown += "\n\n## {}\n".format(spec_name)
-        file_schema_markdown += "\n\n{}".format(list_to_md_table(schema["fields"]))
+        logger.info(f"Adding to MD: {s}")
+        _name = f"## {Path(s).stem.split('.')[-2]}"
+        md = frictionless.Schema(s).to_markdown().replace("## `schema`", _name)
+        schema_markdown += f"\n{md}\n"
+
+    if out_path:
+        with open(out_path, "w") as f:
+            f.write(str(schema_markdown))
+
+    return schema_markdown
+
+
+def document_spec_to_md(spec_path: str = None, out_path: str = None) -> str:
+    """Creates markdown for each **.schema.json file in schema_path.
+
+    Args:
+        spec_path (str, optional): Path to look for spec file.
+            Defaults to join(dirname(realpath(__file__)), "**/gmns.spec.json")
+        out_path (str, optional): If specified, will write out resulting markdown to this file.
+            Defaults to None.
+
+    Returns:
+        str: Markdown string
+    """
+    DROP_COLS = ["fullpath", "fullpath_schema", "path", "schema", "name"]
+
+    spec_path = spec_path or join(dirname(realpath(__file__)), "spec", "gmns.spec.json")
+
+    logger.info(f"Documenting Spec in:\n {spec_path}")
 
     # Generate a table for overall file requirements
-    spec_file = glob.glob(join(base_path, "**/gmns.spec.json"), recursive=True)[0]
-    spec_df = read_config(spec_file)
-    spec_df = spec_df.drop(columns=["fullpath", "fullpath_schema", "path", "schema", "name"]).reset_index()
-    spec_df["name"] = spec_df["name"].apply(lambda x: "[`{}`](#{})".format(x, x))
+    spec_df = read_config(spec_path)
+    spec_df = spec_df.drop(columns=DROP_COLS).reset_index()
+    spec_df["name"] = spec_df["name"].apply(lambda x: f"[`{x}`](#{x})".replace("_", "-"))
 
     spec_markdown = spec_df.to_markdown(index=False)
 
-    # Write it out to file
-    with open(join(out_path, "spec_template.md")) as spec_template:
-        template = spec_template.read()
+    if out_path:
+        with open(out_path, "w") as f:
+            f.write(str(spec_markdown))
 
-    filedata = template.replace("{{ SPEC_TABLE }}", spec_markdown)
-    filedata += file_schema_markdown
-
-    with open(join(out_path, "spec.md"), "w") as spec_filename:
-        spec_filename.write(filedata)
+    return spec_markdown
