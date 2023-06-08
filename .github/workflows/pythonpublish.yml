@@ -7,9 +7,6 @@ on:
   pull_request:
   release:
     types: [created]
-  push:
-    branches:
-      - master
 
 jobs:
   deploy:

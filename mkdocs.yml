@@ -1,0 +1,76 @@
+site_name: "Python Package for General Model Network Specification (GMNS)"
+site_url: https://e-lo.github.io/GMNSpy
+repo_url: https://github.com/e-lo/GMNSpy
+edit_uri: edit/main/docs
+
+theme:
+  name: material
+  features:
+    - navigation.tabs
+    - navigation.expand
+    - toc.integrate
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: blue
+      accent: grey
+      toggle:
+        icon: material/toggle-switch-off-outline
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: blue
+      accent: grey
+      toggle:
+        icon: material/toggle-switch
+        name: Switch to light mode
+
+plugins:
+  - autorefs
+  - awesome-pages
+  - macros
+  - mermaid2:
+      arguments:
+        theme: |
+            ^(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light'
+        securityLevel: 'loose'
+  - search
+
+watch:
+  - CONTRIBUTING.md
+  - CODE_OF_CONDUCT.md
+  - CONTRIBUTORS.md
+  - README.md
+
+extra_javascript:
+  - https://unpkg.com/mermaid@9.4.3/dist/mermaid.min.js
+
+extra_css:
+  - https://use.fontawesome.com/releases/v5.13.0/css/all.css
+
+markdown_extensions:
+  - admonition
+  - codehilite:
+      linenums: true
+  - meta
+  - pymdownx.inlinehilite
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.tabbed
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:mermaid2.fence_mermaid
+  - pymdownx.smartsymbols
+  - smarty
+  - toc:
+      # insert a blank space before the character
+      permalink: " ¶"
+
+nav:
+  - Home: index.md
+  - Architecture: architecture.md
+  - Usage: api.md
+  - Schemas: spec.md
+  - Development: development.md
