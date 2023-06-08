@@ -16,7 +16,7 @@ jobs:
       with:
         fetch-depth: 0
     - name: Document which branch
-      run: echo ${{ github.ref_name }}
+      run: echo ${{ vars.GITHUB_REF_NAME }}
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
