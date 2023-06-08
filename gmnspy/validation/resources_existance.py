@@ -1,3 +1,5 @@
+"""Function which establishes which GMNS resources are present."""
+
 from os.path import exists
 
 import pandas as pd

@@ -1,3 +1,5 @@
+"""Submodule with validation checks."""
+
 from .foreign_keys import validate_foreign_keys
 from .required_files import check_required_files
 from .schema_to_df import apply_schema_to_df

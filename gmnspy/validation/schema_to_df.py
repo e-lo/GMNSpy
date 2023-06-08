@@ -1,3 +1,5 @@
+"""Applies schema constraints to update a dataframe of data."""
+
 import os
 from os.path import join, dirname, realpath
 
@@ -13,7 +15,8 @@ def apply_schema_to_df(
     df: pd.DataFrame, schema_file: str = None, originating_file: str = None, raise_error=False
 ) -> pd.DataFrame:
     """
-    Evaluates a gmns table against a specified data schema.
+    Evaluate a gmns table against a specified data schema.
+
     (1) Checks required fields exist
     (2) Coerces field types
     (3) Evaluates constraints that are firmly enforced
@@ -32,7 +35,6 @@ def apply_schema_to_df(
         DataFrame with fields coerced to appropriate type and constraints
             and warnings evaluated.
     """
-
     if not schema_file:
         schema_filename = os.path.split(originating_file)[-1].split(".")[0] + ".schema.json"
         schema_file = join(join(dirname(realpath(__file__)), "../spec"), schema_filename)

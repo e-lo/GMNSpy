@@ -1,10 +1,5 @@
-from typing import Union
-
-import pandas as pd
-
 """
-Constraints
-------------
+Functions which test GMNS schema constraints.
 
 Represented by functions with naming pattern `_<constraint_name>_constraint`
     which take a series and a single parameter as input.
@@ -14,19 +9,21 @@ Constraints are specified in the gmns spec files for each field are treated
     will not be treated as mandatory.
 """
 
+from typing import Union
+
+import pandas as pd
+
 
 def _required_constraint(_s, _p) -> Union[None, str]:
-    """
-    Currently tested somewhere else.
-    """
+    """Placeholder for something tested somewhere else."""
     pass
 
 
 def _unique_constraint(s: pd.Series, _) -> Union[None, str]:
     """
-    Checks if series contains unique values.
+    Check if series contains unique values.
 
-    ##needstest
+    TODO: ##needstest
 
     Args:
         s: series that shouldn't exceed maximum value.
@@ -41,9 +38,9 @@ def _unique_constraint(s: pd.Series, _) -> Union[None, str]:
 
 def _minimum_constraint(s: pd.Series, minimum: Union[float, int]) -> Union[None, str]:
     """
-    Checks if series contains value under the specified minimum.
+    Check if series contains value under the specified minimum.
 
-    ##needstest
+    TODO: ##needstest
 
     Args:
         s: series that shouldn't be under the minimum value.
@@ -58,9 +55,9 @@ def _minimum_constraint(s: pd.Series, minimum: Union[float, int]) -> Union[None,
 
 def _maximum_constraint(s: pd.Series, maximum: Union[float, int]) -> Union[None, str]:
     """
-    Checks if series contains value above the specified maximum.
+    Check if series contains value above the specified maximum.
 
-    ##needstest
+    TODO: ##needstest
 
     Args:
         s: series that shouldn't exceed maximum value.
@@ -75,9 +72,9 @@ def _maximum_constraint(s: pd.Series, maximum: Union[float, int]) -> Union[None,
 
 def _pattern_constraint(s: pd.Series, pattern: str) -> Union[None, str]:
     """
-    Checks if series contains values conforming to specified pattern.
+    Check if series contains values conforming to specified pattern.
 
-    ##needstest
+    TODO: ##needstest
 
     Args:
         s: series that shouldn't be under the minimum value.
@@ -92,9 +89,9 @@ def _pattern_constraint(s: pd.Series, pattern: str) -> Union[None, str]:
 
 def _enum_constraint(s: pd.Series, enum: Union[str, list], sep: str = ",") -> Union[None, str]:
     """
-    Checks if series contains valid enum values.
+    Check if series contains valid enum values.
 
-    ##needstest
+    TODO: ##needstest
 
     Args:
         s: series of values that should all have values in  the enumerated

@@ -1,3 +1,13 @@
+"""Functions used to read in GMNS files and networks.
+
+Typical Usage:
+   
+    ```python
+    read_gmns_csv('csv_file',validate=True)
+    read_gmns_network('gmns_dir_path')
+    ```
+"""
+
 from os.path import join, dirname, realpath
 
 import pandas as pd
@@ -12,8 +22,9 @@ spec_folder = join(dirname(realpath(__file__)), "spec")
 
 def read_gmns_csv(filename: str, validate: bool = True, schema_file: str = None) -> pd.DataFrame:
     """
-    Reads csv and returns it as a dataframe; optionally coerced to the
-    types as specified in the data schema.
+    Read csv and returns it as a dataframe.
+
+    Optionally coerced to the types as specified in the data schema.
 
     Args:
         filename: file location of the csv file to read in.
@@ -22,7 +33,6 @@ def read_gmns_csv(filename: str, validate: bool = True, schema_file: str = None)
 
     Returns: Validated dataframe with coerced types according to schema.
     """
-
     df = pd.read_csv(filename)
 
     if validate:
@@ -35,8 +45,9 @@ def read_gmns_csv(filename: str, validate: bool = True, schema_file: str = None)
 
 def read_gmns_network(data_directory: str, config: str = None, raise_error=False) -> dict:
     """
-    Reads each GMNS file as specified in the config and validates it to
-    their specified schema including foreign keys between the tables.
+    Read and validate each GMNS file as specified in the config.
+
+    Validation includes foreign keys between the tables.
 
     Args:
         data_directory: Directory where GMNS data is.
@@ -66,7 +77,6 @@ def read_gmns_network(data_directory: str, config: str = None, raise_error=False
     returns: a dictionary mapping the name of each GMNS table to a
         validated dataframe.
     """
-
     config = config or join(spec_folder, "gmns.spec.json")
     gmns_net_d = {}
 

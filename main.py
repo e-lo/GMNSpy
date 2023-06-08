@@ -1,3 +1,14 @@
+"""Functions used to create documentation by mkdocs-macros.
+
+Typical Usage:
+   
+    ```markdown
+    {{ include_file(`file_path`) }}
+    {{ frictionless_spec(`file_path`) }}
+    {{ frictionless_schemas(`dir_path`) }}
+    ```
+"""
+
 import os
 import re
 from typing import Union
@@ -35,7 +46,7 @@ def _downshift_md(md: str) -> str:
 
 def define_env(env):
     """
-    This is the hook for defining variables, macros and filters
+    Define variables, macros and filters.
 
     - variables: the dictionary that contains the environment variables
     - macro: a decorator function, to declare a macro.
@@ -98,5 +109,4 @@ def define_env(env):
             schema_path (str, optional): Schema path in glob format.
                 Defaults to "**/*.schema.json".
         """
-
         return document_schemas_to_md(schema_path)

@@ -1,3 +1,16 @@
+"""
+Functions related to Frictionless Data Schemas for GMNS.
+
+Typical usage:
+   
+    ```python
+    read_schema(schema_file)
+    read_config(config_file)
+    document_schemas_to_md(schema_file_dir)
+    document_spec_to_md(spec_file)
+    ```
+"""
+
 import glob
 import json
 from pathlib import Path
@@ -27,7 +40,7 @@ FORMAT_TO_REGEX = {
 
 def read_schema(schema_file: str) -> dict:
     """
-    Reads in schema from schema json file and returns as dictionary.
+    Read in schema from schema json file and returns as dictionary.
 
     ##TODO validate schema itself
 
@@ -43,7 +56,7 @@ def read_schema(schema_file: str) -> dict:
 
 def read_config(config_file: str, data_dir: str = "", schema_dir: str = "") -> pd.DataFrame:
     """
-    Reads a GMNS config file, adds some full paths and returns as a dataframe.
+    Read a GMNS config file, adds some full paths and returns as a dataframe.
 
     Args:
         config_file: Configuration file. A json file with a list of "resources"
@@ -98,7 +111,7 @@ def read_config(config_file: str, data_dir: str = "", schema_dir: str = "") -> p
 
 
 def document_schemas_to_md(schema_path: str = None, out_path: str = None) -> str:
-    """Creates markdown for each **.schema.json file in schema_path.
+    """Create markdown for each **.schema.json file in schema_path.
 
     Args:
         schema_path (str, optional): Path fo tlook for schema files.
@@ -109,7 +122,6 @@ def document_schemas_to_md(schema_path: str = None, out_path: str = None) -> str
     Returns:
         str: Markdown string
     """
-
     schema_path = schema_path or join(dirname(realpath(__file__)), "spec")
     logger.info(f"Documenting Schemas in:\n {schema_path}")
 
@@ -132,7 +144,7 @@ def document_schemas_to_md(schema_path: str = None, out_path: str = None) -> str
 
 
 def document_spec_to_md(spec_path: str = None, out_path: str = None) -> str:
-    """Creates markdown for each **.schema.json file in schema_path.
+    """Create markdown for each **.schema.json file in schema_path.
 
     Args:
         spec_path (str, optional): Path to look for spec file.
