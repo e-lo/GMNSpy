@@ -15,10 +15,8 @@ jobs:
     - uses: actions/checkout@v3
       with:
         fetch-depth: 0
-    - name: Extract branch name
-      shell: bash
-      run: echo "##[set-output name=branch;]$(echo ${GITHUB_REF#refs/heads/})"
-      id: extract_branch
+    - name: Document which branch
+      run: echo ${{ github.ref_name }}
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
@@ -34,4 +32,4 @@ jobs:
         git config --local user.name "github-actions[bot]"
     - name: Build docs
       run: |
-        mike deploy --push --rebase ${{ steps.extract_branch.outputs.branch }}
+        mike deploy --push --rebase ${{ vars.GITHUB_REF_NAME }}
