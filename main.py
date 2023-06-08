@@ -15,7 +15,7 @@ from typing import Union
 
 import pandas as pd
 
-from gmnspy import document_schemas_to_md, document_spec_to_md
+from .schema import document_schemas_to_md, document_spec_to_md
 
 FIND_REPLACE = {  # original relative to /docs : redirect target
     "<CONTRIBUTING.md>": "[Contributing Section](development/#CONTRIBUTING)",
