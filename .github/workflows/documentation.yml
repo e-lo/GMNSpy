@@ -37,8 +37,8 @@ jobs:
         git config --local user.name "github-actions[bot]"
     - name: Build docs
       run: |
-        git fetch origin gh-pages --depth=1
-        mike deploy --push --rebase --update-aliases $DOC_REF_NAME
+        git log gh-pages -n1 
+        mike deploy --push --rebase $DOC_REF_NAME
     - name: add comment to PR with documentation link
       if: github.event_name != 'pull_request'
       uses: mshick/add-pr-comment@v2
