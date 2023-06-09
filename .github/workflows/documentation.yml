@@ -18,7 +18,9 @@ jobs:
     permissions:
       pull-requests: write
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v2
+      with:
+        fetch-depth: 0
     - name: Document which branch
       run: echo $DOC_REF_NAME
     - name: Set up Python
