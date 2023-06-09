@@ -6,6 +6,10 @@ on:
     types: [created]
   push:
 
+permissions:
+  pull-requests: write
+  repository-projects: write
+
 env:
  DOC_REF_NAME: ${{ github.head_ref || github.ref_name }}
 jobs:
@@ -15,8 +19,6 @@ jobs:
       pull-requests: write
     steps:
     - uses: actions/checkout@v3
-      with:
-        fetch-depth: 0
     - name: Document which branch
       run: echo $DOC_REF_NAME
     - name: Set up Python
@@ -37,7 +39,6 @@ jobs:
         git config --local user.name "github-actions[bot]"
     - name: Build docs
       run: |
-        git log gh-pages -n1 
         mike deploy --push --rebase $DOC_REF_NAME
     - name: add comment to PR with documentation link
       if: github.event_name != 'pull_request'
