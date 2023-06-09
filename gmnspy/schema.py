@@ -129,10 +129,13 @@ def document_schemas_to_md(schema_path: str = None, out_path: str = None) -> str
     # Create markdown with a table for each schema file
     schema_markdown = ""
 
-    for s in schema_files:
-        logger.info(f"Adding to MD: {s}")
-        _name = f"## {Path(s).stem.split('.')[-2]}"
-        md = frictionless.Schema(s).to_markdown().replace("## `schema`", _name)
+    for sf in schema_files:
+        logger.info(f"Adding to MD: {sf}")
+        s = frictionless.Schema(sf)
+        md = s.to_markdown()
+        _name = f"## {Path(sf).stem.split('.')[-2]}"
+        md = md.replace("## `schema`", _name)
+
         schema_markdown += f"\n{md}\n"
 
     if out_path:

@@ -4,4 +4,4 @@
 
 {{ include_file('CODE_OF_CONDUCT.md') }}
 
-{{ include_file('contributors.md') }}
+{{ include_file('CONTRIBUTORS.md') }}
