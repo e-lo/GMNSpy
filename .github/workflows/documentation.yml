@@ -1,24 +1,25 @@
 name: Build docs on push
 
-on: 
-  pull_request:
+on:
   release:
     types: [created]
   push:
-    branches:
-      - master
+    branches: [develop, main]
+  workflow_dispatch:
 
+env:
+ DOC_REF_NAME: ${{ github.head_ref || github.ref_name }}
 jobs:
-  build-deploy:
+  build-deploy-docs:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v2
       with:
         fetch-depth: 0
     - name: Document which branch
-      run: echo ${{ github.ref_name }}
+      run: echo $DOC_REF_NAME
     - name: Set up Python
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v2
       with:
         python-version: '3.x'
         cache: 'pip'
@@ -26,10 +27,20 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install -r docs/requirements.txt
+    - name: Install package
+      run: |
+        pip install -e .
     - name: Configure Git user
       run: |
         git config --local user.email "github-actions[bot]@users.noreply.github.com"
         git config --local user.name "github-actions[bot]"
+        git fetch origin gh-pages --depth=1
     - name: Build docs
       run: |
-        mike deploy --push --rebase ${{ github.ref_name }}
+        mike deploy --push --rebase $DOC_REF_NAME
+    - name: add comment to PR with documentation link
+      if: github.event_name != 'pull_request'
+      uses: mshick/add-pr-comment@v2
+      with:
+        message: |
+          Preview documentation at: <https://e-lo.github.io/GMNSpy/$DOC_REF_NAME>

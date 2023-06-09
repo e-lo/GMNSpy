@@ -1,114 +1,114 @@
 {
-    "primaryKey": "timing_phase_id",
-    "missingValues": [
-        "NaN",
-        ""
-    ],
-    "fields": [
-        {
-            "name": "timing_phase_id",
-            "type": "any",
-            "description": "Primary key.",
-            "constraints": {
-                "required": true
-            }
-        },
-        {
-            "name": "timing_plan_id",
-            "type": "any",
-            "foreign_key": "signal_timing_plan.timing_plan_id",
-            "description": "Foreign key; connects to a timing_plan associated with a controller."
-        },
-        {
-            "name": "signal_phase_num",
-            "type": "integer",
-            "description": "Signal phase number. Typically the NEMA phase number.",
-            "constraints": {
-                "minimum": 0,
-                "required": true
-            }
-        },
-        {
-            "name": "min_green",
-            "type": "number",
-            "description": "The minimum green time in seconds for an actuated signal. Green time in seconds for a fixed time signal.",
-            "constraints": {
-                "minimum": 0
-            }
-        },
-        {
-            "name": "max_green",
-            "type": "number",
-            "description": "Optional.The maximum green time in seconds for an actuated signal; the default is minimum green plus one extension",
-            "constraints": {
-                "minimum": 0
-            }
-        },
-        {
-            "name": "extension",
-            "type": "number",
-            "description": "Optional. The number of seconds the green time is extended each time vehicles are detected.",
-            "constraints": {
-                "minimum": 0,
-                "maximum": 120
-            }
-        },
-        {
-            "name": "clearance",
-            "type": "number",
-            "description": "Yellow interval plus all red interval",
-            "constraints": {
-                "minimum": 0,
-                "maximum": 120
-            }
-        },
-        {
-            "name": "walk_time",
-            "type": "number",
-            "description": "If a pedestrian phase exists, the walk time in seconds",
-            "constraints": {
-                "minimum": 0,
-                "maximum": 120
-            }
-        },
-        {
-            "name": "ped_clearance",
-            "type": "number",
-            "description": "If a pedestrian phase exists, the flashing don't walk time.",
-            "constraints": {
-                "minimum": 0,
-                "maximum": 120
-            }
-        },
-        {
-            "name": "ring",
-            "type": "integer",
-            "description": "Required. Set of phases that conflict with each other. ",
-            "constraints": {
-                "required": true,
-                "minimum": 0,
-                "maximum": 12
-            }
-        },
-        {
-            "name": "barrier",
-            "type": "integer",
-            "description": "Required. Set of phases that can operate other.",
-            "constraints": {
-                "required": true,
-                "minimum": 0,
-                "maximum": 12
-            }
-        },
-        {
-            "name": "position",
-            "type": "integer",
-            "description": "Required. Position.",
-            "constraints": {
-                "required": true
-            }
-        }
-    ],
-    "name": "signal_timing_phase.schema.json",
-    "description": "For signalized nodes, provides signal timing and establishes phases that may run concurrently."
+  "description": "For signalized nodes, provides signal timing and establishes phases that may run concurrently.",
+  "fields": [
+    {
+      "constraints": {
+        "required": true
+      },
+      "description": "Primary key.",
+      "name": "timing_phase_id",
+      "type": "any"
+    },
+    {
+      "description": "Foreign key; connects to a timing_plan associated with a controller.",
+      "foreign_key": "signal_timing_plan.timing_plan_id",
+      "name": "timing_plan_id",
+      "type": "any"
+    },
+    {
+      "constraints": {
+        "minimum": 0,
+        "required": true
+      },
+      "description": "Signal phase number. Typically the NEMA phase number.",
+      "name": "signal_phase_num",
+      "type": "integer"
+    },
+    {
+      "constraints": {
+        "minimum": 0
+      },
+      "description": "The minimum green time in seconds for an actuated signal. Green time in seconds for a fixed time signal.",
+      "name": "min_green",
+      "type": "number"
+    },
+    {
+      "constraints": {
+        "minimum": 0
+      },
+      "description": "Optional.The maximum green time in seconds for an actuated signal; the default is minimum green plus one extension",
+      "name": "max_green",
+      "type": "number"
+    },
+    {
+      "constraints": {
+        "maximum": 120,
+        "minimum": 0
+      },
+      "description": "Optional. The number of seconds the green time is extended each time vehicles are detected.",
+      "name": "extension",
+      "type": "number"
+    },
+    {
+      "constraints": {
+        "maximum": 120,
+        "minimum": 0
+      },
+      "description": "Yellow interval plus all red interval",
+      "name": "clearance",
+      "type": "number"
+    },
+    {
+      "constraints": {
+        "maximum": 120,
+        "minimum": 0
+      },
+      "description": "If a pedestrian phase exists, the walk time in seconds",
+      "name": "walk_time",
+      "type": "number"
+    },
+    {
+      "constraints": {
+        "maximum": 120,
+        "minimum": 0
+      },
+      "description": "If a pedestrian phase exists, the flashing don't walk time.",
+      "name": "ped_clearance",
+      "type": "number"
+    },
+    {
+      "constraints": {
+        "maximum": 12,
+        "minimum": 0,
+        "required": true
+      },
+      "description": "Required. Set of phases that conflict with each other. ",
+      "name": "ring",
+      "type": "integer"
+    },
+    {
+      "constraints": {
+        "maximum": 12,
+        "minimum": 0,
+        "required": true
+      },
+      "description": "Required. Set of phases that can operate other.",
+      "name": "barrier",
+      "type": "integer"
+    },
+    {
+      "constraints": {
+        "required": true
+      },
+      "description": "Required. Position.",
+      "name": "position",
+      "type": "integer"
+    }
+  ],
+  "missingValues": [
+    "NaN",
+    ""
+  ],
+  "name": "signal_timing_phase.schema.json",
+  "primaryKey": "timing_phase_id"
 }

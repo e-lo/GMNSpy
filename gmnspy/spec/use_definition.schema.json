@@ -1,46 +1,46 @@
 {
-    "primaryKey": "use",
-    "missingValues": [
-        "NaN"
-    ],
-    "fields": [
-        {
-            "name": "use",
-            "type": "string",
-            "description": "Primary key",
-            "constraints": {
-                "required": true
-            }
-        },
-        {
-            "name": "persons_per_vehicle",
-            "type": "number",
-            "description": "Required.",
-            "constraints": {
-                "required": true,
-                "minimum": 0
-            }
-        },
-        {
-            "name": "pce",
-            "type": "number",
-            "description": "Required. Passenger car equivalent.",
-            "constraints": {
-                "required": true,
-                "minimum": 0
-            }
-        },
-        {
-            "name": "special_conditions",
-            "type": "string",
-            "description": "Optional."
-        },
-        {
-            "name": "description",
-            "type": "string",
-            "description": "Optional "
-        }
-    ],
-    "name": "use_definition.schema.json",
-    "description": "The Use_Definition file defines the characteristics of each vehicle type or non-travel purpose (e.g., a shoulder or parking lane). A two-way left turn lane (TWLTL) is also a use."
+  "description": "The Use_Definition file defines the characteristics of each vehicle type or non-travel purpose (e.g., a shoulder or parking lane). A two-way left turn lane (TWLTL) is also a use.",
+  "fields": [
+    {
+      "constraints": {
+        "required": true
+      },
+      "description": "Primary key",
+      "name": "use",
+      "type": "string"
+    },
+    {
+      "constraints": {
+        "minimum": 0,
+        "required": true
+      },
+      "description": "Required.",
+      "name": "persons_per_vehicle",
+      "type": "number"
+    },
+    {
+      "constraints": {
+        "minimum": 0,
+        "required": true
+      },
+      "description": "Required. Passenger car equivalent.",
+      "name": "pce",
+      "type": "number"
+    },
+    {
+      "description": "Optional.",
+      "name": "special_conditions",
+      "type": "string"
+    },
+    {
+      "description": "Optional ",
+      "name": "description",
+      "type": "string"
+    }
+  ],
+  "missingValues": [
+    "NaN"
+  ],
+  "name": "use_definition.schema.json",
+  "primaryKey": "use"
 }

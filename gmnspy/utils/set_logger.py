@@ -1,9 +1,18 @@
+"""
+Establishes logging parameters.
+
+Logger is run at import.
+"""
 import logging
 from os.path import join
 from tempfile import gettempdir
 
 
 def build_logger():
+    """Build logger object.
+
+    Returns: Logger object.
+    """
     logger = logging.getLogger("gmnspy")
     handler_name = "gmnspy"
 

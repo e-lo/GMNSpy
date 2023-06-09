@@ -1,6 +1,11 @@
+"""Utility functions for formatting tables in markdown."""
+
+
 def list_to_md_table(list_of_dicts: list) -> str:
     """
-    Reads a list of dictionaries defining a schema and creates a markdown table.
+    Read a list of dictionaries defining a schema and creates a markdown table.
+
+    NOTE: currently unused.
 
     args:
         list_of_dicts: a list of dictionaries containing definition of fields.
@@ -46,12 +51,13 @@ def _format_cell_by_type(x, header):
         return str(x)
 
 
-def _recursive_items(d: dict, key_prefix: str = ""):
+def _recursive_items(d: dict, key_prefix: str = "") -> dict:
     """
-    Recursively flattens a nested dictionary and returns a dictionary with key_prefixe
-    to represent original nesting structures.
+    Recursively flattens a nested dictionary to a dictionary.
 
     Modified from https://stackoverflow.com/questions/39233973/get-all-keys-of-a-nested-dictionary
+
+    Returns: a dictionary with key_prefixe to represent original nesting structures.
     """
     for k, v in d.items():
         if type(v) is dict:

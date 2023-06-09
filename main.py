@@ -1,10 +1,24 @@
+"""Functions used to create documentation by mkdocs-macros.
+
+Typical Usage:
+
+    ```markdown
+    {{ include_file(`file_path`) }}
+    {{ frictionless_spec(`file_path`) }}
+    {{ frictionless_schemas(`dir_path`) }}
+    ```
+"""
+
 import os
 import re
+from logging import getLogger
 from typing import Union
 
 import pandas as pd
 
-from gmnspy import document_spec_to_md, document_schemas_to_md
+from gmnspy.schema import document_schemas_to_md, document_spec_to_md
+
+logger = getLogger(__name__)
 
 FIND_REPLACE = {  # original relative to /docs : redirect target
     "<CONTRIBUTING.md>": "[Contributing Section](development/#CONTRIBUTING)",
@@ -35,7 +49,7 @@ def _downshift_md(md: str) -> str:
 
 def define_env(env):
     """
-    This is the hook for defining variables, macros and filters
+    Define variables, macros and filters.
 
     - variables: the dictionary that contains the environment variables
     - macro: a decorator function, to declare a macro.
@@ -86,6 +100,7 @@ def define_env(env):
 
         Returns: a markdown table string
         """
+        logger.info(f"Documenting Spec Path: {spec_path}")
         return document_spec_to_md(spec_path)
 
     @env.macro
@@ -98,5 +113,5 @@ def define_env(env):
             schema_path (str, optional): Schema path in glob format.
                 Defaults to "**/*.schema.json".
         """
-
+        logger.info(f"Documenting Schema Path: {schema_path}")
         return document_schemas_to_md(schema_path)

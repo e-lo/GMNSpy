@@ -1,3 +1,5 @@
+"""Functions which test GMNS foreign key constraints."""
+
 from typing import Dict
 
 import pandas as pd
@@ -8,6 +10,8 @@ from gmnspy.utils import logger
 
 def validate_foreign_keys(gmns_net_d: Dict[str, pd.DataFrame], resource_df: pd.DataFrame, raise_error) -> None:
     """
+    Validate foreign keys for each GMNS table.
+
     Finds foreign keys in schemas of each GMNS table and validates that
     they link to a valid series which has (1) unique IDs, and (2) contains
     the values of the referring series.
@@ -52,6 +56,8 @@ def validate_foreign_keys(gmns_net_d: Dict[str, pd.DataFrame], resource_df: pd.D
 
 def validate_foreign_key(source_s: pd.Series, reference_s: pd.Series, raise_error: bool) -> list:
     """
+    Validate foreign keys of single pair of source and reference series.
+
     Checks that the source_s series links to a valid reference_s series
         which has (1) unique IDs, and (2) contains the values of the
         referring series.
@@ -62,7 +68,6 @@ def validate_foreign_key(source_s: pd.Series, reference_s: pd.Series, raise_erro
 
     Returns: a list of error messages.
     """
-
     fkey_errors = []
     # Make sure reference_s is unique
     dupes = reference_s.dropna().duplicated()

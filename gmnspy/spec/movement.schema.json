@@ -1,127 +1,127 @@
 {
-    "primaryKey": "mvmt_id",
-    "missingValues": [
-        "NaN"
-    ],
-    "fields": [
-        {
-            "name": "mvmt_id",
-            "type": "any",
-            "description": "Primary key.",
-            "constraints": {
-                "required": true
-            }
-        },
-        {
-            "name": "node_id",
-            "type": "any",
-            "foreign_key": "node.node_id",
-            "description": "The node representing the junction.",
-            "constraints": {
-                "required": true
-            }
-        },
-        {
-            "name": "name",
-            "type": "string",
-            "description": "Optional."
-        },
-        {
-            "name": "ib_link_id",
-            "type": "any",
-            "foreign_key": "link.link_id",
-            "description": "Inbound link id.",
-            "constraints": {
-                "required": true
-            }
-        },
-        {
-            "name": "start_ib_lane",
-            "type": "integer",
-            "description": "Innermost lane number the movement applies to at the inbound end."
-        },
-        {
-            "name": "end_ib_lane",
-            "type": "integer",
-            "description": "Outermost lane number the movement applies to at the inbound end. Blank indicates a movement with a single inbound lane."
-        },
-        {
-            "name": "ob_link_id",
-            "type": "any",
-            "foreign_key": "link.link_id",
-            "description": "Outbound link id.",
-            "constraints": {
-                "required": true
-            }
-        },
-        {
-            "name": "start_ob_lane",
-            "type": "integer",
-            "description": "Innermost lane number the movement applies to at the outbound end."
-        },
-        {
-            "name": "end_ob_lane",
-            "type": "integer",
-            "description": "Outermost lane number the movement applies to at the outbound end. Blank indicates a movement with a single outbound lane."
-        },
-        {
-            "name": "type",
-            "type": "string",
-            "description": "Optional. Describes the type of movement (left, right, thru, etc.).",
-            "constraints": {
-                "required": true,
-                "enum": [
-                    "left",
-                    "right",
-                    "uturn",
-                    "thru",
-                    "merge",
-                    "diverge"
-                ]
-            }
-        },
-        {
-            "name": "penalty",
-            "type": "number",
-            "description": "Turn penalty (seconds)"
-        },
-        {
-            "name": "capacity",
-            "type": "number",
-            "description": "Capacity in vehicles per hour."
-        },
-        {
-            "name": "ctrl_type",
-            "type": "string",
-            "description": "Optional. .",
-            "constraints": {
-                "enum": [
-                    "no_control",
-                    "yield",
-                    "stop",
-                    "stop_2_way",
-                    "stop_4_way",
-                    "signal_with_RTOR",
-                    "signal"
-                ]
-            }
-        },
-        {
-            "name": "mvmt_code",
-            "type": "string",
-            "description": "Optional. Movement code (e.g., SBL).  Syntax is DDTN, where DD is the direction (e.g., SB, NB, EB, WB, NE, NW, SE, SW). T is the turning movement (e.g., R, L, T) and N is an optional turning movement number (e.g., distinguishing between bearing right and a sharp right at a 6-way intersection)"
-        },
-        {
-            "name": "allowed_uses",
-            "type": "string",
-            "description": "Optional. Set of allowed uses that should appear in either the use_definition or use_group tables; comma-separated."
-        },
-        {
-            "name": "geometry",
-            "type": "any",
-            "description": "Optional. Movement geometry, in well-known text (WKT) format. Optionally, other formats supported by geopandas (GeoJSON, PostGIS) may be used if specified in geometry_field_format in gmns.spec.json"
-        }
-    ],
-    "name": "movement.schema.json",
-    "description": "Describes how inbound and outbound links connect at an intersection."
+  "description": "Describes how inbound and outbound links connect at an intersection.",
+  "fields": [
+    {
+      "constraints": {
+        "required": true
+      },
+      "description": "Primary key.",
+      "name": "mvmt_id",
+      "type": "any"
+    },
+    {
+      "constraints": {
+        "required": true
+      },
+      "description": "The node representing the junction.",
+      "foreign_key": "node.node_id",
+      "name": "node_id",
+      "type": "any"
+    },
+    {
+      "description": "Optional.",
+      "name": "name",
+      "type": "string"
+    },
+    {
+      "constraints": {
+        "required": true
+      },
+      "description": "Inbound link id.",
+      "foreign_key": "link.link_id",
+      "name": "ib_link_id",
+      "type": "any"
+    },
+    {
+      "description": "Innermost lane number the movement applies to at the inbound end.",
+      "name": "start_ib_lane",
+      "type": "integer"
+    },
+    {
+      "description": "Outermost lane number the movement applies to at the inbound end. Blank indicates a movement with a single inbound lane.",
+      "name": "end_ib_lane",
+      "type": "integer"
+    },
+    {
+      "constraints": {
+        "required": true
+      },
+      "description": "Outbound link id.",
+      "foreign_key": "link.link_id",
+      "name": "ob_link_id",
+      "type": "any"
+    },
+    {
+      "description": "Innermost lane number the movement applies to at the outbound end.",
+      "name": "start_ob_lane",
+      "type": "integer"
+    },
+    {
+      "description": "Outermost lane number the movement applies to at the outbound end. Blank indicates a movement with a single outbound lane.",
+      "name": "end_ob_lane",
+      "type": "integer"
+    },
+    {
+      "constraints": {
+        "enum": [
+          "left",
+          "right",
+          "uturn",
+          "thru",
+          "merge",
+          "diverge"
+        ],
+        "required": true
+      },
+      "description": "Optional. Describes the type of movement (left, right, thru, etc.).",
+      "name": "type",
+      "type": "string"
+    },
+    {
+      "description": "Turn penalty (seconds)",
+      "name": "penalty",
+      "type": "number"
+    },
+    {
+      "description": "Capacity in vehicles per hour.",
+      "name": "capacity",
+      "type": "number"
+    },
+    {
+      "constraints": {
+        "enum": [
+          "no_control",
+          "yield",
+          "stop",
+          "stop_2_way",
+          "stop_4_way",
+          "signal_with_RTOR",
+          "signal"
+        ]
+      },
+      "description": "Optional. .",
+      "name": "ctrl_type",
+      "type": "string"
+    },
+    {
+      "description": "Optional. Movement code (e.g., SBL).  Syntax is DDTN, where DD is the direction (e.g., SB, NB, EB, WB, NE, NW, SE, SW). T is the turning movement (e.g., R, L, T) and N is an optional turning movement number (e.g., distinguishing between bearing right and a sharp right at a 6-way intersection)",
+      "name": "mvmt_code",
+      "type": "string"
+    },
+    {
+      "description": "Optional. Set of allowed uses that should appear in either the use_definition or use_group tables; comma-separated.",
+      "name": "allowed_uses",
+      "type": "string"
+    },
+    {
+      "description": "Optional. Movement geometry, in well-known text (WKT) format. Optionally, other formats supported by geopandas (GeoJSON, PostGIS) may be used if specified in geometry_field_format in gmns.spec.json",
+      "name": "geometry",
+      "type": "any"
+    }
+  ],
+  "missingValues": [
+    "NaN"
+  ],
+  "name": "movement.schema.json",
+  "primaryKey": "mvmt_id"
 }

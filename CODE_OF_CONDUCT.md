@@ -60,7 +60,7 @@ an individual is officially representing the community in public spaces.
 
 ## Enforcement
 
-Instances of abusive, harassing, or otherwise unacceptable behavior may be reported to @e-lo or 
+Instances of abusive, harassing, or otherwise unacceptable behavior may be reported to @e-lo or
 other package maintainers.
 
 All complaints will be reviewed and investigated promptly and fairly.

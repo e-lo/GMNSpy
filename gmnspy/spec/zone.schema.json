@@ -1,34 +1,34 @@
 {
-    "primaryKey": "zone_id",
-    "missingValues": [
-        "NaN"
-    ],
-    "fields": [
-        {
-            "name": "zone_id",
-            "type": "any",
-            "description": "Primary key.",
-            "constraints": {
-                "required": true
-            }
-        },
-        {
-            "name": "name",
-            "type": "string",
-            "description": "Optional."
-        },
-        {
-            "name": "boundary",
-            "type": "any",
-            "description": "Optional. The polygon geometry of the zone in WKT or Polygon."
-        },
-        {
-            "name": "super_zone",
-            "type": "string",
-            "foreign_key": ".zone_id",
-            "description": "Optional. If there is a hierarchy of zones (e.g., parcels and TAZs), indicates the zone of next higher level."
-        }
-    ],
-    "name": "zone.schema.json",
-    "description": "Locates zones (travel analysis zones, parcels) on a map. Zones are represented as polygons in geographic information systems."
+  "description": "Locates zones (travel analysis zones, parcels) on a map. Zones are represented as polygons in geographic information systems.",
+  "fields": [
+    {
+      "constraints": {
+        "required": true
+      },
+      "description": "Primary key.",
+      "name": "zone_id",
+      "type": "any"
+    },
+    {
+      "description": "Optional.",
+      "name": "name",
+      "type": "string"
+    },
+    {
+      "description": "Optional. The polygon geometry of the zone in WKT or Polygon.",
+      "name": "boundary",
+      "type": "any"
+    },
+    {
+      "description": "Optional. If there is a hierarchy of zones (e.g., parcels and TAZs), indicates the zone of next higher level.",
+      "foreign_key": ".zone_id",
+      "name": "super_zone",
+      "type": "string"
+    }
+  ],
+  "missingValues": [
+    "NaN"
+  ],
+  "name": "zone.schema.json",
+  "primaryKey": "zone_id"
 }
