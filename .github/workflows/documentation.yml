@@ -1,22 +1,17 @@
 name: Build docs on push
 
 on:
-  pull_request:
   release:
     types: [created]
   push:
-
-permissions:
-  pull-requests: write
-  repository-projects: write
+    branches: [develop, main]
+  workflow_dispatch:
 
 env:
  DOC_REF_NAME: ${{ github.head_ref || github.ref_name }}
 jobs:
   build-deploy-docs:
     runs-on: ubuntu-latest
-    permissions:
-      pull-requests: write
     steps:
     - uses: actions/checkout@v2
       with:
@@ -24,7 +19,7 @@ jobs:
     - name: Document which branch
       run: echo $DOC_REF_NAME
     - name: Set up Python
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v2
       with:
         python-version: '3.x'
         cache: 'pip'
@@ -39,6 +34,7 @@ jobs:
       run: |
         git config --local user.email "github-actions[bot]@users.noreply.github.com"
         git config --local user.name "github-actions[bot]"
+        git fetch origin gh-pages --depth=1
     - name: Build docs
       run: |
         mike deploy --push --rebase $DOC_REF_NAME
