@@ -7,7 +7,7 @@ import pandas as pd
 from gmnspy.utils import logger
 
 
-def check_required_files(resource_df: pd.DataFrame, raise_error=False) -> None:
+def check_required_files(resources_df: pd.DataFrame, raise_error=False) -> None:
     """
     Check required files exist. Will fail if they don't.
 
@@ -16,7 +16,7 @@ def check_required_files(resource_df: pd.DataFrame, raise_error=False) -> None:
             the the columns "fullpath", "name", and "required" (boolean).
         raise_error: Raises error if missing folder
     """
-    req_files = resource_df[resource_df["required"]]
+    req_files = resources_df[resources_df["required"]]
 
     missing_required_files = req_files[req_files["fullpath"].apply(lambda x: not exists(x))][["name", "fullpath"]]
 

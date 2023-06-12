@@ -8,7 +8,8 @@ Typical Usage:
     ```
 """
 
-from os.path import dirname, join, realpath
+from pathlib import Path
+from typing import Union
 
 import pandas as pd
 
@@ -20,9 +21,7 @@ from gmnspy.validation import (
     validate_foreign_keys,
 )
 
-from .schema import read_config
-
-spec_folder = join(dirname(realpath(__file__)), "spec")
+from .schema import SpecConfig
 
 
 def read_gmns_csv(filename: str, validate: bool = True, schema_file: str = None) -> pd.DataFrame:
@@ -48,18 +47,20 @@ def read_gmns_csv(filename: str, validate: bool = True, schema_file: str = None)
     return df
 
 
-def read_gmns_network(data_directory: str, config: str = None, raise_error=False) -> dict:
+def read_gmns_network(data_directory: str, official_version: str = None,config: Union[str,Path] = None, raise_error=False) -> dict:
     """
-    Read and validate each GMNS file as specified in the config.
+    Read and validate each GMNS file as specified in the config or specified official version.
 
     Validation includes foreign keys between the tables.
 
     Args:
         data_directory: Directory where GMNS data is.
-        config: Configuration file. A json file with a list of "resources"
+        official_version: if specified, will use the official version number or branch for 
+            the configuration.
+        config: Configuration file. Path to a json file with a list of "resources"
             specifying the "name", "path", and "schema" for each GMNS table as
             well as a boolean value for "required". If not specified, assumes
-            it is in a subdirectory "spec/gmns.spec.json"
+            official version defaults specified in `.defaults`.
         raise_error: Raises error if missing folder
 
             Example:
@@ -82,23 +83,22 @@ def read_gmns_network(data_directory: str, config: str = None, raise_error=False
     returns: a dictionary mapping the name of each GMNS table to a
         validated dataframe.
     """
-    config = config or join(spec_folder, "gmns.spec.json")
+    config = SpecConfig(spec_sourc = config, official_version=official_version)
     gmns_net_d = {}
 
-    resource_df = read_config(config, data_dir=data_directory) if config else 1
 
     # check required files exist,
-    check_required_files(resource_df, raise_error)
+    check_required_files(config.resources_df, raise_error)
 
     # update resource dictionary based on what files are in the directory
-    resource_df = update_resources_based_on_existance(resource_df)
+    resources_df = update_resources_based_on_existance(config.resource_df)
 
     # read each csv to a df and validate format
     # todo add paired schema
-    for _, row in resource_df.iterrows():
+    for _, row in resources_df.iterrows():
         gmns_net_d[row["name"]] = read_gmns_csv(row["fullpath"])
 
     # validate foreign keys
-    validate_foreign_keys(gmns_net_d, resource_df, raise_error)
+    validate_foreign_keys(gmns_net_d, resources_df, raise_error)
 
     return gmns_net_d
