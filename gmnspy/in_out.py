@@ -105,7 +105,7 @@ def read_gmns_network(
     returns: a dictionary mapping the name of each GMNS table to a
         validated dataframe.
     """
-    config = SpecConfig(spec_source=config_path, official_version=official_version,data_dir = data_directory)
+    config = SpecConfig(spec_source=config_path, official_version=official_version, data_dir=data_directory)
     gmns_net_dict = {}
 
     # check required files exist,

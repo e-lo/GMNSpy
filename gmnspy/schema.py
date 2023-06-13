@@ -139,7 +139,7 @@ class SpecConfig:
         self,
         spec_source: Union[GithubFile, Path, str] = None,
         official_version: str = None,
-        data_dir: Union[Path,str] = ".",
+        data_dir: Union[Path, str] = ".",
     ):
         """Constructs a SpecConfig instance.
 
@@ -247,7 +247,9 @@ class SpecConfig:
         return frictionless.Schema(_schema_path)
 
     @staticmethod
-    def config_json_to_resources_df(config_json: json, schema_base_path: Union[Path, str], data_dir: Union[Path, str]) -> pd.DataFrame:
+    def config_json_to_resources_df(
+        config_json: json, schema_base_path: Union[Path, str], data_dir: Union[Path, str]
+    ) -> pd.DataFrame:
         """Translate json to a data table of resources.
 
         Args:
