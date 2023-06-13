@@ -8,7 +8,6 @@ Typical Usage:
     ```
 """
 import os
-
 from pathlib import Path
 from typing import Union
 
@@ -69,7 +68,7 @@ def read_gmns_csv(
 
 
 def read_gmns_network(
-    data_directory: str, official_version: str = None, config: Union[str, Path] = None, raise_error=False
+    data_directory: str, official_version: str = None, config_path: Union[str, Path] = None, raise_error=False
 ) -> dict:
     """
     Read and validate each GMNS file as specified in the config or specified official version.
@@ -80,7 +79,7 @@ def read_gmns_network(
         data_directory: Directory where GMNS data is.
         official_version: if specified, will use the official version number or branch for
             the configuration.
-        config: Configuration file. Path to a json file with a list of "resources"
+        config_path: Configuration file. Path to a json file with a list of "resources"
             specifying the "name", "path", and "schema" for each GMNS table as
             well as a boolean value for "required". If not specified, assumes
             official version defaults specified in `.defaults`.
@@ -106,14 +105,14 @@ def read_gmns_network(
     returns: a dictionary mapping the name of each GMNS table to a
         validated dataframe.
     """
-    config = SpecConfig(spec_source=config, official_version=official_version)
+    config = SpecConfig(spec_source=config_path, official_version=official_version,data_dir = data_directory)
     gmns_net_dict = {}
 
     # check required files exist,
     check_required_files(config.resources_df, raise_error)
 
     # update resource dictionary based on what files are in the directory
-    resources_df = update_resources_based_on_existance(config.resource_df)
+    resources_df = update_resources_based_on_existance(config.resources_df)
 
     # read each csv to a df and validate format
     # todo add paired schema

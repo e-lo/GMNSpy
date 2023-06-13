@@ -9,7 +9,7 @@ Typical usage:
 import os
 
 from .in_out import read_gmns_csv, read_gmns_network
-from .schema import official_spec_config, document_schemas_to_md, SpecConfig
+from .schema import SpecConfig, document_schemas_to_md, official_spec_config
 from .utils import list_to_md_table, logger
 
 __all__ = [

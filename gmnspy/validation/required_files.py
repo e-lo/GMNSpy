@@ -17,7 +17,7 @@ def check_required_files(resources_df: pd.DataFrame, raise_error=False) -> None:
         raise_error: Raises error if missing folder
     """
     req_files = resources_df[resources_df["required"]]
-
+    logger.info(f"req_files: \n{req_files.iloc[0]}")
     missing_required_files = req_files[req_files["fullpath"].apply(lambda x: not exists(x))][["name", "fullpath"]]
 
     if not missing_required_files.shape[0]:

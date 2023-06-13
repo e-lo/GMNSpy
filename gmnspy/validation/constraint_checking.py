@@ -37,6 +37,7 @@ def _unique_constraint(s: pd.Series) -> Union[None, str]:
         logger.warning(msg)
         return msg
 
+
 def _minimum_constraint(s: pd.Series, minimum: Union[float, int]) -> Union[None, str]:
     """
     Check if series contains value under the specified minimum.
@@ -53,7 +54,8 @@ def _minimum_constraint(s: pd.Series, minimum: Union[float, int]) -> Union[None,
         msg = f"{len(_bad_vals)} values lower than minimum value {minimum}: {_bad_vals}"
         logger.warning(msg)
         return msg
-    
+
+
 def _maximum_constraint(s: pd.Series, maximum: Union[float, int]) -> Union[None, str]:
     """
     Check if series contains value above the specified maximum.
@@ -70,6 +72,7 @@ def _maximum_constraint(s: pd.Series, maximum: Union[float, int]) -> Union[None,
         msg = f"{len(_bad_vals)} values higher than maximum value {maximum}: {_bad_vals}"
         logger.warning(msg)
         return msg
+
 
 def _pattern_constraint(s: pd.Series, pattern: str) -> Union[None, str]:
     """

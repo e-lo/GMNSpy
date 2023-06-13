@@ -1,10 +1,11 @@
 """Applies schema constraints to update a dataframe of data."""
 
 import os
-from typing import Union, Tuple
+from typing import Tuple, Union
+
 import pandas as pd
 
-from gmnspy.schema import SCHEMA_TO_PANDAS_TYPES, official_spec_config, json_from_path
+from gmnspy.schema import SCHEMA_TO_PANDAS_TYPES, json_from_path, official_spec_config
 from gmnspy.utils import logger
 from gmnspy.validation.constraint_checking import (
     _enum_constraint,
@@ -19,13 +20,14 @@ from gmnspy.validation.constraint_checking import (
 class SchemaApplicationError(Exception):
     pass
 
-def _check_required_fields(df: pd.DataFrame,schema_dict:dict)->Tuple[list]:
+
+def _check_required_fields(df: pd.DataFrame, schema_dict: dict) -> Tuple[list]:
     """Check that required fields present and warn about extra fields
 
     Args:
         df: dataframe to check
         schema_dict: dictionary of table schema
-    
+
     Returns: tuple of (error_list, warning_list)
     """
     error_list = []
@@ -45,16 +47,16 @@ def _check_required_fields(df: pd.DataFrame,schema_dict:dict)->Tuple[list]:
         warning_list.append(msg)
         logger.warning(msg)
 
-    return error_list,warning_list
-    
-    
-def _check_coerce_types(df: pd.DataFrame,schema_dict:dict)->Tuple[Union[pd.DataFrame,list]]:
+    return error_list, warning_list
+
+
+def _check_coerce_types(df: pd.DataFrame, schema_dict: dict) -> Tuple[Union[pd.DataFrame, list]]:
     """Check values present and warn about extra fields
 
     Args:
         df: dataframe to check
         schema_dict: dictionary of table schema
-    
+
     Returns: tuple of (coerced_df,error_list, warning_list)
     """
     error_list = []
@@ -74,15 +76,16 @@ def _check_coerce_types(df: pd.DataFrame,schema_dict:dict)->Tuple[Union[pd.DataF
         error_list.append(msg)
         logger.error(msg)
 
-    return coerced_df, error_list,warning_list
+    return coerced_df, error_list, warning_list
 
-def _check_field_constraints(df: pd.DataFrame,schema_dict:dict)->list:
+
+def _check_field_constraints(df: pd.DataFrame, schema_dict: dict) -> list:
     """Check field constraints.
 
     Args:
         df: dataframe to check
         schema_dict: dictionary of table schema
-    
+
     Returns: error_list
     """
     error_list = []
@@ -93,7 +96,7 @@ def _check_field_constraints(df: pd.DataFrame,schema_dict:dict)->list:
 
     # iterate through all the constraints for all the fields
     field_constraint_validations = []
-   
+
     for field_name, fld_constr in zip(fields_with_constraints, constraints):
         field_constraint_validations += [
             globals()[f"_{c_name}_constraint"](df[field_name], cpar) for c_name, cpar in fld_constr.items()
@@ -102,13 +105,14 @@ def _check_field_constraints(df: pd.DataFrame,schema_dict:dict)->list:
     error_list = [i for i in field_constraint_validations if i]
     return error_list
 
-def _check_field_warnings(df: pd.DataFrame,schema_dict:dict)->list:
+
+def _check_field_warnings(df: pd.DataFrame, schema_dict: dict) -> list:
     """Check field constraints.
 
     Args:
         df: dataframe to check
         schema_dict: dictionary of table schema
-    
+
     Returns: warning_list
     """
     warning_list = []
@@ -170,33 +174,33 @@ def apply_schema_to_df(
     warning_list = []
 
     # Fields
-    _field_error_list,_field_warning_list = _check_required_fields(df,schema_dict)
+    _field_error_list, _field_warning_list = _check_required_fields(df, schema_dict)
 
     if fail_fast and _field_error_list:
         raise SchemaApplicationError(_field_error_list)
-    
+
     error_list += _field_error_list
     warning_list += _field_warning_list
 
     # Coerce Types
-    df, _type_error_list, _type_warning_list = _check_coerce_types(df,schema_dict)
+    df, _type_error_list, _type_warning_list = _check_coerce_types(df, schema_dict)
 
     if fail_fast and _type_error_list:
         raise SchemaApplicationError(_type_error_list)
-    
+
     error_list += _type_error_list
     warning_list += _type_warning_list
 
     # Constraints
-    _constraint_error_list = _check_field_constraints(df,schema_dict)
-    _constraint_warning_list = _check_field_warnings(df,schema_dict)
+    _constraint_error_list = _check_field_constraints(df, schema_dict)
+    _constraint_warning_list = _check_field_warnings(df, schema_dict)
 
     if fail_fast and _constraint_error_list:
         raise SchemaApplicationError(_constraint_error_list)
-    
+
     error_list += _constraint_error_list
     warning_list += _constraint_warning_list
-    
+
     # Report
     if warning_list:
         logger.warning(warning_list)

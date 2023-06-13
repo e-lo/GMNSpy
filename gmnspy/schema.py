@@ -12,17 +12,22 @@ Typical usage:
 
 import glob
 import json
-import requests
-
 from os.path import dirname, join, realpath
 from pathlib import Path
-
 from typing import Union
+
 import frictionless
 import pandas as pd
+import requests
 
+from .defaults import (
+    SPEC_GITHUB_PATH,
+    SPEC_GITHUB_REF,
+    SPEC_GITHUB_REPO,
+    SPEC_GITHUB_SPEC_FILE,
+    SPEC_GITHUB_USER,
+)
 from .utils import list_to_md_table, logger
-from .defaults import SPEC_GITHUB_PATH, SPEC_GITHUB_REF, SPEC_GITHUB_REPO, SPEC_GITHUB_SPEC_FILE, SPEC_GITHUB_USER
 
 SCHEMA_TO_PANDAS_TYPES = {
     "integer": "int64",
@@ -123,6 +128,7 @@ class SpecConfig:
     Attributes:
         resources_df: pandas dataframe of all the tables and associated schemas.
         markdown_table: specification as a markdown table.
+        data_dir: base directory for data.
 
     Functions:
         config_json_to_resources_df
@@ -133,6 +139,7 @@ class SpecConfig:
         self,
         spec_source: Union[GithubFile, Path, str] = None,
         official_version: str = None,
+        data_dir: Union[Path,str] = ".",
     ):
         """Constructs a SpecConfig instance.
 
@@ -141,6 +148,7 @@ class SpecConfig:
                 file from github.
             official_version: If specified, will find official version of spec with that ref on
                 github per `.defaults`. If not specified, will default to `.defaults.GITHUB_REF`.
+            data_dir: Base directory for data. Defaults to "." local directory where spec is.
         """
         if spec_source and official_version:
             raise ValueError("Must specified ONE of spec_source or official_version.")
@@ -163,6 +171,7 @@ class SpecConfig:
 
         self._spec_source = spec_source
         self._resources_df = None
+        self._data_dir = data_dir
 
         logger.info(f"Created spec source of type: {self._location_type}")
 
@@ -177,8 +186,10 @@ class SpecConfig:
 
     @property
     def resources_df(self) -> pd.DataFrame:
+        if self._data_dir is None:
+            raise ValueError("Must set data_dir before accessing resources_df.")
         if self._resources_df is None:
-            self._resources_df = self.config_json_to_resources_df(self._config_json, self._base_path)
+            self._resources_df = self.config_json_to_resources_df(self._config_json, self._base_path, self._data_dir)
         return self._resources_df
 
     @property
@@ -236,7 +247,7 @@ class SpecConfig:
         return frictionless.Schema(_schema_path)
 
     @staticmethod
-    def config_json_to_resources_df(config_json: json, schema_base_path: Union[Path, str]) -> pd.DataFrame:
+    def config_json_to_resources_df(config_json: json, schema_base_path: Union[Path, str], data_dir: Union[Path, str]) -> pd.DataFrame:
         """Translate json to a data table of resources.
 
         Args:
@@ -264,16 +275,21 @@ class SpecConfig:
                     }
                 ```
             schema_base_path (Union[Path,str]): Path object or URL base where schemas are located.
+            data_dir: base directory for data
 
         Returns:
             pd.DataFrame: spec configuration file as a DataFrame.
         """
+
         resources_df = pd.DataFrame(config_json["resources"])
         resources_df["required"].fillna(False, inplace=True)
         if isinstance(schema_base_path, Path):
             resources_df["schema_path"] = resources_df["schema"].apply(lambda x: schema_base_path / x)
         else:
             resources_df["schema_path"] = resources_df["schema"].apply(lambda x: f"{schema_base_path}/{x}")
+
+        resources_df["fullpath"] = resources_df["path"].apply(lambda x: join(data_dir, x))
+
         resources_df.set_index("name", drop=False, inplace=True)
         return resources_df
 

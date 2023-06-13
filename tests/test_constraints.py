@@ -1,13 +1,12 @@
+import pandas as pd
 import pytest
 
-import pandas as pd
-
 from gmnspy.validation.constraint_checking import (
-    _unique_constraint,
-    _minimum_constraint,
-    _maximum_constraint,
-    _pattern_constraint,
     _enum_constraint,
+    _maximum_constraint,
+    _minimum_constraint,
+    _pattern_constraint,
+    _unique_constraint,
 )
 
 
@@ -42,7 +41,6 @@ def test_pattern_constraint():
     assert _pattern_constraint(s_good, test_pattern) == None
 
 
-@pytest.mark.menow
 def test_enum_constraint():
     s_bad = pd.Series(["hi", "hello", "yo", "bye", None])
     s_good = pd.Series(["hello", "yo", "yo"])
