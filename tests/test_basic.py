@@ -63,7 +63,7 @@ def test_validate_dfs_local_spec(test_data_name):
 def test_validate_dfs_official_spec(test_data_name):
     _ = gmnspy.in_out.read_gmns_csv(join(test_pth, f"{test_data_name}.csv"))
 
-@pytest.mark.menow
+
 def test_validate_example_network_local_spec():
     from gmnspy.defaults import LOCAL_SPEC
     _ = gmnspy.in_out.read_gmns_network(join(base_path, "tests", "data"), config_path=LOCAL_SPEC)
