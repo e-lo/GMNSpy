@@ -14,7 +14,7 @@ import glob
 import json
 from os.path import dirname, join, realpath
 from pathlib import Path
-from typing import Union
+from typing import Union, List
 
 import frictionless
 import pandas as pd
@@ -26,6 +26,7 @@ from .defaults import (
     SPEC_GITHUB_REPO,
     SPEC_GITHUB_SPEC_FILE,
     SPEC_GITHUB_USER,
+    LOCAL_SPEC,
 )
 from .utils import list_to_md_table, logger
 
@@ -49,7 +50,7 @@ def json_from_path(json_path: Union[Path, str]) -> dict:
     """Return json from path which is either github file or local path.
 
     Args:
-        schema_path (Union[Path,str]): Either github URL or local path.
+        json_path (Union[Path,str]): Either github URL or local path.
 
     Returns:
         dict: parsed json
@@ -193,6 +194,11 @@ class SpecConfig:
         return self._resources_df
 
     @property
+    def schema_names(self) -> List[str]:
+        names = self.resources_df.name.to_list()
+        return names
+
+    @property
     def markdown_table(self) -> str:
         return self.as_markdown()
 
@@ -228,6 +234,16 @@ class SpecConfig:
             logger.error(f"{len(schema_errors)} Schema Errors found in Spec.\n{schema_errors}")
         return schema_errors
 
+    def get_schema(self, schema_name: str) -> frictionless.Schema:
+        """Return schema as frictiomnless object.
+
+        Args:
+            schema_name (str): Name of schema which is part of spec.
+        """
+        _schema_path = self.resources_df.loc[schema_name]["schema_path"]
+        return frictionless.Schema(_schema_path)
+        
+
     def get_schema_as_dict(self, schema_name: str) -> dict:
         """Return schema as dictionary.
 
@@ -237,14 +253,24 @@ class SpecConfig:
         _schema_path = self.resources_df.loc[schema_name]["schema_path"]
         return json_from_path(_schema_path)
 
-    def get_schema(self, schema_name: str) -> dict:
-        """Return schema as dictionary.
+    
+    def get_schema_as_md(self,schema_name: str) -> str:
+        """Return schema markdown string.
 
         Args:
             schema_name (str): Name of schema which is part of spec.
         """
-        _schema_path = self.resources_df.loc[schema_name]["schema_path"]
-        return frictionless.Schema(_schema_path)
+        s = self.get_schema(schema_name)
+        md = s.to_markdown()
+        md = md.replace("## `schema`", f"## `{schema_name}`")
+        return md
+    
+    def all_schemas_as_md(self) -> str:
+        """Return all schemas as markdown string."""
+        md = ''
+        for sn in self.schema_names:
+            md += f"\n{self.get_schema_as_md(sn)}"
+        return md
 
     @staticmethod
     def config_json_to_resources_df(
@@ -295,6 +321,20 @@ class SpecConfig:
         resources_df.set_index("name", drop=False, inplace=True)
         return resources_df
 
+    def as_markdown_tab(self,tab_name:str = "Spec" ) -> str:
+        """
+        Output pec to markdown table within a tab.
+
+        tab_name: name of tab
+        """
+        _md = self.as_markdown()
+        _tab = f'=== "{tab_name}"\n'
+        _tab += "\n    "
+        _tab += _md.replace('\n|','\n    |')
+        _tab += "\n"
+
+        return _tab
+
     def as_markdown(self, out_path: str = None) -> str:
         """
         Output and optionally write to file spec to markdown table
@@ -304,9 +344,9 @@ class SpecConfig:
                 Defaults to None.
         """
         DROP_COLS = ["fullpath", "schema_path", "path", "schema"]
-
+        drop_cols = [c for c in DROP_COLS if c in self.resources_df.columns]
         # Generate a table for overall file requirements
-        spec_df = self.resources_df.drop(columns=DROP_COLS).reset_index()
+        spec_df = self.resources_df.drop(columns=drop_cols)
         spec_df["name"] = spec_df["name"].apply(lambda x: f"[`{x}`](#{x})".replace("_", "-"))
 
         spec_markdown = spec_df.to_markdown(index=False)
@@ -327,6 +367,15 @@ def official_spec_config(version: str = SPEC_GITHUB_REF) -> SpecConfig:
             Defaults to SPEC_GITHUB_REF which defaults to master.
     """
     return SpecConfig(official_version=version)
+
+
+def local_spec_config(local_path: Union[str, Path] = LOCAL_SPEC):
+    """Return local spec config.
+
+    Args:
+        local_path: location of spec. Defaults to what is specified in `.defaults.LOCAL_SPEC`.
+    """
+    return SpecConfig(spec_source=local_path)
 
 
 def document_schemas_to_md(schema_path: str = None, out_path: str = None) -> str:

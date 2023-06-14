@@ -7,12 +7,12 @@ import pandas as pd
 from gmnspy.utils import logger
 
 
-def check_required_files(resources_df: pd.DataFrame, raise_error=False) -> None:
+def check_required_files(resources_df: pd.DataFrame, raise_error:bool =False) -> None:
     """
     Check required files exist. Will fail if they don't.
 
     Args:
-        resource_df: Dataframe with a row for each GMNS table including
+        resources_df: Dataframe with a row for each GMNS table including
             the the columns "fullpath", "name", and "required" (boolean).
         raise_error: Raises error if missing folder
     """

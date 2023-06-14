@@ -12,7 +12,7 @@ def update_resources_based_on_existance(resources_df: pd.DataFrame) -> pd.DataFr
     Update resource dataframe based on which files exist in the directory.
 
     Args:
-        resource_df:Dataframe with a row for each GMNS table including
+        resources_df:Dataframe with a row for each GMNS table including
             the the columns "fullpath" and "name".
 
     Returns: Updated version of resource dataframe without non-existant
