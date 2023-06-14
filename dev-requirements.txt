@@ -1,10 +1,6 @@
-sphinx
-pytest
-sphinx-autodoc-typehints
-sphinx_rtd_theme
+autoflake
 black
-recommonmark
-sphinx-markdown-tables
 flake8
-graphviz
-tabulate
+pre-commit
+pydocstyle
+pytest

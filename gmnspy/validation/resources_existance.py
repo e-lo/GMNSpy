@@ -1,6 +1,9 @@
+"""Function which establishes which GMNS resources are present."""
+
 from os.path import exists
 
 import pandas as pd
+
 from gmnspy.utils.set_logger import logger
 
 

@@ -1,5 +1,5 @@
 import glob
-import os
+from os.path import dirname, join, realpath
 
 import pytest
 

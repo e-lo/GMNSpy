@@ -1,46 +1,46 @@
-name: Documentation
+name: Build docs on push
 
 on:
-  pull_request:
   release:
+    types: [created]
   push:
-    branches:
-      - master
+    branches: [develop, main]
+  workflow_dispatch:
 
+env:
+ DOC_REF_NAME: ${{ github.head_ref || github.ref_name }}
 jobs:
-  build:
+  build-deploy-docs:
     runs-on: ubuntu-latest
-    strategy:
-      max-parallel: 1
     steps:
     - uses: actions/checkout@v2
-    - name: Set up Python 3.9
-      uses: actions/setup-python@v1
       with:
-        python-version: 3.9
+        fetch-depth: 0
+    - name: Document which branch
+      run: echo $DOC_REF_NAME
+    - name: Set up Python
+      uses: actions/setup-python@v2
+      with:
+        python-version: '3.x'
+        cache: 'pip'
     - name: Install dependencies
       run: |
-        sudo apt-get install -y pandoc
-        python -m pip install setuptools --upgrade
-        python -m pip install -r dev-requirements.txt
-        python -m pip install -r requirements.txt
-
-    - name: Builds documentation
+        python -m pip install --upgrade pip
+        pip install -r docs/requirements.txt
+    - name: Install package
       run: |
-        cd docs
-        make html
-        cd ..
-
-    - name: Keeps documentation on GitHub
-      uses: actions/upload-artifact@v2
+        pip install -e .
+    - name: Configure Git user
+      run: |
+        git config --local user.email "github-actions[bot]@users.noreply.github.com"
+        git config --local user.name "github-actions[bot]"
+        git fetch origin gh-pages --depth=1
+    - name: Build docs
+      run: |
+        mike deploy --push --rebase $DOC_REF_NAME
+    - name: add comment to PR with documentation link
+      if: github.event_name != 'pull_request'
+      uses: mshick/add-pr-comment@v2
       with:
-        name: documentation
-        path: docs/_build/
-        if-no-files-found: error # 'warn' or 'ignore' are also available, defaults to `warn`
-
-    - name: Deploy 🚀
-      if: github.event_name == 'push'
-      uses: JamesIves/github-pages-deploy-action@4.1.4
-      with:
-        branch: gh-pages # The branch the action should deploy to.
-        folder: docs/_build/html # The folder the action should deploy.
+        message: |
+          Preview documentation at: <https://e-lo.github.io/GMNSpy/$DOC_REF_NAME>
