@@ -16,7 +16,8 @@ from typing import Union
 
 import pandas as pd
 
-from gmnspy.schema import document_schemas_to_md, document_spec_to_md
+from gmnspy.defaults import SPEC_GITHUB_REF
+from gmnspy.schema import local_spec_config, official_spec_config
 
 logger = getLogger(__name__)
 
@@ -36,6 +37,14 @@ _md_heading_re = {
     4: re.compile(r"(#{4}\s)(.*)"),
     5: re.compile(r"(#{5}\s)(.*)"),
 }
+
+
+def _table_as_tab(table_md: str, tab_name: str) -> str:
+    tab_md = f'=== "{tab_name}"\n'
+    tab_md += "\n    "
+    tab_md += table_md.replace("\n|", "\n    |")
+    tab_md += "\n"
+    return tab_md
 
 
 def _downshift_md(md: str) -> str:
@@ -89,29 +98,67 @@ def define_env(env):
         return content
 
     @env.macro
-    def frictionless_spec(
-        spec_path: str = None,
-    ) -> str:
-        """Translate the frictionless .spec file to a markdown table.
+    def local_frictionless_spec(tab: str = None) -> str:
+        """Translate local frictionless .spec file to a markdown table.
 
-        Args:
-            spec_path (str, optional): base path of repo. Defaults to two directories
-                up from this file.
+        args:
+            tab: if not none, will return a markdown tab with this label
 
         Returns: a markdown table string
         """
-        logger.info(f"Documenting Spec Path: {spec_path}")
-        return document_spec_to_md(spec_path)
+        spec_config = local_spec_config()
+        table_md = spec_config.as_markdown()
+        if tab is None:
+            return table_md
+        tab_md = _table_as_tab(table_md, tab)
+        return tab_md
 
     @env.macro
-    def frictionless_schemas(
-        schema_path: str = None,
-    ) -> None:
-        """Document frictionless table schema files as markdown tables.
+    def official_frictionless_spec(version: str = SPEC_GITHUB_REF, tab: str = None) -> str:
+        """Translate the official frictionless .spec file to a markdown table.
 
         Args:
-            schema_path (str, optional): Schema path in glob format.
-                Defaults to "**/*.schema.json".
+            version (str, optional): Official version of the spec. If None, will use default.
+            tab: if not none, will return a markdown tab with this label
+
+        Returns: a markdown table string
         """
-        logger.info(f"Documenting Schema Path: {schema_path}")
-        return document_schemas_to_md(schema_path)
+        spec_config = official_spec_config(version=version)
+        table_md = spec_config.as_markdown()
+        if tab is None:
+            return table_md
+        tab_md = _table_as_tab(table_md, tab)
+        return tab_md
+
+    @env.macro
+    def local_frictionless_schemas(tab: str = None) -> str:
+        """Translate schemas for local frictionless .spec file to a markdown table.
+
+        args:
+            tab: if not none, will return a markdown tab with this label
+
+        Returns: a markdown table string
+        """
+        spec_config = local_spec_config()
+        schema_md = spec_config.all_schemas_as_md()
+        if tab is None:
+            return schema_md
+        tab_md = _table_as_tab(schema_md, tab)
+        return tab_md
+
+    @env.macro
+    def official_frictionless_schemas(version: str = SPEC_GITHUB_REF, tab: str = None) -> str:
+        """Translate the schemas in official frictionless .spec file to markdown
+
+        Args:
+            version (str, optional): Official version of the spec. If None, will use default.
+            tab: if not none, will return a markdown tab with this label
+
+        Returns: a markdow string
+        """
+        spec_config = official_spec_config(version=version)
+        schema_md = spec_config.all_schemas_as_md()
+        if tab is None:
+            return schema_md
+        tab_md = _table_as_tab(schema_md, tab)
+        return tab_md

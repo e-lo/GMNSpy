@@ -4,11 +4,11 @@ from typing import Dict
 
 import pandas as pd
 
-from gmnspy.schema import read_schema
+from gmnspy.schema import SpecConfig
 from gmnspy.utils import logger
 
 
-def validate_foreign_keys(gmns_net_d: Dict[str, pd.DataFrame], resource_df: pd.DataFrame, raise_error) -> None:
+def validate_foreign_keys(gmns_net_dict: Dict[str, pd.DataFrame], spec_config: SpecConfig, raise_error) -> None:
     """
     Validate foreign keys for each GMNS table.
 
@@ -17,18 +17,16 @@ def validate_foreign_keys(gmns_net_d: Dict[str, pd.DataFrame], resource_df: pd.D
     the values of the referring series.
 
     Args:
-        gmns_net_d: Dictionary containing dataframes of all the GMNS tables
+        gmns_net_dict: Dictionary containing dataframes of all the GMNS tables
             for the network keyed to their file names (i.e. "link").
-        resource_df:Dataframe with a row for each GMNS table which contains
-            the field "fullpath_schema" for the schema locations for
-            each GMNS table which is where foreign keys are specified.
+        spec_config: SpecConfig for the version of the spec you are using.
         raise_error: Raises error if found
     """
-    logger.info(gmns_net_d["node"]["node_id"])
+    logger.info(gmns_net_dict["node"]["node_id"])
 
     fkey_errors = []
-    for table_name, df in gmns_net_d.items():
-        schema = read_schema(schema_file=resource_df[resource_df["name"] == table_name]["fullpath_schema"][0])
+    for table_name, df in gmns_net_dict.items():
+        schema = spec_config.get_schema_as_dict(table_name)
 
         foreign_keys = [
             (f["name"], f["foreign_key"])
@@ -44,7 +42,7 @@ def validate_foreign_keys(gmns_net_d: Dict[str, pd.DataFrame], resource_df: pd.D
             if not t:
                 reference_s = df[f]
             else:
-                reference_s = gmns_net_d.get(t, {}).get(f, None)
+                reference_s = gmns_net_dict.get(t, {}).get(f, None)
                 if reference_s is None:
                     msg = f"FAIL. {f} field in table {t} does not exist"
                     logger.error(msg)
