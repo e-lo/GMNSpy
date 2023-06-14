@@ -14,19 +14,19 @@ import glob
 import json
 from os.path import dirname, join, realpath
 from pathlib import Path
-from typing import Union, List
+from typing import List, Union
 
 import frictionless
 import pandas as pd
 import requests
 
 from .defaults import (
+    LOCAL_SPEC,
     SPEC_GITHUB_PATH,
     SPEC_GITHUB_REF,
     SPEC_GITHUB_REPO,
     SPEC_GITHUB_SPEC_FILE,
     SPEC_GITHUB_USER,
-    LOCAL_SPEC,
 )
 from .utils import list_to_md_table, logger
 
@@ -242,7 +242,6 @@ class SpecConfig:
         """
         _schema_path = self.resources_df.loc[schema_name]["schema_path"]
         return frictionless.Schema(_schema_path)
-        
 
     def get_schema_as_dict(self, schema_name: str) -> dict:
         """Return schema as dictionary.
@@ -253,8 +252,7 @@ class SpecConfig:
         _schema_path = self.resources_df.loc[schema_name]["schema_path"]
         return json_from_path(_schema_path)
 
-    
-    def get_schema_as_md(self,schema_name: str) -> str:
+    def get_schema_as_md(self, schema_name: str) -> str:
         """Return schema markdown string.
 
         Args:
@@ -264,10 +262,10 @@ class SpecConfig:
         md = s.to_markdown()
         md = md.replace("## `schema`", f"## `{schema_name}`")
         return md
-    
+
     def all_schemas_as_md(self) -> str:
         """Return all schemas as markdown string."""
-        md = ''
+        md = ""
         for sn in self.schema_names:
             md += f"\n{self.get_schema_as_md(sn)}"
         return md
@@ -321,7 +319,7 @@ class SpecConfig:
         resources_df.set_index("name", drop=False, inplace=True)
         return resources_df
 
-    def as_markdown_tab(self,tab_name:str = "Spec" ) -> str:
+    def as_markdown_tab(self, tab_name: str = "Spec") -> str:
         """
         Output pec to markdown table within a tab.
 
@@ -330,7 +328,7 @@ class SpecConfig:
         _md = self.as_markdown()
         _tab = f'=== "{tab_name}"\n'
         _tab += "\n    "
-        _tab += _md.replace('\n|','\n    |')
+        _tab += _md.replace("\n|", "\n    |")
         _tab += "\n"
 
         return _tab

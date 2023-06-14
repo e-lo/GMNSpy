@@ -10,7 +10,7 @@ def list_to_md_table(list_of_dicts: list) -> str:
     args:
         list_of_dicts: a list of dictionaries containing definition of fields.
 
-    returns: 
+    returns:
         A markdown string representing the table.
 
     """

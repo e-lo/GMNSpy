@@ -48,7 +48,7 @@ def read_gmns_csv(
             to apply to file. If neither schema_file or schema_name supplied, will try to determine
             which schema to apply based on the filename.
 
-    Returns: 
+    Returns:
         Validated dataframe with coerced types according to schema.
     """
     df = pd.read_csv(filename)
@@ -69,7 +69,7 @@ def read_gmns_csv(
 
 
 def read_gmns_network(
-    data_directory: str, official_version: str = None, config_path: Union[str, Path] = None, raise_error:bool=False
+    data_directory: str, official_version: str = None, config_path: Union[str, Path] = None, raise_error: bool = False
 ) -> dict:
     """
     Read and validate each GMNS file as specified in the config or specified official version.

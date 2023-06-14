@@ -16,8 +16,8 @@ from typing import Union
 
 import pandas as pd
 
-from gmnspy.schema import local_spec_config, official_spec_config
 from gmnspy.defaults import SPEC_GITHUB_REF
+from gmnspy.schema import local_spec_config, official_spec_config
 
 logger = getLogger(__name__)
 
@@ -38,10 +38,11 @@ _md_heading_re = {
     5: re.compile(r"(#{5}\s)(.*)"),
 }
 
-def _table_as_tab(table_md:str,tab_name:str)->str:
+
+def _table_as_tab(table_md: str, tab_name: str) -> str:
     tab_md = f'=== "{tab_name}"\n'
     tab_md += "\n    "
-    tab_md += table_md.replace('\n|','\n    |')
+    tab_md += table_md.replace("\n|", "\n    |")
     tab_md += "\n"
     return tab_md
 
@@ -109,9 +110,8 @@ def define_env(env):
         table_md = spec_config.as_markdown()
         if tab is None:
             return table_md
-        tab_md = _table_as_tab(table_md,tab)
+        tab_md = _table_as_tab(table_md, tab)
         return tab_md
-
 
     @env.macro
     def official_frictionless_spec(version: str = SPEC_GITHUB_REF, tab: str = None) -> str:
@@ -127,7 +127,7 @@ def define_env(env):
         table_md = spec_config.as_markdown()
         if tab is None:
             return table_md
-        tab_md = _table_as_tab(table_md,tab)
+        tab_md = _table_as_tab(table_md, tab)
         return tab_md
 
     @env.macro
@@ -143,9 +143,8 @@ def define_env(env):
         schema_md = spec_config.all_schemas_as_md()
         if tab is None:
             return schema_md
-        tab_md = _table_as_tab(schema_md,tab)
+        tab_md = _table_as_tab(schema_md, tab)
         return tab_md
-
 
     @env.macro
     def official_frictionless_schemas(version: str = SPEC_GITHUB_REF, tab: str = None) -> str:
@@ -161,5 +160,5 @@ def define_env(env):
         schema_md = spec_config.all_schemas_as_md()
         if tab is None:
             return schema_md
-        tab_md = _table_as_tab(schema_md,tab)
+        tab_md = _table_as_tab(schema_md, tab)
         return tab_md

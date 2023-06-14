@@ -7,7 +7,7 @@ import pandas as pd
 from gmnspy.utils import logger
 
 
-def check_required_files(resources_df: pd.DataFrame, raise_error:bool =False) -> None:
+def check_required_files(resources_df: pd.DataFrame, raise_error: bool = False) -> None:
     """
     Check required files exist. Will fail if they don't.
 
