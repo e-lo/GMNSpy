@@ -37,7 +37,7 @@ jobs:
         git fetch origin gh-pages --depth=1
     - name: Build docs
       run: |
-        mike deploy --push --rebase $DOC_REF_NAME
+        mike deploy --push $DOC_REF_NAME
     - name: add comment to PR with documentation link
       if: github.event_name != 'pull_request'
       uses: mshick/add-pr-comment@v2
