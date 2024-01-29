@@ -38,7 +38,7 @@ install_requires = [r.strip() for r in requirements]
 
 setup(
     name="gmnspy",
-    version="0.1.1",
+    version="0.0.3",
     description="",
     long_description=long_description,
     long_description_content_type="text/markdown",
