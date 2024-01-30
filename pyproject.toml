@@ -17,7 +17,7 @@ classifiers = [
 
 [project.urls]
 "Source"  = "https://github.com/e-lo/GMNSpy"
-"Homepage" = "https:e-lo.github.io/GMNSpy"
+"Homepage" = "https://e-lo.github.io/GMNSpy"
 
 [tool.black]
 line-length = 120
