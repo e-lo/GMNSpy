@@ -41,7 +41,7 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: pypi
-      url: https://pypi.org/p/gmnspy  # Replace <package-name> with your PyPI project name
+      url: https://pypi.org/p/gmnspy 
     permissions:
       id-token: write  # IMPORTANT: mandatory for trusted publishing
 
@@ -105,7 +105,7 @@ jobs:
 
     environment:
       name: testpypi
-      url: https://test.pypi.org/p/<package-name>
+      url: https://test.pypi.org/p/gmnspy
 
     permissions:
       id-token: write  # IMPORTANT: mandatory for trusted publishing
