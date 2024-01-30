@@ -11,11 +11,11 @@ dependencies = [
     "frictionless",
     "pandas>= 1.0"
 ]
-classifiers = [ 
+classifiers = [
   "Development Status :: 3 - Alpha",
 ]
 
-[project.urls] 
+[project.urls]
 "Source"  = "https://github.com/e-lo/GMNSpy"
 "Homepage" = "https:e-lo.github.io/GMNSpy"
 
