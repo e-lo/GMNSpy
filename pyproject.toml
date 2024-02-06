@@ -19,6 +19,11 @@ classifiers = [
 "Source"  = "https://github.com/e-lo/GMNSpy"
 "Homepage" = "https://e-lo.github.io/GMNSpy"
 
+
+[tool.setuptools.package-data]
+"gmnspy.spec" = ["*.json"]
+
+
 [tool.black]
 line-length = 120
 target-version = ['py37', 'py38', 'py39', 'py310']
