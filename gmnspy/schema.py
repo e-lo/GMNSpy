@@ -113,7 +113,7 @@ def document_schemas_to_md(schema_path: str = None, out_path: str = None) -> str
     """Create markdown for each **.schema.json file in schema_path.
 
     Args:
-        schema_path (str, optional): Path fo tlook for schema files.
+        schema_path (str, optional): Path to look for schema files.
             Defaults to join(dirname(realpath(__file__)), "spec")
         out_path (str, optional): If specified, will write out resulting markdown to this file.
             Defaults to None.

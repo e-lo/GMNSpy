@@ -16,7 +16,7 @@ from gmnspy.utils import logger
 from gmnspy.validation import (
     apply_schema_to_df,
     check_required_files,
-    update_resources_based_on_existance,
+    update_resources_based_on_existence,
     validate_foreign_keys,
 )
 
@@ -91,7 +91,7 @@ def read_gmns_network(data_directory: str, config: str = None, raise_error=False
     check_required_files(resource_df, raise_error)
 
     # update resource dictionary based on what files are in the directory
-    resource_df = update_resources_based_on_existance(resource_df)
+    resource_df = update_resources_based_on_existence(resource_df)
 
     # read each csv to a df and validate format
     # todo add paired schema
