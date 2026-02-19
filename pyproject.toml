@@ -9,7 +9,7 @@ license = {file = "LICENSE.txt"}
 readme = "README.md"
 dependencies = [
     "frictionless",
-    "pandas>= 1.0"
+  "pandas>= 2.3"
 ]
 classifiers = [
   "Development Status :: 3 - Alpha",

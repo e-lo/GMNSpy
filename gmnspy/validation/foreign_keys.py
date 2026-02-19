@@ -28,7 +28,14 @@ def validate_foreign_keys(gmns_net_d: Dict[str, pd.DataFrame], resource_df: pd.D
 
     fkey_errors = []
     for table_name, df in gmns_net_d.items():
-        schema = read_schema(schema_file=resource_df[resource_df["name"] == table_name]["fullpath_schema"][0])
+        matching_schema_paths = resource_df.loc[resource_df["name"] == table_name, "fullpath_schema"]
+        if matching_schema_paths.empty:
+            msg = f"FAIL. Could not find schema path for table {table_name}"
+            logger.error(msg)
+            if raise_error:
+                raise Exception(msg)
+            continue
+        schema = read_schema(schema_file=matching_schema_paths.iloc[0])
 
         foreign_keys = [
             (f["name"], f["foreign_key"])

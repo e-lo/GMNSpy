@@ -41,7 +41,7 @@ Get assigned. If you are working on issue, please tag yourself as the assignee (
 Generally:
 
 - Try to be backwards compatable to Python 3.10.
-- Be compatable with Numpy 2+, Pandas 2+, OSMNX 1+, PyProj 3.3+
+- Be compatable with Numpy 2+, Pandas 2.x and 3.x, OSMNX 1+, PyProj 3.3+
 - Use PEP8 and autoformat with `black`
 - Use Google-style docstrings for all classes and methods
 - Test formatting and autoformat using `pre-commit`

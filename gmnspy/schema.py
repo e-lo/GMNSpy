@@ -22,11 +22,11 @@ import pandas as pd
 from .utils import list_to_md_table, logger
 
 SCHEMA_TO_PANDAS_TYPES = {
-    "integer": "int64",
-    "number": "float",
+    "integer": "Int64",
+    "number": "Float64",
     "string": "string",
     "any": "object",
-    "boolean": "bool",
+    "boolean": "boolean",
 }
 
 FORMAT_TO_REGEX = {
@@ -90,7 +90,7 @@ def read_config(config_file: str, data_dir: str = "", schema_dir: str = "") -> p
     ## todo validate config
 
     resource_df = pd.DataFrame(config["resources"])
-    resource_df["required"].fillna(False, inplace=True)
+    resource_df["required"] = resource_df["required"].fillna(False)
 
     logger.info(str(resource_df))
 
@@ -105,7 +105,7 @@ def read_config(config_file: str, data_dir: str = "", schema_dir: str = "") -> p
     resource_df["fullpath_schema"] = resource_df["schema"].apply(lambda x: join(schema_dir, x))
     logger.info(str(resource_df))
 
-    resource_df.set_index("name", drop=False, inplace=True)
+    resource_df = resource_df.set_index("name", drop=False)
     return resource_df
 
 
