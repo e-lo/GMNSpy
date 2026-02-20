@@ -38,7 +38,7 @@ repos:
     - id: isort
       args: ["--profile", "black"]
   - repo: https://github.com/python-jsonschema/check-jsonschema
-    rev: 0.14.3
+    rev: 0.36.2
     hooks:
     - id: check-github-workflows
   - repo: http://github.com/pycqa/flake8
