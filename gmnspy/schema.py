@@ -37,6 +37,27 @@ FORMAT_TO_REGEX = {
 }
 
 
+def read_schema_for_resource(resource_df: pd.DataFrame, table_name: str, raise_error: bool) -> dict:
+    """
+    Read in schema from schema json file and returns as dictionary.
+
+    ##TODO validate schema itself
+
+    Args:
+        schema_file: File location of the schema json file.
+
+    Returns: The schema as a dictionary
+    """
+    matching_schema_paths = resource_df.loc[resource_df["name"] == table_name, "fullpath_schema"]
+    if matching_schema_paths.empty:
+        msg = f"FAIL. Could not find schema path for table {table_name}"
+        logger.error(msg)
+        if raise_error:
+            raise Exception(msg)
+        return dict()
+    return read_schema(schema_file=matching_schema_paths.iloc[0])
+
+
 def read_schema(schema_file: str) -> dict:
     """
     Read in schema from schema json file and returns as dictionary.
