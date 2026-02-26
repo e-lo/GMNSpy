@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+    <url>
+         <loc>https://e-lo.github.io/GMNSpy/0.3.5/</loc>
+         <lastmod>2026-02-26</lastmod>
+    </url>
+    <url>
+         <loc>https://e-lo.github.io/GMNSpy/0.3.5/api/</loc>
+         <lastmod>2026-02-26</lastmod>
+    </url>
+    <url>
+         <loc>https://e-lo.github.io/GMNSpy/0.3.5/architecture/</loc>
+         <lastmod>2026-02-26</lastmod>
+    </url>
+    <url>
+         <loc>https://e-lo.github.io/GMNSpy/0.3.5/development/</loc>
+         <lastmod>2026-02-26</lastmod>
+    </url>
+    <url>
+         <loc>https://e-lo.github.io/GMNSpy/0.3.5/spec/</loc>
+         <lastmod>2026-02-26</lastmod>
+    </url>
+</urlset>
