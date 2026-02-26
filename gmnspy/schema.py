@@ -22,11 +22,11 @@ import pandas as pd
 from .utils import list_to_md_table, logger
 
 SCHEMA_TO_PANDAS_TYPES = {
-    "integer": "int64",
-    "number": "float",
+    "integer": "Int64",
+    "number": "Float64",
     "string": "string",
     "any": "object",
-    "boolean": "bool",
+    "boolean": "boolean",
 }
 
 FORMAT_TO_REGEX = {
@@ -35,6 +35,27 @@ FORMAT_TO_REGEX = {
     # https://www.regextester.com/94092
     "uri": r"^\w+:(\/?\/?)[^\s]+$",
 }
+
+
+def read_schema_for_resource(resource_df: pd.DataFrame, table_name: str, raise_error: bool) -> dict:
+    """
+    Read in schema from schema json file and returns as dictionary.
+
+    ##TODO validate schema itself
+
+    Args:
+        schema_file: File location of the schema json file.
+
+    Returns: The schema as a dictionary
+    """
+    matching_schema_paths = resource_df.loc[resource_df["name"] == table_name, "fullpath_schema"]
+    if matching_schema_paths.empty:
+        msg = f"FAIL. Could not find schema path for table {table_name}"
+        logger.error(msg)
+        if raise_error:
+            raise Exception(msg)
+        return dict()
+    return read_schema(schema_file=matching_schema_paths.iloc[0])
 
 
 def read_schema(schema_file: str) -> dict:
@@ -90,7 +111,7 @@ def read_config(config_file: str, data_dir: str = "", schema_dir: str = "") -> p
     ## todo validate config
 
     resource_df = pd.DataFrame(config["resources"])
-    resource_df["required"].fillna(False, inplace=True)
+    resource_df["required"] = resource_df["required"].fillna(False)
 
     logger.info(str(resource_df))
 
@@ -105,7 +126,7 @@ def read_config(config_file: str, data_dir: str = "", schema_dir: str = "") -> p
     resource_df["fullpath_schema"] = resource_df["schema"].apply(lambda x: join(schema_dir, x))
     logger.info(str(resource_df))
 
-    resource_df.set_index("name", drop=False, inplace=True)
+    resource_df = resource_df.set_index("name", drop=False)
     return resource_df
 
 
@@ -113,7 +134,7 @@ def document_schemas_to_md(schema_path: str = None, out_path: str = None) -> str
     """Create markdown for each **.schema.json file in schema_path.
 
     Args:
-        schema_path (str, optional): Path fo tlook for schema files.
+        schema_path (str, optional): Path to look for schema files.
             Defaults to join(dirname(realpath(__file__)), "spec")
         out_path (str, optional): If specified, will write out resulting markdown to this file.
             Defaults to None.

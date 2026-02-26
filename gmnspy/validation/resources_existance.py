@@ -7,7 +7,7 @@ import pandas as pd
 from gmnspy.utils.set_logger import logger
 
 
-def update_resources_based_on_existance(resource_df: pd.DataFrame) -> pd.DataFrame:
+def update_resources_based_on_existence(resource_df: pd.DataFrame) -> pd.DataFrame:
     """
     Update resource dataframe based on which files exist in the directory.
 
@@ -15,7 +15,7 @@ def update_resources_based_on_existance(resource_df: pd.DataFrame) -> pd.DataFra
         resource_df:Dataframe with a row for each GMNS table including
             the the columns "fullpath" and "name".
 
-    Returns: Updated version of resource dataframe without non-existant
+    Returns: Updated version of resource dataframe without non-existent
         files.
     """
     updated_resource_df = resource_df[resource_df["fullpath"].apply(lambda x: exists(x))]
