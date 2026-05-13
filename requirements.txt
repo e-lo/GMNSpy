@@ -1,3 +1,2 @@
 frictionless
-pandas >= 1.0
-requests
+pandas >= 2.3

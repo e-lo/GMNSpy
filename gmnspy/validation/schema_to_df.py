@@ -158,15 +158,12 @@ def apply_schema_to_df(
         DataFrame with fields coerced to appropriate type and constraints
             and warnings evaluated.
     """
-    if schema_path and schema_dict:
-        ValueError("Should only have one of schema_path and schema_dict")
-    if schema_path:
-        schema_name = os.path.split(schema_path)[-1].split(".")[0]
-        schema_dict = json_from_path(schema_path)
-    elif not schema_dict:
-        if not schema_name:
-            raise ValueError("If Schema not supplied, must supply schema_name")
-        schema_dict = official_spec_config().get_schema_as_dict(schema_name)
+    if not schema_file:
+        schema_filename = os.path.split(originating_file)[-1].split(".")[0] + ".schema.json"
+        schema_file = join(join(dirname(realpath(__file__)), "../spec"), schema_filename)
+    logger.info("SCHEMA: {}".format(schema_file))
+    logger.info("...validating {} against {}".format(df, schema_file))
+    schema = read_schema(schema_file=schema_file)
 
     logger.debug(f"Validating against:\n{schema_dict}")
 

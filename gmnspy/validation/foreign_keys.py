@@ -4,7 +4,7 @@ from typing import Dict
 
 import pandas as pd
 
-from gmnspy.schema import SpecConfig
+from gmnspy.schema import read_schema_for_resource
 from gmnspy.utils import logger
 
 
@@ -25,8 +25,10 @@ def validate_foreign_keys(gmns_net_dict: Dict[str, pd.DataFrame], spec_config: S
     logger.info(gmns_net_dict["node"]["node_id"])
 
     fkey_errors = []
-    for table_name, df in gmns_net_dict.items():
-        schema = spec_config.get_schema_as_dict(table_name)
+    for table_name, df in gmns_net_d.items():
+        schema = read_schema_for_resource(resource_df, table_name, raise_error)
+        if len(schema) == 0:
+            continue
 
         foreign_keys = [
             (f["name"], f["foreign_key"])

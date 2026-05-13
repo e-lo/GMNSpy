@@ -31,11 +31,11 @@ from .defaults import (
 from .utils import list_to_md_table, logger
 
 SCHEMA_TO_PANDAS_TYPES = {
-    "integer": "int64",
-    "number": "float",
+    "integer": "Int64",
+    "number": "Float64",
     "string": "string",
     "any": "object",
-    "boolean": "bool",
+    "boolean": "boolean",
 }
 
 FORMAT_TO_REGEX = {
@@ -46,8 +46,32 @@ FORMAT_TO_REGEX = {
 }
 
 
-def json_from_path(json_path: Union[Path, str]) -> dict:
-    """Return json from path which is either github file or local path.
+def read_schema_for_resource(resource_df: pd.DataFrame, table_name: str, raise_error: bool) -> dict:
+    """
+    Read in schema from schema json file and returns as dictionary.
+
+    ##TODO validate schema itself
+
+    Args:
+        schema_file: File location of the schema json file.
+
+    Returns: The schema as a dictionary
+    """
+    matching_schema_paths = resource_df.loc[resource_df["name"] == table_name, "fullpath_schema"]
+    if matching_schema_paths.empty:
+        msg = f"FAIL. Could not find schema path for table {table_name}"
+        logger.error(msg)
+        if raise_error:
+            raise Exception(msg)
+        return dict()
+    return read_schema(schema_file=matching_schema_paths.iloc[0])
+
+
+def read_schema(schema_file: str) -> dict:
+    """
+    Read in schema from schema json file and returns as dictionary.
+
+    ##TODO validate schema itself
 
     Args:
         json_path (Union[Path,str]): Either github URL or local path.
@@ -366,21 +390,32 @@ def official_spec_config(version: str = SPEC_GITHUB_REF) -> SpecConfig:
     """
     return SpecConfig(official_version=version)
 
+    resource_df = pd.DataFrame(config["resources"])
+    resource_df["required"] = resource_df["required"].fillna(False)
 
 def local_spec_config(local_path: Union[str, Path] = LOCAL_SPEC):
     """Return local spec config.
 
-    Args:
-        local_path: location of spec. Defaults to what is specified in `.defaults.LOCAL_SPEC`.
-    """
-    return SpecConfig(spec_source=local_path)
+    # Add full paths to data files
+    if not data_dir:
+        data_dir = dirname(config_file)
+    resource_df["fullpath"] = resource_df["path"].apply(lambda x: join(data_dir, x))
+
+    # Add full paths to data files
+    if not schema_dir:
+        schema_dir = dirname(config_file)
+    resource_df["fullpath_schema"] = resource_df["schema"].apply(lambda x: join(schema_dir, x))
+    logger.info(str(resource_df))
+
+    resource_df = resource_df.set_index("name", drop=False)
+    return resource_df
 
 
 def document_schemas_to_md(schema_path: str = None, out_path: str = None) -> str:
     """Create markdown for each **.schema.json file in schema_path.
 
     Args:
-        schema_path (str, optional): Path fo tlook for schema files.
+        schema_path (str, optional): Path to look for schema files.
             Defaults to join(dirname(realpath(__file__)), "spec")
         out_path (str, optional): If specified, will write out resulting markdown to this file.
             Defaults to None.
