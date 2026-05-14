@@ -1,48 +1,54 @@
-default_stages: [commit]
+# Pre-commit configuration for the GMNSpy + datagrove monorepo.
+#
+# - ruff replaces black + flake8 + isort + pydocstyle (faster, single tool).
+# - import-linter enforces architectural boundaries (datagrove cannot
+#   import gmnspy; optional-extra submodules are not required imports).
+# - The legacy `gmnspy/` and `tests/` trees are excluded; they will be
+#   removed in the Phase 0 closeout commit.
+
+default_stages: [pre-commit]
+
 repos:
-  - repo: https://github.com/psf/black
-    rev: 22.3.0
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.6.9
     hooks:
-      - id: black
-        language_version: python3
-      - id: black-jupyter
-  - repo: https://github.com/PyCQA/pydocstyle
-    rev: 6.1.1
-    hooks:
-      - id: pydocstyle
-        stages: [manual]
+      - id: ruff
+        args: [--fix, --exit-non-zero-on-fix]
+      - id: ruff-format
+
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v3.4.0
+    rev: v4.6.0
     hooks:
       - id: trailing-whitespace
         args: [--markdown-linebreak-ext=md]
       - id: end-of-file-fixer
       - id: mixed-line-ending
       - id: check-added-large-files
+        args: [--maxkb=5000]
       - id: check-json
-      - id: pretty-format-json
-        args: [--autofix]
       - id: check-toml
       - id: check-yaml
         args: [--unsafe]
-      - id: requirements-txt-fixer
       - id: check-executables-have-shebangs
+      - id: check-merge-conflict
+
+  - repo: https://github.com/python-jsonschema/check-jsonschema
+    rev: 0.29.3
+    hooks:
+      - id: check-github-workflows
+
   - repo: https://github.com/igorshubovych/markdownlint-cli
-    rev: v0.27.1
+    rev: v0.42.0
     hooks:
       - id: markdownlint
         stages: [manual]
-  - repo: https://github.com/pycqa/isort
-    rev: 5.12.0
+
+  - repo: local
     hooks:
-    - id: isort
-      args: ["--profile", "black"]
-  - repo: https://github.com/python-jsonschema/check-jsonschema
-    rev: 0.36.2
-    hooks:
-    - id: check-github-workflows
-  - repo: http://github.com/pycqa/flake8
-    rev: 4.0.1
-    hooks:
-    - id: flake8
-      stages: [manual]
+      - id: import-linter
+        name: import-linter (architectural boundaries)
+        entry: uv run lint-imports
+        language: system
+        pass_filenames: false
+        files: '^(packages/)'
+        stages: [pre-commit]
