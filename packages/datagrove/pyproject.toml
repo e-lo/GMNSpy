@@ -7,7 +7,8 @@ name = "datagrove"
 version = "0.1.0.dev0"
 description = "Generic Frictionless-aligned tabular-data-package engine. Code-agnostic schemas, lazy ibis/duckdb pipelines, foreign-key + sync-state validation, geographic scoping, and edit/rollback primitives."
 readme = "README.md"
-license = { file = "../../LICENSE" }
+license = "Apache-2.0"
+license-files = ["../../LICENSE"]
 requires-python = ">=3.11"
 authors = [{ name = "Elizabeth Sall" }]
 classifiers = [

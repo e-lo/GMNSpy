@@ -70,6 +70,7 @@ convention = "google"
 [tool.ruff.lint.per-file-ignores]
 "**/tests/**" = ["D"]
 "**/__init__.py" = ["D"]
+"scripts/**" = ["E501", "D"]  # scripts have long inline strings + don't need full docstrings
 
 # ---------------------------------------------------------------------------
 # Pyright (strict on datagrove; standard on gmnspy)
@@ -112,8 +113,8 @@ forbidden_modules = ["gmnspy"]
 [[tool.importlinter.contracts]]
 name = "gmnspy core must not require optional-extra submodules"
 type = "forbidden"
+# Source modules expand as the package grows; gmnspy.network etc. land in Phase 3.
 source_modules = [
-    "gmnspy.network",
     "gmnspy.semantics",
     "gmnspy.scope",
     "gmnspy.indexes",
