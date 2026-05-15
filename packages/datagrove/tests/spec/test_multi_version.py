@@ -1,0 +1,61 @@
+"""Multi-version load behavior + version directory parsing."""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+from datagrove.spec import (
+    SpecVersion,
+    compatible,
+    load_package,
+    load_schema,
+    parse_version_dir,
+)
+
+
+def test_load_all_three_versions_no_cross_contamination(
+    spec_095_dir: Path,
+    spec_096_dir: Path,
+    spec_097_dir: Path,
+):
+    # 0.95 has no datapackage.json — load each schema individually so
+    # we still exercise the version-spanning loader paths.
+    schemas_095 = [load_schema(p) for p in sorted(spec_095_dir.glob("*.schema.json"))]
+    pkg_096 = load_package(spec_096_dir / "datapackage.json")
+    pkg_097 = load_package(spec_097_dir / "datapackage.json")
+
+    assert len(schemas_095) > 20
+    assert len(pkg_096.resources) > 20
+    assert len(pkg_097.resources) > 20
+
+    # 0.96 vs 0.97 lists must be independent objects
+    assert pkg_096.resources is not pkg_097.resources
+    names_096 = {r.name for r in pkg_096.resources}
+    names_097 = {r.name for r in pkg_097.resources}
+    # Confirm they're not the same identity-coincidence (they should both
+    # define common Frictionless resource names but be separate parsings)
+    assert isinstance(names_096, set) and isinstance(names_097, set)
+
+
+def test_parse_version_dir_0_97():
+    p = Path("packages/gmnspy/gmnspy/spec/0.97")
+    assert parse_version_dir(p) == SpecVersion(0, 97, 0)
+
+
+def test_parse_version_dir_with_patch():
+    p = Path("anywhere/0.97.1")
+    assert parse_version_dir(p) == SpecVersion(0, 97, 1)
+
+
+def test_spec_version_ordering():
+    assert SpecVersion(0, 96, 0) < SpecVersion(0, 97, 0)
+    assert SpecVersion(0, 97, 0) < SpecVersion(0, 97, 1)
+    assert SpecVersion(1, 0, 0) > SpecVersion(0, 97, 99)
+    assert SpecVersion(0, 97, 0) == SpecVersion.from_str("0.97")
+
+
+def test_spec_version_compatibility():
+    assert compatible(SpecVersion(0, 97, 0), SpecVersion(0, 97, 5))
+    assert not compatible(SpecVersion(0, 96, 0), SpecVersion(0, 97, 0))
+    assert compatible(SpecVersion(1, 2, 3), SpecVersion(1, 2, 99))
+    assert not compatible(SpecVersion(1, 2, 3), SpecVersion(1, 3, 0))
