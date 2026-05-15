@@ -1,0 +1,3 @@
+use_group,uses,description
+motorized,"auto,truck,transit",Motorized vehicles
+nonmotorized,"bike,walk",Non-motorized users

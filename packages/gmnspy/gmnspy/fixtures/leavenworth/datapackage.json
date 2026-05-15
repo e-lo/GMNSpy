@@ -1,0 +1,99 @@
+{
+  "$schema": "https://datapackage.org/profiles/2.0/datapackage.json",
+  "description": "Tiny example General Modeling Network Specification (GMNS) network synthesized from OpenStreetMap for the historic downtown core of Leavenworth, Washington. Bundled with gmnspy for tests and the 5-minute getting-started example.",
+  "homepage": "https://github.com/e-lo/GMNSpy",
+  "licenses": [
+    {
+      "name": "ODbL-1.0",
+      "path": "https://opendatacommons.org/licenses/odbl/1-0/",
+      "title": "Open Database License"
+    }
+  ],
+  "name": "leavenworth-wa",
+  "resources": [
+    {
+      "encoding": "utf-8",
+      "format": "csv",
+      "mediatype": "text/csv",
+      "name": "node",
+      "path": "csv/node.csv",
+      "schema": "../../spec/0.97/node.schema.json"
+    },
+    {
+      "encoding": "utf-8",
+      "format": "csv",
+      "mediatype": "text/csv",
+      "name": "link",
+      "path": "csv/link.csv",
+      "schema": "../../spec/0.97/link.schema.json"
+    },
+    {
+      "encoding": "utf-8",
+      "format": "csv",
+      "mediatype": "text/csv",
+      "name": "geometry",
+      "path": "csv/geometry.csv",
+      "schema": "../../spec/0.97/geometry.schema.json"
+    },
+    {
+      "encoding": "utf-8",
+      "format": "csv",
+      "mediatype": "text/csv",
+      "name": "lane",
+      "path": "csv/lane.csv",
+      "schema": "../../spec/0.97/lane.schema.json"
+    },
+    {
+      "encoding": "utf-8",
+      "format": "csv",
+      "mediatype": "text/csv",
+      "name": "use_definition",
+      "path": "csv/use_definition.csv",
+      "schema": "../../spec/0.97/use_definition.schema.json"
+    },
+    {
+      "encoding": "utf-8",
+      "format": "csv",
+      "mediatype": "text/csv",
+      "name": "use_group",
+      "path": "csv/use_group.csv",
+      "schema": "../../spec/0.97/use_group.schema.json"
+    },
+    {
+      "encoding": "utf-8",
+      "format": "csv",
+      "mediatype": "text/csv",
+      "name": "time_set_definitions",
+      "path": "csv/time_set_definitions.csv",
+      "schema": "../../spec/0.97/time_set_definitions.schema.json"
+    },
+    {
+      "encoding": "utf-8",
+      "format": "csv",
+      "mediatype": "text/csv",
+      "name": "link_tod",
+      "path": "csv/link_tod.csv",
+      "schema": "../../spec/0.97/link_tod.schema.json"
+    },
+    {
+      "encoding": "utf-8",
+      "format": "csv",
+      "mediatype": "text/csv",
+      "name": "signal_controller",
+      "path": "csv/signal_controller.csv",
+      "schema": "../../spec/0.97/signal_controller.schema.json"
+    }
+  ],
+  "sources": [
+    {
+      "path": "https://www.openstreetmap.org/",
+      "title": "OpenStreetMap"
+    }
+  ],
+  "spec": {
+    "name": "gmns",
+    "version": "0.97"
+  },
+  "title": "Leavenworth, WA - example GMNS network",
+  "version": "0.1.0"
+}

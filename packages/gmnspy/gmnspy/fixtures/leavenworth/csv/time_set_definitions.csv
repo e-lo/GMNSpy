@@ -1,0 +1,2 @@
+timeday_id,monday,tuesday,wednesday,thursday,Friday,saturday,sunday,holiday,start_time,end_time
+weekday_am_peak,True,True,True,True,True,False,False,False,07:00:00,09:00:00

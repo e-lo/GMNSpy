@@ -124,3 +124,6 @@ dmypy.json
 # Pyre type checker
 .pyre/
 .claude/
+
+# osmnx HTTP cache (created by fixture build scripts)
+/cache/
