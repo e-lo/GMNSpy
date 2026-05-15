@@ -1,102 +1,22 @@
-# GMNS Specification
+# Official GMNS Specification
 
-Schema for General Network Feed Specification.
+The GMNS specification is managed in the following Github repo: <https://github.com/zephyr-data-specs/GMNS>
+
+| **GMNS Version** | **Description** |
+| ----- | ----- |
+| [development](spec-versions/development.md) | Not yet in official spec. Hasn't been voted on by PMG |
+| [local](spec-versions/local.md) | Local copy of spec. May not be identical to official spec. |
+
+GMNS is defined using the [Frictionless Framework](https://specs.frictionlessdata.io/#data-package-specs-suite) as a series of `tabular-data-resources`.
 
 ## Files in Specification
 
 GMNS consists of a package of files as defined in the following table.
 
-**The following table is automatically generated from `gmns.spec.json`**
+*The following tables are automatically generated from the official spec.*
 
-{{ frictionless_spec() }}
-
-File components for GMNS are specified in `gmns.spec.json` in a format compatible with the
-[frictionless data](https://specs.frictionlessdata.io/tabular-data-package/) data package standard.
-
-Example `gmns.spec.json`:
-```JSON
-{
-  "profile": "gmns-data-package",
-  "profile_version":0.0,
-  "name": "my-dataset",
-  "resources": [
-   {
-     "name":"link",
-     "path": "link.csv",
-     "schema": "link.schema.json",
-     "required": true
-   },
-   {
-     "name":"node",
-     "path": "node.csv",
-     "schema": "node.schema.json",
-     "required": true
-   }
- ]
-}
-```
+{{ official_frictionless_spec('master') }}
 
 ## Data Table Schemas
 
-Data table schemas are specified in JSON and are compatible with the
-[frictionless data](https://specs.frictionlessdata.io/table-schema/) table
-schema standards.
-
-Example:
-
-```JSON
-{
-    "primaryKey": "segment_id",
-    "missingValues": ["NaN",""],
-    "fields": [
-        {
-            "name": "segment_id",
-            "type": "any",
-            "description": "Primary key.",
-            "constraints": {
-              "required": true,
-              "unique": true
-              }
-        },
-        {
-            "name": "road_link_id",
-            "type": "any",
-            "description": "Required. Foreign key to road_links. The link that the segment is located on.",
-            "foreign_key": "link.link_id",
-            "constraints": {
-              "required": true
-              }
-        },
-        {
-            "name": "ref_node_id",
-            "type": "any",
-            "description": "Required. Foreign key to node.",
-            "foreign_key": "node.node_id",
-            "constraints": {
-              "required": true
-              }
-        },
-        {
-            "name": "start_lr",
-            "type": "number",
-            "description": "Required. Distance from ref_node_id.",
-            "constraints": {
-              "required": true,
-              "minimum": 0
-              }
-        },
-        {
-            "name": "end_lr",
-            "type": "number",
-            "description": "Required. Distance from ref_node_id.",
-            "constraints": {
-              "required": true,
-              "minimum": 0
-              }
-          }
-    ]
-}
-
-```
-
-{{ frictionless_schemas() }}
+{{ official_frictionless_schemas('master') }}
