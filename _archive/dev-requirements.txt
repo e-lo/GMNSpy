@@ -1,6 +1,0 @@
-autoflake
-black
-flake8
-pre-commit
-pydocstyle
-pytest
