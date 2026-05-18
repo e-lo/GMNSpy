@@ -15,6 +15,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from .errors import InvalidSpecVersionError
+
 __all__ = ["SpecVersion", "compatible", "parse_version_dir"]
 
 
@@ -58,8 +60,10 @@ class SpecVersion:
             The parsed version.
 
         Raises:
-            ValueError: If ``value`` is not a valid two- or
-                three-component dotted integer string.
+            InvalidSpecVersionError: If ``value`` is not a valid two- or
+                three-component dotted integer string. This is a subclass
+                of :class:`~datagrove.spec.errors.SpecLoadError` so
+                catch-all spec-loading handlers still see it.
 
         Examples:
             >>> SpecVersion.from_str("0.97")
@@ -70,11 +74,11 @@ class SpecVersion:
         text = value.strip().lstrip("vV")
         parts = text.split(".")
         if len(parts) not in (2, 3):
-            raise ValueError(f"Expected 'MAJOR.MINOR' or 'MAJOR.MINOR.PATCH', got: {value!r}")
+            raise InvalidSpecVersionError(f"Expected 'MAJOR.MINOR' or 'MAJOR.MINOR.PATCH', got: {value!r}")
         try:
             ints = [int(p) for p in parts]
         except ValueError as e:
-            raise ValueError(f"Non-integer component in version: {value!r}") from e
+            raise InvalidSpecVersionError(f"Non-integer component in version: {value!r}") from e
         if len(ints) == 2:
             ints.append(0)
         return cls(major=ints[0], minor=ints[1], patch=ints[2])
@@ -151,7 +155,7 @@ def parse_version_dir(path: Path) -> SpecVersion:
         The parsed version.
 
     Raises:
-        ValueError: If the trailing component cannot be parsed.
+        InvalidSpecVersionError: If the trailing component cannot be parsed.
 
     Examples:
         >>> from pathlib import Path

@@ -15,6 +15,7 @@ to reuse named enums across multiple schemas.
 from __future__ import annotations
 
 import json
+import logging
 import os
 from pathlib import Path
 from typing import Any
@@ -23,30 +24,12 @@ from urllib.parse import urlparse
 import fsspec
 from pydantic import ValidationError
 
+from .errors import SpecLoadError
 from .model import DataPackage, Schema
 
 __all__ = ["SpecLoadError", "load_package", "load_schema"]
 
-
-# ---------------------------------------------------------------------------
-# Errors
-# ---------------------------------------------------------------------------
-
-
-class SpecLoadError(Exception):
-    """Raised when a data-package or schema cannot be loaded.
-
-    The message always includes the source identifier (path, URL, or
-    ``"<dict>"``) and a short description of what went wrong. Where
-    relevant, the underlying exception is chained as ``__cause__``.
-
-    Examples:
-        >>> try:
-        ...     raise SpecLoadError("oops at /tmp/missing.json")
-        ... except SpecLoadError as e:
-        ...     "missing.json" in str(e)
-        True
-    """
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -56,22 +39,21 @@ class SpecLoadError(Exception):
 
 def _is_url(value: str) -> bool:
     parsed = urlparse(value)
+    # scheme of length 1 is most likely a Windows drive letter (e.g. C:\\path)
     return bool(parsed.scheme) and parsed.scheme not in {"", "file"} and len(parsed.scheme) > 1
 
 
-def _source_label(source: str | Path | dict[str, Any]) -> str:
-    if isinstance(source, dict):
-        return "<dict>"
-    return str(source)
-
-
-def _read_json_text(source: str | Path) -> tuple[str, str]:
-    """Read raw JSON text from a local path or URL.
+def _read_json(source: str | Path) -> tuple[Any, str]:
+    """Read and parse a JSON document from a local path or URL.
 
     Returns:
-        A ``(text, base_uri)`` tuple where ``base_uri`` is the directory
-        used to resolve relative references (a local directory path or
-        a URL with a trailing slash).
+        A ``(parsed, base_uri)`` tuple where ``base_uri`` is the
+        directory used to resolve relative references (a local
+        directory path or a URL with a trailing slash).
+
+    Raises:
+        SpecLoadError: If the source cannot be read or the JSON is
+            malformed. The error message names the offending source.
     """
     src = str(source)
     if isinstance(source, Path) or not _is_url(src):
@@ -82,31 +64,25 @@ def _read_json_text(source: str | Path) -> tuple[str, str]:
             text = path.read_text(encoding="utf-8")
         except OSError as e:
             raise SpecLoadError(f"Failed to read spec from {path}: {e}") from e
-        return text, str(path.parent)
+        base = str(path.parent)
+        label = str(path)
+    else:
+        # Remote URL via fsspec. ``fsspec.open`` returns an OpenFile whose
+        # context manager yields a file-like object; type stubs are loose so
+        # we explicitly read as text.
+        try:
+            with fsspec.open(src, mode="rt", encoding="utf-8") as fh:
+                raw = fh.read()  # type: ignore[union-attr]
+            text = raw if isinstance(raw, str) else raw.decode("utf-8")
+        except Exception as e:  # fsspec raises a wide variety of errors
+            raise SpecLoadError(f"Failed to read spec from {src}: {e}") from e
+        base = src.rsplit("/", 1)[0] + "/"
+        label = src
 
-    # Remote URL via fsspec. ``fsspec.open`` returns an OpenFile whose
-    # context manager yields a file-like object; type stubs are loose so
-    # we explicitly read as text.
     try:
-        with fsspec.open(src, mode="rt", encoding="utf-8") as fh:
-            raw = fh.read()  # type: ignore[union-attr]
-        text = raw if isinstance(raw, str) else raw.decode("utf-8")
-    except Exception as e:  # fsspec raises a wide variety of errors
-        raise SpecLoadError(f"Failed to read spec from {src}: {e}") from e
-    base = src.rsplit("/", 1)[0] + "/"
-    return text, base
-
-
-def _parse_json(text: str, label: str) -> Any:
-    try:
-        return json.loads(text)
+        return json.loads(text), base
     except json.JSONDecodeError as e:
         raise SpecLoadError(f"Invalid JSON in {label}: {e.msg} (line {e.lineno}, col {e.colno})") from e
-
-
-def _read_json(source: str | Path) -> tuple[Any, str]:
-    text, base = _read_json_text(source)
-    return _parse_json(text, _source_label(source)), base
 
 
 def _join(base: str, relative: str) -> str:
@@ -174,39 +150,34 @@ def _resolve_refs(
 
     Returns the (possibly transformed) value with refs replaced.
     """
+    # WHY single function for ref resolution: the recursion shape (descend
+    # into dicts and lists, swap out any {"$ref": "..."} node for its
+    # target) reads as one unit. Per-ref lookup is inlined below rather
+    # than punted to a helper so a reader can answer "what does $ref
+    # resolution do" without leaving this function.
     if isinstance(obj, dict):
-        if "$ref" in obj and isinstance(obj["$ref"], str):
-            return _resolve_one_ref(obj["$ref"], base=base, cache=cache, self_doc=self_doc)
+        ref = obj.get("$ref")
+        if isinstance(ref, str):
+            # Same-document pointer: "#/foo/bar" → resolve against self_doc.
+            if ref.startswith("#"):
+                return _resolve_pointer(self_doc, ref)
+            # External ref: "file.json" or "file.json#/foo/bar".
+            file_part, _, pointer = ref.partition("#")
+            target = _join(base, file_part)
+            if target not in cache:
+                try:
+                    loaded, _ignored_base = _read_json(target)
+                except SpecLoadError as e:
+                    raise SpecLoadError(f"Failed to resolve $ref {ref!r}: {e}") from e
+                cache[target] = loaded
+            doc = cache[target]
+            if not pointer:
+                return doc
+            return _resolve_pointer(doc, "#" + pointer)
         return {k: _resolve_refs(v, base=base, cache=cache, self_doc=self_doc) for k, v in obj.items()}
     if isinstance(obj, list):
         return [_resolve_refs(v, base=base, cache=cache, self_doc=self_doc) for v in obj]
     return obj
-
-
-def _resolve_one_ref(
-    ref: str,
-    *,
-    base: str,
-    cache: dict[str, Any],
-    self_doc: Any,
-) -> Any:
-    if ref.startswith("#"):
-        return _resolve_pointer(self_doc, ref)
-    if "#" in ref:
-        file_part, pointer = ref.split("#", 1)
-    else:
-        file_part, pointer = ref, ""
-    target = _join(base, file_part)
-    if target not in cache:
-        try:
-            doc, _ = _read_json(target)
-        except SpecLoadError as e:
-            raise SpecLoadError(f"Failed to resolve $ref {ref!r}: {e}") from e
-        cache[target] = doc
-    doc = cache[target]
-    if not pointer:
-        return doc
-    return _resolve_pointer(doc, "#" + pointer if not pointer.startswith("#") else pointer)
 
 
 # ---------------------------------------------------------------------------
@@ -214,7 +185,7 @@ def _resolve_one_ref(
 # ---------------------------------------------------------------------------
 
 
-def _category_values(categories: Any) -> list[Any] | None:
+def _category_values(categories: Any, *, field_name: str | None = None) -> list[Any] | None:
     """Extract the scalar values from a ``categories`` payload.
 
     Accepts either:
@@ -222,14 +193,28 @@ def _category_values(categories: Any) -> list[Any] | None:
         * a list of ``{"value": ..., "label": ...}`` objects (returns
           the ``value`` column).
 
-    Returns ``None`` if the shape is unrecognized.
+    Returns ``None`` if the shape is unrecognized. When ``None`` is
+    returned, a ``debug``-level log record names the field (if known)
+    and the payload shape so a modeler can trace why an expected enum
+    didn't populate. Enable with
+    ``logging.getLogger("datagrove.spec.loader").setLevel(logging.DEBUG)``.
     """
     if not isinstance(categories, list):
+        logger.debug(
+            "categories payload for field %r is not a list (got %s); skipping enum inlining",
+            field_name,
+            type(categories).__name__,
+        )
         return None
     if all(isinstance(c, dict) and "value" in c for c in categories):
         return [c["value"] for c in categories]
     if all(not isinstance(c, (dict, list)) for c in categories):
         return list(categories)
+    logger.debug(
+        "categories payload for field %r has mixed/unrecognized shape (item types: %s); skipping enum inlining",
+        field_name,
+        sorted({type(c).__name__ for c in categories}),
+    )
     return None
 
 
@@ -251,7 +236,10 @@ def _inline_shared_categories(schema_obj: dict[str, Any]) -> None:
         cats = field.get("categories")
         if cats is None:
             continue
-        values = _category_values(cats)
+        # WHY soft-skip: unknown shapes are silently dropped so unrelated
+        # Frictionless extensions don't break loading. See logger.debug
+        # for trace when an expected enum didn't populate.
+        values = _category_values(cats, field_name=field.get("name"))
         if values is None:
             continue
         constraints = field.setdefault("constraints", {})
@@ -298,7 +286,7 @@ def load_schema(
         >>> [f.name for f in s.fields]
         ['id']
     """
-    label = _source_label(source)
+    label = "<dict>" if isinstance(source, dict) else str(source)
     if isinstance(source, dict):
         doc: Any = source
         resolved_base = base or "."
@@ -357,15 +345,33 @@ def load_package(source: str | Path | dict[str, Any]) -> DataPackage:
             to load.
 
     Examples:
-        >>> from pathlib import Path
-        >>> root = Path(__file__).resolve().parents[3] / "gmnspy" / "gmnspy" / "spec" / "0.97"
-        >>> pkg = load_package(root / "datapackage.json")
+        Load directly from an inline dict — no filesystem layout
+        required, so this example runs identically whether datagrove
+        was imported from a worktree or installed from PyPI:
+
+        >>> pkg = load_package({
+        ...     "name": "demo",
+        ...     "resources": [
+        ...         {
+        ...             "name": "users",
+        ...             "path": "users.csv",
+        ...             "schema": {
+        ...                 "fields": [
+        ...                     {"name": "id", "type": "integer"},
+        ...                     {"name": "name", "type": "string"},
+        ...                 ]
+        ...             },
+        ...         }
+        ...     ],
+        ... })
         >>> pkg.name
-        'gmns'
-        >>> len(pkg.resources) > 20
-        True
+        'demo'
+        >>> pkg.resources[0].name
+        'users'
+        >>> [f.name for f in pkg.resources[0].table_schema.fields]
+        ['id', 'name']
     """
-    label = _source_label(source)
+    label = "<dict>" if isinstance(source, dict) else str(source)
     if isinstance(source, dict):
         doc: Any = source
         base = "."

@@ -17,6 +17,7 @@ References:
 
 from __future__ import annotations
 
+import warnings
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict
@@ -205,15 +206,29 @@ class Schema(_Base):
 class Resource(_Base):
     """One tabular resource within a data package.
 
-    The ``schema`` attribute may be either a string reference (a path
-    to a sibling ``.schema.json`` file as it appears in the raw JSON)
-    or an inline :class:`Schema`. The loader resolves string references
-    and replaces them with the parsed :class:`Schema` before returning.
+    **JSON key vs. Python attribute (read this).** The on-disk JSON
+    uses Frictionless's name ``"schema"``, but in Python the attribute
+    is named :attr:`table_schema`. The rename avoids shadowing
+    Pydantic v2's deprecated ``BaseModel.schema()`` method, which
+    would otherwise mean ``resource.schema`` silently returns a bound
+    method object instead of the schema data. Reading the raw JSON,
+    it is natural to write ``r.schema`` — but that returns the
+    deprecated method, NOT the schema. Use :attr:`table_schema` in
+    Python; use ``model_dump(by_alias=True)["schema"]`` when
+    round-tripping to JSON. Accessing ``r.schema`` on an instance
+    emits a :class:`FutureWarning` pointing at the correct name.
+
+    The ``table_schema`` attribute may be either a string reference (a
+    path to a sibling ``.schema.json`` file as it appears in the raw
+    JSON) or an inline :class:`Schema`. The loader resolves string
+    references and replaces them with the parsed :class:`Schema`
+    before returning.
 
     Attributes:
         name: Resource name (unique within the package).
         path: Relative file path or list of paths.
-        schema: A schema reference string or an inline :class:`Schema`.
+        table_schema: A schema reference string or an inline
+            :class:`Schema`. JSON alias: ``"schema"``.
         type: Resource type hint (e.g. ``"table"``).
         format: File format (e.g. ``"csv"``).
         mediatype: MIME type.
@@ -226,10 +241,18 @@ class Resource(_Base):
             spec.
 
     Examples:
+        Construct with the JSON key ``schema=`` (alias) and read with
+        the Python attribute :attr:`table_schema`:
+
         >>> r = Resource(name="link", path="link.csv", schema=Schema(fields=[]))
         >>> r.name, r.path
         ('link', 'link.csv')
         >>> r.table_schema is not None
+        True
+
+        Round-trip to JSON uses the alias key ``"schema"``:
+
+        >>> r.model_dump(by_alias=True)["schema"] is not None
         True
     """
 
@@ -250,6 +273,31 @@ class Resource(_Base):
     description: str | None = None
     required: bool | None = None
     dialect: dict[str, Any] | None = None
+
+    def __getattribute__(self, name: str) -> Any:
+        """Intercept ``.schema`` access to warn about the rename footgun.
+
+        Falls through to default attribute access for every other name.
+        See class docstring for the rationale.
+        """
+        # Warn loudly when a caller reads ``.schema`` on an instance:
+        # they almost certainly meant ``.table_schema`` (the JSON key
+        # is ``"schema"``, and reading the raw JSON makes the mistake
+        # natural). Without this guard the access silently returns
+        # the bound ``BaseModel.schema`` method — no exception, no
+        # warning, no value. Pydantic v2 never touches ``.schema`` on
+        # instances during serialization (verified), so this override
+        # has no false positives on normal model use.
+        if name == "schema":
+            warnings.warn(
+                "Resource.schema returns the deprecated Pydantic "
+                "BaseModel.schema method, not the schema data. Use "
+                "Resource.table_schema instead (or "
+                "model_dump(by_alias=True)['schema'] for the JSON form).",
+                FutureWarning,
+                stacklevel=2,
+            )
+        return super().__getattribute__(name)
 
 
 class DataPackage(_Base):

@@ -14,6 +14,7 @@ inline ``constraints.enum`` directly. Both paths must work.
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 from datagrove.spec import load_package, load_schema
@@ -67,3 +68,35 @@ def test_0_95_inline_enum_preserved(spec_095_dir: Path):
     field = next(f for f in schema.fields if f.name == "ctrl_type")
     assert field.constraints is not None
     assert field.constraints.enum == ["none", "yield", "stop", "4_stop", "signal"]
+
+
+# ---------------------------------------------------------------------------
+# Soft-skip + debug log (I11 — no more silent drop without trace)
+# ---------------------------------------------------------------------------
+
+
+def test_unrecognized_category_shape_logs_debug_and_skips(caplog):
+    """A categories payload of the wrong shape must NOT raise — and must
+    emit a debug-level log naming the field, so a modeler can trace why
+    their enum didn't populate."""
+    schema_doc = {
+        "fields": [
+            {
+                "name": "weird_field",
+                "type": "string",
+                # mixed shapes: not all-dict-with-value and not all-scalar
+                "categories": ["ok_scalar", {"label": "bad_no_value"}],
+            }
+        ]
+    }
+    caplog.set_level(logging.DEBUG, logger="datagrove.spec.loader")
+    schema = load_schema(schema_doc)
+    # Field still loads — soft skip, not an error.
+    field = schema.fields[0]
+    assert field.name == "weird_field"
+    assert field.constraints is None or field.constraints.enum is None
+    # And the debug log names the field so debugging is actually possible.
+    assert any("weird_field" in rec.message for rec in caplog.records), (
+        f"expected a debug log naming 'weird_field', got records: "
+        f"{[(r.name, r.message) for r in caplog.records]}"
+    )
