@@ -22,23 +22,8 @@ def test_ibis_stub_methods_raise_with_task_id():
         assert "not yet implemented" in msg
 
 
-def test_polars_stub_methods_raise_with_task_id():
-    pytest.importorskip("polars", reason="polars optional extra not installed")
-    from datagrove.engines.polars_engine import PolarsEngine
-
-    e = PolarsEngine()
-    for call in (
-        lambda: e.scan("x"),
-        lambda: e.materialize(None),
-        lambda: e.to_pandas(None),
-        lambda: e.to_polars(None),
-        lambda: e.write(None, "x", "csv"),
-    ):
-        with pytest.raises(NotImplementedError) as excinfo:
-            call()
-        msg = str(excinfo.value)
-        assert "planned for task 1.4" in msg
-        assert "not yet implemented" in msg
+# Polars stub test removed in task 1.4: the engine is implemented now; its
+# behavior lives in test_polars_engine.py.
 
 
 def test_pandas_stub_methods_raise_with_task_id():
