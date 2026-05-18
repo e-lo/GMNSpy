@@ -17,7 +17,11 @@ from pathlib import Path
 import pandas as pd
 import pytest
 from datagrove.engines import list_engines
-from datagrove.engines.base import Engine, EngineNotAvailableError
+from datagrove.engines.base import (
+    Engine,
+    EngineNotAvailableError,
+    UnsupportedSourceError,
+)
 from datagrove.engines.pandas_engine import PandasEngine
 from datagrove.spec.model import Field, Schema
 
@@ -128,8 +132,10 @@ def test_scan_dict_source_with_data_key():
 
 def test_scan_dict_source_without_data_key_raises():
     e = PandasEngine()
-    with pytest.raises(ValueError, match="data"):
-        e.scan({"path": "/nope"})
+    # UnsupportedSourceError inherits from TypeError — the catch is on the
+    # specific subclass to lock the cross-engine dict-source contract.
+    with pytest.raises(UnsupportedSourceError, match="dict source"):
+        e.scan({"foo": "bar"})
 
 
 def test_scan_unknown_extension_raises_helpful_error(tmp_path):
@@ -167,11 +173,20 @@ def test_materialize_is_identity():
     assert out is df
 
 
-def test_to_pandas_is_identity():
+def test_to_pandas_returns_nullable_dtypes():
+    """to_pandas normalises to the cross-engine dtype convention (Int64 etc).
+
+    Per the Engine protocol, ``to_pandas`` returns numpy-backed nullable
+    dtypes so every engine round-trips to the same pandas dtype family.
+    Pandas engine routes through ``.convert_dtypes()`` to land there.
+    """
     e = PandasEngine()
-    df = pd.DataFrame({"a": [1, 2]})
+    df = pd.DataFrame({"a": [1, 2], "b": ["x", "y"]})
     out = e.to_pandas(df)
-    assert out is df
+    assert isinstance(out, pd.DataFrame)
+    assert str(out["a"].dtype) == "Int64"
+    assert str(out["b"].dtype) == "string"
+    assert len(out) == 2
 
 
 def test_to_polars_returns_polars_dataframe():

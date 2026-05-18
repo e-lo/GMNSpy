@@ -24,9 +24,11 @@ from __future__ import annotations
 from .base import (
     Engine,
     EngineNotAvailableError,
+    InvalidEngineCallError,
     NativeFrame,
     SourceRef,
     TableExpr,
+    UnsupportedSourceError,
 )
 
 # ---------------------------------------------------------------------------
@@ -241,9 +243,11 @@ except ImportError:  # pragma: no cover - pandas is optional
 __all__ = [
     "Engine",
     "EngineNotAvailableError",
+    "InvalidEngineCallError",
     "NativeFrame",
     "SourceRef",
     "TableExpr",
+    "UnsupportedSourceError",
     "get_engine",
     "list_engines",
     "register_engine",
