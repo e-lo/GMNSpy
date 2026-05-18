@@ -10,14 +10,22 @@ realistic GMNS 0.97 dataset in four storage variants:
     leavenworth.duckdb         - single-file analytical DB
     leavenworth.csv.zip        - zipped CSV bundle
 
-The four variants hold *byte-deterministically* identical data so that
-roundtrip tests can equality-check across formats. Determinism comes from:
+The four variants hold semantically identical data so that roundtrip
+tests can equality-check across formats. Output is byte-identical when
+re-run against an *unchanged OSM snapshot*; the determinism levers in
+this script are:
 
   * sorting all rows by their natural primary key before writing,
   * deterministic ID assignment derived from sorted OSM osmid values,
   * stable column order taken from the GMNS schema field list,
-  * fixed Parquet writer settings (no dictionary metadata variation),
-  * sorting zip member order alphabetically.
+  * fixed Parquet writer settings (statistics off, dictionary on,
+    snappy compression),
+  * zip member timestamps + member order pinned.
+
+OSM is mutable, so a real re-run months later will produce diffs that
+reflect upstream changes — not script bugs. Don't chase those. (Future
+improvement, tracked in the README: pin a Geofabrik snapshot so the
+fixture is byte-deterministic across rebuilds too.)
 
 OpenStreetMap data is OpenStreetMap contributors and licensed under the
 Open Database License (ODbL).
@@ -26,11 +34,6 @@ Usage::
 
     uv sync --extra dev-fixtures
     uv run python packages/gmnspy/gmnspy/fixtures/leavenworth/scripts/build_leavenworth.py
-
-The script is idempotent: re-running on the same upstream OSM snapshot
-produces byte-identical output. (OSM itself updates over time; the
-README documents the rebuild call signature so future drift is
-explainable.)
 """
 
 from __future__ import annotations
@@ -237,9 +240,12 @@ def build_node_table(g: object) -> pd.DataFrame:
             }
         )
     df = pd.DataFrame(rows).sort_values("node_id").reset_index(drop=True)
-    # Sanity: every ctrl_type is in the shared_categories enum
+    # Sanity: every ctrl_type is in the shared_categories enum. (Bare
+    # `assert` would be stripped under `python -O`; use an explicit
+    # raise so the check always runs.)
     bad = set(df["ctrl_type"]) - CTRL_TYPES
-    assert not bad, f"non-spec ctrl_type values: {bad}"
+    if bad:
+        raise ValueError(f"non-spec ctrl_type values: {bad}")
     return df, osmid_to_node_id
 
 
@@ -329,10 +335,17 @@ def build_link_and_geometry_tables(g: object, osmid_to_node_id: dict) -> tuple[p
     link_df = pd.DataFrame(edge_rows).sort_values("link_id").reset_index(drop=True)
     geom_df = pd.DataFrame(geom_rows).sort_values("geometry_id").reset_index(drop=True)
 
-    # Sanity-check shared_categories
-    assert not (set(link_df["bike_facility"]) - BIKE_FACILITY), set(link_df["bike_facility"])
-    assert not (set(link_df["ped_facility"]) - PED_FACILITY), set(link_df["ped_facility"])
-    assert not (set(link_df["parking"]) - PARKING), set(link_df["parking"])
+    # Sanity-check shared_categories. (Explicit raises rather than bare
+    # `assert` so the checks survive `python -O`.)
+    bad_bike = set(link_df["bike_facility"]) - BIKE_FACILITY
+    if bad_bike:
+        raise ValueError(f"non-spec bike_facility values: {bad_bike}")
+    bad_ped = set(link_df["ped_facility"]) - PED_FACILITY
+    if bad_ped:
+        raise ValueError(f"non-spec ped_facility values: {bad_ped}")
+    bad_parking = set(link_df["parking"]) - PARKING
+    if bad_parking:
+        raise ValueError(f"non-spec parking values: {bad_parking}")
     return link_df, geom_df
 
 
@@ -496,7 +509,9 @@ def write_duckdb(tables: dict[str, pd.DataFrame]) -> None:
     try:
         for name, df in tables.items():
             con.register(f"_in_{name}", df)
-            con.execute(f"CREATE TABLE {name} AS SELECT * FROM _in_{name}")
+            # Build-time fixture writer talks to duckdb directly (no ibis on
+            # path at fixture-build time, and this is a one-shot CTAS).
+            con.execute(f"CREATE TABLE {name} AS SELECT * FROM _in_{name}")  # pragma: allow-sql
             con.unregister(f"_in_{name}")
     finally:
         con.close()

@@ -21,6 +21,66 @@ jobs:
           uv run ruff format --check .
       - name: Import-linter (architectural boundaries)
         run: uv run lint-imports
+      - name: No raw SQL outside datagrove.engines.ibis_engine
+        run: uv run python scripts/lint_no_sql.py
+
+  wheel-smoke:
+    # Build the gmnspy wheel and verify the bundled Leavenworth fixture
+    # binaries (parquet/duckdb/csv/zip + datapackage.json) are actually
+    # present inside the wheel. Guards I3 — packaging regression that
+    # would silently drop the fixtures from the wheel.
+    #
+    # Notes:
+    # * We inspect wheel members directly rather than `pip install` the
+    #   wheel, because `datagrove` is workspace-local and not on PyPI yet
+    #   (an install would fail dependency resolution). Once datagrove is
+    #   published, swap this for a fresh-venv install + import check.
+    # * Local equivalent:
+    #     rm -rf /tmp/wheel-test
+    #     uv build --package gmnspy --out-dir /tmp/wheel-test
+    #     uv run python -m zipfile -l /tmp/wheel-test/gmnspy-*.whl \
+    #         | grep -E 'fixtures.*(parquet|duckdb|\.zip|datapackage)'
+    needs: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+      - name: Build gmnspy wheel
+        run: |
+          rm -rf /tmp/wheel-test
+          uv build --package gmnspy --out-dir /tmp/wheel-test
+      - name: Verify fixture binaries packaged in wheel
+        run: |
+          uv run python - <<'PY'
+          import sys, zipfile
+          from pathlib import Path
+          wheels = list(Path("/tmp/wheel-test").glob("gmnspy-*.whl"))
+          assert len(wheels) == 1, wheels
+          names = zipfile.ZipFile(wheels[0]).namelist()
+          fx = "gmnspy/fixtures/leavenworth"
+          required_files = [
+              f"{fx}/datapackage.json",
+              f"{fx}/leavenworth.duckdb",
+              f"{fx}/leavenworth.csv.zip",
+          ]
+          required_globs = {
+              "parquet": lambda n: n.startswith(f"{fx}/parquet/") and n.endswith(".parquet"),
+              "csv":     lambda n: n.startswith(f"{fx}/csv/") and n.endswith(".csv"),
+          }
+          missing = [f for f in required_files if f not in names]
+          if missing:
+              print(f"wheel-smoke FAILED: missing required files: {missing}", file=sys.stderr)
+              sys.exit(1)
+          for label, pred in required_globs.items():
+              n = sum(1 for x in names if pred(x))
+              if n == 0:
+                  print(f"wheel-smoke FAILED: no {label} files matched in wheel", file=sys.stderr)
+                  sys.exit(1)
+              print(f"  {label}: {n} files")
+          print(f"wheel-smoke OK ({len(names)} members in {wheels[0].name})")
+          PY
 
   test:
     needs: lint
