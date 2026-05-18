@@ -69,6 +69,34 @@ def register_adapter(adapter: FormatAdapter) -> None:
         TypeError: If ``adapter`` does not satisfy the
             :class:`FormatAdapter` protocol.
         ValueError: If ``adapter.name`` is empty.
+
+    Examples:
+        Register a minimal fake adapter and confirm it appears in the
+        registry. The fake uses a unique name to avoid colliding with
+        the stock adapters registered in later tasks:
+
+        >>> from datagrove.io import register_adapter, get_adapter
+        >>> from datagrove.io.base import ResourceRef
+        >>> class _DoctestAdapter:
+        ...     name = "doctest-register"
+        ...     extensions = ("doctestfmt",)
+        ...     schemes = ()
+        ...     def probe(self, source): return False
+        ...     def read(self, source, engine, schema=None, **kw): return None
+        ...     def write(self, expr, dest, engine, **kw): return None
+        ...     def scan(self, source, engine):
+        ...         return [ResourceRef(
+        ...             name=self.name, path=str(source), format=self.name
+        ...         )]
+        >>> fake = _DoctestAdapter()
+        >>> from datagrove import io as _io
+        >>> try:
+        ...     register_adapter(fake)
+        ...     get_adapter("doctest-register") is fake
+        ... finally:
+        ...     _ = _io._REGISTRY.pop("doctest-register", None)
+        ...     _io._purge_bindings_for("doctest-register")
+        True
     """
     if not isinstance(adapter, FormatAdapter):
         raise TypeError(f"{adapter!r} does not satisfy the FormatAdapter protocol")
@@ -110,6 +138,42 @@ def get_adapter(name: str) -> FormatAdapter:
 
     Raises:
         AdapterNotAvailableError: If no adapter with ``name`` is registered.
+
+    Examples:
+        Asking for an unknown adapter raises a clear error that lists
+        what *is* registered:
+
+        >>> from datagrove.io import get_adapter, AdapterNotAvailableError
+        >>> try:
+        ...     get_adapter("not-a-real-adapter")
+        ... except AdapterNotAvailableError as exc:
+        ...     "not-a-real-adapter" in str(exc)
+        True
+
+        Round-trip via :func:`register_adapter`:
+
+        >>> from datagrove.io import register_adapter
+        >>> from datagrove.io.base import ResourceRef
+        >>> from datagrove import io as _io
+        >>> class _DoctestAdapter:
+        ...     name = "doctest-get"
+        ...     extensions = ()
+        ...     schemes = ()
+        ...     def probe(self, source): return False
+        ...     def read(self, source, engine, schema=None, **kw): return None
+        ...     def write(self, expr, dest, engine, **kw): return None
+        ...     def scan(self, source, engine):
+        ...         return [ResourceRef(
+        ...             name=self.name, path=str(source), format=self.name
+        ...         )]
+        >>> fake = _DoctestAdapter()
+        >>> try:
+        ...     register_adapter(fake)
+        ...     get_adapter("doctest-get") is fake
+        ... finally:
+        ...     _ = _io._REGISTRY.pop("doctest-get", None)
+        ...     _io._purge_bindings_for("doctest-get")
+        True
     """
     try:
         return _REGISTRY[name]
@@ -120,7 +184,34 @@ def get_adapter(name: str) -> FormatAdapter:
 
 
 def list_adapters() -> list[str]:
-    """Return the names of all registered adapters in registration order."""
+    """Return the names of all registered adapters in registration order.
+
+    Examples:
+        With no adapters auto-registered at import time, ``list_adapters``
+        reflects exactly what callers have registered themselves:
+
+        >>> from datagrove.io import register_adapter, list_adapters
+        >>> from datagrove.io.base import ResourceRef
+        >>> from datagrove import io as _io
+        >>> class _DoctestAdapter:
+        ...     name = "doctest-list"
+        ...     extensions = ()
+        ...     schemes = ()
+        ...     def probe(self, source): return False
+        ...     def read(self, source, engine, schema=None, **kw): return None
+        ...     def write(self, expr, dest, engine, **kw): return None
+        ...     def scan(self, source, engine):
+        ...         return [ResourceRef(
+        ...             name=self.name, path=str(source), format=self.name
+        ...         )]
+        >>> try:
+        ...     register_adapter(_DoctestAdapter())
+        ...     "doctest-list" in list_adapters()
+        ... finally:
+        ...     _ = _io._REGISTRY.pop("doctest-list", None)
+        ...     _io._purge_bindings_for("doctest-list")
+        True
+    """
     return list(_REGISTRY)
 
 
@@ -218,6 +309,45 @@ def dispatch(source: SourceRef, *, format: str | None = None) -> FormatAdapter:
     Raises:
         AdapterNotAvailableError: If ``format`` is given but unregistered.
         FormatNotDetected: If no resolution stage matched.
+
+    Examples:
+        Extension-based routing — register a fake that owns a unique
+        extension, then dispatch a matching path:
+
+        >>> from datagrove.io import register_adapter, dispatch
+        >>> from datagrove.io.base import ResourceRef
+        >>> from datagrove import io as _io
+        >>> class _DoctestAdapter:
+        ...     name = "doctest-dispatch"
+        ...     extensions = ("doctestfmt",)
+        ...     schemes = ()
+        ...     def probe(self, source): return False
+        ...     def read(self, source, engine, schema=None, **kw): return None
+        ...     def write(self, expr, dest, engine, **kw): return None
+        ...     def scan(self, source, engine):
+        ...         return [ResourceRef(
+        ...             name=self.name, path=str(source), format=self.name
+        ...         )]
+        >>> fake = _DoctestAdapter()
+        >>> try:
+        ...     register_adapter(fake)
+        ...     dispatch("data/example.doctestfmt") is fake
+        ... finally:
+        ...     _ = _io._REGISTRY.pop("doctest-dispatch", None)
+        ...     _io._purge_bindings_for("doctest-dispatch")
+        True
+
+        An explicit ``format=`` short-circuits all sniffing. The
+        extension on the source is ignored when ``format`` is given:
+
+        >>> other = _DoctestAdapter()
+        >>> try:
+        ...     register_adapter(other)
+        ...     dispatch("anything-at-all", format="doctest-dispatch").name
+        ... finally:
+        ...     _ = _io._REGISTRY.pop("doctest-dispatch", None)
+        ...     _io._purge_bindings_for("doctest-dispatch")
+        'doctest-dispatch'
     """
     # 1. Explicit format wins.
     if format is not None:
