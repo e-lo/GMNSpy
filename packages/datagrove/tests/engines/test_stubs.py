@@ -41,25 +41,6 @@ def test_polars_stub_methods_raise_with_task_id():
         assert "not yet implemented" in msg
 
 
-def test_pandas_stub_methods_raise_with_task_id():
-    pytest.importorskip("pandas", reason="pandas optional extra not installed")
-    from datagrove.engines.pandas_engine import PandasEngine
-
-    e = PandasEngine()
-    for call in (
-        lambda: e.scan("x"),
-        lambda: e.materialize(None),
-        lambda: e.to_pandas(None),
-        lambda: e.to_polars(None),
-        lambda: e.write(None, "x", "csv"),
-    ):
-        with pytest.raises(NotImplementedError) as excinfo:
-            call()
-        msg = str(excinfo.value)
-        assert "planned for task 1.5" in msg
-        assert "not yet implemented" in msg
-
-
 def test_polars_stub_importable_unconditionally():
     # Importing the stub module itself should never require polars to be installed.
     from datagrove.engines import polars_engine  # noqa: F401
