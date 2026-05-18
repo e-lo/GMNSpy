@@ -123,7 +123,16 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
-.claude/
+
+# Claude Code per-session scratch (worktrees, plans, cache). Project-local
+# skills under .claude/skills/ ARE tracked — they're the source of truth for
+# dev workflows. Git can't re-include children of an excluded parent, so we
+# exclude the scratch subdirs by name instead of the whole .claude/ tree.
+.claude/worktrees/
+.claude/plans/
+.claude/cache/
+.claude/todos/
+.claude/sessions/
 
 # osmnx HTTP cache (created by fixture build scripts)
 /cache/
