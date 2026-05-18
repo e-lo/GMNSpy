@@ -52,6 +52,7 @@ the adapters will register under, so the swap is local.
 from __future__ import annotations
 
 import contextlib
+from itertools import count
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -60,6 +61,12 @@ from ibis.backends import BaseBackend
 from ibis.expr import types as ir
 
 from datagrove.types import SourceRef
+
+from .errors import (
+    EngineNotAvailableError,
+    InvalidEngineCallError,
+    UnsupportedSourceError,
+)
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     import pandas as pd
@@ -185,8 +192,10 @@ class IbisEngine:
             NotImplementedError: If the source kind has no in-engine
                 reader yet (the relevant FormatAdapter ships in a later
                 task; the message names which).
-            ValueError: If ``format="duckdb"`` is used without a
-                ``table=`` kwarg.
+            InvalidEngineCallError: If ``format="duckdb"`` is used
+                without a ``table=`` kwarg.
+            UnsupportedSourceError: If ``source`` is a dict whose shape
+                matches neither ``{"data": ...}`` nor the duckdb handle.
 
         Examples:
             >>> import tempfile, pathlib
@@ -200,7 +209,12 @@ class IbisEngine:
         """
         kind = _resolve_kind(source, format)
 
-        if kind == "csv":
+        if kind == "data":
+            # _resolve_kind only returns "data" when source is a dict
+            # carrying a "data" key — narrow for the type checker.
+            assert isinstance(source, dict)
+            table = self._scan_inline_data(source)
+        elif kind == "csv":
             path = _as_path_str(source)
             table = self.con.read_csv(path, **kwargs)
         elif kind == "parquet":
@@ -219,13 +233,34 @@ class IbisEngine:
             table = _apply_schema_casts(table, schema)
         return table
 
+    def _scan_inline_data(self, source: dict) -> ir.Table:
+        """Register an in-memory ``{"data": ...}`` dict as a duckdb temp table.
+
+        Accepts either a list of row dicts or a columnar dict — the same
+        two shapes :class:`pandas.DataFrame` accepts — so callers can use
+        the same handle across all three engines. We round-trip through
+        pyarrow rather than ibis ``memtable`` so the table is materialized
+        eagerly inside our duckdb connection (matters because the source
+        dict is mutable in the caller's scope).
+        """
+        import pyarrow as pa
+
+        data = source["data"]
+        # pyarrow has two distinct constructors for the two inline shapes
+        # the cross-engine contract accepts: ``pa.table(columnar_dict)`` and
+        # ``pa.Table.from_pylist(list_of_row_dicts)``.
+        arrow = pa.table(data) if isinstance(data, dict) else pa.Table.from_pylist(list(data))
+        name = _temp_table_name("inline")
+        self.con.create_table(name, obj=arrow, temp=True)
+        return self.con.table(name)
+
     def _scan_duckdb(self, source: SourceRef, **kwargs: Any) -> ir.Table:
         """Read one table out of a duckdb file or handle dict."""
         if isinstance(source, dict):
             path = source.get("path")
             table_name = source.get("table") or kwargs.pop("table", None)
             if path is None or table_name is None:
-                raise ValueError(
+                raise InvalidEngineCallError(
                     "duckdb dict source must include 'path' and 'table' (e.g. {'path': 'net.duckdb', 'table': 'link'})"
                 )
             backend = ibis.duckdb.connect(str(path))
@@ -233,7 +268,7 @@ class IbisEngine:
 
         table_name = kwargs.pop("table", None)
         if table_name is None:
-            raise ValueError(
+            raise InvalidEngineCallError(
                 "ibis engine: scan(<duckdb file>) requires table=<name>; "
                 "pass e.g. engine.scan(path, table='link'). Multi-table "
                 "enumeration ships with the duckdb FormatAdapter in task 1.9."
@@ -276,30 +311,41 @@ class IbisEngine:
     def to_pandas(self, expr: ir.Table) -> pd.DataFrame:
         """Materialize ``expr`` and return a ``pandas.DataFrame``.
 
+        Per the :class:`~datagrove.engines.base.Engine` protocol, the
+        returned frame uses pandas **numpy-backed nullable dtypes**
+        (``Int64`` / ``Float64`` / ``string`` / ``boolean``) so null
+        semantics round-trip without silently upcasting integers with
+        nulls to ``float64``. We achieve this by post-processing with
+        :meth:`pandas.DataFrame.convert_dtypes` — ibis's native
+        ``to_pandas`` returns numpy dtypes (``int64``, ``object``,
+        ``float64``) which would diverge from polars/pandas engines.
+
         Examples:
             >>> import tempfile, pathlib
             >>> from datagrove.engines.ibis_engine import IbisEngine
             >>> p = pathlib.Path(tempfile.mkdtemp()) / "t.csv"
             >>> _ = p.write_text(chr(10).join(["a,b", "1,2", "3,4", ""]))
             >>> engine = IbisEngine()
-            >>> len(engine.to_pandas(engine.scan(p)))
-            2
+            >>> df = engine.to_pandas(engine.scan(p))
+            >>> len(df), str(df["a"].dtype)
+            (2, 'Int64')
             >>> engine.close()
         """
         try:
-            return expr.to_pandas()
+            df = expr.to_pandas()
         except ImportError as exc:  # pragma: no cover - pandas is an ibis dep
-            raise ImportError(
+            raise EngineNotAvailableError(
                 "pandas is required for IbisEngine.to_pandas; install with `pip install datagrove[pandas]`"
             ) from exc
+        return df.convert_dtypes()
 
     def to_polars(self, expr: ir.Table) -> pl.DataFrame:
         """Materialize ``expr`` and return a ``polars.DataFrame``.
 
-        Uses ibis's native ``to_polars`` (Arrow-backed) when available;
-        falls back to ``polars.from_arrow(expr.to_pyarrow())``. Polars
-        is an optional extra; missing-dep failures point at the right
-        ``pip install`` command.
+        Uses ibis's native ``to_polars`` (Arrow-backed) when available.
+        Polars is an optional extra; missing-dep failures raise
+        :class:`~datagrove.engines.errors.EngineNotAvailableError` with
+        the right ``pip install`` command.
 
         Examples:
             >>> import pytest, tempfile, pathlib
@@ -315,7 +361,7 @@ class IbisEngine:
         try:
             return expr.to_polars()
         except ImportError as exc:
-            raise ImportError(
+            raise EngineNotAvailableError(
                 "polars is required for IbisEngine.to_polars; install with `pip install datagrove[polars]`"
             ) from exc
 
@@ -432,7 +478,7 @@ def _as_path_str(source: SourceRef) -> str:
         return source
     if isinstance(source, dict) and "path" in source:
         return str(source["path"])
-    raise TypeError(
+    raise UnsupportedSourceError(
         f"ibis engine: cannot coerce source {source!r} to a path (expected str, Path, or dict with 'path' key)"
     )
 
@@ -440,23 +486,38 @@ def _as_path_str(source: SourceRef) -> str:
 def _resolve_kind(source: SourceRef, format: str | None) -> str:
     """Decide which in-engine reader to use for ``source``.
 
-    Returns one of ``"csv"`` / ``"parquet"`` / ``"duckdb"``.
-    Raises ``NotImplementedError`` for anything else, naming the task
-    where the adapter ships.
+    Returns one of ``"data"`` / ``"csv"`` / ``"parquet"`` / ``"duckdb"``.
+    Raises :class:`NotImplementedError` for unsupported formats (naming
+    the task that will add the adapter), or
+    :class:`UnsupportedSourceError` for unrecognised dict shapes.
     """
     if format is not None:
         f = format.lower()
-        if f in {"csv", "parquet", "duckdb"}:
+        if f in {"csv", "parquet", "duckdb", "data"}:
             return f
         raise NotImplementedError(
             f"ibis engine: format={format!r} not supported yet — the relevant FormatAdapter lands in tasks 1.7-1.11"
         )
 
     if isinstance(source, dict):
-        # Today the only dict source we know how to read is a duckdb
-        # table handle. The richer dict shape (partitioned-parquet
-        # handles) lands with the parquet adapter (task 1.8).
-        return "duckdb"
+        # Cross-engine dict-source contract (see Engine.scan docstring):
+        #   {"data": ...}                                  → inline data
+        #   {"format": "duckdb", "path": ..., "table": ...} → duckdb handle
+        #   {"path": "x.duckdb", "table": ...}             → duckdb handle
+        #     (path-suffix shorthand)
+        if "data" in source:
+            return "data"
+        fmt = str(source.get("format", "")).lower()
+        if fmt == "duckdb":
+            return "duckdb"
+        path = source.get("path")
+        if isinstance(path, (str, Path)) and str(path).lower().endswith(".duckdb"):
+            return "duckdb"
+        raise UnsupportedSourceError(
+            f"ibis engine: dict source shape not recognised (keys={sorted(source)!r}). "
+            "Supported shapes: {'data': [...]} for inline data, or "
+            "{'format': 'duckdb', 'path': '...', 'table': '...'} for a duckdb handle."
+        )
 
     path_str = _as_path_str(source).lower()
     # URL-scheme paths still typically have a recognizable extension
@@ -513,18 +574,19 @@ def _expr_relation_name(expr: ir.Table) -> str | None:
     return name if isinstance(name, str) else None
 
 
-_TEMP_COUNTER = [0]
+_TEMP_COUNTER = count()
 
 
 def _temp_table_name(prefix: str) -> str:
     """Return a process-unique temp table name for ``create_table``.
 
-    A module-level counter avoids the ibis backend complaining about a
-    name collision when the same engine materializes more than one
-    expression.
+    A module-level :class:`itertools.count` iterator avoids the ibis
+    backend complaining about a name collision when the same engine
+    materializes more than one expression. ``next(counter)`` is more
+    legible than the list-mutation trick (``_C[0] += 1``) and removes
+    a tiny clever-Python footnote from Lens C.
     """
-    _TEMP_COUNTER[0] += 1
-    return f"_datagrove_{prefix}_{_TEMP_COUNTER[0]}"
+    return f"_datagrove_{prefix}_{next(_TEMP_COUNTER)}"
 
 
 __all__ = ["IbisEngine"]

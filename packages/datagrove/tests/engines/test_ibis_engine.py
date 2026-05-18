@@ -14,6 +14,7 @@ from pathlib import Path
 import ibis
 import pytest
 from datagrove.engines import Engine, get_engine
+from datagrove.engines.base import EngineNotAvailableError
 from datagrove.engines.ibis_engine import IbisEngine
 from datagrove.spec.loader import load_schema
 from gmnspy.fixtures import leavenworth
@@ -179,6 +180,23 @@ def test_to_polars_returns_polars_dataframe(engine: IbisEngine, link_csv: Path):
     df = engine.to_polars(engine.scan(link_csv))
     assert isinstance(df, pl.DataFrame)
     assert len(df) == 214
+
+
+def test_to_polars_without_polars_raises_engine_not_available(engine: IbisEngine, link_csv: Path, monkeypatch):
+    """Parity with PandasEngine: missing polars must raise EngineNotAvailableError.
+
+    Per ``Engine`` protocol §9 ("structured exceptions"), the right
+    failure mode for "an optional engine extra isn't installed" is the
+    structured ``EngineNotAvailableError`` — not bare ``ImportError``.
+    """
+    scan = engine.scan(link_csv)
+
+    def _raise(*_a, **_kw):
+        raise ImportError("simulated polars missing")
+
+    monkeypatch.setattr(type(scan), "to_polars", _raise)
+    with pytest.raises(EngineNotAvailableError, match="polars"):
+        engine.to_polars(scan)
 
 
 def test_materialize_makes_values_stable(engine: IbisEngine, link_csv: Path):

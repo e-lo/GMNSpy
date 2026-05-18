@@ -33,26 +33,26 @@ import polars as pl
 
 from datagrove.types import SourceRef
 
+from .errors import InvalidEngineCallError, UnsupportedSourceError
+
 if TYPE_CHECKING:  # pragma: no cover - typing only
     import pandas as pd
 
     from datagrove.spec.model import Schema
 
 
-def _suffix(source: SourceRef) -> str:
-    """Return the file suffix (lowercase, no dot) for a path-like source.
-
-    Handles compound extensions specifically for ``.csv.zip`` (the zipcsv
-    adapter, task 1.10, is the eventual owner of that format).
-    """
-    if isinstance(source, dict):
-        return str(source.get("format", "")).lower()
-    p = Path(str(source))
-    # Compound: ".csv.zip" must be detected before plain ".zip".
-    name = p.name.lower()
-    if name.endswith(".csv.zip"):
-        return "csv.zip"
-    return p.suffix.lstrip(".").lower()
+# Frictionless type name → polars dtype. Inlined at module scope (rather
+# than imported from a shared defaults module) per Lens C — the map is
+# small and only used in one place. The cross-engine parity test
+# (test_cross_engine_dtype_parity) asserts this keyset matches the
+# corresponding maps in ibis_engine + pandas_engine, so adding a new
+# Frictionless type later forces all three engines to update together.
+_FRICTIONLESS_TO_POLARS: dict[str, type[pl.DataType]] = {
+    "integer": pl.Int64,
+    "number": pl.Float64,
+    "string": pl.Utf8,
+    "boolean": pl.Boolean,
+}
 
 
 class PolarsEngine:
@@ -86,22 +86,26 @@ class PolarsEngine:
     ) -> pl.LazyFrame:
         r"""Open ``source`` as a :class:`polars.LazyFrame`.
 
-        Resolution order:
-            1. Explicit ``format=`` kwarg (overrides everything).
-            2. Filename extension on ``source`` (handles ``.csv``, ``.parquet``,
-               ``.duckdb``, ``.csv.zip`` / ``.zip``).
-            3. ``dict`` sources: ``{"data": [...]}`` or ``{"format": ...,
-               "path": ..., "table": ...}`` (the latter for duckdb refs).
+        Same shape as :meth:`IbisEngine.scan` / :meth:`PandasEngine.scan`:
+        a single :func:`_resolve_kind` helper picks the dispatch key,
+        then a flat if/elif calls the per-kind reader, then
+        :func:`_apply_schema_casts` runs once at the end on every path.
 
         Args:
             source: Path / URL / dict. URLs are forwarded to polars's
                 scanners, which support fsspec when ``storage_options=``
-                is passed in ``kwargs``.
+                is passed in ``kwargs``. Accepted dict shapes:
+
+                - ``{"data": [...]}`` — inline data (list of row dicts
+                  or columnar dict). Returned as a lazy frame.
+                - ``{"format": "duckdb", "path": "x.duckdb", "table":
+                  "link"}`` — a duckdb table handle.
             format: Optional override (``"csv"`` / ``"parquet"`` /
-                ``"duckdb"``). Bypasses extension sniffing.
+                ``"duckdb"`` / ``"data"``). Bypasses extension sniffing.
             schema: Optional Frictionless :class:`~datagrove.spec.model.Schema`.
-                When provided, columns are cast after scan per a small
-                Frictionless-to-polars type map.
+                When provided, columns are cast after scan per
+                :data:`_FRICTIONLESS_TO_POLARS`. Applied uniformly on
+                EVERY return path (dict + duckdb + file).
             **kwargs: Forwarded verbatim to the underlying polars scanner.
                 Common keys: ``storage_options`` (fsspec creds),
                 ``separator``, ``has_header``, ``n_rows``, ``table`` (for
@@ -117,6 +121,10 @@ class PolarsEngine:
                 support directly (zip, unknown extensions). The message
                 points at the follow-up task (1.7-1.11) that will add
                 adapter support.
+            InvalidEngineCallError: For valid formats with missing
+                required kwargs (e.g. ``.duckdb`` without ``table=``).
+            UnsupportedSourceError: For dict sources whose shape matches
+                neither ``{"data": ...}`` nor the duckdb handle.
 
         Examples:
             >>> from datagrove.engines.polars_engine import PolarsEngine
@@ -127,58 +135,25 @@ class PolarsEngine:
             ...     isinstance(PolarsEngine().scan(p), pl.LazyFrame)
             True
         """
-        # dict source — explicit handle. The "data" arm lets callers build
-        # in-memory frames the same way they pass file paths; "table" + "path"
-        # is the duckdb-relation arm.
-        if isinstance(source, dict):
-            if "data" in source:
-                return pl.LazyFrame(source["data"])
-            fmt = (format or source.get("format") or "").lower()
-            if fmt == "duckdb":
-                path = source.get("path")
-                table = source.get("table") or kwargs.get("table")
-                if not path or not table:
-                    raise ValueError(
-                        f"polars engine: duckdb dict source requires 'path' and 'table' keys (got {sorted(source)})"
-                    )
-                return self._scan_duckdb(path, table)
-            raise NotImplementedError(
-                f"polars engine: dict source with format={fmt!r} not supported "
-                "(pass 'data' for inline data or use a duckdb handle)"
-            )
+        kind = _resolve_kind(source, format)
 
-        ext = (format or _suffix(source)).lower()
+        if kind == "data":
+            # _resolve_kind only returns "data" when source is a dict
+            # carrying a "data" key — narrow for the type checker.
+            assert isinstance(source, dict)
+            lf = pl.LazyFrame(source["data"])
+        elif kind == "csv":
+            # _resolve_kind has already rejected dict sources for file-based
+            # kinds; narrow to str/Path so polars's typed scanners accept it.
+            lf = pl.scan_csv(str(source), **kwargs)
+        elif kind == "parquet":
+            lf = pl.scan_parquet(str(source), **kwargs)
+        elif kind == "duckdb":
+            lf = self._scan_duckdb(source, **kwargs)
+        else:  # pragma: no cover - _resolve_kind raises before reaching here
+            raise NotImplementedError(f"polars engine: source kind {kind!r} not supported")
 
-        # Compound zip — owned by zipcsv adapter (task 1.10). Polars has no
-        # native zip reader; failing fast keeps the migration path obvious.
-        if ext in {"csv.zip", "zip"}:
-            raise NotImplementedError(
-                f"polars engine: scanning {ext!r} files requires the zipcsv format "
-                "adapter (planned for task 1.10). For now: extract the csv first, "
-                "or use the ibis engine."
-            )
-
-        if ext == "csv":
-            lf = pl.scan_csv(source, **kwargs)
-        elif ext == "parquet":
-            lf = pl.scan_parquet(source, **kwargs)
-        elif ext == "duckdb":
-            table = kwargs.pop("table", None)
-            if not table:
-                raise ValueError(
-                    "polars engine: scanning a .duckdb file requires a 'table=' kwarg "
-                    "naming the table to open (e.g. engine.scan(path, table='link'))"
-                )
-            return self._apply_schema(self._scan_duckdb(source, table), schema)
-        else:
-            raise NotImplementedError(
-                f"polars engine: format={ext!r} is not supported by the built-in "
-                "polars scanners. Format adapters (tasks 1.7-1.11) will broaden this; "
-                "for now use csv, parquet, or .duckdb (with table= kwarg), or fall "
-                "back to the ibis engine."
-            )
-
-        return self._apply_schema(lf, schema)
+        return _apply_schema_casts(lf, schema)
 
     def materialize(self, expr: pl.LazyFrame) -> pl.DataFrame:
         """Collect ``expr`` into a :class:`polars.DataFrame`.
@@ -194,22 +169,30 @@ class PolarsEngine:
         return expr.collect()
 
     def to_pandas(self, expr: pl.LazyFrame) -> pd.DataFrame:
-        """Materialize ``expr`` and return a ``pandas.DataFrame`` via Arrow.
+        """Materialize ``expr`` and return a ``pandas.DataFrame``.
 
-        The Arrow path (``use_pyarrow_extension_array=True``) preserves
-        nullable integers and avoids the float64 upcasting that pandas's
-        legacy code-path applies to columns with nulls; it is also faster
-        for wide / long frames.
+        Per the :class:`~datagrove.engines.base.Engine` protocol, the
+        returned frame uses pandas **numpy-backed nullable dtypes**
+        (``Int64`` / ``Float64`` / ``string`` / ``boolean``) — NOT
+        the pyarrow-extension dtypes (``int64[pyarrow]`` etc.) that
+        ``to_pandas(use_pyarrow_extension_array=True)`` would produce.
+        We standardize on numpy-backed nullable because downstream
+        libraries (sklearn, geopandas pre-1.0, older matplotlib) do not
+        understand ``pd.ArrowDtype`` columns yet, and the parity test
+        ``test_cross_engine_dtype_parity`` locks the convention in.
 
         Examples:
             >>> from datagrove.engines.polars_engine import PolarsEngine
             >>> import polars as pl
             >>> lazy = pl.LazyFrame({"a": [1, 2]})
             >>> pdf = PolarsEngine().to_pandas(lazy)
-            >>> list(pdf.columns), len(pdf)
-            (['a'], 2)
+            >>> list(pdf.columns), len(pdf), str(pdf["a"].dtype)
+            (['a'], 2, 'Int64')
         """
-        return expr.collect().to_pandas(use_pyarrow_extension_array=True)
+        # polars's default to_pandas() returns numpy dtypes (int64,
+        # object, float64). .convert_dtypes() upcasts those into the
+        # nullable family that matches the cross-engine convention.
+        return expr.collect().to_pandas().convert_dtypes()
 
     def to_polars(self, expr: pl.LazyFrame) -> pl.DataFrame:
         """Collect ``expr`` — trivial, since polars is the native engine.
@@ -280,8 +263,8 @@ class PolarsEngine:
     # Internal helpers — kept inline-private since they're 1-call-site
     # ------------------------------------------------------------------
 
-    def _scan_duckdb(self, source: SourceRef, table: str) -> pl.LazyFrame:
-        """Open ``table`` inside a .duckdb file as a LazyFrame.
+    def _scan_duckdb(self, source: SourceRef, **kwargs: Any) -> pl.LazyFrame:
+        """Open one table inside a .duckdb file (path or handle dict) as a LazyFrame.
 
         Uses the duckdb Python relation API (``con.table(name).pl()``) so
         no SQL string is constructed. Imports duckdb lazily because it's
@@ -296,39 +279,145 @@ class PolarsEngine:
                 "polars engine: scanning .duckdb files requires the 'duckdb' package "
                 "(install with `pip install duckdb`, or use the ibis engine)."
             ) from exc
-        con = duckdb.connect(str(source), read_only=True)
+
+        if isinstance(source, dict):
+            path = source.get("path")
+            table = source.get("table") or kwargs.pop("table", None)
+            if not path or not table:
+                raise InvalidEngineCallError(
+                    f"polars engine: duckdb dict source requires 'path' and 'table' keys (got {sorted(source)})"
+                )
+            path_str = str(path)
+        else:
+            table = kwargs.pop("table", None)
+            if not table:
+                raise InvalidEngineCallError(
+                    "polars engine: scanning a .duckdb file requires a 'table=' kwarg "
+                    "naming the table to open (e.g. engine.scan(path, table='link'))"
+                )
+            path_str = str(source)
+
+        con = duckdb.connect(path_str, read_only=True)
         # con.table(name) is the Python relation API — no SQL string.
         return con.table(table).pl().lazy()
 
-    def _apply_schema(self, lf: pl.LazyFrame, schema: Schema | None) -> pl.LazyFrame:
-        """Cast columns in ``lf`` per a Frictionless ``schema``.
 
-        Inlined per Lens C: the type map is small, used only here, and
-        reads more clearly at point-of-use than imported from elsewhere.
-        Unknown Frictionless types are skipped (no cast) rather than
-        erroring — the v0.3 ``apply_schema_to_df`` bug was a reminder
-        that silent-but-noisy is the safer default for partial schemas.
-        """
-        if schema is None or not schema.fields:
-            return lf
-        # Frictionless → polars dtype. Conservative subset; columns whose
-        # Frictionless type isn't in this map are left as polars inferred.
-        type_map: dict[str, type[pl.DataType]] = {
-            "integer": pl.Int64,
-            "number": pl.Float64,
-            "string": pl.Utf8,
-            "boolean": pl.Boolean,
-        }
-        present = set(lf.collect_schema().names())
-        casts: dict[str, type[pl.DataType]] = {
-            f.name: type_map[f.type] for f in schema.fields if f.type in type_map and f.name in present
-        }
-        if not casts:
-            return lf
-        # polars' .cast() Mapping type uses an internal ColumnNameOrSelector /
-        # PolarsDataType union; the runtime accepts dict[str, type[DataType]]
-        # but the stubs don't model that overload. Safe at runtime.
-        return lf.cast(casts)  # type: ignore[arg-type]
+# ---------------------------------------------------------------------------
+# Helpers (module-level — symmetric with ibis_engine + pandas_engine)
+# ---------------------------------------------------------------------------
+
+
+def _suffix(source: SourceRef) -> str:
+    """Return the file suffix (lowercase, no dot) for a path-like source.
+
+    Handles compound extensions specifically for ``.csv.zip`` (the zipcsv
+    adapter, task 1.10, is the eventual owner of that format).
+    """
+    p = Path(str(source))
+    name = p.name.lower()
+    # Compound: ".csv.zip" must be detected before plain ".zip".
+    if name.endswith(".csv.zip"):
+        return "csv.zip"
+    return p.suffix.lstrip(".").lower()
+
+
+def _resolve_kind(source: SourceRef, format: str | None) -> str:
+    """Decide which in-engine reader to use for ``source``.
+
+    Returns one of ``"data"`` / ``"csv"`` / ``"parquet"`` / ``"duckdb"``.
+    Raises :class:`NotImplementedError` for unsupported formats (naming
+    the task that will add the adapter), or
+    :class:`UnsupportedSourceError` for unrecognised dict shapes.
+
+    Same shape as :func:`datagrove.engines.ibis_engine._resolve_kind` and
+    :func:`datagrove.engines.pandas_engine._resolve_kind` — symmetry is
+    the whole point (Lens C: a reader who understands one engine should
+    predict the others).
+    """
+    if format is not None:
+        f = format.lower()
+        if f in {"csv", "parquet", "duckdb", "data"}:
+            return f
+        # Compound zip — owned by zipcsv adapter (task 1.10). Polars has
+        # no native zip reader; failing fast keeps the migration path
+        # obvious.
+        if f in {"csv.zip", "zip"}:
+            raise NotImplementedError(
+                f"polars engine: scanning {f!r} files requires the zipcsv format "
+                "adapter (planned for task 1.10). For now: extract the csv first, "
+                "or use the ibis engine."
+            )
+        raise NotImplementedError(
+            f"polars engine: format={format!r} is not supported by the built-in "
+            "polars scanners. Format adapters (tasks 1.7-1.11) will broaden this; "
+            "for now use csv, parquet, or .duckdb (with table= kwarg), or fall "
+            "back to the ibis engine."
+        )
+
+    if isinstance(source, dict):
+        # Cross-engine dict-source contract (see Engine.scan docstring):
+        #   {"data": ...}                                  → inline data
+        #   {"format": "duckdb", "path": ..., "table": ...} → duckdb handle
+        #   {"path": "x.duckdb", "table": ...}             → duckdb handle
+        if "data" in source:
+            return "data"
+        fmt = str(source.get("format", "")).lower()
+        if fmt == "duckdb":
+            return "duckdb"
+        path = source.get("path")
+        if isinstance(path, (str, Path)) and str(path).lower().endswith(".duckdb"):
+            return "duckdb"
+        raise UnsupportedSourceError(
+            f"polars engine: dict source shape not recognised (keys={sorted(source)!r}). "
+            "Supported shapes: {'data': [...]} for inline data, or "
+            "{'format': 'duckdb', 'path': '...', 'table': '...'} for a duckdb handle."
+        )
+
+    ext = _suffix(source)
+    if ext in {"csv.zip", "zip"}:
+        raise NotImplementedError(
+            f"polars engine: scanning {ext!r} files requires the zipcsv format "
+            "adapter (planned for task 1.10). For now: extract the csv first, "
+            "or use the ibis engine."
+        )
+    if ext == "csv":
+        return "csv"
+    if ext == "parquet":
+        return "parquet"
+    if ext == "duckdb":
+        return "duckdb"
+    raise NotImplementedError(
+        f"polars engine: format={ext!r} is not supported by the built-in "
+        "polars scanners. Format adapters (tasks 1.7-1.11) will broaden this; "
+        "for now use csv, parquet, or .duckdb (with table= kwarg), or fall "
+        "back to the ibis engine."
+    )
+
+
+def _apply_schema_casts(lf: pl.LazyFrame, schema: Schema | None) -> pl.LazyFrame:
+    """Cast columns in ``lf`` per a Frictionless ``schema``.
+
+    Unknown Frictionless types are skipped (no cast) rather than
+    erroring — the v0.3 ``apply_schema_to_df`` bug was a reminder that
+    silent-but-noisy is the safer default for partial schemas. Same
+    naming as :func:`datagrove.engines.ibis_engine._apply_schema_casts`
+    and :func:`datagrove.engines.pandas_engine._apply_schema_casts` —
+    symmetric API surface across the three engines.
+    """
+    if schema is None or not schema.fields:
+        return lf
+    present = set(lf.collect_schema().names())
+    casts: dict[str, type[pl.DataType]] = {
+        f.name: _FRICTIONLESS_TO_POLARS[f.type]
+        for f in schema.fields
+        if f.type in _FRICTIONLESS_TO_POLARS and f.name in present
+    }
+    if not casts:
+        return lf
+    # polars' .cast() Mapping type uses an internal ColumnNameOrSelector /
+    # PolarsDataType union; the runtime accepts dict[str, type[DataType]]
+    # but the stubs don't model that overload. Safe at runtime.
+    return lf.cast(casts)  # type: ignore[arg-type]
 
 
 __all__ = ["PolarsEngine"]

@@ -37,6 +37,12 @@ from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 from datagrove.types import SourceRef
 
+from .errors import (
+    EngineNotAvailableError,
+    InvalidEngineCallError,
+    UnsupportedSourceError,
+)
+
 if TYPE_CHECKING:  # pragma: no cover - typing only
     import pandas as pd
     import polars as pl
@@ -69,23 +75,13 @@ NativeFrame = Any
 
 
 # ---------------------------------------------------------------------------
-# Errors
+# Errors — re-exported from datagrove.engines.errors so the existing
+# ``from datagrove.engines.base import EngineNotAvailableError`` import
+# path keeps working (architecture §9 — structured exceptions live in
+# errors.py, surfaced from the module that callers use).
 # ---------------------------------------------------------------------------
 
-
-class EngineNotAvailableError(RuntimeError):
-    """Raised when a requested engine is not registered or its deps are missing.
-
-    This is the single error type the registry raises for "I cannot give
-    you that engine". Reasons include:
-
-    - The engine's optional dependencies are not installed (e.g. user
-      asked for ``"polars"`` without ``pip install datagrove[polars]``).
-    - The name is not registered (typo, or a module that failed to
-      import at registration time).
-    - The registry is empty (no engines successfully registered at
-      import — usually means the default ibis install is broken).
-    """
+# Re-exported via the imports at the top of the file; listed in __all__.
 
 
 # ---------------------------------------------------------------------------
@@ -119,9 +115,22 @@ class Engine(Protocol):
         """Open ``source`` as a lazy table expression.
 
         Args:
-            source: A path, URL, or handle dict pointing at a tabular
-                file or table. Format dispatch is delegated to the
-                ``datagrove.io`` ``FormatAdapter`` layer.
+            source: A path, URL, ``Path``, or handle dict pointing at a
+                tabular file or table. Format dispatch is delegated to
+                the ``datagrove.io`` ``FormatAdapter`` layer. The two
+                handle-dict shapes every engine MUST accept are:
+
+                - ``{"data": [...]}`` — inline data. Value is either a
+                  list of row dicts (``[{"a": 1}, {"a": 2}]``) or a
+                  columnar dict (``{"a": [1, 2]}``). Used for in-memory
+                  test fixtures and small synthetic frames.
+                - ``{"format": "duckdb", "path": "net.duckdb", "table":
+                  "link"}`` — a duckdb table handle. ``"format"`` is
+                  optional when ``"path"`` ends in ``.duckdb``.
+
+                Any other dict shape MUST raise
+                :class:`~datagrove.engines.errors.UnsupportedSourceError`
+                with a message listing these supported shapes.
             format: Optional explicit format hint forwarded to
                 ``datagrove.io.dispatch(source, format=format)``. When
                 ``None`` the dispatcher uses URL-scheme / extension /
@@ -155,7 +164,28 @@ class Engine(Protocol):
         """Materialize ``expr`` and return it as a ``pandas.DataFrame``.
 
         Cross-engine convergence point. Implementations may raise
-        ``EngineNotAvailableError`` if pandas is not installed.
+        :class:`~datagrove.engines.errors.EngineNotAvailableError` if
+        pandas is not installed.
+
+        **Dtype convention (cross-engine contract).** The returned
+        DataFrame uses pandas **numpy-backed nullable dtypes**:
+        ``Int64`` (capital I), ``Float64``, ``string``, ``boolean``.
+        We standardize on this family because:
+
+        - Null semantics are preserved without silently upcasting
+          integer columns with missing values to ``float64`` (the
+          numpy default's footgun).
+        - Numpy-backed (not ``pyarrow``-backed) dtypes keep
+          compatibility with downstream libraries (sklearn, older
+          matplotlib, geopandas pre-1.0) that don't understand
+          ``pd.ArrowDtype`` columns.
+
+        Implementations achieve this by post-processing with
+        :meth:`pandas.DataFrame.convert_dtypes` (the universal path),
+        regardless of which engine produced ``expr``. The Leavenworth
+        fixture's ``link.from_node_id`` column round-trips as ``Int64``
+        from all three stock engines under this convention — that is
+        the regression locked in by the cross-engine parity test.
         """
         ...
 
@@ -186,7 +216,9 @@ class Engine(Protocol):
 __all__ = [
     "Engine",
     "EngineNotAvailableError",
+    "InvalidEngineCallError",
     "NativeFrame",
     "SourceRef",
     "TableExpr",
+    "UnsupportedSourceError",
 ]
