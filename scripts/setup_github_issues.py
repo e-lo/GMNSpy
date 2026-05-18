@@ -422,7 +422,7 @@ PHASES: list[Phase] = [
             Task(
                 "3.11a",
                 "datagrove.quality — generic rule framework",
-                "`Rule` base class, threshold/config model, entry-point plugin discovery, `Issue` emission with `category=\"data_quality\"`, `run()` orchestrator. NO domain rules.",
+                '`Rule` base class, threshold/config model, entry-point plugin discovery, `Issue` emission with `category="data_quality"`, `run()` orchestrator. NO domain rules.',
                 ["pkg:datagrove", "area:quality", "type:feature"],
                 effort="M",
             ),

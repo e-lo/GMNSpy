@@ -110,7 +110,7 @@ PRAGMA = "pragma: allow-sql"
 
 
 class _Violation:
-    __slots__ = ("path", "lineno", "pattern", "snippet")
+    __slots__ = ("lineno", "path", "pattern", "snippet")
 
     def __init__(self, path: Path, lineno: int, pattern: str, snippet: str) -> None:
         self.path = path

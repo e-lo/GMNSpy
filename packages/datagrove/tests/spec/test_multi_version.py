@@ -5,7 +5,6 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-
 from datagrove.spec import (
     InvalidSpecVersionError,
     SpecLoadError,
@@ -72,13 +71,13 @@ def test_spec_version_compatibility():
 
 def test_invalid_version_shape_raises_structured_error():
     """Wrong shape: caller gets InvalidSpecVersionError, not bare ValueError."""
-    with pytest.raises(InvalidSpecVersionError, match="0.97.1.2"):
+    with pytest.raises(InvalidSpecVersionError, match=r"0\.97\.1\.2"):
         SpecVersion.from_str("0.97.1.2")
 
 
 def test_invalid_version_non_integer_raises_structured_error():
     """Non-integer component: same structured type, input echoed in message."""
-    with pytest.raises(InvalidSpecVersionError, match="zero.point.nine"):
+    with pytest.raises(InvalidSpecVersionError, match=r"zero\.point\.nine"):
         SpecVersion.from_str("zero.point.nine")
 
 

@@ -97,6 +97,5 @@ def test_unrecognized_category_shape_logs_debug_and_skips(caplog):
     assert field.constraints is None or field.constraints.enum is None
     # And the debug log names the field so debugging is actually possible.
     assert any("weird_field" in rec.message for rec in caplog.records), (
-        f"expected a debug log naming 'weird_field', got records: "
-        f"{[(r.name, r.message) for r in caplog.records]}"
+        f"expected a debug log naming 'weird_field', got records: {[(r.name, r.message) for r in caplog.records]}"
     )

@@ -211,11 +211,24 @@ class AdapterNotAvailableError(FormatError):
     """
 
 
+class InvalidAdapterError(FormatError):
+    """A registration attempt received an object that is not a valid adapter.
+
+    Raised by ``register_adapter`` when the supplied object does not satisfy
+    the :class:`FormatAdapter` protocol or lacks a non-empty ``name``.
+    Mirrors :class:`datagrove.engines.EngineNotAvailableError`'s role on the
+    engines side so callers (and AI agents) get a categorical exception type
+    for the "you handed me something I can't register" failure mode rather
+    than a bare ``TypeError`` / ``ValueError``.
+    """
+
+
 __all__ = [
     "AdapterNotAvailableError",
     "FormatAdapter",
     "FormatError",
     "FormatNotDetected",
+    "InvalidAdapterError",
     "ResourceListing",
     "ResourceRef",
     "SourceRef",

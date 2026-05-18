@@ -5,7 +5,6 @@ from __future__ import annotations
 import warnings
 
 import pytest
-
 from datagrove.spec import (
     Constraints,
     DataPackage,
@@ -157,7 +156,7 @@ def test_resource_schema_attribute_access_emits_future_warning():
     """
     r = Resource(name="link", path="link.csv", schema=Schema(fields=[]))
     with pytest.warns(FutureWarning, match="table_schema"):
-        _ = r.schema  # noqa: B018  — deliberate attribute access under test
+        _ = r.schema
 
 
 def test_resource_table_schema_access_is_silent():

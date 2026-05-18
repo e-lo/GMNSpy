@@ -35,6 +35,7 @@ from .base import (
     FormatAdapter,
     FormatError,
     FormatNotDetected,
+    InvalidAdapterError,
     ResourceListing,
     ResourceRef,
     SourceRef,
@@ -66,9 +67,10 @@ def register_adapter(adapter: FormatAdapter) -> None:
         adapter: A :class:`FormatAdapter` instance with non-empty ``name``.
 
     Raises:
-        TypeError: If ``adapter`` does not satisfy the
-            :class:`FormatAdapter` protocol.
-        ValueError: If ``adapter.name`` is empty.
+        InvalidAdapterError: If ``adapter`` does not satisfy the
+            :class:`FormatAdapter` protocol, or if ``adapter.name`` is
+            empty. Catch via the ``FormatError`` base class to handle
+            any format-layer registration failure.
 
     Examples:
         Register a minimal fake adapter and confirm it appears in the
@@ -99,9 +101,12 @@ def register_adapter(adapter: FormatAdapter) -> None:
         True
     """
     if not isinstance(adapter, FormatAdapter):
-        raise TypeError(f"{adapter!r} does not satisfy the FormatAdapter protocol")
+        raise InvalidAdapterError(
+            f"{adapter!r} does not satisfy the FormatAdapter protocol "
+            "(needs a 'name' attribute plus probe/read/write/scan methods)"
+        )
     if not adapter.name:
-        raise ValueError("FormatAdapter.name must be non-empty")
+        raise InvalidAdapterError("FormatAdapter.name must be a non-empty string")
 
     name = adapter.name
 

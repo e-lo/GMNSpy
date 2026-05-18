@@ -35,9 +35,9 @@ from typing import Any
 # Import the TYPE_CHECKING-only deps eagerly here so ``get_type_hints``
 # can resolve the forward refs on the protocol below. If any of these
 # imports break, the regression has fired.
-from datagrove.engines.base import Engine, TableExpr  # noqa: F401 — used in localns
+from datagrove.engines.base import Engine, TableExpr
 from datagrove.io.base import FormatAdapter, ResourceListing, SourceRef
-from datagrove.spec.model import Schema  # noqa: F401 — used in localns
+from datagrove.spec.model import Schema
 from datagrove.types import SourceRef as CanonicalSourceRef
 
 
@@ -121,9 +121,8 @@ def _extract_type_checking_imports(module_path: Path) -> list[str]:
         if not isinstance(node, ast.If):
             continue
         test = node.test
-        is_tc = (
-            (isinstance(test, ast.Name) and test.id == "TYPE_CHECKING")
-            or (isinstance(test, ast.Attribute) and test.attr == "TYPE_CHECKING")
+        is_tc = (isinstance(test, ast.Name) and test.id == "TYPE_CHECKING") or (
+            isinstance(test, ast.Attribute) and test.attr == "TYPE_CHECKING"
         )
         if not is_tc:
             continue

@@ -5,6 +5,8 @@ from __future__ import annotations
 import pytest
 from datagrove.io import (
     AdapterNotAvailableError,
+    FormatError,
+    InvalidAdapterError,
     _clear_registry,
     get_adapter,
     list_adapters,
@@ -50,3 +52,39 @@ def test_registration_preserves_order() -> None:
     register_adapter(FakeCsvAdapter())
     register_adapter(FakeParquetAdapter())
     assert list_adapters() == ["csv", "parquet"]
+
+
+def test_register_non_adapter_raises_structured_error() -> None:
+    """An object that doesn't satisfy the protocol gets a categorical error."""
+    with pytest.raises(InvalidAdapterError, match="FormatAdapter protocol"):
+        register_adapter(object())  # type: ignore[arg-type]
+
+
+def test_register_adapter_with_empty_name_raises_structured_error() -> None:
+    """Empty name is rejected up front rather than producing a silent registry hole."""
+
+    class _Nameless:
+        name = ""
+        extensions: tuple[str, ...] = ()
+        schemes: tuple[str, ...] = ()
+
+        def probe(self, source):
+            return False
+
+        def read(self, source, engine, schema=None, **kw):
+            return None
+
+        def write(self, expr, dest, engine, **kw):
+            return None
+
+        def scan(self, source, engine):
+            return []
+
+    with pytest.raises(InvalidAdapterError, match="non-empty"):
+        register_adapter(_Nameless())
+
+
+def test_invalid_adapter_error_is_format_error_subclass() -> None:
+    """Callers catching FormatError see InvalidAdapterError too."""
+    with pytest.raises(FormatError):
+        register_adapter(object())  # type: ignore[arg-type]
