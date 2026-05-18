@@ -133,7 +133,8 @@ dmypy.json
 .claude/cache/
 .claude/todos/
 .claude/sessions/
-.claude/settings.local.json   # per-user permission allowlist (not shared)
+# per-user permission allowlist (not shared)
+.claude/settings.local.json
 
 # osmnx HTTP cache (created by fixture build scripts)
 /cache/
