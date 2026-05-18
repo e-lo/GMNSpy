@@ -400,3 +400,18 @@ __all__ = [
     "list_adapters",
     "register_adapter",
 ]
+
+
+# ---------------------------------------------------------------------------
+# Auto-registered adapters
+# ---------------------------------------------------------------------------
+# Each adapter module self-registers via ``register_adapter`` at the bottom
+# of its module body. Importing them here ensures the registry is populated
+# when callers do ``from datagrove.io import dispatch``.
+#
+# Order matters only insofar as the probe-chain fallback consults adapters
+# in registration order; explicit format, scheme, and extension lookup are
+# all order-independent.
+
+# Remote (URL) adapter -- claims http/https/s3/gs/gcs/az/abfs/abfss schemes.
+from . import remote as _remote  # noqa: E402,F401  -- self-registers on import
