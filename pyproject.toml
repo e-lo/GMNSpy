@@ -134,11 +134,15 @@ forbidden_modules = [
 [tool.pytest.ini_options]
 minversion = "8.0"
 testpaths = ["packages/datagrove/tests", "packages/gmnspy/tests"]
+# importlib mode avoids module-name collisions when multiple packages each
+# have a tests/__init__.py (otherwise both bind to "tests" and the second
+# loses); also required for src-layout monorepos.
 addopts = [
     "-ra",
     "--strict-markers",
     "--strict-config",
     "--doctest-modules",
+    "--import-mode=importlib",
     "--ignore=gmnspy",          # legacy tree (Phase 0 closeout removes)
     "--ignore=tests",           # legacy tree
     "--ignore=_archive",
