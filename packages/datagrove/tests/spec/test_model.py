@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import warnings
+
+import pytest
+
 from datagrove.spec import (
     Constraints,
     DataPackage,
@@ -136,3 +140,38 @@ def test_extra_properties_preserved_via_extra_allow():
     assert f.name == "x"
     extra = f.__pydantic_extra__ or {}
     assert extra.get("vendorExtra") == {"hello": "world"}
+
+
+# ---------------------------------------------------------------------------
+# Resource.schema vs Resource.table_schema (I8 — rename footgun)
+# ---------------------------------------------------------------------------
+
+
+def test_resource_schema_attribute_access_emits_future_warning():
+    """Reading ``.schema`` on a Resource is almost always a rename mistake.
+
+    The on-disk JSON key is ``"schema"`` but the Python attribute is
+    ``table_schema``. Without a loud signal, ``r.schema`` silently
+    returns the deprecated ``BaseModel.schema`` bound method with no
+    exception and no warning. Verify the override fires.
+    """
+    r = Resource(name="link", path="link.csv", schema=Schema(fields=[]))
+    with pytest.warns(FutureWarning, match="table_schema"):
+        _ = r.schema  # noqa: B018  — deliberate attribute access under test
+
+
+def test_resource_table_schema_access_is_silent():
+    """The correct attribute name must NOT trigger any warning."""
+    r = Resource(name="link", path="link.csv", schema=Schema(fields=[]))
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")  # any warning becomes a test failure
+        ts = r.table_schema
+    assert ts is not None
+
+
+def test_resource_json_round_trip_uses_schema_alias():
+    """Round-tripping to JSON must produce the ``"schema"`` key (Frictionless)."""
+    r = Resource(name="link", path="link.csv", schema=Schema(fields=[]))
+    dumped = r.model_dump(by_alias=True)
+    assert "schema" in dumped
+    assert "table_schema" not in dumped

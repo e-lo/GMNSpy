@@ -4,7 +4,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from datagrove.spec import (
+    InvalidSpecVersionError,
+    SpecLoadError,
     SpecVersion,
     compatible,
     load_package,
@@ -59,3 +63,26 @@ def test_spec_version_compatibility():
     assert not compatible(SpecVersion(0, 96, 0), SpecVersion(0, 97, 0))
     assert compatible(SpecVersion(1, 2, 3), SpecVersion(1, 2, 99))
     assert not compatible(SpecVersion(1, 2, 3), SpecVersion(1, 3, 0))
+
+
+# ---------------------------------------------------------------------------
+# Structured exceptions (I6 — bare ValueError → InvalidSpecVersionError)
+# ---------------------------------------------------------------------------
+
+
+def test_invalid_version_shape_raises_structured_error():
+    """Wrong shape: caller gets InvalidSpecVersionError, not bare ValueError."""
+    with pytest.raises(InvalidSpecVersionError, match="0.97.1.2"):
+        SpecVersion.from_str("0.97.1.2")
+
+
+def test_invalid_version_non_integer_raises_structured_error():
+    """Non-integer component: same structured type, input echoed in message."""
+    with pytest.raises(InvalidSpecVersionError, match="zero.point.nine"):
+        SpecVersion.from_str("zero.point.nine")
+
+
+def test_invalid_spec_version_subclasses_spec_load_error():
+    """Catch-all SpecLoadError handlers must still see version parse failures."""
+    with pytest.raises(SpecLoadError):
+        SpecVersion.from_str("not.a.version.string")
