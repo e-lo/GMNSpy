@@ -141,8 +141,30 @@ def _clear_registry() -> None:
 
 
 def _normalize_path_str(source: SourceRef) -> str:
-    """Coerce ``source`` to a string for parsing."""
-    return str(source) if isinstance(source, Path) else source
+    """Coerce ``source`` to a string for URL/extension parsing.
+
+    Accepts the ``str`` and ``Path`` arms of :data:`SourceRef`. The
+    ``dict`` arm of :data:`SourceRef` is a structured engine handle
+    (e.g. ``{"format": "duckdb", "path": "...", "table": "link"}``);
+    the dispatcher cannot meaningfully sniff a scheme or extension from
+    it and requires an explicit ``format=`` kwarg.
+
+    Raises:
+        TypeError: If ``source`` is a ``dict`` (caller must pass an
+            explicit ``format=`` so :func:`dispatch` skips sniffing) or
+            an otherwise-unsupported type.
+    """
+    if isinstance(source, Path):
+        return str(source)
+    if isinstance(source, str):
+        return source
+    if isinstance(source, dict):
+        raise TypeError(
+            "dispatch cannot sniff a dict source handle; pass an explicit format=, "
+            "e.g. dispatch(handle, format='duckdb'). dict handles are intended for "
+            "engine-side use after dispatch has resolved an adapter."
+        )
+    raise TypeError(f"unsupported SourceRef type: {type(source).__name__!r} (expected str, Path, or dict)")
 
 
 def _scheme_of(source_str: str) -> str | None:
