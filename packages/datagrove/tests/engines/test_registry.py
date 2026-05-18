@@ -1,0 +1,118 @@
+"""Registry mechanics tests."""
+
+from __future__ import annotations
+
+from typing import Any
+
+import pytest
+from datagrove import engines as eng
+from datagrove.engines import (
+    EngineNotAvailableError,
+    get_engine,
+    list_engines,
+    register_engine,
+    set_default_engine,
+)
+
+
+class FakeEngine:
+    """Minimal in-test engine."""
+
+    def __init__(self, name: str = "fake"):
+        self.name = name
+
+    def scan(self, source, schema=None):
+        return None
+
+    def materialize(self, expr):
+        return None
+
+    def to_pandas(self, expr):
+        return None
+
+    def to_polars(self, expr):
+        return None
+
+    def write(self, expr, dest, fmt: str, **kwargs: Any) -> None:
+        return None
+
+
+@pytest.fixture(autouse=True)
+def _restore_registry():
+    """Snapshot + restore the module-level registry around each test."""
+    saved_registry = dict(eng._REGISTRY)
+    saved_default = eng._DEFAULT
+    yield
+    eng._REGISTRY.clear()
+    eng._REGISTRY.update(saved_registry)
+    eng._DEFAULT = saved_default
+
+
+def test_ibis_is_auto_registered_as_default():
+    assert "ibis" in list_engines()
+    assert get_engine().name == "ibis"
+
+
+def test_register_and_get_by_name():
+    fake = FakeEngine()
+    register_engine(fake)
+    assert get_engine("fake") is fake
+
+
+def test_get_with_no_arg_returns_default():
+    # default at this point is whatever was registered first (ibis)
+    default = get_engine()
+    assert default.name == eng._DEFAULT
+
+
+def test_set_default_engine_changes_default():
+    fake = FakeEngine()
+    register_engine(fake)
+    set_default_engine("fake")
+    assert get_engine().name == "fake"
+
+
+def test_register_with_default_flag_sets_default_in_one_call():
+    fake = FakeEngine(name="fake-default")
+    register_engine(fake, default=True)
+    assert get_engine().name == "fake-default"
+
+
+def test_get_unknown_engine_raises_with_helpful_message():
+    with pytest.raises(EngineNotAvailableError) as excinfo:
+        get_engine("nonexistent")
+    msg = str(excinfo.value)
+    assert "nonexistent" in msg
+    assert "available" in msg
+    # The message should list at least one currently-registered engine
+    for name in list_engines():
+        assert name in msg
+        break
+
+
+def test_set_default_to_unknown_raises():
+    with pytest.raises(EngineNotAvailableError):
+        set_default_engine("nonexistent")
+
+
+def test_re_registration_overwrites_without_warning():
+    first = FakeEngine()
+    second = FakeEngine()
+    register_engine(first)
+    register_engine(second)
+    assert get_engine("fake") is second
+
+
+def test_empty_registry_raises():
+    eng._REGISTRY.clear()
+    eng._DEFAULT = None
+    with pytest.raises(EngineNotAvailableError) as excinfo:
+        get_engine()
+    assert "no engines registered" in str(excinfo.value)
+
+
+def test_list_engines_is_sorted():
+    register_engine(FakeEngine(name="zzz"))
+    register_engine(FakeEngine(name="aaa"))
+    names = list_engines()
+    assert names == sorted(names)
