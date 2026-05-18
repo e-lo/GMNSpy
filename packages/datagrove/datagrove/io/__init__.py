@@ -19,10 +19,11 @@ Resolution order in :func:`dispatch`:
        ``True`` wins.
     5. :class:`FormatNotDetected` raised, listing registered adapters.
 
-The registry intentionally does **not** auto-register any adapters —
-those land in tasks 1.7-1.11. Importing this package gives you a working
-dispatcher with an empty registry, suitable for testing with mock
-adapters.
+Importing this package triggers self-registration of the five stock
+adapters (csv, parquet, duckdb, zipcsv, remote). Each adapter module
+calls ``register_adapter`` at import time; importing ``datagrove.io``
+imports all five. Tests that need an empty registry can call
+``_clear_registry()`` in a fixture.
 """
 
 from __future__ import annotations
@@ -413,5 +414,10 @@ __all__ = [
 # in registration order; explicit format, scheme, and extension lookup are
 # all order-independent.
 
-# Remote (URL) adapter -- claims http/https/s3/gs/gcs/az/abfs/abfss schemes.
-from . import remote as _remote  # noqa: E402,F401  -- self-registers on import
+# Stock adapters (order = probe-chain fallback order; explicit format,
+# scheme, and extension dispatch are all order-independent).
+from . import csv_adapter as _csv_adapter  # noqa: E402,F401  -- self-registers
+from . import duckdb_adapter as _duckdb_adapter  # noqa: E402,F401  -- self-registers
+from . import parquet_adapter as _parquet_adapter  # noqa: E402,F401  -- self-registers
+from . import remote as _remote  # noqa: E402,F401  -- self-registers; claims http/https/s3/gs/gcs/az schemes
+from . import zipcsv_adapter as _zipcsv_adapter  # noqa: E402,F401  -- self-registers
