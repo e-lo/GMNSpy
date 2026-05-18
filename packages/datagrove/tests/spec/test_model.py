@@ -1,0 +1,138 @@
+"""Round-trip + edge-case tests for the spec Pydantic models."""
+
+from __future__ import annotations
+
+from datagrove.spec import (
+    Constraints,
+    DataPackage,
+    Field,
+    ForeignKey,
+    ForeignKeyReference,
+    Resource,
+    Schema,
+    SharedCategory,
+)
+
+
+def _round_trip(model):
+    """Dump to JSON and re-parse, returning the new instance."""
+    cls = type(model)
+    return cls.model_validate_json(model.model_dump_json(by_alias=True))
+
+
+def test_constraints_round_trip():
+    c = Constraints(
+        required=True,
+        unique=False,
+        minimum=0,
+        maximum=100,
+        min_length=1,
+        max_length=10,
+        pattern=r"^[a-z]+$",
+        enum=["a", "b"],
+    )
+    assert _round_trip(c) == c
+
+
+def test_field_round_trip():
+    f = Field(
+        name="link_id",
+        type="any",
+        description="Primary key",
+        constraints=Constraints(required=True),
+    )
+    assert _round_trip(f) == f
+
+
+def test_schema_round_trip_full():
+    s = Schema(
+        fields=[
+            Field(name="id", type="integer", constraints=Constraints(required=True)),
+            Field(name="ref", type="any"),
+        ],
+        primary_key="id",
+        foreign_keys=[
+            ForeignKey(fields="ref", reference=ForeignKeyReference(resource="other", fields="id")),
+        ],
+        missing_values=["", "NaN"],
+    )
+    assert _round_trip(s) == s
+
+
+def test_resource_round_trip_with_inline_schema():
+    r = Resource(
+        name="link",
+        path="link.csv",
+        table_schema=Schema(fields=[Field(name="id", type="integer")], primary_key="id"),
+        type="table",
+    )
+    assert _round_trip(r) == r
+
+
+def test_data_package_round_trip():
+    pkg = DataPackage(
+        name="example",
+        title="Example",
+        version="0.1.0",
+        resources=[
+            Resource(name="link", path="link.csv", table_schema=Schema(fields=[Field(name="id", type="integer")])),
+        ],
+    )
+    assert _round_trip(pkg) == pkg
+
+
+def test_shared_category_round_trip():
+    sc = SharedCategory(categories=["a", "b", "c"], description="abc", source="")
+    assert _round_trip(sc) == sc
+
+
+def test_foreign_key_self_reference():
+    """A foreign key with reference.resource == '' is a self-reference and must round-trip."""
+    fk = ForeignKey(
+        fields="parent_link_id",
+        reference=ForeignKeyReference(resource="", fields="link_id"),
+    )
+    assert fk.reference.resource == ""
+    assert _round_trip(fk) == fk
+
+
+def test_field_with_explicit_empty_enum():
+    """An explicitly empty enum (``enum: []``) must be preserved, not coerced to None."""
+    c = Constraints(enum=[])
+    rt = _round_trip(c)
+    assert rt.enum == []
+    assert rt.enum is not None
+
+
+def test_schema_without_primary_key():
+    """primaryKey is optional; absence must produce a Schema with primary_key is None."""
+    s = Schema(fields=[Field(name="anything", type="string")])
+    assert s.primary_key is None
+    rt = _round_trip(s)
+    assert rt.primary_key is None
+    assert rt == s
+
+
+def test_camel_case_aliases_accepted():
+    """The on-disk JSON keys are camelCase; verify both wire- and python-name input works."""
+    s_wire = Schema.model_validate(
+        {
+            "fields": [{"name": "id", "type": "integer"}],
+            "primaryKey": "id",
+            "foreignKeys": [
+                {"fields": "id", "reference": {"resource": "other", "fields": "id"}},
+            ],
+            "missingValues": ["NaN"],
+        }
+    )
+    assert s_wire.primary_key == "id"
+    assert len(s_wire.foreign_keys) == 1
+    assert s_wire.missing_values == ["NaN"]
+
+
+def test_extra_properties_preserved_via_extra_allow():
+    """Unknown Frictionless properties are kept in __pydantic_extra__, not raised."""
+    f = Field.model_validate({"name": "x", "type": "integer", "vendorExtra": {"hello": "world"}})
+    assert f.name == "x"
+    extra = f.__pydantic_extra__ or {}
+    assert extra.get("vendorExtra") == {"hello": "world"}
