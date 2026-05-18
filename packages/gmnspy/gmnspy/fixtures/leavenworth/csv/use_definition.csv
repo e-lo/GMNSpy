@@ -1,0 +1,6 @@
+use,persons_per_vehicle,pce,description
+auto,1.4,1.0,Private automobile
+bike,1.0,0.2,Bicycle
+transit,20.0,2.0,Bus / shuttle
+truck,1.0,2.0,Heavy truck
+walk,1.0,0.0,Pedestrian

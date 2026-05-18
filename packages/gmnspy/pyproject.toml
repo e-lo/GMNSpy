@@ -48,6 +48,15 @@ notebook = [
 all = [
     "gmnspy[clean,server,mcp,notebook]",
 ]
+dev-fixtures = [
+    # Only required to *rebuild* bundled example fixtures (e.g. Leavenworth).
+    # Consumers loading the bundled csv/parquet/duckdb fixtures need none of these.
+    "osmnx>=1.9",
+    "shapely>=2.0",
+    "pandas>=2.2",
+    "pyarrow>=16",
+    "duckdb>=1.0",
+]
 
 [project.urls]
 Homepage = "https://e-lo.github.io/GMNSpy"
@@ -60,7 +69,18 @@ gmnspy = "gmnspy.cli.app:app"
 
 [tool.hatch.build.targets.wheel]
 packages = ["gmnspy"]
-artifacts = ["gmnspy/spec/**/*.json", "gmnspy/spec/**/VERSION", "gmnspy/spec/**/README.md"]
+artifacts = [
+    "gmnspy/spec/**/*.json",
+    "gmnspy/spec/**/VERSION",
+    "gmnspy/spec/**/README.md",
+    # Bundled example networks
+    "gmnspy/fixtures/**/*.csv",
+    "gmnspy/fixtures/**/*.parquet",
+    "gmnspy/fixtures/**/*.duckdb",
+    "gmnspy/fixtures/**/*.zip",
+    "gmnspy/fixtures/**/datapackage.json",
+    "gmnspy/fixtures/**/README.md",
+]
 
 [tool.hatch.build.targets.sdist]
 include = ["gmnspy", "README.md"]

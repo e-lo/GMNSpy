@@ -1,11 +1,102 @@
 # Leavenworth, WA — example GMNS network
 
-Tiny example network bundled with `gmnspy`. Synthesized in Phase 1 task 1.12 from:
+## What this is
 
-- OpenStreetMap extract
-- City of Leavenworth open GIS data (where available)
+A small but realistic example network in [GMNS 0.97](https://github.com/zephyr-data-specs/GMNS) format for the historic Bavarian-themed downtown core of Leavenworth, Washington. Bundled with `gmnspy` so tests, examples, and the 5-minute getting-started doc all share a single canonical fixture. Provided in four storage variants (CSV, Parquet, DuckDB, zipped CSV) holding identical data, so format adapters can roundtrip and assert equality.
 
-Covers ≥6 GMNS table types including at least one TOD restriction and one shared-categories enum.
-Variants are provided in CSV, Parquet, DuckDB, and zipped-CSV form for adapter coverage.
+## Why Leavenworth
 
-**Provenance:** to be filled in by the fixture-generation sub-agent.
+- **Visually distinctive small town.** The downtown core is a compact, walkable grid surrounded by mountains; easy to recognize on a map.
+- **Realistic topology.** A handful of tertiary streets (Highway 2 / Front Street), one-way couplets, and a few signalized intersections — enough to exercise lane counts, TOD restrictions, and signal tables without the bloat of a regional network.
+- **Small enough to load instantly.** Total fixture footprint is well under 5 MB, so it can ride along inside the gmnspy wheel without bloating pip installs.
+
+## Coverage
+
+| GMNS table              | Rows | Notes                                                                                |
+| ----------------------- | ---- | ------------------------------------------------------------------------------------ |
+| `node`                  | 75   | `ctrl_type` exercises 5 of the 7 v0.97 shared-categories values (incl. `signal`)     |
+| `link`                  | 214  | `bike_facility` / `ped_facility` / `parking` use v0.97 shared-categories enums       |
+| `geometry`              | 214  | One WKT LineString per link (true OSM shape where present, else straight)            |
+| `lane`                  | 280  | One row per travel lane per link                                                     |
+| `use_definition`        | 5    | `auto`, `truck`, `transit`, `bike`, `walk`                                           |
+| `use_group`             | 2    | `motorized`, `nonmotorized`                                                          |
+| `time_set_definitions`  | 1    | `weekday_am_peak` (Mon-Fri 07:00-09:00)                                              |
+| `link_tod`              | 1    | AM-peak parking removal on a downtown tertiary link                                  |
+| `signal_controller`     | 2    | One per OSM-tagged signalized intersection                                           |
+
+That's **9 distinct table types** including a TOD restriction and several uses of the v0.97 `shared_categories` enums (`ctrl_type`, `bike_facility_categories`, `ped_facility_categories`, `parking_categories`).
+
+## Provenance
+
+The bundled data was synthesized from OpenStreetMap via [`osmnx`](https://github.com/gboeing/osmnx) using this exact call:
+
+```python
+osmnx.graph_from_address(
+    "Leavenworth, WA, USA",
+    dist=600,            # ~600 m radius around the city centroid
+    network_type="drive",
+)
+```
+
+GMNS attributes are derived from OSM tags as follows:
+
+| GMNS attribute        | OSM source                                                    |
+| --------------------- | ------------------------------------------------------------- |
+| `node.x_coord/y_coord`| OSM node `x`, `y` (WGS84)                                     |
+| `node.ctrl_type`      | `highway=traffic_signals` -> `signal`; `highway=stop` -> `stop`; otherwise spread by node_id mod 7 across `stop_2_way`/`stop_4_way`/`yield`/`no_control` |
+| `link.from/to_node_id`| OSM edge endpoints                                            |
+| `link.length`         | OSM edge `length` attribute (meters)                          |
+| `link.lanes`          | OSM `lanes` (default 1)                                       |
+| `link.free_speed`     | OSM `maxspeed` parsed from `mph`/`km/h`; class default if absent |
+| `link.facility_type`  | `highway` mapped via the table in `scripts/build_leavenworth.py` |
+| `link.bike_facility`  | conservative default `none` (Leavenworth has shared-lane signage downtown but OSM doesn't tag it reliably) |
+| `link.ped_facility`   | `service` -> `none`; everything else `sidewalk`                |
+| `link.parking`        | `service` -> `none`; everything else `parallel`                |
+| `geometry.geometry`   | OSM edge geometry (WKT), falling back to straight from->to    |
+
+Node and link IDs are sequential integers assigned in sorted-OSM-id order to keep output byte-deterministic.
+
+### How to regenerate
+
+```bash
+# install fixture-build extras (only needed to *rebuild*; not for *consuming*)
+uv sync --extra dev-fixtures
+
+# run the build
+uv run python packages/gmnspy/gmnspy/fixtures/leavenworth/scripts/build_leavenworth.py
+```
+
+The script is idempotent against a fixed OSM snapshot — a second run on the same upstream data produces byte-identical output. OSM itself updates over time, so a rebuild months later may diff; the call signature above documents what to expect.
+
+The build script is the **only** source of truth for the bundled files. Don't hand-edit the CSV/Parquet/DuckDB/zip outputs — re-run the build script.
+
+## Spec version
+
+Built against **GMNS 0.97** (vendored at `packages/gmnspy/gmnspy/spec/0.97/`). Uses these v0.97-specific features:
+
+- `shared_categories.json` enum values for `ctrl_type`, `bike_facility_categories`, `ped_facility_categories`, `parking_categories`
+- `link_tod` table with `timeday_id` FK into `time_set_definitions`
+
+## Use
+
+```python
+from gmnspy.fixtures import leavenworth
+import pandas as pd
+
+# Where the bundled files live
+print(leavenworth.csv_dir())            # .../csv/
+print(leavenworth.parquet_dir())        # .../parquet/
+print(leavenworth.duckdb_path())        # .../leavenworth.duckdb
+print(leavenworth.zip_path())           # .../leavenworth.csv.zip
+print(leavenworth.DATAPACKAGE)          # .../datapackage.json
+
+# Quick load
+nodes = pd.read_csv(leavenworth.csv_dir() / "node.csv")
+links = pd.read_csv(leavenworth.csv_dir() / "link.csv")
+```
+
+Once `gmnspy.read()` and the `Network` class land in Phase 3 a `leavenworth.load()` shortcut will return a `Network` directly.
+
+## License / attribution
+
+OpenStreetMap data is © OpenStreetMap contributors and licensed under the [Open Database License (ODbL)](https://opendatacommons.org/licenses/odbl/1-0/). When using or redistributing this fixture (or anything derived from it) you must credit OpenStreetMap and apply the ODbL to derivative datasets.
