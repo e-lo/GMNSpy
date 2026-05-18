@@ -33,8 +33,9 @@ the format adapter (1.6).
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
+
+from datagrove.types import SourceRef
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     import pandas as pd
@@ -44,14 +45,12 @@ if TYPE_CHECKING:  # pragma: no cover - typing only
 # Public type aliases
 # ---------------------------------------------------------------------------
 
-#: A reference to an input/output location an engine can read or write.
-#:
-#: Today: a filesystem path, a URL string, or a ``dict`` handle for
-#: structured sources (e.g. ``{"format": "duckdb", "path": "...",
-#: "table": "link"}``). Engines are free to accept richer dispatch
-#: payloads in their own ``scan`` / ``write`` overrides — the registry
-#: never inspects this type, it just hands it through.
-SourceRef = str | Path | dict
+# ``SourceRef`` is re-exported from :mod:`datagrove.types` so that
+# ``datagrove.io`` and ``datagrove.engines`` cannot drift apart on the
+# accepted shape of a source reference. The canonical definition lives
+# in ``datagrove.types``; the re-export here preserves the existing
+# import path ``from datagrove.engines.base import SourceRef`` used by
+# the concrete engine stubs and the registry.
 
 #: An engine-native lazy/eager table expression returned by ``scan`` and
 #: accepted by ``materialize`` / ``write`` / ``to_pandas`` / ``to_polars``.
@@ -110,16 +109,32 @@ class Engine(Protocol):
 
     name: str
 
-    def scan(self, source: SourceRef, schema: Any | None = None) -> TableExpr:
+    def scan(
+        self,
+        source: SourceRef,
+        format: str | None = None,
+        schema: Any | None = None,
+        **kwargs: Any,
+    ) -> TableExpr:
         """Open ``source`` as a lazy table expression.
 
         Args:
             source: A path, URL, or handle dict pointing at a tabular
                 file or table. Format dispatch is delegated to the
                 ``datagrove.io`` ``FormatAdapter`` layer.
+            format: Optional explicit format hint forwarded to
+                ``datagrove.io.dispatch(source, format=format)``. When
+                ``None`` the dispatcher uses URL-scheme / extension /
+                ``probe`` resolution. Use this when the source is
+                ambiguous (e.g. an extensionless file, an ``http://``
+                URL that returns parquet bytes).
             schema: Optional Frictionless ``Schema`` to apply at scan
                 time (column types, missing-value handling). If
                 ``None``, the engine infers from file metadata.
+            **kwargs: Adapter-specific options forwarded verbatim to the
+                resolved ``FormatAdapter.read`` (delimiter, compression,
+                partition pruning predicate, etc.). Engines must not
+                strip or mutate this mapping.
 
         Returns:
             An engine-native lazy expression. Concrete type depends on

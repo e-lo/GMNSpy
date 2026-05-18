@@ -22,29 +22,27 @@ Design notes for adapter implementers:
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 from pydantic import BaseModel, Field
+
+from datagrove.types import SourceRef
 
 if TYPE_CHECKING:
     # These live in sibling modules that may import from io/. Type-only
     # imports break the circular dependency.
     from datagrove.engines.base import Engine, TableExpr  # pragma: no cover
-    from datagrove.spec.base import Schema  # pragma: no cover
+    from datagrove.spec.model import Schema  # pragma: no cover
 
 
 # ---------------------------------------------------------------------------
 # Public type aliases
 # ---------------------------------------------------------------------------
 
-SourceRef = str | Path
-"""A reference to a data source.
-
-Either a local filesystem path (``str`` or ``Path``) or a URL string in
-fsspec form (``s3://bucket/key``, ``gs://...``, ``https://...``,
-``duckdb://path/to.duckdb``, etc.).
-"""
+# ``SourceRef`` is re-exported from :mod:`datagrove.types` (the canonical
+# definition lives there so ``engines`` and ``io`` cannot drift apart).
+# Re-exporting here keeps ``from datagrove.io.base import SourceRef``
+# working for existing call sites and tests.
 
 
 # ---------------------------------------------------------------------------
