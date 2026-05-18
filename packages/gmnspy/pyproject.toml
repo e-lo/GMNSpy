@@ -68,12 +68,22 @@ Changelog = "https://github.com/e-lo/GMNSpy/blob/main/CHANGELOG.md"
 gmnspy = "gmnspy.cli.app:app"
 
 [tool.hatch.build.targets.wheel]
+# Explicit include — we list every non-Python data file the package ships
+# (vendored GMNS spec JSON + bundled example-network binaries) so that a
+# future gitignore tweak can't silently drop them from the wheel.
+#
+# The previous `artifacts = [...]` block was for re-including
+# gitignored files, which doesn't apply here (none of these are
+# gitignored). Switching to `include` makes packaging deterministic
+# regardless of gitignore state.
 packages = ["gmnspy"]
-artifacts = [
+include = [
+    "gmnspy/**/*.py",
     "gmnspy/spec/**/*.json",
     "gmnspy/spec/**/VERSION",
     "gmnspy/spec/**/README.md",
-    # Bundled example networks
+    # Bundled example networks (Leavenworth, WA; see
+    # gmnspy/fixtures/leavenworth/README.md for provenance).
     "gmnspy/fixtures/**/*.csv",
     "gmnspy/fixtures/**/*.parquet",
     "gmnspy/fixtures/**/*.duckdb",

@@ -66,9 +66,13 @@ uv sync --extra dev-fixtures
 uv run python packages/gmnspy/gmnspy/fixtures/leavenworth/scripts/build_leavenworth.py
 ```
 
-The script is idempotent against a fixed OSM snapshot — a second run on the same upstream data produces byte-identical output. OSM itself updates over time, so a rebuild months later may diff; the call signature above documents what to expect.
+**Deterministic given an unchanged OSM snapshot.** Output is byte-identical when re-run against the same `osmnx` response (line terminators pinned, Parquet statistics disabled, zip member timestamps fixed, row + column order stable, ID assignment derived from sorted OSM ids). OSM itself drifts over time, so a real re-run will produce diffs — those reflect upstream changes, not script bugs. Treat any unexplained diff on a fresh run as expected OSM churn.
 
 The build script is the **only** source of truth for the bundled files. Don't hand-edit the CSV/Parquet/DuckDB/zip outputs — re-run the build script.
+
+### Future improvements
+
+- **Pin an OSM snapshot** (e.g. a Geofabrik `*.osm.pbf` extract committed to a release asset) so the fixture is truly byte-deterministic across rebuilds. Currently out of scope; tracked as a follow-up.
 
 ## Spec version
 

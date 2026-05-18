@@ -43,7 +43,16 @@ dev = [
 [tool.ruff]
 line-length = 120
 target-version = "py311"
-extend-exclude = ["gmnspy", "tests", "_archive"]  # legacy tree; removed at Phase 0 closeout
+# Only exclude vendored upstream content (no Python source in these
+# directories). The previous `["gmnspy", "tests", "_archive"]` exclusion
+# was for the legacy pre-monorepo tree and inadvertently matched the new
+# package path `packages/gmnspy/gmnspy/`, skipping all of its source from
+# lint. Path-scoped exclusions only.
+extend-exclude = [
+    "packages/gmnspy/gmnspy/spec/0.95",
+    "packages/gmnspy/gmnspy/spec/0.96",
+    "packages/gmnspy/gmnspy/spec/0.97",
+]
 
 [tool.ruff.lint]
 select = [
