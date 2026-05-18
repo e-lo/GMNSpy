@@ -46,11 +46,50 @@ def register_engine(engine: Engine, *, default: bool = False) -> None:
     the stock implementation.
 
     Args:
-        engine: An instance satisfying the ``Engine`` protocol.
+        engine: An instance satisfying the ``Engine`` protocol. Must
+            expose a non-empty ``name`` string and the engine methods
+            (``scan`` / ``materialize`` / ``to_pandas`` / ``to_polars``
+            / ``write``).
         default: If ``True``, also make this the default engine
             returned by ``get_engine()`` with no argument.
+
+    Raises:
+        TypeError: If ``engine`` does not satisfy the ``Engine``
+            protocol (missing one or more required methods).
+        ValueError: If ``engine.name`` is empty.
+
+    Examples:
+        Register a minimal fake engine and look it up. The fake uses a
+        unique name to avoid colliding with auto-registered engines:
+
+        >>> from datagrove.engines import (
+        ...     register_engine, get_engine, list_engines
+        ... )
+        >>> class _DoctestEngine:
+        ...     name = "doctest-register"
+        ...     def scan(self, source, schema=None): return None
+        ...     def materialize(self, expr): return None
+        ...     def to_pandas(self, expr): return None
+        ...     def to_polars(self, expr): return None
+        ...     def write(self, expr, dest, fmt, **kw): return None
+        >>> fake = _DoctestEngine()
+        >>> try:
+        ...     register_engine(fake)
+        ...     get_engine("doctest-register") is fake
+        ... finally:
+        ...     from datagrove import engines as _eng
+        ...     _ = _eng._REGISTRY.pop("doctest-register", None)
+        True
     """
     global _DEFAULT
+    if not isinstance(engine, Engine):
+        raise TypeError(
+            f"{engine!r} does not satisfy the Engine protocol "
+            "(needs a 'name' attribute plus scan/materialize/to_pandas/"
+            "to_polars/write methods)"
+        )
+    if not getattr(engine, "name", None):
+        raise ValueError("Engine.name must be a non-empty string")
     _REGISTRY[engine.name] = engine
     if default or _DEFAULT is None:
         _DEFAULT = engine.name
@@ -71,6 +110,23 @@ def get_engine(name: str | None = None) -> Engine:
             requested name is not registered. The message lists the
             currently-registered engine names so the caller can correct
             the typo or install the missing extra.
+
+    Examples:
+        Look up the auto-registered default (typically ``ibis``):
+
+        >>> from datagrove.engines import get_engine
+        >>> default = get_engine()
+        >>> default.name in {"ibis", "polars", "pandas"}
+        True
+
+        Looking up a name that is not registered raises a clear error:
+
+        >>> from datagrove.engines import EngineNotAvailableError
+        >>> try:
+        ...     get_engine("not-a-real-engine")
+        ... except EngineNotAvailableError as exc:
+        ...     "not-a-real-engine" in str(exc)
+        True
     """
     if not _REGISTRY:
         raise EngineNotAvailableError(
@@ -98,6 +154,30 @@ def set_default_engine(name: str) -> None:
 
     Raises:
         EngineNotAvailableError: If ``name`` is not registered.
+
+    Examples:
+        Swap the default to a freshly-registered fake, then restore:
+
+        >>> from datagrove.engines import (
+        ...     register_engine, set_default_engine, get_engine
+        ... )
+        >>> from datagrove import engines as _eng
+        >>> class _DoctestEngine:
+        ...     name = "doctest-default"
+        ...     def scan(self, source, schema=None): return None
+        ...     def materialize(self, expr): return None
+        ...     def to_pandas(self, expr): return None
+        ...     def to_polars(self, expr): return None
+        ...     def write(self, expr, dest, fmt, **kw): return None
+        >>> previous = _eng._DEFAULT
+        >>> try:
+        ...     register_engine(_DoctestEngine())
+        ...     set_default_engine("doctest-default")
+        ...     get_engine().name
+        ... finally:
+        ...     _ = _eng._REGISTRY.pop("doctest-default", None)
+        ...     _eng._DEFAULT = previous
+        'doctest-default'
     """
     global _DEFAULT
     if name not in _REGISTRY:
@@ -107,7 +187,18 @@ def set_default_engine(name: str) -> None:
 
 
 def list_engines() -> list[str]:
-    """Return the sorted list of currently-registered engine names."""
+    """Return the sorted list of currently-registered engine names.
+
+    Examples:
+        The default install auto-registers at least ``ibis``:
+
+        >>> from datagrove.engines import list_engines
+        >>> names = list_engines()
+        >>> "ibis" in names
+        True
+        >>> names == sorted(names)
+        True
+    """
     return sorted(_REGISTRY)
 
 

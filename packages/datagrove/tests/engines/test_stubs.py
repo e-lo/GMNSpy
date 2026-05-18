@@ -17,7 +17,9 @@ def test_ibis_stub_methods_raise_with_task_id():
     ):
         with pytest.raises(NotImplementedError) as excinfo:
             call()
-        assert "1.3" in str(excinfo.value)
+        msg = str(excinfo.value)
+        assert "planned for task 1.3" in msg
+        assert "not yet implemented" in msg
 
 
 def test_polars_stub_methods_raise_with_task_id():
@@ -34,7 +36,9 @@ def test_polars_stub_methods_raise_with_task_id():
     ):
         with pytest.raises(NotImplementedError) as excinfo:
             call()
-        assert "1.4" in str(excinfo.value)
+        msg = str(excinfo.value)
+        assert "planned for task 1.4" in msg
+        assert "not yet implemented" in msg
 
 
 def test_pandas_stub_methods_raise_with_task_id():
@@ -51,7 +55,9 @@ def test_pandas_stub_methods_raise_with_task_id():
     ):
         with pytest.raises(NotImplementedError) as excinfo:
             call()
-        assert "1.5" in str(excinfo.value)
+        msg = str(excinfo.value)
+        assert "planned for task 1.5" in msg
+        assert "not yet implemented" in msg
 
 
 def test_polars_stub_importable_unconditionally():

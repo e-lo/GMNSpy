@@ -116,3 +116,23 @@ def test_list_engines_is_sorted():
     register_engine(FakeEngine(name="aaa"))
     names = list_engines()
     assert names == sorted(names)
+
+
+def test_register_non_engine_raises_structured_typeerror():
+    with pytest.raises(TypeError) as excinfo:
+        register_engine(object())  # type: ignore[arg-type]
+    msg = str(excinfo.value)
+    assert "Engine protocol" in msg
+    # Message should name the methods the protocol requires so the
+    # caller can see what's missing.
+    assert "scan" in msg
+    assert "materialize" in msg
+    assert "to_pandas" in msg
+    assert "to_polars" in msg
+    assert "write" in msg
+
+
+def test_register_engine_with_empty_name_raises_valueerror():
+    bad = FakeEngine(name="")
+    with pytest.raises(ValueError):
+        register_engine(bad)
