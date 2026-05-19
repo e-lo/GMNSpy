@@ -57,3 +57,23 @@ def test_full_stub_satisfies_protocol() -> None:
 
 def test_missing_method_fails_protocol_check() -> None:
     assert not isinstance(MissingReadAdapter(), FormatAdapter)
+
+
+def test_every_registered_adapter_scan_accepts_engine_none() -> None:
+    """I8: ``FormatAdapter.scan(source, engine=None)`` must work for every adapter.
+
+    The Protocol declares ``engine`` optional; locks that in here so a
+    future adapter that forgets the default trips this test instead of
+    surfacing as a TypeError at the first scan-without-an-engine call.
+    """
+    import inspect
+
+    from datagrove.io import _REGISTRY
+
+    for name, adapter in _REGISTRY.items():
+        sig = inspect.signature(adapter.scan)
+        engine_param = sig.parameters.get("engine")
+        assert engine_param is not None, f"{name} adapter scan has no 'engine' parameter"
+        assert engine_param.default is None, (
+            f"{name} adapter scan's 'engine' parameter must default to None (got default={engine_param.default!r})"
+        )

@@ -200,12 +200,26 @@ def test_scan_member_names_are_stems():
 # ---------------------------------------------------------------------------
 
 
-def test_read_single_csv_zip_no_kwarg_needed(tmp_path):
-    """Single-CSV zip — no ``table=`` kwarg required."""
+def test_read_single_csv_zip_requires_table_kwarg(tmp_path):
+    """I10: ``table=`` is required for every read, even single-csv zips.
+
+    The implicit single-csv shortcut was removed for selector-contract
+    parity with the duckdb adapter (which has always required
+    ``table=``). Confirms the kwarg is now mandatory.
+    """
     adapter = ZipCsvAdapter()
     zip_path = _single_csv_zip(tmp_path)
     engine = get_engine("pandas")
-    expr = adapter.read(zip_path, engine=engine)
+
+    # Omitting table= raises the same InvalidEngineCallError the
+    # multi-csv path does.
+    with pytest.raises(InvalidEngineCallError) as excinfo:
+        adapter.read(zip_path, engine=engine)
+    assert "table" in str(excinfo.value).lower()
+
+    # Passing the (only) member name reads cleanly.
+    # ``_single_csv_zip`` writes a member named ``only.csv``.
+    expr = adapter.read(zip_path, engine=engine, table="only")
     df = engine.to_pandas(expr)
     assert list(df.columns) == ["a", "b"]
     assert len(df) == 2
@@ -248,8 +262,13 @@ def test_read_specific_table_delegates_to_engine(engine_name):
     assert len(df) > 0
 
 
-def test_read_accepts_member_alias(tmp_path):
-    """``member=`` is accepted as an alias for ``table=``."""
+def test_read_member_and_name_aliases_dropped(tmp_path):
+    """I10: ``member=`` and ``name=`` are no longer accepted as table aliases.
+
+    They forward through to ``engine.scan`` as unknown kwargs and the
+    engine rejects them, which is the desired loud failure mode. The
+    user-visible message points at the surviving ``table=`` kwarg.
+    """
     adapter = ZipCsvAdapter()
     engine = get_engine("pandas")
     zip_path = _make_zip(
@@ -257,7 +276,13 @@ def test_read_accepts_member_alias(tmp_path):
         {"left.csv": b"a,b\n1,2\n", "right.csv": b"c,d\n5,6\n"},
         name="alias.zip",
     )
-    expr = adapter.read(zip_path, engine=engine, member="left")
+    # Without ``table=``, the read raises InvalidEngineCallError naming
+    # the available tables — regardless of ``member=``/``name=``.
+    with pytest.raises(InvalidEngineCallError) as excinfo:
+        adapter.read(zip_path, engine=engine, member="left")
+    assert "table" in str(excinfo.value).lower()
+    # The new (and only) selector still works.
+    expr = adapter.read(zip_path, engine=engine, table="left")
     df = engine.to_pandas(expr)
     assert list(df.columns) == ["a", "b"]
 
@@ -312,7 +337,8 @@ def test_write_single_csv_into_zip_roundtrip(tmp_path):
     assert names == ["data.csv"]
 
     # Round-trip via the adapter's read path.
-    expr = adapter.read(dest, engine=engine)
+    # I10: ``table=`` is required even for single-csv zips.
+    expr = adapter.read(dest, engine=engine, table="data")
     out = engine.to_pandas(expr)
     assert list(out.columns) == ["a", "b"]
     assert len(out) == 3
@@ -330,3 +356,47 @@ def test_write_without_table_defaults_to_dest_stem(tmp_path):
     # Single .csv inside; stem comes from dest (strip the .csv.zip compound).
     assert len(names) == 1
     assert names[0].endswith(".csv")
+
+
+# ---------------------------------------------------------------------------
+# I6: write refuses to clobber without explicit overwrite=True
+# ---------------------------------------------------------------------------
+
+
+def test_write_refuses_existing_dest_without_overwrite(tmp_path):
+    """An existing destination raises FileExistsError unless overwrite=True.
+
+    I6: silent clobber was a data-loss footgun; the explicit kwarg makes
+    the intent visible at the call site.
+    """
+    adapter = ZipCsvAdapter()
+    engine = get_engine("pandas")
+    src = pd.DataFrame({"a": [1]})
+    dest = tmp_path / "out.csv.zip"
+    # First write succeeds (destination doesn't exist).
+    adapter.write(src, dest, engine=engine, table="data")
+    assert dest.is_file()
+
+    # Second write into the same path is refused.
+    with pytest.raises(FileExistsError) as excinfo:
+        adapter.write(src, dest, engine=engine, table="data")
+    assert "overwrite=True" in str(excinfo.value)
+
+
+def test_write_overwrite_true_replaces_existing_dest(tmp_path):
+    """I6: passing overwrite=True clobbers the existing file."""
+    adapter = ZipCsvAdapter()
+    engine = get_engine("pandas")
+    dest = tmp_path / "out.csv.zip"
+    adapter.write(pd.DataFrame({"a": [1]}), dest, engine=engine, table="data")
+    # Different payload + overwrite=True succeeds.
+    adapter.write(
+        pd.DataFrame({"a": [2, 3, 4]}),
+        dest,
+        engine=engine,
+        table="data",
+        overwrite=True,
+    )
+    # New content is in place.
+    out = engine.to_pandas(adapter.read(dest, engine=engine, table="data"))
+    assert list(out["a"]) == [2, 3, 4]

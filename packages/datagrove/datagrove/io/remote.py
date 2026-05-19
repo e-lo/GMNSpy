@@ -16,6 +16,10 @@ RemoteAdapter is the front for any URL-based source: ``http(s)://``,
 This means the credentials cascade is enforced in exactly one place even
 though every format (csv, parquet, duckdb, zipcsv) can live behind a URL.
 
+The full list of URL schemes claimed by this adapter is :data:`_REMOTE_SCHEMES`
+— other modules (notably ``io/__init__.py``) point at that tuple rather than
+repeat the list.
+
 Self-registers at module import via :func:`datagrove.io.register_adapter`.
 
 Examples:
@@ -31,6 +35,7 @@ Examples:
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, Any, Final
 from urllib.parse import urlparse
@@ -46,6 +51,7 @@ from datagrove.io.base import (
     SourceRef,
 )
 from datagrove.io.credentials import resolve_credentials
+from datagrove.io.errors import WriteUnsupportedForSchemeError
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from datagrove.engines.base import Engine, TableExpr
@@ -56,6 +62,8 @@ __all__ = ["RemoteAdapter"]
 _logger: Final = logging.getLogger(__name__)
 
 # Schemes RemoteAdapter claims. Order matches the architecture spec.
+# Other modules (io/__init__.py, docs) should reference this tuple
+# rather than repeat the list — N4 keeps the spelling in one place.
 _REMOTE_SCHEMES: Final[tuple[str, ...]] = (
     "http",
     "https",
@@ -71,6 +79,43 @@ _REMOTE_SCHEMES: Final[tuple[str, ...]] = (
 # do support writes through fsspec when credentials and the matching extra
 # (``s3fs``/``gcsfs``/``adlfs``) are installed.
 _READONLY_SCHEMES: Final[frozenset[str]] = frozenset({"http", "https"})
+
+
+# ---------------------------------------------------------------------------
+# Parsed-URL cache (S6)
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class _ParsedUrl:
+    """Cheap parse-once view of a URL.
+
+    Before this dataclass existed, ``remote.py`` called ``urlparse(url)`` in
+    five+ separate places per ``read`` / ``write`` / ``scan`` invocation
+    (S6). One parse, passed by reference, makes the data flow obvious and
+    cuts the repeated work.
+    """
+
+    raw: str
+    scheme: str  # lowercase, no trailing ``://``; ``""`` if absent
+    host: str  # ``netloc`` or ``""``
+    path: str  # URL path component (the part after scheme://host/)
+    stripped: str  # ``raw`` with ``scheme://netloc/`` removed (best-effort)
+
+
+def _parse(url_str: str) -> _ParsedUrl:
+    """Parse ``url_str`` once into the local cache shape."""
+    parsed = urlparse(url_str)
+    scheme = (parsed.scheme or "").lower()
+    host = parsed.netloc or ""
+    path = parsed.path or ""
+    # urlparse already strips ``scheme://netloc`` from ``path``; leading
+    # ``/`` is part of the path, which we drop for the "use this as the
+    # bare local-style key" view. If the resulting string is empty (e.g.
+    # the URL was just ``s3://``), fall back to the raw URL so downstream
+    # callers don't get an empty surprise.
+    stripped = (path.lstrip("/") or url_str) if scheme else url_str
+    return _ParsedUrl(raw=url_str, scheme=scheme, host=host, path=path, stripped=stripped)
 
 
 class RemoteAdapter:
@@ -126,9 +171,12 @@ class RemoteAdapter:
                   the URL extension is ambiguous (e.g. an
                   extensionless API endpoint that returns parquet).
 
-                All other kwargs are forwarded verbatim, **plus** a
+                All other kwargs are forwarded verbatim. A
                 ``storage_options=...`` entry built from the resolved
-                credentials.
+                credentials is added only when non-empty — some inner
+                engines (notably the ibis duckdb backend) reject an
+                unexpected ``storage_options={}`` kwarg, so the empty
+                case is omitted entirely (I1).
 
         Returns:
             Whatever the inner adapter's ``read`` returns -- a lazy table
@@ -142,18 +190,24 @@ class RemoteAdapter:
         inner_format_override = kwargs.pop("format", None)
 
         url_str = str(source)
-        storage_options = self._storage_options_for(url_str, explicit_creds)
-        inner = self._inner_adapter(url_str, format=inner_format_override)
+        parsed = _parse(url_str)
+        storage_options = self._storage_options_for(parsed, explicit_creds)
+        inner = self._inner_adapter(parsed, format=inner_format_override)
 
         # Don't double-log the credential values -- log identity only.
-        _logger.debug("remote.read host=%s inner=%s", _host_of(url_str), inner.name)
+        _logger.debug("remote.read host=%s inner=%s", parsed.host, inner.name)
 
+        # I1: only forward ``storage_options`` when non-empty. Engines that
+        # don't support it (e.g. the ibis duckdb backend on local-fs reads)
+        # would otherwise reject an unexpected kwarg.
+        inner_kwargs = dict(kwargs)
+        if storage_options:
+            inner_kwargs["storage_options"] = storage_options
         return inner.read(
             url_str,
             engine,
             schema=schema,
-            storage_options=storage_options,
-            **kwargs,
+            **inner_kwargs,
         )
 
     # ----- write -----------------------------------------------------------
@@ -168,39 +222,43 @@ class RemoteAdapter:
         """Delegate write to the inner-format adapter, or refuse for HTTP.
 
         Raises:
-            NotImplementedError: If ``dest`` is an ``http(s)://`` URL.
-                HTTP is read-only in our default cloud-backend matrix.
-                Object stores (s3/gs/az) do route through to the inner
-                adapter with credentials attached.
+            WriteUnsupportedForSchemeError: If ``dest`` is an
+                ``http(s)://`` URL. HTTP is read-only in our default
+                cloud-backend matrix. Object stores (s3/gs/az) do route
+                through to the inner adapter with credentials attached.
+                The exception inherits from ``FormatError`` so existing
+                ``except FormatError`` blocks keep matching.
         """
         explicit_creds = kwargs.pop("credentials", None)
         inner_format_override = kwargs.pop("format", None)
 
         url_str = str(dest)
-        scheme = (urlparse(url_str).scheme or "").lower()
-        if scheme in _READONLY_SCHEMES:
-            raise NotImplementedError(
-                f"Writing to {scheme}:// URLs is not supported "
+        parsed = _parse(url_str)
+        if parsed.scheme in _READONLY_SCHEMES:
+            raise WriteUnsupportedForSchemeError(
+                f"Writing to {parsed.scheme}:// URLs is not supported "
                 "(HTTP is read-only). For cloud writes use s3://, gs://, or az:// "
                 "with the matching datagrove extra installed."
             )
 
-        storage_options = self._storage_options_for(url_str, explicit_creds)
-        inner = self._inner_adapter(url_str, format=inner_format_override)
+        storage_options = self._storage_options_for(parsed, explicit_creds)
+        inner = self._inner_adapter(parsed, format=inner_format_override)
 
-        _logger.debug("remote.write host=%s inner=%s", _host_of(url_str), inner.name)
+        _logger.debug("remote.write host=%s inner=%s", parsed.host, inner.name)
 
+        inner_kwargs = dict(kwargs)
+        if storage_options:
+            inner_kwargs["storage_options"] = storage_options
         inner.write(
             expr,
             url_str,
             engine,
-            storage_options=storage_options,
-            **kwargs,
+            **inner_kwargs,
         )
 
     # ----- scan ------------------------------------------------------------
 
-    def scan(self, source: SourceRef, engine: Engine) -> ResourceListing:
+    def scan(self, source: SourceRef, engine: Engine | None = None) -> ResourceListing:
         """List one-or-more resources at ``source``.
 
         For a URL pointing at a single file the listing has one entry.
@@ -210,29 +268,39 @@ class RemoteAdapter:
         :class:`ResourceRef`.
         """
         url_str = str(source)
-        scheme = (urlparse(url_str).scheme or "").lower()
+        parsed = _parse(url_str)
 
         # Trailing-slash heuristic: an explicit directory-shaped URL.
         looks_like_dir = url_str.endswith("/")
 
-        if looks_like_dir or _path_has_no_extension(url_str):
+        if looks_like_dir or _path_has_no_extension(parsed):
             try:
-                storage_options = self._storage_options_for(url_str, None)
-                fs = fsspec.filesystem(scheme, **storage_options)
+                storage_options = self._storage_options_for(parsed, None)
+                fs = fsspec.filesystem(parsed.scheme, **storage_options)
             except (ValueError, ImportError):
                 # fsspec couldn't build a filesystem for this scheme
                 # (missing optional dep, etc.). Fall back to single-resource.
                 fs = None
 
             if fs is not None:
-                # Only consult ls when fsspec confirms a directory.
+                # Only consult ls when fsspec confirms a directory. We catch
+                # narrowly here (I4): a network blip, permission denied, or
+                # missing prefix should degrade to single-resource with a
+                # logged warning, but anything else (TypeError, KeyError,
+                # bug in fsspec) propagates so we don't paper over real
+                # programmer errors.
                 is_dir = False
                 try:
-                    is_dir = bool(fs.isdir(_strip_scheme(url_str)))
-                except Exception:
+                    is_dir = bool(fs.isdir(parsed.stripped))
+                except (FileNotFoundError, PermissionError, OSError) as exc:
+                    _logger.warning(
+                        "listing fell back to single-resource for host=%s: %s",
+                        parsed.host,
+                        exc,
+                    )
                     is_dir = looks_like_dir
                 if is_dir:
-                    entries = fs.ls(_strip_scheme(url_str))
+                    entries = fs.ls(parsed.stripped)
                     return [_resource_ref_for(entry) for entry in entries if _has_known_extension(str(entry))]
 
         # Single-resource fallback (also the path for non-dir URLs).
@@ -240,28 +308,35 @@ class RemoteAdapter:
 
     # ----- internals -------------------------------------------------------
 
-    def _storage_options_for(self, url_str: str, explicit: dict | None) -> dict:
-        """Resolve credentials for ``url_str``'s host."""
-        host = _host_of(url_str)
-        return resolve_credentials(host, explicit=explicit)
+    def _storage_options_for(self, parsed: _ParsedUrl, explicit: dict | None) -> dict:
+        """Resolve credentials for ``parsed``'s host."""
+        return resolve_credentials(parsed.host, explicit=explicit)
 
-    def _inner_adapter(self, url_str: str, format: str | None = None) -> FormatAdapter:
-        """Resolve the inner-format adapter for ``url_str``.
+    def _inner_adapter(self, parsed: _ParsedUrl | str, format: str | None = None) -> FormatAdapter:
+        """Resolve the inner-format adapter for ``parsed``.
+
+        Accepts either a pre-parsed :class:`_ParsedUrl` (the public
+        ``read``/``write`` paths pass this) or a plain URL string (for
+        ad-hoc callers and unit tests that don't want to touch the
+        internal dataclass).
 
         Loop guard: never returns RemoteAdapter itself. If the dispatcher
         somehow resolves back to ``remote`` (e.g. because a URL scheme
         match wins over the extension), strip the URL scheme and retry
-        on the plain path. This keeps ``remote.read`` from recursing
-        into itself.
+        on the plain path. After the retry the result MUST NOT be
+        ``self`` again — if it is, that's a registry bug and we raise
+        :class:`FormatNotDetected` rather than recurse (I5).
         """
+        if isinstance(parsed, str):
+            parsed = _parse(parsed)
+        url_str = parsed.raw
         try:
             adapter = dispatch(url_str, format=format)
         except FormatNotDetected:
             # Retry with the scheme stripped -- the extension is the only
             # way to recover an inner format for an HTTP URL.
-            stripped = _strip_scheme(url_str)
-            if stripped != url_str:
-                adapter = dispatch(stripped, format=format)
+            if parsed.stripped != url_str:
+                adapter = dispatch(parsed.stripped, format=format)
             else:
                 raise
 
@@ -269,8 +344,17 @@ class RemoteAdapter:
             # URL-scheme dispatch picked us. Strip the scheme and retry
             # on the bare path so extension dispatch can reach the real
             # inner adapter.
-            stripped = _strip_scheme(url_str)
-            adapter = dispatch(stripped, format=format)
+            adapter = dispatch(parsed.stripped, format=format)
+            if adapter is self or getattr(adapter, "name", None) == self.name:
+                # Registry is misconfigured (e.g. someone bound an extension
+                # to RemoteAdapter). Fail loudly rather than recurse — the
+                # implicit guard before was fragile (I5).
+                raise FormatNotDetected(
+                    f"RemoteAdapter cannot resolve inner format for {url_str!r} "
+                    "after scheme strip. Check that another adapter is registered "
+                    f"for the URL's extension; registered adapters were not able to "
+                    "claim it."
+                )
 
         return adapter
 
@@ -281,39 +365,59 @@ class RemoteAdapter:
 
 
 def _host_of(url_str: str) -> str:
-    """Return the host portion of a URL, or the empty string."""
-    parsed = urlparse(url_str)
-    return parsed.netloc or ""
+    """Return the host portion of a URL, or the empty string.
+
+    Kept for back-compat with callers (and tests) that still import the
+    helper directly. New code should use :func:`_parse` and read
+    ``parsed.host``.
+    """
+    return _parse(url_str).host
 
 
 def _strip_scheme(url_str: str) -> str:
     """Return ``url_str`` with the ``scheme://netloc`` prefix removed.
 
-    Used by inner-format dispatch so that ``https://x.com/foo.parquet``
-    resolves through the ``.parquet`` extension lookup rather than the
-    ``https`` scheme lookup.
+    Kept for back-compat; new code should use :func:`_parse` and read
+    ``parsed.stripped``.
     """
-    parsed = urlparse(url_str)
-    if not parsed.scheme:
-        return url_str
-    return parsed.path.lstrip("/") or url_str
+    return _parse(url_str).stripped
 
 
-def _path_has_no_extension(url_str: str) -> bool:
+def _path_has_no_extension(parsed: _ParsedUrl) -> bool:
     """True if the URL's tail has no ``.ext`` suffix."""
-    parsed = urlparse(url_str)
     name = PurePosixPath(parsed.path).name
     return "." not in name
 
 
 def _has_known_extension(path: str) -> bool:
-    """Return True if ``path`` ends with at least one ``.suffix``.
+    """Return True if ``path`` ends in an extension registered with the registry.
 
-    Used to filter directory listings down to plausible data files.
-    Adapter resolution still happens via the registry -- this just
-    skips obvious junk (``_SUCCESS`` markers, directories, etc.).
+    Before S1 this was a permissive ``"." in name`` check that admitted
+    junk like ``_SUCCESS.txt`` or stale ``manifest.json`` files. Now we
+    consult the registry's extension map so only files whose suffix is
+    actually owned by a registered adapter survive.
+
+    Fast path: if the registry has no entries (early import order or a
+    test that called ``_clear_registry``), fall back to the cheap
+    ``"." in name`` heuristic so we don't silently drop everything.
     """
-    return "." in PurePosixPath(path).name
+    name = PurePosixPath(path).name
+    if "." not in name:
+        return False
+    # Import inside the function so we read the *current* registry state
+    # rather than a snapshot captured at module-import time. This matters
+    # for the test harness, which re-clears the registry between tests.
+    from datagrove.io import _BY_EXT
+
+    if not _BY_EXT:
+        # Registry not (yet) populated — fall back to the loose check.
+        return True
+
+    lower = name.lower()
+    # Try compound extensions first (``foo.csv.zip`` should hit
+    # ``csv.zip`` before ``zip``).
+    parts = lower.split(".")
+    return any(".".join(parts[i:]) in _BY_EXT for i in range(1, len(parts)))
 
 
 def _resource_ref_for(path: str) -> ResourceRef:
@@ -322,8 +426,10 @@ def _resource_ref_for(path: str) -> ResourceRef:
     The ``format`` field is best-effort: the file's extension when
     present, else ``"remote"``.
     """
-    name = PurePosixPath(urlparse(path).path or path).stem or path
-    suffixes = PurePosixPath(urlparse(path).path or path).suffixes
+    parsed_path = urlparse(path).path or path
+    posix = PurePosixPath(parsed_path)
+    name = posix.stem or path
+    suffixes = posix.suffixes
     fmt = suffixes[-1].lstrip(".").lower() if suffixes else "remote"
     return ResourceRef(name=name, path=path, format=fmt)
 

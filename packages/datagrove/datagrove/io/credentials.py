@@ -4,7 +4,7 @@ Resolves an fsspec-shaped ``storage_options`` dict for a given host by
 walking a fixed cascade:
 
     1. ``explicit`` kwarg (caller's dict)         -- highest precedence
-    2. ``GMNSPY_CRED_<HOST_UPPER>_TOKEN`` env var
+    2. ``DATAGROVE_CRED_<HOST_UPPER>_TOKEN`` env var
        (or ``_KEY`` + ``_SECRET`` for S3-style creds)
     3. ``keyring.get_password("datagrove", host)`` (optional dep)
     4. ``netrc`` lookup (stdlib)
@@ -64,12 +64,12 @@ def resolve_credentials(host: str, *, explicit: dict | None = None) -> dict:
         Explicit creds beat the env var:
 
         >>> import os
-        >>> os.environ["GMNSPY_CRED_DOCTEST_HOST_TOKEN"] = "from-env"
+        >>> os.environ["DATAGROVE_CRED_DOCTEST_HOST_TOKEN"] = "from-env"
         >>> resolve_credentials(
         ...     "doctest.host", explicit={"token": "from-arg"}
         ... )
         {'token': 'from-arg'}
-        >>> del os.environ["GMNSPY_CRED_DOCTEST_HOST_TOKEN"]
+        >>> del os.environ["DATAGROVE_CRED_DOCTEST_HOST_TOKEN"]
 
         A host with no credentials anywhere returns an empty dict --
         not an exception:
@@ -124,14 +124,14 @@ def _sanitize_host(host: str) -> str:
 
 
 def _lookup_env(sanitized_host: str) -> dict:
-    """Read ``GMNSPY_CRED_<HOST>_TOKEN`` (or ``_KEY`` + ``_SECRET``).
+    """Read ``DATAGROVE_CRED_<HOST>_TOKEN`` (or ``_KEY`` + ``_SECRET``).
 
     Returns ``{}`` if no relevant env var is set or all are empty.
     Empty-string env values are treated as "missing", not "empty
     credential" -- handing fsspec ``token=""`` would silently produce
     a confusing auth error.
     """
-    prefix = f"GMNSPY_CRED_{sanitized_host.upper()}"
+    prefix = f"DATAGROVE_CRED_{sanitized_host.upper()}"
 
     token = os.environ.get(f"{prefix}_TOKEN", "")
     if token:

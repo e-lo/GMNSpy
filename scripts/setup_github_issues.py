@@ -261,7 +261,7 @@ PHASES: list[Phase] = [
             Task(
                 "1.11",
                 "Remote (URL) layer + credentials cascade",
-                "fsspec-backed remote IO. Credentials cascade: kwarg → `GMNSPY_CRED_<host>_TOKEN` env → `keyring` → `.netrc`. Per req #4.",
+                "fsspec-backed remote IO. Credentials cascade: kwarg → `DATAGROVE_CRED_<host>_TOKEN` env → `keyring` → `.netrc`. Per req #4.",
                 ["pkg:datagrove", "area:io", "type:feature"],
                 effort="M",
             ),

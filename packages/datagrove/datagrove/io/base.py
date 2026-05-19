@@ -166,16 +166,25 @@ class FormatAdapter(Protocol):
         """
         ...
 
-    def scan(self, source: SourceRef, engine: Engine) -> ResourceListing:
+    def scan(self, source: SourceRef, engine: Engine | None = None) -> ResourceListing:
         """Enumerate the tables/resources discoverable at ``source``.
 
         Multi-table containers (directory of csvs, duckdb file with
         multiple tables, zip with multiple csvs) return many entries.
         Single-table formats return a one-element listing.
 
+        Most adapters can answer this from on-disk metadata alone and
+        don't need an engine — single-file csv/parquet read the file
+        stem; duckdb opens the file's system catalogue directly; zipcsv
+        reads the zip's central directory. The ``engine`` parameter is
+        therefore optional and defaults to ``None``; an adapter that
+        truly needs an engine for cheap metadata reads documents that
+        requirement in its own signature.
+
         Args:
             source: The source to enumerate.
-            engine: The engine for any cheap metadata reads.
+            engine: Optional engine for cheap metadata reads. Most
+                adapters ignore it.
 
         Returns:
             An ordered :data:`ResourceListing`.

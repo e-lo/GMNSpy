@@ -147,7 +147,15 @@ class PolarsEngine:
             # kinds; narrow to str/Path so polars's typed scanners accept it.
             lf = pl.scan_csv(str(source), **kwargs)
         elif kind == "parquet":
-            lf = pl.scan_parquet(str(source), **kwargs)
+            # I3: detect Hive-partitioned directories here rather than in
+            # the parquet adapter, so the adapter stays engine-agnostic.
+            # Polars wants an explicit glob for multi-file reads; pass
+            # ``hive_partitioning=True`` so partition columns survive.
+            src_str = str(source)
+            if not kwargs.get("hive_partitioning") and Path(src_str).is_dir():
+                lf = pl.scan_parquet(f"{src_str}/**/*.parquet", hive_partitioning=True, **kwargs)
+            else:
+                lf = pl.scan_parquet(src_str, **kwargs)
         elif kind == "duckdb":
             lf = self._scan_duckdb(source, **kwargs)
         else:  # pragma: no cover - _resolve_kind raises before reaching here

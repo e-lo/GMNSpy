@@ -117,7 +117,7 @@ gmnspy/
 - **I/O front door:** `datagrove.read(source, *, format=None, credentials=None, engine=None, scope=None, spec=None)`. `gmnspy.read(...)` wraps with `spec=GMNS_DEFAULT`.
 - **Format detection:** explicit `format=` overrides; else extension sniff (`.parquet`, `.csv`, `.csv.zip`, `.zip`, `.duckdb`); else `FormatAdapter.probe()` chain.
 - **Defaults:** API/URL downloads default to **DuckDB**; persistent local writes default to **partitioned Parquet** (partition by H3 cell or zone_id, configurable).
-- **Credentials cascade:** kwarg → `GMNSPY_CRED_<host>_TOKEN` env → `keyring` → `.netrc`. fsspec underneath.
+- **Credentials cascade (datagrove-owned):** kwarg → `DATAGROVE_CRED_<host>_TOKEN` env → `keyring` (service `"datagrove"`) → `.netrc`. fsspec underneath. The env prefix lives in `datagrove` because credential resolution is a generic concern; `gmnspy` consumes it as-is.
 - **Recommended persistent layout:**
   ```
   mynet.gmns/

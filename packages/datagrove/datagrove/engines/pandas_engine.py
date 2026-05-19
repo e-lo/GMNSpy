@@ -171,6 +171,11 @@ class PandasEngine:
         elif kind == "csv":
             df = pd.read_csv(str(source), **kwargs)
         elif kind == "parquet":
+            # I3: pandas's read_parquet uses pyarrow underneath, which
+            # natively handles Hive-partitioned directories and reinjects
+            # partition columns — no extra kwarg is needed. The branch is
+            # symmetric with the ibis/polars engines so the parquet
+            # adapter can forward without engine-specific dispatch.
             df = pd.read_parquet(str(source), **kwargs)
         elif kind in {"csv.zip", "zip"}:
             df = _read_csv_zip(str(source), **kwargs)
