@@ -25,7 +25,6 @@ from __future__ import annotations
 
 from typing import Any
 
-import pandas as pd
 import pytest
 from datagrove.engines.ibis_engine import IbisEngine
 from datagrove.engines.pandas_engine import PandasEngine
@@ -588,28 +587,27 @@ class TestV03Regression:
 
 class TestCompositeFK:
     def test_composite_fk_stamp_and_check(self):
-        """Composite FKs (comma-joined fields) stamp + check end-to-end."""
+        """Composite FKs (comma-joined fields) stamp + check end-to-end.
+
+        Uses the module's internal helper to compute the composite hash
+        so the test pins the round-trip property — stamp + check is
+        clean iff the source data is unchanged — without baking in the
+        specific hash algorithm (which moved from pandas to pyarrow
+        buffers in the ibis-first refactor).
+        """
+        from datagrove.validation._ibis import to_ibis
+        from datagrove.validation.sync_state import _column_hash_from_arrow
+
         e = PandasEngine()
         # Synthetic composite-key tables.
         src_rows = [{"a": 1, "b": "x", "id": 1}, {"a": 2, "b": "y", "id": 2}]
         tgt_rows = [{"a": 1, "b": "x", "name": "first"}, {"a": 2, "b": "y", "name": "second"}]
         src = _scan(e, src_rows)
         tgt = _scan(e, tgt_rows)
-        # Compute composite hash manually for both sides.
-        src_df = e.to_pandas(src)
-        tgt_df = e.to_pandas(tgt)
-        # Use the same combining logic the module uses internally.
-        import hashlib
-
-        def _composite(df: pd.DataFrame, cols: list[str]) -> str:
-            row_hashes = [
-                f"{c}:{hashlib.sha256(pd.util.hash_pandas_object(df[c], index=False).values.tobytes()).hexdigest()}"
-                for c in cols
-            ]
-            return hashlib.sha256("|".join(row_hashes).encode("utf-8")).hexdigest()
-
-        src_hash = _composite(src_df, ["a", "b"])
-        tgt_hash = _composite(tgt_df, ["a", "b"])
+        src_arrow = to_ibis(src).to_pyarrow()
+        tgt_arrow = to_ibis(tgt).to_pyarrow()
+        src_hash = _column_hash_from_arrow(src_arrow, "a,b")
+        tgt_hash = _column_hash_from_arrow(tgt_arrow, "a,b")
         tracker = DirtyTracker()
         tracker.stamp_fk(
             "src",

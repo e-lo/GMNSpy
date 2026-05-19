@@ -86,10 +86,9 @@ from datagrove.io import (
     get_adapter,
     list_adapters,
 )
+from datagrove.reports import Category, Issue, Severity, ValidationReport
 from datagrove.spec.loader import load_package
 from datagrove.spec.model import DataPackage
-
-from datagrove.reports import Category, Issue, Severity, ValidationReport
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from datagrove.engines.base import Engine
