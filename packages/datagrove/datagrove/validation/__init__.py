@@ -51,6 +51,7 @@ Examples:
     1
 """
 
+from .foreign_keys import check_foreign_key, check_foreign_keys
 from .report import render_html, render_json, render_rich
 from .structural import check_structural, check_structural_from_source
 from .types import Category, Issue, Severity, ValidationReport
@@ -60,6 +61,8 @@ __all__ = [
     "Issue",
     "Severity",
     "ValidationReport",
+    "check_foreign_key",
+    "check_foreign_keys",
     "check_structural",
     "check_structural_from_source",
     "render_html",
