@@ -52,3 +52,12 @@ datagrove = "datagrove.cli.app:app"
 
 [tool.hatch.build.targets.wheel]
 packages = ["datagrove"]
+
+[tool.hatch.build.targets.wheel.force-include]
+# Ensure the bundled HTML-renderer template assets (Jinja2, CSS, JS)
+# ship in the wheel — hatchling defaults pick up .py files but not
+# resource siblings. Without this, render_html() would import-error
+# on installed wheels even though it works from a source checkout.
+"datagrove/validation/templates/report.html.j2" = "datagrove/validation/templates/report.html.j2"
+"datagrove/validation/templates/report.css" = "datagrove/validation/templates/report.css"
+"datagrove/validation/templates/report.js" = "datagrove/validation/templates/report.js"

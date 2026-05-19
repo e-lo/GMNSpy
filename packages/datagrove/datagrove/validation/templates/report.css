@@ -1,0 +1,212 @@
+/* datagrove ValidationReport — single-file HTML renderer styles.
+ *
+ * Inlined into the produced report at render time (no external links).
+ * Severity colours match the rich console renderer (red/yellow/blue/magenta).
+ * Aimed at ~150 lines; favour clarity over compactness so the rendered
+ * report's <style> block is grep-friendly when someone inspects it.
+ */
+
+:root {
+  --bg: #ffffff;
+  --fg: #1f2328;
+  --muted: #57606a;
+  --border: #d0d7de;
+  --error: #d1242f;
+  --warning: #9a6700;
+  --info: #0969da;
+  --data_quality: #8250df;
+  --clean: #1a7f37;
+  --row-hover: #f6f8fa;
+  --detail-bg: #f6f8fa;
+  --pre-bg: #eaeef2;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 24px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue",
+    Arial, sans-serif;
+  font-size: 14px;
+  color: var(--fg);
+  background: var(--bg);
+}
+
+h1 {
+  margin: 0 0 8px;
+  font-size: 22px;
+}
+
+h2 {
+  margin: 24px 0 8px;
+  font-size: 16px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--border);
+}
+
+h2.severity-error { color: var(--error); }
+h2.severity-warning { color: var(--warning); }
+h2.severity-info { color: var(--info); }
+h2.severity-data_quality { color: var(--data_quality); }
+
+header .meta {
+  color: var(--muted);
+  font-size: 13px;
+  margin-bottom: 12px;
+}
+
+header .meta strong {
+  color: var(--fg);
+  font-weight: 600;
+}
+
+.summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin: 8px 0 16px;
+}
+
+.badge {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #fff;
+}
+
+.badge.error { background: var(--error); }
+.badge.warning { background: var(--warning); }
+.badge.info { background: var(--info); }
+.badge.data_quality { background: var(--data_quality); }
+
+.verdict {
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-weight: 700;
+  font-size: 12px;
+}
+
+.verdict.clean { background: var(--clean); color: #fff; }
+.verdict.unclean { background: var(--error); color: #fff; }
+
+nav.filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  padding: 12px;
+  margin: 16px 0;
+  background: var(--detail-bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+nav.filters select,
+nav.filters input {
+  padding: 6px 8px;
+  font-size: 13px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--fg);
+}
+
+nav.filters input {
+  flex: 1;
+  min-width: 160px;
+}
+
+nav.filters button {
+  padding: 6px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--fg);
+  cursor: pointer;
+}
+
+nav.filters button:hover {
+  background: var(--row-hover);
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 8px;
+  font-size: 13px;
+}
+
+th, td {
+  padding: 6px 8px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+
+th {
+  background: var(--detail-bg);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+tbody tr.issue:hover {
+  background: var(--row-hover);
+  cursor: pointer;
+}
+
+tbody tr.issue td.code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+tbody tr.detail {
+  background: var(--detail-bg);
+}
+
+tbody tr.detail td {
+  padding: 12px;
+  border-bottom: 2px solid var(--border);
+}
+
+tbody tr.detail pre {
+  background: var(--pre-bg);
+  border-radius: 4px;
+  padding: 8px;
+  margin: 8px 0 0;
+  overflow-x: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+}
+
+.empty {
+  color: var(--muted);
+  font-style: italic;
+  padding: 12px 0;
+}
+
+#map-section {
+  margin: 24px 0;
+}
+
+#map {
+  min-height: 360px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--detail-bg);
+  padding: 8px;
+}
+
+.no-map-fallback {
+  color: var(--muted);
+  font-size: 12px;
+  margin-top: 8px;
+}

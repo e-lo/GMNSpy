@@ -550,6 +550,33 @@ class ValidationReport:
 
         return render_rich(self)
 
+    def to_html(self, *, title: str | None = None, include_map: bool = True) -> str:
+        """Return the interactive single-file HTML rendering of this report.
+
+        Shortcut for :func:`datagrove.validation.render_html`. See its
+        docstring for the offline-mode trade-off around the optional
+        Vega-Lite map section.
+
+        Args:
+            title: Optional override for the ``<title>`` and ``<h1>``.
+            include_map: If ``False``, skip the map section even when
+                geo-located issues are present.
+
+        Returns:
+            A single self-contained HTML string.
+
+        Examples:
+            >>> r = ValidationReport(source="empty.gmns")
+            >>> html = r.to_html()
+            >>> html.lstrip().startswith("<!DOCTYPE html>")
+            True
+        """
+        # Local import for the same reason as ``to_rich`` — keep this
+        # module free of jinja2 / report-module imports at module load.
+        from .report import render_html
+
+        return render_html(self, title=title, include_map=include_map)
+
     def __str__(self) -> str:
         """Alias for :meth:`to_rich` — usable from ``print(report)``."""
         return self.to_rich()
