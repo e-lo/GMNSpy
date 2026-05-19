@@ -43,6 +43,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from datagrove.io import register_adapter
+from datagrove.io._paths import normalize_to_path
 from datagrove.io.base import ResourceListing, ResourceRef, SourceRef
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
@@ -59,17 +60,11 @@ def _as_path(source: SourceRef) -> Path:
     """Coerce ``source`` to a :class:`Path` for filesystem checks.
 
     The adapter only handles local-path-ish sources (single file or local
-    directory). Remote URLs are the ``remote`` adapter's job.
+    directory). Remote URLs are the ``remote`` adapter's job. Delegates
+    to the shared :func:`datagrove.io._paths.normalize_to_path` helper so
+    every adapter accepts/rejects the same SourceRef shapes.
     """
-    if isinstance(source, Path):
-        return source
-    if isinstance(source, str):
-        return Path(source)
-    if isinstance(source, dict) and "path" in source:
-        return Path(str(source["path"]))
-    raise TypeError(
-        f"ParquetAdapter: cannot coerce source {source!r} to a path (expected str, Path, or dict with 'path' key)"
-    )
+    return normalize_to_path(source, adapter="ParquetAdapter")
 
 
 def _looks_partitioned(path: Path) -> bool:
@@ -77,62 +72,32 @@ def _looks_partitioned(path: Path) -> bool:
 
     True when ``path`` is a directory and either:
 
-    * contains at least one ``key=value`` Hive-style subdirectory with a
-      ``.parquet`` file under it, or
     * has a pyarrow ``_metadata`` / ``_common_metadata`` sidecar, or
-    * has at least one direct-child ``.parquet`` file.
+    * has at least one direct-child ``.parquet`` file, or
+    * has at least one ``key=value`` Hive-style subdirectory with a
+      direct-child ``.parquet`` file.
 
-    The check is shallow (one level deep into Hive subdirs) — partitioned
-    datasets in the wild can nest several levels, but a single hit on the
-    first level is enough to identify the directory as parquet-shaped.
+    # WHY single-depth: GMNS's recommended Hive layout is a single
+    # partition column (``h3=...`` or ``zone_id=...``); multi-level
+    # Hive (``h3=x/zone=y/part.parquet``) is uncommon in our schema.
+    # If you have a deeper layout, pass ``format='parquet'`` to bypass
+    # this probe entirely. Short-circuit on the first hit (S2).
     """
     if not path.is_dir():
         return False
-    # Pyarrow dataset sidecars.
+    # Pyarrow dataset sidecars — cheapest signal.
     if (path / "_metadata").exists() or (path / "_common_metadata").exists():
         return True
-    # Walk one level of children.
+    # Walk a single level of children. Short-circuit on the first hit.
     for child in path.iterdir():
         if child.is_file() and child.suffix.lower() == ".parquet":
             return True
-        # Hive-style subdir like ``h3=abc``.
         if child.is_dir() and "=" in child.name:
+            # Hive-style subdir — peek one level for a direct .parquet hit.
             for grandchild in child.iterdir():
                 if grandchild.is_file() and grandchild.suffix.lower() == ".parquet":
                     return True
-                # One more level for nested partitions like h3=x/zone=y/part.parquet
-                if grandchild.is_dir() and "=" in grandchild.name:
-                    for great in grandchild.iterdir():
-                        if great.is_file() and great.suffix.lower() == ".parquet":
-                            return True
     return False
-
-
-def _engine_scan_args(path: Path, engine_name: str) -> tuple[str, dict[str, Any]]:
-    """Build ``(source_str, kwargs)`` for ``engine.scan`` given path + engine.
-
-    Each engine wants partitioned-directory reads expressed differently:
-
-    * ibis (duckdb) — ``read_parquet(directory, hive_partitioning=True)``.
-      duckdb auto-detects Hive style with the flag.
-    * polars — ``scan_parquet("dir/**/*.parquet", hive_partitioning=True)``.
-      polars needs a glob, not a directory, for multi-file reads.
-    * pandas — ``read_parquet(directory)``. pyarrow under the hood already
-      handles partitioned directories with no extra kwargs.
-
-    For single files, all three engines accept the path verbatim; no
-    kwargs added.
-    """
-    is_dir = path.is_dir()
-    if not is_dir:
-        return str(path), {}
-
-    if engine_name == "polars":
-        return f"{path}/**/*.parquet", {"hive_partitioning": True}
-    if engine_name == "ibis":
-        return str(path), {"hive_partitioning": True}
-    # pandas / unknown engines: directory path alone is enough (pyarrow).
-    return str(path), {}
 
 
 # ---------------------------------------------------------------------------
@@ -203,7 +168,7 @@ class ParquetAdapter:
     # scan — single ResourceRef whether single file or partitioned dir
     # ------------------------------------------------------------------
 
-    def scan(self, source: SourceRef, engine: Engine) -> ResourceListing:
+    def scan(self, source: SourceRef, engine: Engine | None = None) -> ResourceListing:
         """Enumerate the (single) resource at ``source``.
 
         Parquet is single-table-per-file (and single-table-per-dataset for
@@ -250,27 +215,24 @@ class ParquetAdapter:
     ) -> TableExpr:
         """Return a lazy table expression for ``source``.
 
-        For single files this is a plain pass-through. For directories the
-        adapter injects the right engine-specific kwargs to enable Hive
-        partition discovery (see :func:`_engine_scan_args`).
+        For both single files and partitioned directories the adapter just
+        forwards the path to ``engine.scan(source, format="parquet", ...)``.
+        Each engine is responsible for detecting "this is a directory" and
+        applying its own native Hive-partitioning kwargs (I3) — the adapter
+        no longer dispatches on engine name, which previously coupled this
+        module to the specific set of engines that existed.
 
         Args:
             source: Path to a ``.parquet`` file or partitioned directory.
             engine: Engine whose ``scan`` performs the actual read.
             schema: Optional Frictionless schema forwarded to the engine.
             **kwargs: Extra options forwarded verbatim to ``engine.scan``.
-                For partitioned reads, engine-specific Hive kwargs are
-                merged in first; caller kwargs win on conflict.
 
         Returns:
             An engine-native lazy table expression.
         """
         path = _as_path(source)
-        engine_name = getattr(engine, "name", "")
-        source_str, scan_kwargs = _engine_scan_args(path, engine_name)
-        # Caller kwargs override our injected defaults (e.g. ``columns=``).
-        merged = {**scan_kwargs, **kwargs}
-        return engine.scan(source_str, format="parquet", schema=schema, **merged)
+        return engine.scan(str(path), format="parquet", schema=schema, **kwargs)
 
     # ------------------------------------------------------------------
     # write — single file via engine; partitioned via pyarrow
@@ -350,8 +312,10 @@ class ParquetAdapter:
           (``col=value/part-N.parquet``) by default, which is exactly what
           duckdb auto-detects on read.
         """
-        # Local import keeps the cold-import time of this module small —
-        # pyarrow is in datagrove deps so this never fails in practice.
+        # ``pyarrow`` is a required datagrove dependency (see
+        # ``packages/datagrove/pyproject.toml``). The local import keeps the
+        # failure localized to the partitioned-write code path if dependency
+        # resolution drifts in a future release.
         import pyarrow as pa
         import pyarrow.parquet as pq
 

@@ -213,7 +213,7 @@ class CsvAdapter:
     # scan
     # ------------------------------------------------------------------
 
-    def scan(self, source: SourceRef, engine: Engine) -> ResourceListing:
+    def scan(self, source: SourceRef, engine: Engine | None = None) -> ResourceListing:
         """Enumerate the resources at ``source``.
 
         CSV is a single-table format, so a path resolves to a one-element
@@ -245,12 +245,12 @@ class CsvAdapter:
             >>> eng.close()
         """
         del engine  # CSV scan needs no engine call; arg kept for protocol shape.
-        if isinstance(source, Path):
-            path_str = str(source)
-            name = source.stem
-        elif isinstance(source, str):
-            path_str = source
-            name = Path(source).stem
+        if isinstance(source, (str, Path)):
+            # Use the shared coercer for protocol parity, then read the
+            # stem off the result so the name resolution is identical to
+            # what dispatch / other adapters see.
+            path_str = str(source) if isinstance(source, Path) else source
+            name = Path(path_str).stem
         else:
             # dict handles (e.g. {"data": [...]}) have no stem; return an
             # empty listing so callers iterating adapter outputs don't

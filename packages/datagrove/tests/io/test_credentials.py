@@ -27,7 +27,7 @@ def test_explicit_wins(monkeypatch: pytest.MonkeyPatch) -> None:
     from datagrove.io.credentials import resolve_credentials
 
     # Prime every downstream layer.
-    monkeypatch.setenv("GMNSPY_CRED_EXAMPLE_COM_TOKEN", "env-token")
+    monkeypatch.setenv("DATAGROVE_CRED_EXAMPLE_COM_TOKEN", "env-token")
     explicit = {"token": "explicit-token"}
 
     out = resolve_credentials("example.com", explicit=explicit)
@@ -45,7 +45,7 @@ def test_env_var_resolution(monkeypatch: pytest.MonkeyPatch) -> None:
     """A bearer-token env var resolves to ``{"token": value}``."""
     from datagrove.io.credentials import resolve_credentials
 
-    monkeypatch.setenv("GMNSPY_CRED_S3_AMAZONAWS_COM_TOKEN", "abc123")
+    monkeypatch.setenv("DATAGROVE_CRED_S3_AMAZONAWS_COM_TOKEN", "abc123")
     assert resolve_credentials("s3.amazonaws.com") == {"token": "abc123"}
 
 
@@ -53,7 +53,7 @@ def test_env_var_host_sanitization(monkeypatch: pytest.MonkeyPatch) -> None:
     """Hosts are uppercased and ``.`` becomes ``_`` for env var lookup."""
     from datagrove.io.credentials import resolve_credentials
 
-    monkeypatch.setenv("GMNSPY_CRED_S3_AMAZONAWS_COM_TOKEN", "via-sanitized")
+    monkeypatch.setenv("DATAGROVE_CRED_S3_AMAZONAWS_COM_TOKEN", "via-sanitized")
     # Caller passes the raw host; the resolver does the sanitization.
     assert resolve_credentials("s3.amazonaws.com") == {"token": "via-sanitized"}
 
@@ -62,7 +62,7 @@ def test_env_var_host_strips_port(monkeypatch: pytest.MonkeyPatch) -> None:
     """Port numbers in host are dropped before env lookup."""
     from datagrove.io.credentials import resolve_credentials
 
-    monkeypatch.setenv("GMNSPY_CRED_MINIO_LOCAL_TOKEN", "with-port")
+    monkeypatch.setenv("DATAGROVE_CRED_MINIO_LOCAL_TOKEN", "with-port")
     assert resolve_credentials("minio.local:9000") == {"token": "with-port"}
 
 
@@ -70,8 +70,8 @@ def test_env_var_key_secret_split(monkeypatch: pytest.MonkeyPatch) -> None:
     """``_KEY`` + ``_SECRET`` produces an S3-style storage_options dict."""
     from datagrove.io.credentials import resolve_credentials
 
-    monkeypatch.setenv("GMNSPY_CRED_S3_AMAZONAWS_COM_KEY", "AKIA...")
-    monkeypatch.setenv("GMNSPY_CRED_S3_AMAZONAWS_COM_SECRET", "shh")
+    monkeypatch.setenv("DATAGROVE_CRED_S3_AMAZONAWS_COM_KEY", "AKIA...")
+    monkeypatch.setenv("DATAGROVE_CRED_S3_AMAZONAWS_COM_SECRET", "shh")
 
     assert resolve_credentials("s3.amazonaws.com") == {
         "key": "AKIA...",
@@ -88,7 +88,7 @@ def test_env_var_empty_string_is_no_credential(monkeypatch: pytest.MonkeyPatch) 
     """
     from datagrove.io.credentials import resolve_credentials
 
-    monkeypatch.setenv("GMNSPY_CRED_EXAMPLE_COM_TOKEN", "")
+    monkeypatch.setenv("DATAGROVE_CRED_EXAMPLE_COM_TOKEN", "")
     assert resolve_credentials("example.com") == {}
 
 
@@ -230,7 +230,7 @@ def test_no_creds_logged(
 
     # Push the sentinel through every layer so any one of them leaking
     # would fail this test.
-    monkeypatch.setenv("GMNSPY_CRED_LEAK_TEST_HOST_TOKEN", sentinel)
+    monkeypatch.setenv("DATAGROVE_CRED_LEAK_TEST_HOST_TOKEN", sentinel)
     caplog.set_level(logging.DEBUG, logger="datagrove")
 
     out = resolve_credentials("leak.test.host", explicit={"token": sentinel})
@@ -247,3 +247,36 @@ def test_no_creds_logged(
         leaked_in.append("stderr")
 
     assert not leaked_in, f"Credential sentinel leaked into: {leaked_in}"
+
+
+# ---------------------------------------------------------------------------
+# Crit1 regression: env-var prefix is DATAGROVE_CRED, not GMNSPY_CRED
+# ---------------------------------------------------------------------------
+
+
+def test_old_gmnspy_prefix_ignored(monkeypatch: pytest.MonkeyPatch, tmp_path: Any) -> None:
+    """The legacy ``GMNSPY_CRED_<HOST>_TOKEN`` env var must not be honoured.
+
+    Per the datagrove-vs-gmnspy composition boundary (architecture §3),
+    credential resolution lives in datagrove and uses the
+    ``DATAGROVE_CRED_*`` prefix. The old ``GMNSPY_*`` prefix was a
+    naming-boundary violation; this test locks in the rename so a future
+    refactor cannot silently reintroduce it.
+    """
+    from datagrove.io import credentials as creds_mod
+
+    # Sterilize fallback layers so the only signal is the env-var lookup.
+    monkeypatch.setitem(sys.modules, "keyring", None)
+    monkeypatch.setenv("NETRC", str(tmp_path / "no-netrc"))
+
+    # Only the old prefix is set — the resolver MUST NOT pick it up.
+    monkeypatch.setenv("GMNSPY_CRED_EXAMPLE_COM_TOKEN", "should-be-ignored")
+    assert creds_mod.resolve_credentials("example.com") == {}
+
+
+def test_new_datagrove_prefix_honoured(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Explicit verification that the new ``DATAGROVE_CRED_*`` prefix is read."""
+    from datagrove.io.credentials import resolve_credentials
+
+    monkeypatch.setenv("DATAGROVE_CRED_EXAMPLE_COM_TOKEN", "datagrove-token")
+    assert resolve_credentials("example.com") == {"token": "datagrove-token"}

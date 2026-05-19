@@ -31,6 +31,7 @@ from __future__ import annotations
 from pathlib import Path
 from urllib.parse import urlparse
 
+from ._paths import normalize_to_str
 from .base import (
     AdapterNotAvailableError,
     FormatAdapter,
@@ -41,6 +42,7 @@ from .base import (
     ResourceRef,
     SourceRef,
 )
+from .errors import WriteUnsupportedForSchemeError
 
 # ---------------------------------------------------------------------------
 # Registry state
@@ -240,28 +242,19 @@ def _clear_registry() -> None:
 def _normalize_path_str(source: SourceRef) -> str:
     """Coerce ``source`` to a string for URL/extension parsing.
 
-    Accepts the ``str`` and ``Path`` arms of :data:`SourceRef`. The
-    ``dict`` arm of :data:`SourceRef` is a structured engine handle
-    (e.g. ``{"format": "duckdb", "path": "...", "table": "link"}``);
-    the dispatcher cannot meaningfully sniff a scheme or extension from
-    it and requires an explicit ``format=`` kwarg.
+    Thin dispatcher-side wrapper over :func:`datagrove.io._paths.normalize_to_str`
+    — the same helper every FormatAdapter uses, so the dispatcher and its
+    delegates can't drift apart on what counts as a valid path-shaped
+    source.
 
     Raises:
-        TypeError: If ``source`` is a ``dict`` (caller must pass an
-            explicit ``format=`` so :func:`dispatch` skips sniffing) or
-            an otherwise-unsupported type.
+        UnsupportedSourceError: If ``source`` is a ``dict`` (caller must
+            pass an explicit ``format=`` so :func:`dispatch` skips
+            sniffing) or an otherwise-unsupported type. The exception
+            inherits from ``TypeError`` so existing
+            ``pytest.raises(TypeError)`` patterns still match.
     """
-    if isinstance(source, Path):
-        return str(source)
-    if isinstance(source, str):
-        return source
-    if isinstance(source, dict):
-        raise TypeError(
-            "dispatch cannot sniff a dict source handle; pass an explicit format=, "
-            "e.g. dispatch(handle, format='duckdb'). dict handles are intended for "
-            "engine-side use after dispatch has resolved an adapter."
-        )
-    raise TypeError(f"unsupported SourceRef type: {type(source).__name__!r} (expected str, Path, or dict)")
+    return normalize_to_str(source, adapter="dispatch")
 
 
 def _scheme_of(source_str: str) -> str | None:
@@ -393,9 +386,11 @@ __all__ = [
     "FormatAdapter",
     "FormatError",
     "FormatNotDetected",
+    "InvalidAdapterError",
     "ResourceListing",
     "ResourceRef",
     "SourceRef",
+    "WriteUnsupportedForSchemeError",
     "dispatch",
     "get_adapter",
     "list_adapters",
@@ -419,5 +414,5 @@ __all__ = [
 from . import csv_adapter as _csv_adapter  # noqa: E402,F401  -- self-registers
 from . import duckdb_adapter as _duckdb_adapter  # noqa: E402,F401  -- self-registers
 from . import parquet_adapter as _parquet_adapter  # noqa: E402,F401  -- self-registers
-from . import remote as _remote  # noqa: E402,F401  -- self-registers; claims http/https/s3/gs/gcs/az schemes
+from . import remote as _remote  # noqa: E402,F401  -- self-registers; claims URL schemes per remote._REMOTE_SCHEMES
 from . import zipcsv_adapter as _zipcsv_adapter  # noqa: E402,F401  -- self-registers

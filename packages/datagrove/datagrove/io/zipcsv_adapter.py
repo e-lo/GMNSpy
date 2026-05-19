@@ -25,13 +25,18 @@ Design notes:
       returns, the on-disk file is gone and the engine holds the data
       in its own backend (a duckdb temp table for ibis, a polars
       DataFrame for polars, the DataFrame itself for pandas).
-    - For multi-CSV zips the caller must pass ``table=<member-name>``
-      (the ``.csv`` suffix is optional). ``member=`` and ``name=`` are
-      accepted as aliases for ergonomic parity with the duckdb adapter.
+    - The selector kwarg is always ``table=<member-name>`` (the ``.csv``
+      suffix is optional). Earlier prototypes accepted ``member=`` and
+      ``name=`` as aliases and an implicit single-csv shortcut — both
+      were dropped (I10) so the selector contract is identical to the
+      duckdb adapter. ``table=`` is required for any zip with one or
+      more csv members.
     - The write path implemented here is **single-CSV-into-zip only**.
       Writing a directory of CSVs as a multi-CSV zip is deferred to a
       future task; today the adapter raises
       :class:`NotImplementedError` for any input that would require it.
+      Existing destinations are refused unless ``overwrite=True`` is
+      passed (I6) — silent clobber was a footgun.
 
 Architecture cross-reference
 ----------------------------
@@ -57,6 +62,7 @@ from typing import TYPE_CHECKING, Any
 
 from datagrove.engines.errors import InvalidEngineCallError
 from datagrove.io import register_adapter
+from datagrove.io._paths import normalize_to_str
 from datagrove.io.base import ResourceListing, ResourceRef, SourceRef
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
@@ -201,7 +207,7 @@ class ZipCsvAdapter:
             >>> refs[0].format
             'csv'
         """
-        path_str = _coerce_path_str(source)
+        path_str = normalize_to_str(source, adapter="zipcsv adapter")
         with zipfile.ZipFile(path_str) as z:
             members = [n for n in z.namelist() if _is_csv_member(n)]
         return [
@@ -232,19 +238,20 @@ class ZipCsvAdapter:
         path dependency, then delete the temp directory. The returned
         expression is engine-managed and outlives the file.
 
-        Multi-csv zips require an explicit member selector. Accepted
-        kwargs (any one, in priority order): ``table``, ``member``,
-        ``name``. The ``.csv`` suffix is optional — ``table="node"``
-        and ``table="node.csv"`` both resolve to ``node.csv``.
+        I10 standardisation: the **only** accepted selector kwarg is
+        ``table=<member-name>``. The ``.csv`` suffix is optional. The
+        previous ``member=``/``name=`` aliases and the
+        single-csv-without-table shortcut were removed so the zipcsv
+        contract is identical to the duckdb adapter's.
 
         Args:
             source: Path to the zip file.
             engine: The execution engine to defer the actual csv read to.
             schema: Optional Frictionless schema, forwarded to the
                 engine's csv reader.
-            **kwargs: Adapter-specific options. ``table`` / ``member``
-                / ``name`` select the csv to read (required for
-                multi-csv zips). Any other kwargs are forwarded to
+            **kwargs: Adapter-specific options. ``table=<name>`` selects
+                the csv to read and is **required** even for single-csv
+                zips. Any other kwargs are forwarded to
                 ``engine.scan(..., format="csv", **kwargs)``.
 
         Returns:
@@ -255,8 +262,8 @@ class ZipCsvAdapter:
             the on-disk extracted file is gone.
 
         Raises:
-            InvalidEngineCallError: Multi-csv zip without ``table=``,
-                or ``table=<name>`` that doesn't match any member.
+            InvalidEngineCallError: No ``table=`` selector, the named
+                table doesn't exist, or the zip has no csv members.
 
         Examples:
             >>> from datagrove.engines import get_engine
@@ -266,16 +273,16 @@ class ZipCsvAdapter:
             >>> body = chr(10).join(["a,b", "1,2", ""])  # "a,b\n1,2\n"
             >>> with zipfile.ZipFile(p, "w") as z:
             ...     z.writestr("only.csv", body)
-            >>> # Single-csv zip — no table= needed
+            >>> # table= is required even for a single-csv zip
             >>> e = get_engine("pandas")
-            >>> expr = ZipCsvAdapter().read(p, engine=e)
+            >>> expr = ZipCsvAdapter().read(p, engine=e, table="only")
             >>> e.to_pandas(expr).shape
             (1, 2)
         """
-        path_str = _coerce_path_str(source)
-        # Selector kwarg — accept any of the three names; remove all so
-        # we don't accidentally forward a bogus kwarg to engine.scan.
-        selector = kwargs.pop("table", None) or kwargs.pop("member", None) or kwargs.pop("name", None)
+        path_str = normalize_to_str(source, adapter="zipcsv adapter")
+        # I10: only ``table=`` is accepted. Pop it so we don't forward
+        # the selector to ``engine.scan``.
+        selector = kwargs.pop("table", None)
 
         with zipfile.ZipFile(path_str) as z:
             csv_members = [n for n in z.namelist() if _is_csv_member(n)]
@@ -328,8 +335,8 @@ class ZipCsvAdapter:
         The inner csv member is named ``<table>.csv`` where ``<table>``
         comes from (in priority order):
 
-        1. ``kwargs['table']`` (or ``kwargs['member']`` /
-           ``kwargs['name']`` as aliases).
+        1. ``kwargs['table']`` (per the I10 selector contract; ``member=``
+           and ``name=`` aliases are no longer accepted).
         2. The destination filename's stem with the ``.csv.zip`` /
            ``.zip`` suffix stripped (e.g. ``"out.csv.zip"`` →
            ``"out.csv"``).
@@ -337,13 +344,24 @@ class ZipCsvAdapter:
         Writing a directory of csvs into a multi-csv zip is not yet
         supported — defer until a real consumer needs it.
 
+        I6: an existing ``dest`` is refused with :class:`FileExistsError`
+        unless the caller passes ``overwrite=True``. Silent clobber on a
+        path the caller probably typed into a notebook by hand is a
+        data-loss footgun; the explicit kwarg is the safe default.
+
         Args:
             expr: A table expression the engine can write as csv.
             dest: Path for the output zip.
             engine: The engine to defer the csv encoding to.
-            **kwargs: Optional ``table`` / ``member`` / ``name`` to
-                choose the inner member's name. Any other kwargs are
-                forwarded to ``engine.write(..., fmt="csv", **kwargs)``.
+            **kwargs: Optional ``table=`` to choose the inner member's
+                name. ``overwrite=False`` (default) refuses an existing
+                destination; pass ``overwrite=True`` to clobber. Any
+                other kwargs are forwarded to
+                ``engine.write(..., fmt="csv", **kwargs)``.
+
+        Raises:
+            FileExistsError: If ``dest`` exists and ``overwrite=True``
+                was not passed.
 
         Examples:
             >>> from datagrove.engines import get_engine
@@ -360,8 +378,14 @@ class ZipCsvAdapter:
             ...     z.namelist()
             ['data.csv']
         """
-        dest_str = _coerce_path_str(dest)
-        selector = kwargs.pop("table", None) or kwargs.pop("member", None) or kwargs.pop("name", None)
+        dest_str = normalize_to_str(dest, adapter="zipcsv adapter")
+        # I10: only ``table=`` selector.
+        selector = kwargs.pop("table", None)
+        # I6: explicit overwrite kwarg; default False refuses an
+        # existing destination.
+        overwrite = bool(kwargs.pop("overwrite", False))
+        if not overwrite and Path(dest_str).exists():
+            raise FileExistsError(f"{dest_str!r} exists; pass overwrite=True to clobber")
         inner_name = _resolve_inner_csv_name(selector, dest_str)
 
         # Encode to a temp csv via the engine, then zip it into dest.
@@ -423,20 +447,6 @@ def _is_csv_member(name: str) -> bool:
     return name.lower().endswith(".csv")
 
 
-def _coerce_path_str(source: SourceRef) -> str:
-    """Coerce ``source`` to a filesystem path string.
-
-    The zipcsv adapter only meaningfully accepts string or ``Path``
-    sources. The dict arm of :data:`SourceRef` is reserved for engine
-    handles (e.g. the duckdb handle dict) and has no analog here.
-    """
-    if isinstance(source, Path):
-        return str(source)
-    if isinstance(source, str):
-        return source
-    raise TypeError(f"zipcsv adapter: source must be a str or Path, got {type(source).__name__!r}")
-
-
 def _pick_member(
     csv_members: list[str],
     selector: str | None,
@@ -444,21 +454,19 @@ def _pick_member(
 ) -> str:
     """Resolve ``selector`` to a concrete member name from ``csv_members``.
 
-    If exactly one csv member exists and no selector is given, return
-    it. Otherwise the selector is required and must match a member
-    name (with the ``.csv`` suffix optional). Raises
-    :class:`InvalidEngineCallError` with a helpful message naming
-    the available members when the selector is missing or unknown.
+    I10: ``table=<name>`` is required for every read, even when the zip
+    contains exactly one csv member. The implicit "if there's only one,
+    use it" shortcut was removed because it diverged from the duckdb
+    adapter's selector contract; standardising on always-explicit makes
+    cross-adapter code predictable.
     """
     if selector is None:
-        if len(csv_members) == 1:
-            return csv_members[0]
-        # Multi-csv with no selector — fail with a concrete suggestion.
         sample = ", ".join(sorted(Path(m).stem for m in csv_members))
         raise InvalidEngineCallError(
             f"zipcsv adapter: zip at {path_str!r} contains "
-            f"{len(csv_members)} csv files; pass table=<name> to choose one. "
-            f"Available tables: {sample}."
+            f"{len(csv_members)} csv file(s); pass table=<name> to choose one "
+            f"(the single-csv shortcut was removed for selector-contract parity "
+            f"with the duckdb adapter). Available tables: {sample}."
         )
 
     # Normalise selector — ``.csv`` suffix optional.

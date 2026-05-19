@@ -53,6 +53,7 @@ import duckdb
 
 from datagrove.engines.errors import InvalidEngineCallError
 from datagrove.io import register_adapter
+from datagrove.io._paths import normalize_to_str
 from datagrove.io.base import ResourceListing, ResourceRef, SourceRef
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
@@ -68,33 +69,25 @@ if TYPE_CHECKING:  # pragma: no cover - typing only
 def _coerce_path(source: SourceRef) -> str:
     """Normalize a SourceRef to a filesystem path string.
 
-    Handles plain strings, ``pathlib.Path``, and ``duckdb://...`` URLs.
-    The scheme is stripped (``duckdb:///abs/x.duckdb`` → ``/abs/x.duckdb``;
-    ``duckdb://x.duckdb`` → ``x.duckdb``) so the duckdb client sees a
-    real path. dict sources are not accepted here: the dispatcher does
-    not feed dicts to adapters (it rejects them upstream), and our own
-    read()/write() build the dict-form source themselves before passing
-    to the engine.
+    Thin wrapper around the shared
+    :func:`datagrove.io._paths.normalize_to_str` that adds one piece of
+    duckdb-specific handling: stripping the ``duckdb://`` URL scheme so
+    the duckdb client sees a real path. Two forms in the wild:
+
+        duckdb:///abs/path.duckdb   → "/abs/path.duckdb"
+        duckdb://rel/path.duckdb    → "rel/path.duckdb"
+
+    Dict sources are not accepted here: the dispatcher does not feed
+    dicts to adapters (the dispatcher's ``_normalize_path_str`` rejects
+    them upstream), and our own read()/write() build the dict-form
+    source themselves before passing to the engine.
     """
-    if isinstance(source, Path):
-        return str(source)
-    if isinstance(source, str):
-        if source.startswith("duckdb://"):
-            # Two forms in the wild:
-            #   duckdb:///abs/path.duckdb   → "/abs/path.duckdb"
-            #   duckdb://rel/path.duckdb    → "rel/path.duckdb"
-            # urlparse is overkill for one prefix; a literal strip is
-            # both more legible and more robust to weird URL fragments
-            # we don't actually care about for local paths.
-            rest = source[len("duckdb://") :]
-            # If the rest begins with '/', that's a leading-slash from
-            # the URL form (duckdb:///abs/...); keep it. Otherwise it's
-            # already a relative path.
-            return rest
-        return source
-    raise TypeError(
-        f"DuckdbAdapter: cannot coerce source {source!r} to a path (expected str, Path, or 'duckdb://...' URL)"
-    )
+    if isinstance(source, str) and source.startswith("duckdb://"):
+        # urlparse is overkill for one prefix; a literal strip is both
+        # more legible and more robust to weird URL fragments we don't
+        # care about for local paths.
+        return source[len("duckdb://") :]
+    return normalize_to_str(source, adapter="DuckdbAdapter")
 
 
 def _list_tables(path_str: str) -> list[str]:
@@ -214,7 +207,7 @@ class DuckdbAdapter:
     # scan
     # ------------------------------------------------------------------
 
-    def scan(self, source: SourceRef, engine: Engine) -> ResourceListing:
+    def scan(self, source: SourceRef, engine: Engine | None = None) -> ResourceListing:
         """Enumerate every user table in the duckdb file.
 
         Args:

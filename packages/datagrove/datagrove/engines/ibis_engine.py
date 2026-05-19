@@ -219,6 +219,14 @@ class IbisEngine:
             table = self.con.read_csv(path, **kwargs)
         elif kind == "parquet":
             path = _as_path_str(source)
+            # Hive-partitioned parquet datasets are local directories;
+            # the adapter forwards the path verbatim and asks the engine
+            # to enable partition discovery itself (I3 — keeps the
+            # adapter ignorant of engine-specific reader kwargs).
+            # ``hive_partitioning=True`` makes duckdb reinject the
+            # partition columns into the result. Caller kwargs win.
+            if "hive_partitioning" not in kwargs and Path(path).is_dir():
+                kwargs = {"hive_partitioning": True, **kwargs}
             table = self.con.read_parquet(path, **kwargs)
         elif kind == "duckdb":
             table = self._scan_duckdb(source, **kwargs)

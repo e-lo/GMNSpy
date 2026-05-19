@@ -188,7 +188,7 @@ def test_read_with_env_credentials(remote_registry, monkeypatch) -> None:
     remote = remote_registry["remote"]
     csv_inner = remote_registry["csv"]
 
-    monkeypatch.setenv("GMNSPY_CRED_BUCKET_SERVER_TOKEN", "env-bearer")
+    monkeypatch.setenv("DATAGROVE_CRED_BUCKET_SERVER_TOKEN", "env-bearer")
 
     engine = MagicMock(name="engine")
     remote.read("s3://bucket.server/data.csv", engine=engine)
@@ -269,7 +269,7 @@ def test_write_to_s3_dispatches_to_inner(remote_registry, monkeypatch) -> None:
 
     monkeypatch.setattr(parquet_inner, "write", fake_write)
 
-    monkeypatch.setenv("GMNSPY_CRED_BUCKET_TOKEN", "wtoken")
+    monkeypatch.setenv("DATAGROVE_CRED_BUCKET_TOKEN", "wtoken")
     engine = MagicMock(name="engine")
     remote.write(MagicMock(name="expr"), "s3://bucket/out.parquet", engine=engine)
 
@@ -327,6 +327,123 @@ def test_scan_directory_via_fsspec_ls(remote_registry, monkeypatch) -> None:
 # ---------------------------------------------------------------------------
 
 
+def test_read_skips_storage_options_when_empty(remote_registry) -> None:
+    """I1: ``storage_options`` is omitted entirely when credentials resolve to ``{}``.
+
+    The ibis duckdb backend (and some polars paths) refuse an
+    unexpected ``storage_options`` kwarg even when it's empty, so we
+    don't synthesize an empty dict — we just leave the key out.
+    """
+    remote = remote_registry["remote"]
+    csv_inner = remote_registry["csv"]
+
+    engine = MagicMock(name="engine")
+    # No env vars, no explicit creds → resolve_credentials() returns {}.
+    remote.read("s3://no-host-without-creds/data.csv", engine=engine)
+
+    forwarded = type(csv_inner).last_kwargs
+    assert "storage_options" not in forwarded, (
+        f"Expected empty storage_options to be omitted; got keys={list(forwarded)!r}"
+    )
+
+
+def test_write_to_http_uses_typed_exception(remote_registry) -> None:
+    """I7: HTTP-write refusal raises :class:`WriteUnsupportedForSchemeError`.
+
+    The typed exception subclasses ``NotImplementedError`` (for back-compat
+    with existing catch-builtins callers) AND ``FormatError`` so downstream
+    code can pattern-match the I/O-layer refusal.
+    """
+    from datagrove.io import FormatError, WriteUnsupportedForSchemeError
+
+    remote = remote_registry["remote"]
+    engine = MagicMock(name="engine")
+
+    with pytest.raises(WriteUnsupportedForSchemeError) as exc:
+        remote.write(MagicMock(), "https://example.com/foo.parquet", engine=engine)
+    # Back-compat with the prior bare-NotImplementedError branch.
+    assert isinstance(exc.value, NotImplementedError)
+    assert isinstance(exc.value, FormatError)
+
+
+def test_inner_adapter_loop_guard_hard_error(remote_registry, monkeypatch) -> None:
+    """I5: a registry that loops back to RemoteAdapter raises FormatNotDetected.
+
+    Implementation guard: the previous code had an implicit recursion guard
+    (an ``adapter is self`` check that silently strip-and-retried). When
+    that retry also resolved back to ``self``, the function returned ``self``
+    and ``read`` would recurse infinitely. We now hard-raise instead.
+    """
+    from datagrove.io import _BY_EXT, FormatNotDetected
+    from datagrove.io.remote import RemoteAdapter
+
+    remote: RemoteAdapter = remote_registry["remote"]
+
+    # Poison the registry: force every extension to resolve to ``remote``.
+    _BY_EXT["csv"] = "remote"
+    try:
+        with pytest.raises(FormatNotDetected) as exc:
+            remote._inner_adapter("s3://bucket/data.csv")
+        assert "scheme strip" in str(exc.value).lower() or "cannot resolve" in str(exc.value).lower()
+    finally:
+        _BY_EXT.pop("csv", None)
+
+
+def test_scan_directory_listing_filters_unknown_extensions(remote_registry, monkeypatch) -> None:
+    """S1: ls output is filtered against the registered-extension map.
+
+    Junk entries (``_SUCCESS``, ``manifest.json`` when JSON isn't
+    registered) are dropped; entries owned by a registered adapter
+    survive.
+    """
+    from datagrove.io import remote as remote_mod
+
+    fake_fs = MagicMock(name="fs")
+    fake_fs.isdir.return_value = True
+    fake_fs.ls.return_value = [
+        "bucket/prefix/link.csv",  # csv adapter is registered → keep
+        "bucket/prefix/node.parquet",  # parquet adapter is registered → keep
+        "bucket/prefix/_SUCCESS",  # no dot → drop
+        "bucket/prefix/manifest.json",  # extension not registered → drop
+    ]
+
+    def fake_filesystem(scheme, **storage_options):
+        return fake_fs
+
+    monkeypatch.setattr(remote_mod.fsspec, "filesystem", fake_filesystem)
+
+    remote = remote_registry["remote"]
+    engine = MagicMock(name="engine")
+    listing = remote.scan("s3://bucket/prefix/", engine=engine)
+    formats = {r.format for r in listing}
+    # Only adapter-owned extensions survive.
+    assert formats == {"csv", "parquet"}
+
+
+def test_scan_directory_listing_propagates_unexpected_errors(remote_registry, monkeypatch) -> None:
+    """I4: unexpected (non-IO) errors from fsspec propagate; they are not silently swallowed.
+
+    Only ``(FileNotFoundError, PermissionError, OSError)`` are coerced to
+    single-resource fallback; a TypeError (or any other bug) bubbles up
+    so it isn't papered over.
+    """
+    from datagrove.io import remote as remote_mod
+
+    fake_fs = MagicMock(name="fs")
+
+    def boom(_path):
+        raise TypeError("simulated bug in fsspec.isdir")
+
+    fake_fs.isdir.side_effect = boom
+
+    monkeypatch.setattr(remote_mod.fsspec, "filesystem", lambda scheme, **kw: fake_fs)
+
+    remote = remote_registry["remote"]
+    engine = MagicMock(name="engine")
+    with pytest.raises(TypeError, match="simulated bug"):
+        remote.scan("s3://bucket/prefix/", engine=engine)
+
+
 @pytest.mark.integration
 def test_read_public_http_fixture(remote_registry) -> None:
     """Smoke test against a public-good HTTP fixture.
@@ -375,7 +492,7 @@ def test_credentials_not_leaked_into_error(remote_registry, monkeypatch) -> None
     csv_inner = remote_registry["csv"]
 
     sentinel = "SENTINEL-DO-NOT-LEAK-19fjs"
-    monkeypatch.setenv("GMNSPY_CRED_LEAK_HOST_TOKEN", sentinel)
+    monkeypatch.setenv("DATAGROVE_CRED_LEAK_HOST_TOKEN", sentinel)
 
     def boom(*args: Any, **kwargs: Any) -> None:
         # Inner adapter explodes -- the wrapper must not re-emit the
