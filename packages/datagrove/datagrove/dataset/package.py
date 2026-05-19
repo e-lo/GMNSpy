@@ -74,10 +74,10 @@ from datagrove.io import (
     get_adapter,
     list_adapters,
 )
+from datagrove.reports import ValidationReport
 from datagrove.spec.loader import load_package
 from datagrove.spec.model import DataPackage, Resource, Schema
 from datagrove.validation import (
-    ValidationReport,
     check_foreign_keys,
     check_structural,
 )

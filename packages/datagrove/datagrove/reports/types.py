@@ -18,7 +18,7 @@ The contract is deliberately narrow:
 
 This module has zero engine, spec, or I/O dependencies — it's pure
 data types + a couple of query helpers. Validators consume it; the
-renderers in :mod:`datagrove.validation.report` format it.
+renderers in :mod:`datagrove.reports.render` format it.
 """
 
 from __future__ import annotations
@@ -535,9 +535,9 @@ class ValidationReport:
         """Return the rich-console rendering of this report.
 
         Convenience wrapper around
-        :func:`datagrove.validation.render_rich`. Kept here so that
+        :func:`datagrove.reports.render_rich`. Kept here so that
         ``str(report)`` round-trips through the rich renderer without
-        the caller importing :mod:`datagrove.validation.report`.
+        the caller importing :mod:`datagrove.reports.render`.
 
         Examples:
             >>> r = ValidationReport(source="empty.gmns")
@@ -546,14 +546,14 @@ class ValidationReport:
         """
         # Local import to keep this module dependency-free at import time
         # — `rich` is only loaded when someone actually renders.
-        from .report import render_rich
+        from .render import render_rich
 
         return render_rich(self)
 
     def to_html(self, *, title: str | None = None, include_map: bool = True) -> str:
         """Return the interactive single-file HTML rendering of this report.
 
-        Shortcut for :func:`datagrove.validation.render_html`. See its
+        Shortcut for :func:`datagrove.reports.render_html`. See its
         docstring for the offline-mode trade-off around the optional
         Vega-Lite map section.
 
@@ -572,8 +572,8 @@ class ValidationReport:
             True
         """
         # Local import for the same reason as ``to_rich`` — keep this
-        # module free of jinja2 / report-module imports at module load.
-        from .report import render_html
+        # module free of jinja2 / render-module imports at module load.
+        from .render import render_html
 
         return render_html(self, title=title, include_map=include_map)
 

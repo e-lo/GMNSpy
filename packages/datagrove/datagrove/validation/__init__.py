@@ -1,30 +1,18 @@
-"""Validation framework for datagrove.
+"""Validators for datagrove (architecture §4 + §6.3).
 
-:class:`ValidationReport` is the single object returned from every
-validation path — schema checks (task 2.3), structural checks (2.5),
-foreign-key checks (2.4), the sync-state ``DirtyTracker`` (2.6), and
-the data-quality plugins registered through ``datagrove.quality``
-(Phase 3). Producers populate one report per run; the renderers in
-:mod:`datagrove.validation.report` turn it into rich-console text,
-JSON, or HTML.
+This module owns the **validator functions** — schema checks (task 2.3),
+structural checks (2.5), foreign-key checks (2.4), and the sync-state
+``DirtyTracker`` (2.6). Each validator produces a
+:class:`~datagrove.reports.ValidationReport`, the unified artifact that
+lives in :mod:`datagrove.reports` alongside the rich/JSON/HTML
+renderers.
 
-The interactive single-file HTML renderer (Jinja2 + inline CSS/JS +
-optional Vega-Lite map view for geo-located issues) lives in
-:mod:`datagrove.validation.report` alongside the rich + JSON renderers.
-See :func:`render_html` and :meth:`ValidationReport.to_html`.
-
-Public surface
---------------
-
-- :class:`Severity` — ``ERROR``, ``WARNING``, ``INFO``, ``DATA_QUALITY``.
-- :class:`Category` — ``SCHEMA``, ``STRUCTURAL``, ``FOREIGN_KEY``,
-  ``SYNC_STATE``, ``DATA_QUALITY``.
-- :class:`Issue` — one frozen, hashable finding.
-- :class:`ValidationReport` — mutable aggregate; carries issues + run
-  metadata; provides query helpers + serialisation shortcuts.
-- :func:`render_rich` — pretty rich-console string.
-- :func:`render_json` — stable JSON snapshot.
-- :func:`render_html` — interactive single-file HTML report.
+The :class:`ValidationReport`, :class:`Issue`, :class:`Severity`,
+:class:`Category` types and the :func:`render_rich` / :func:`render_json`
+/ :func:`render_html` renderers are re-exported here so the legacy
+``from datagrove.validation import ValidationReport`` import path keeps
+working — callers that want the canonical home should import from
+:mod:`datagrove.reports`.
 
 Domain packages (notably :mod:`gmnspy.quality`) register additional
 rules via the ``datagrove.quality.rules`` entry-point group. Their
@@ -51,11 +39,20 @@ Examples:
     1
 """
 
+# Back-compat re-exports from the new canonical home.
+from datagrove.reports import (
+    Category,
+    Issue,
+    Severity,
+    ValidationReport,
+    render_html,
+    render_json,
+    render_rich,
+)
+
 from .foreign_keys import check_foreign_key, check_foreign_keys
-from .report import render_html, render_json, render_rich
 from .structural import check_structural, check_structural_from_source
 from .sync_state import DirtyTracker, FKStamp, TableHash, hash_column, hash_table
-from .types import Category, Issue, Severity, ValidationReport
 
 __all__ = [
     "Category",

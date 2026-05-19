@@ -3,29 +3,27 @@
 This module is the **schema** half of the datagrove validation layer.
 It takes a table expression (from any engine — ibis, polars, pandas)
 plus a parsed Frictionless :class:`~datagrove.spec.model.Schema` and
-emits :class:`~datagrove.validation.types.Issue` records — one per
-field-level violation — into a :class:`~datagrove.validation.types.ValidationReport`.
+emits :class:`~datagrove.reports.Issue` records — one per field-level
+violation — into a :class:`~datagrove.reports.ValidationReport`.
 
-Cross-engine strategy (read this — Lens C trade-off)
-----------------------------------------------------
+Cross-engine strategy — ibis-first (architecture §6.1)
+------------------------------------------------------
 
-The Engine protocol exposes three lazy table representations
-(``ibis.expr.types.Table``, ``polars.LazyFrame``, ``pandas.DataFrame``)
-with no common filter/aggregate dialect across all three. Rather than
-write per-engine specialisations of every rule, we materialise once via
-:meth:`Engine.to_pandas` and run the rules on the resulting
-nullable-dtype DataFrame.
+Every rule pushes its violation count down as an ibis predicate
+(``expr[col].is_null()``, ``~expr[col].isin(allowed)``,
+``expr[col] < bound``, …) — the count round-trips as a single SQL
+aggregate, not a pandas materialisation. At Bay-Area scale (millions
+of rows) this turns "count nulls in a required column" from a
+gigabyte materialisation into a millisecond SQL ``COUNT(*) WHERE col
+IS NULL``.
 
-This is a deliberate **legibility-over-engine-specialisation** trade
-(Lens C). The architecture promises lazy by default — and we still are,
-because the schema check is a terminal operation in the validation
-pipeline. Materialising at that boundary is the right place to spend
-the memory.
-
-The bounded-materialisation knob is on the *enumeration* side: the v0.3
-bug was emitting one Issue per row for million-row failures. We cap
-per-rule enumeration at :data:`MAX_ROW_ISSUES` and add one summary
-issue when the count exceeds it.
+Only the per-rule sample used to populate row-context Issues is
+materialised — capped at :data:`MAX_ROW_ISSUES` rows — and goes
+through pyarrow (``.to_pyarrow().to_pylist()``), never pandas.
+Pandas-backed and polars-backed sources route through
+:func:`datagrove.validation._ibis.to_ibis`, which wraps them once per
+orchestrator call as an ``ibis.memtable`` against the default
+duckdb backend.
 
 Per-rule code mapping (the dotted codes downstream tools grep for)
 ------------------------------------------------------------------
@@ -62,22 +60,26 @@ Three explicit regression tests live in
 the three v0.3 bug classes the architecture doc calls out:
 ``_unique_constraint`` (Series-vs-bool), ``apply_schema_to_df``
 warning-list copy/paste, and the ``~s.str.contains(...)`` bool-of-Series
-bug. The module shape here makes each of those structurally impossible:
-no rule uses ``if <Series>:`` semantics, the report classifies issues
-by their own ``severity`` (not by re-filtering a single mixed list),
-and pattern checks enumerate failing rows via boolean indexing.
+bug. The ibis-first refactor makes each of those structurally
+impossible — predicates are ibis expressions (no Python truthiness),
+the report classifies issues by their own ``severity`` (not by
+re-filtering a single mixed list), and pattern checks enumerate
+failing rows via a filtered sample.
 """
 
 from __future__ import annotations
 
-import re
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any
 
-import pandas as pd
+import ibis
 
-from .types import Category, Issue, Severity, ValidationReport
+from datagrove.reports import Category, Issue, Severity, ValidationReport
+
+from ._ibis import to_ibis
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
+    import ibis.expr.types as ir
+
     from datagrove.engines.base import Engine, TableExpr
     from datagrove.spec.model import Field, Schema
 
@@ -103,25 +105,36 @@ __all__ = [
 MAX_ROW_ISSUES: int = 100
 
 
-# ---------------------------------------------------------------------------
-# Frictionless type → pandas-nullable dtype check
-# ---------------------------------------------------------------------------
+# Internal column name used to surface the original row position into
+# the materialised sample. We attach ``ibis.row_number()`` as this
+# column inside :func:`_with_row_index`; per-rule enumerators read it
+# back from the pyarrow sample so ``Issue.row`` is the source-of-truth
+# row index, not the sample's 0-based offset.
+_ROW_COL: str = "__dg_row__"
 
-# The cross-engine ``to_pandas`` contract returns numpy-backed nullable
-# dtypes — Int64 / Float64 / string / boolean. This map says, for a
-# given Frictionless ``type`` name, which pandas dtype name(s) are
-# acceptable. A column whose dtype is not in this set fires
-# ``schema.type``. Frictionless types not listed here (``date``,
-# ``time``, ``object`` etc.) are skipped — the cross-engine type-map
-# parity test in the engines tree gates the keyset.
-_FRICTIONLESS_TO_PANDAS: dict[str, frozenset[str]] = {
-    "integer": frozenset({"Int64", "Int32", "int64", "int32"}),
-    "number": frozenset({"Float64", "Float32", "float64", "float32", "Int64", "int64"}),
-    "boolean": frozenset({"boolean", "bool"}),
-    "string": frozenset({"string", "object"}),
+
+# Frictionless type → ibis dtype family. A column whose ibis dtype is
+# not in the declared family fires ``schema.type``. Frictionless types
+# not listed here (``date``, ``time``, ``object``, …) are skipped —
+# the cross-engine type-map parity test gates the keyset.
+#
+# We compare by the ibis dtype's ``str()`` representation. Ibis exposes
+# canonical lowercase names (``int64``, ``float64``, ``string``,
+# ``boolean``); we accept the family substrings since duckdb may
+# surface narrower variants (``int32``) for memtables of typed pandas.
+_FRICTIONLESS_TO_IBIS_FAMILY: dict[str, tuple[str, ...]] = {
+    "integer": ("int",),
+    "number": ("int", "float", "decimal"),
+    "boolean": ("bool",),
+    "string": ("string",),
     # ``any`` is the GMNS escape hatch — every dtype is acceptable.
-    "any": frozenset(),
+    "any": (),
 }
+
+
+# ---------------------------------------------------------------------------
+# Internal helpers
+# ---------------------------------------------------------------------------
 
 
 def _is_required(field: Field) -> bool:
@@ -132,66 +145,98 @@ def _is_required(field: Field) -> bool:
 def _bound_severity(field: Field) -> Severity:
     """Pick the severity for a bound-style rule (min/max/length).
 
-    Required fields elevate bound violations to ERROR. The rationale:
-    a required field's contract is already strict; an out-of-range
-    value isn't a "maybe-legal-in-a-future-spec" gray area, it's a
-    fully-broken row.
+    Required fields elevate bound violations to ERROR. A required
+    field's contract is already strict; an out-of-range value isn't a
+    "maybe-legal-in-a-future-spec" gray area, it's a fully-broken row.
     """
     return Severity.ERROR if _is_required(field) else Severity.WARNING
 
 
-def _materialise(engine: Engine, expr: TableExpr) -> pd.DataFrame:
-    """Materialise ``expr`` via the engine's cross-engine to_pandas contract.
+def _with_row_index(table: ir.Table) -> ir.Table:
+    """Attach a 0-based row-number column so enumerators carry positions.
 
-    All per-rule helpers go through this single point so the choice of
-    materialisation strategy lives in exactly one place. If ``expr`` is
-    already a pandas DataFrame, returns it unchanged (used by
-    :func:`check_schema` to avoid re-materialising for every rule).
+    ibis ``row_number()`` is the SQL window function; the cast to int
+    is defensive (ibis returns int64 universally but downstream code
+    consumes the value as a plain ``int``).
     """
-    if isinstance(expr, pd.DataFrame):
-        return expr
-    return engine.to_pandas(expr)
+    if _ROW_COL in table.columns:
+        return table
+    return table.mutate(**{_ROW_COL: ibis.row_number().cast("int64")})
 
 
-def _column_or_none(df: pd.DataFrame, name: str) -> pd.Series | None:
-    """Return the named column or ``None`` if it isn't in the frame.
+def _has_column(table: ir.Table, name: str) -> bool:
+    """Return ``True`` iff ``name`` is a column on ``table``.
 
     Missing columns are a *structural* problem, not a *schema* problem
     (task 2.5 owns that). Schema rules silently skip absent fields so
     a partial dataset doesn't produce dozens of misleading findings.
     """
-    if name in df.columns:
-        return cast(pd.Series, df[name])
-    return None
+    return name in table.columns
 
 
-def _row_indices(mask: pd.Series) -> list[int]:
-    """Return integer row indices where ``mask`` is True.
+def _count(predicate_table: ir.Table) -> int:
+    """Push a ``COUNT(*)`` to the backend and return a plain int.
 
-    ``Index.tolist()`` is typed as ``list[Hashable]`` in the pandas
-    stubs (the index could legally hold tuples), but in practice every
-    frame we receive here has a default ``RangeIndex``. Casting the
-    intermediate through ``list[Any]`` lets the type-checker accept
-    ``int(i)`` without resorting to per-call ``# type: ignore``.
+    Uses ``.to_pyarrow().as_py()`` rather than ``.execute()`` so the
+    return type is statically inferrable as ``Any`` (which pyright
+    accepts as an int) — ``.execute()`` is typed as
+    ``DataFrame | Series | Scalar`` even though the scalar branch
+    is the only one our usage hits.
     """
-    selected = cast(pd.Series, mask[mask])
-    raw: list[Any] = list(selected.index)
-    return [int(i) for i in raw]
+    return int(predicate_table.count().to_pyarrow().as_py())
 
 
-def _row_value_pairs(col: pd.Series, mask: pd.Series) -> list[tuple[int, Any]]:
-    """Return ``(row_index, value)`` pairs from ``col`` where ``mask`` is True.
+def _sample(predicate_table: ir.Table, *, limit: int) -> list[dict[str, Any]]:
+    """Materialise up to ``limit`` rows of ``predicate_table`` as pylist dicts.
 
-    Mirrors :func:`_row_indices` but also carries the offending value
-    so per-row Issues can name it. Same Hashable-index caveat applies.
+    The pyarrow path keeps us pandas-free; ``to_pylist`` is the
+    cheapest stable way to iterate a small sample row-by-row.
     """
-    selected = cast(pd.Series, mask[mask])
-    raw: list[Any] = list(selected.index)
-    return [(int(i), col.loc[i]) for i in raw]
+    arrow = predicate_table.limit(limit).to_pyarrow()
+    return arrow.to_pylist()
+
+
+def _row_of(sample_row: dict[str, Any]) -> int:
+    """Pull the source row index out of a sampled dict."""
+    raw = sample_row.get(_ROW_COL)
+    # Defensive cast: arrow may yield numpy ints depending on backend.
+    return int(raw) if raw is not None else -1
+
+
+def _emit_summary(
+    *,
+    severity: Severity,
+    code: str,
+    table_name: str,
+    field: Field,
+    total: int,
+    summary_message: str,
+    extra: dict[str, Any] | None = None,
+) -> Issue:
+    """Build the "showing first N of total" summary Issue.
+
+    Unified across rules: ``extra["total_violations"]`` carries the
+    full count; ``extra["sample_shown"]`` carries the cap. Renderers
+    already understand both keys (HTML + JSON exercises pin the
+    contract).
+    """
+    payload: dict[str, Any] = {"total_violations": total, "sample_shown": MAX_ROW_ISSUES}
+    if extra:
+        payload.update(extra)
+    return Issue(
+        severity=severity,
+        category=Category.SCHEMA,
+        code=code,
+        message=summary_message,
+        table=table_name,
+        column=field.name,
+        extra=payload,
+    )
 
 
 # ---------------------------------------------------------------------------
-# Per-rule helpers
+# Per-rule helpers — each takes an ibis Table, pushes a count, samples
+# only when needed.
 # ---------------------------------------------------------------------------
 
 
@@ -205,18 +250,16 @@ def check_required(
     """Flag null values in a required field.
 
     Returns an empty list when ``field.constraints.required`` is not
-    truthy — non-required fields are exempt by definition.
-
-    Per-row Issues are emitted up to :data:`MAX_ROW_ISSUES`; beyond
-    that a single summary Issue records the total count.
+    truthy. Per-row Issues are emitted up to :data:`MAX_ROW_ISSUES`;
+    beyond that one summary Issue records the total.
 
     Args:
-        expr: Engine-native table expression OR a pre-materialised
-            pandas DataFrame (when called from :func:`check_schema`).
+        expr: Engine-native table expression (or a pre-normalised ibis
+            Table when called from :func:`check_schema`).
         field: The :class:`~datagrove.spec.model.Field` to check.
-        engine: The engine that produced ``expr``. Used only for
-            materialisation.
-        table_name: Logical name of the table — populates ``Issue.table``.
+        engine: The engine that produced ``expr``. Retained for
+            signature compatibility; no longer used internally.
+        table_name: Logical table name — populates ``Issue.table``.
 
     Returns:
         A list of :class:`Issue` records. Empty when the field is not
@@ -236,41 +279,39 @@ def check_required(
     """
     if not _is_required(field):
         return []
-    df = _materialise(engine, expr)
-    col = _column_or_none(df, field.name)
-    if col is None:
+    table = _with_row_index(to_ibis(expr))
+    if not _has_column(table, field.name):
         return []
-    null_mask = col.isna()
-    null_rows = _row_indices(null_mask)
-    if not null_rows:
+    bad = table.filter(table[field.name].isnull())
+    total = _count(bad)
+    if total == 0:
         return []
     issues: list[Issue] = []
-    for row in null_rows[:MAX_ROW_ISSUES]:
+    for sample_row in _sample(bad, limit=MAX_ROW_ISSUES):
+        row_idx = _row_of(sample_row)
         issues.append(
             Issue(
                 severity=Severity.ERROR,
                 category=Category.SCHEMA,
                 code="schema.required",
-                message=f"{table_name}.{field.name} row {row}: required field is null",
+                message=f"{table_name}.{field.name} row {row_idx}: required field is null",
                 table=table_name,
                 column=field.name,
-                row=row,
-                fix_hint=f"Set {table_name}.{field.name} row {row} to a non-null value.",
+                row=row_idx,
+                fix_hint=f"Set {table_name}.{field.name} row {row_idx} to a non-null value.",
             )
         )
-    if len(null_rows) > MAX_ROW_ISSUES:
+    if total > MAX_ROW_ISSUES:
         issues.append(
-            Issue(
+            _emit_summary(
                 severity=Severity.ERROR,
-                category=Category.SCHEMA,
                 code="schema.required",
-                message=(
-                    f"{table_name}.{field.name}: {len(null_rows)} required values are null "
-                    f"(showing first {MAX_ROW_ISSUES})"
+                table_name=table_name,
+                field=field,
+                total=total,
+                summary_message=(
+                    f"{table_name}.{field.name}: {total} required values are null (showing first {MAX_ROW_ISSUES})"
                 ),
-                table=table_name,
-                column=field.name,
-                extra={"total_violations": len(null_rows)},
             )
         )
     return issues
@@ -283,22 +324,14 @@ def check_type(
     engine: Engine,
     table_name: str,
 ) -> list[Issue]:
-    """Flag a column whose pandas dtype doesn't match ``field.type``.
+    """Flag a column whose ibis dtype doesn't match ``field.type``.
 
-    The check is at the *column* level — pandas (and the engines that
-    materialise through it) doesn't carry per-cell dtypes. A
-    non-coercible value forces the whole column to ``object``, which
-    won't match e.g. ``integer`` and so fires here. Frictionless types
-    not in :data:`_FRICTIONLESS_TO_PANDAS` (or ``any``) are skipped.
-
-    Args:
-        expr: Engine-native table expression.
-        field: The field to check.
-        engine: The engine that produced ``expr``.
-        table_name: Logical table name.
-
-    Returns:
-        A list containing zero or one :class:`Issue`.
+    The check is at the *column* level — ibis carries one dtype per
+    column. A column read from a CSV as strings (because a single cell
+    wouldn't coerce) lands as ``string`` and won't match e.g.
+    ``integer`` — exactly the v0.3 failure mode this rule pins.
+    Frictionless types not in :data:`_FRICTIONLESS_TO_IBIS_FAMILY` (or
+    ``any``) are skipped.
 
     Examples:
         >>> from datagrove.engines.pandas_engine import PandasEngine
@@ -311,16 +344,15 @@ def check_type(
     """
     if not field.type:
         return []
-    allowed = _FRICTIONLESS_TO_PANDAS.get(field.type)
-    if allowed is None or len(allowed) == 0:
+    allowed = _FRICTIONLESS_TO_IBIS_FAMILY.get(field.type)
+    if allowed is None or not allowed:
         # Unknown type OR "any" — nothing to check at the dtype level.
         return []
-    df = _materialise(engine, expr)
-    col = _column_or_none(df, field.name)
-    if col is None:
+    table = to_ibis(expr)
+    if not _has_column(table, field.name):
         return []
-    actual = str(col.dtype)
-    if actual in allowed:
+    actual = str(table[field.name].type()).lower()
+    if any(fam in actual for fam in allowed):
         return []
     return [
         Issue(
@@ -346,18 +378,9 @@ def check_enum(
     engine: Engine,
     table_name: str,
 ) -> list[Issue]:
-    """Flag values that are not in the declared ``constraints.enum``.
+    """Flag values not in ``constraints.enum``.
 
     Null values are skipped (handled by :func:`check_required`).
-
-    Args:
-        expr: Engine-native table expression.
-        field: The field to check.
-        engine: The engine that produced ``expr``.
-        table_name: Logical table name.
-
-    Returns:
-        Per-row :class:`Issue` records (capped at :data:`MAX_ROW_ISSUES`).
 
     Examples:
         >>> from datagrove.engines.pandas_engine import PandasEngine
@@ -372,44 +395,43 @@ def check_enum(
     if not field.constraints or not field.constraints.enum:
         return []
     allowed = list(field.constraints.enum)
-    allowed_set = set(allowed)
-    df = _materialise(engine, expr)
-    col = _column_or_none(df, field.name)
-    if col is None:
+    table = _with_row_index(to_ibis(expr))
+    if not _has_column(table, field.name):
         return []
-    # Drop nulls so the membership check doesn't fire schema.required noise.
-    non_null = col.dropna()
-    bad_mask = ~non_null.isin(allowed_set)
-    bad_rows = _row_value_pairs(non_null, bad_mask)
-    if not bad_rows:
+    col = table[field.name]
+    bad = table.filter(col.notnull() & ~col.isin(allowed))
+    total = _count(bad)
+    if total == 0:
         return []
     issues: list[Issue] = []
     allowed_str = ", ".join(repr(v) for v in allowed)
-    for row, value in bad_rows[:MAX_ROW_ISSUES]:
+    for sample_row in _sample(bad, limit=MAX_ROW_ISSUES):
+        row_idx = _row_of(sample_row)
+        value = sample_row.get(field.name)
         issues.append(
             Issue(
                 severity=Severity.WARNING,
                 category=Category.SCHEMA,
                 code="schema.enum",
-                message=(f"{table_name}.{field.name} row {row}: value {value!r} not in enum [{allowed_str}]"),
+                message=f"{table_name}.{field.name} row {row_idx}: value {value!r} not in enum [{allowed_str}]",
                 table=table_name,
                 column=field.name,
-                row=row,
+                row=row_idx,
                 fix_hint=f"Use one of: {', '.join(str(v) for v in allowed)}.",
             )
         )
-    if len(bad_rows) > MAX_ROW_ISSUES:
+    if total > MAX_ROW_ISSUES:
         issues.append(
-            Issue(
+            _emit_summary(
                 severity=Severity.WARNING,
-                category=Category.SCHEMA,
                 code="schema.enum",
-                message=(
-                    f"{table_name}.{field.name}: {len(bad_rows)} values outside enum (showing first {MAX_ROW_ISSUES})"
+                table_name=table_name,
+                field=field,
+                total=total,
+                summary_message=(
+                    f"{table_name}.{field.name}: {total} values outside enum (showing first {MAX_ROW_ISSUES})"
                 ),
-                table=table_name,
-                column=field.name,
-                extra={"total_violations": len(bad_rows), "allowed": allowed},
+                extra={"allowed": allowed},
             )
         )
     return issues
@@ -419,7 +441,6 @@ def _check_numeric_bound(
     expr: TableExpr,
     field: Field,
     *,
-    engine: Engine,
     table_name: str,
     bound: Any,
     code: str,
@@ -427,63 +448,57 @@ def _check_numeric_bound(
 ) -> list[Issue]:
     """Shared body for :func:`check_minimum` and :func:`check_maximum`.
 
-    Args:
-        expr: Engine-native table expression or pre-materialised frame.
-        field: The :class:`~datagrove.spec.model.Field` to check.
-        engine: The engine that produced ``expr`` (used for materialisation).
-        table_name: Logical name of the table (populates ``Issue.table``).
-        bound: Numeric bound from ``field.constraints``.
-        code: One of ``"schema.minimum"`` / ``"schema.maximum"``.
-        direction: Either ``"below"`` (minimum) or ``"above"`` (maximum).
+    Builds the directional predicate (``col < bound`` or ``col > bound``),
+    counts via SQL, samples up to :data:`MAX_ROW_ISSUES` rows for
+    per-row Issues, and emits a single summary Issue if the count
+    overflows the cap.
     """
     if bound is None:
         return []
-    df = _materialise(engine, expr)
-    col = _column_or_none(df, field.name)
-    if col is None:
+    table = _with_row_index(to_ibis(expr))
+    if not _has_column(table, field.name):
         return []
-    # Coerce to numeric so we can compare; non-numeric entries become NaN
-    # and are excluded (they're a schema.type concern).
-    numeric = pd.to_numeric(col, errors="coerce")
+    col = table[field.name]
     if direction == "below":
-        bad_mask = numeric < bound
+        bad = table.filter(col.notnull() & (col < bound))
         rel = "below minimum"
         fix_word = "above"
     else:
-        bad_mask = numeric > bound
+        bad = table.filter(col.notnull() & (col > bound))
         rel = "above maximum"
         fix_word = "below"
-    bad_mask = bad_mask.fillna(False)
-    bad_rows = _row_value_pairs(col, bad_mask)
-    if not bad_rows:
+    total = _count(bad)
+    if total == 0:
         return []
     severity = _bound_severity(field)
     issues: list[Issue] = []
-    for row, value in bad_rows[:MAX_ROW_ISSUES]:
+    for sample_row in _sample(bad, limit=MAX_ROW_ISSUES):
+        row_idx = _row_of(sample_row)
+        value = sample_row.get(field.name)
         issues.append(
             Issue(
                 severity=severity,
                 category=Category.SCHEMA,
                 code=code,
-                message=(f"{table_name}.{field.name} row {row}: value {value} {rel} {bound}"),
+                message=f"{table_name}.{field.name} row {row_idx}: value {value} {rel} {bound}",
                 table=table_name,
                 column=field.name,
-                row=row,
+                row=row_idx,
                 fix_hint=f"Set {table_name}.{field.name} to a value {fix_word} {bound}.",
             )
         )
-    if len(bad_rows) > MAX_ROW_ISSUES:
+    if total > MAX_ROW_ISSUES:
         issues.append(
-            Issue(
+            _emit_summary(
                 severity=severity,
-                category=Category.SCHEMA,
                 code=code,
-                message=(
-                    f"{table_name}.{field.name}: {len(bad_rows)} values {rel} {bound} (showing first {MAX_ROW_ISSUES})"
+                table_name=table_name,
+                field=field,
+                total=total,
+                summary_message=(
+                    f"{table_name}.{field.name}: {total} values {rel} {bound} (showing first {MAX_ROW_ISSUES})"
                 ),
-                table=table_name,
-                column=field.name,
-                extra={"total_violations": len(bad_rows), "bound": bound},
+                extra={"bound": bound},
             )
         )
     return issues
@@ -513,7 +528,6 @@ def check_minimum(
     return _check_numeric_bound(
         expr,
         field,
-        engine=engine,
         table_name=table_name,
         bound=field.constraints.minimum,
         code="schema.minimum",
@@ -545,7 +559,6 @@ def check_maximum(
     return _check_numeric_bound(
         expr,
         field,
-        engine=engine,
         table_name=table_name,
         bound=field.constraints.maximum,
         code="schema.maximum",
@@ -557,66 +570,63 @@ def _check_length_bound(
     expr: TableExpr,
     field: Field,
     *,
-    engine: Engine,
     table_name: str,
     bound: int | None,
     code: str,
     direction: str,
 ) -> list[Issue]:
-    """Shared body for :func:`check_min_length` / :func:`check_max_length`.
-
-    Args:
-        expr: Engine-native table expression or pre-materialised frame.
-        field: The :class:`~datagrove.spec.model.Field` to check.
-        engine: The engine that produced ``expr`` (used for materialisation).
-        table_name: Logical name of the table (populates ``Issue.table``).
-        bound: Integer character-length bound from ``field.constraints``.
-        code: One of ``"schema.min_length"`` / ``"schema.max_length"``.
-        direction: Either ``"below"`` (min_length) or ``"above"`` (max_length).
-    """
+    """Shared body for :func:`check_min_length` / :func:`check_max_length`."""
     if bound is None:
         return []
-    df = _materialise(engine, expr)
-    col = _column_or_none(df, field.name)
-    if col is None:
+    table = _with_row_index(to_ibis(expr))
+    if not _has_column(table, field.name):
         return []
-    lengths = col.dropna().astype(str).str.len()
+    col = table[field.name]
+    # Cast to string before measuring length so int / mixed columns
+    # don't blow up on the .length() call. Nulls are dropped first.
+    # The bound goes through ``ibis.literal`` so pyright can model
+    # the comparison as ``IntegerValue`` vs ``IntegerValue``.
+    length = col.cast("string").length()
+    bound_lit = ibis.literal(bound)
     if direction == "below":
-        bad_mask = lengths < bound
+        bad = table.filter(col.notnull() & (length < bound_lit))
         rel = f"shorter than min_length {bound}"
         fix_word = "at least"
     else:
-        bad_mask = lengths > bound
+        bad = table.filter(col.notnull() & (length > bound_lit))
         rel = f"longer than max_length {bound}"
         fix_word = "no more than"
-    bad_rows = [(int(i), col.loc[i]) for i in _row_indices(bad_mask)]
-    if not bad_rows:
+    total = _count(bad)
+    if total == 0:
         return []
     severity = _bound_severity(field)
     issues: list[Issue] = []
-    for row, value in bad_rows[:MAX_ROW_ISSUES]:
+    for sample_row in _sample(bad, limit=MAX_ROW_ISSUES):
+        row_idx = _row_of(sample_row)
+        value = sample_row.get(field.name)
+        char_len = len(str(value)) if value is not None else 0
         issues.append(
             Issue(
                 severity=severity,
                 category=Category.SCHEMA,
                 code=code,
-                message=(f"{table_name}.{field.name} row {row}: value {value!r} ({len(str(value))} chars) {rel}"),
+                message=f"{table_name}.{field.name} row {row_idx}: value {value!r} ({char_len} chars) {rel}",
                 table=table_name,
                 column=field.name,
-                row=row,
+                row=row_idx,
                 fix_hint=f"Use a value {fix_word} {bound} characters in {table_name}.{field.name}.",
             )
         )
-    if len(bad_rows) > MAX_ROW_ISSUES:
+    if total > MAX_ROW_ISSUES:
         issues.append(
-            Issue(
+            _emit_summary(
                 severity=severity,
-                category=Category.SCHEMA,
                 code=code,
-                message=(f"{table_name}.{field.name}: {len(bad_rows)} values {rel} (showing first {MAX_ROW_ISSUES})"),
-                table=table_name,
-                column=field.name,
-                extra={"total_violations": len(bad_rows), "bound": bound},
+                table_name=table_name,
+                field=field,
+                total=total,
+                summary_message=(f"{table_name}.{field.name}: {total} values {rel} (showing first {MAX_ROW_ISSUES})"),
+                extra={"bound": bound},
             )
         )
     return issues
@@ -646,7 +656,6 @@ def check_min_length(
     return _check_length_bound(
         expr,
         field,
-        engine=engine,
         table_name=table_name,
         bound=field.constraints.min_length,
         code="schema.min_length",
@@ -678,7 +687,6 @@ def check_max_length(
     return _check_length_bound(
         expr,
         field,
-        engine=engine,
         table_name=table_name,
         bound=field.constraints.max_length,
         code="schema.max_length",
@@ -695,12 +703,13 @@ def check_pattern(
 ) -> list[Issue]:
     """Flag strings that don't match ``field.constraints.pattern``.
 
-    Uses :func:`re.fullmatch` so the pattern must match the entire
-    value (Frictionless semantics). Null values are skipped.
+    Uses ``re_search`` with explicit ``^``/``$`` anchors so the regex
+    must match the entire value (Frictionless full-match semantics).
+    Null values are skipped.
 
-    This is the regression site for the v0.3 ``~s.str.contains(...)``
-    bool-of-Series bug — we iterate the boolean mask explicitly rather
-    than relying on Python's truthiness of a Series.
+    This is the regression site for the v0.3
+    ``~s.str.contains(...)`` bool-of-Series bug — the predicate lives
+    in ibis SQL, so Python truthiness on a Series can't recur.
 
     Examples:
         >>> from datagrove.engines.pandas_engine import PandasEngine
@@ -715,59 +724,67 @@ def check_pattern(
     if not field.constraints or not field.constraints.pattern:
         return []
     pattern = field.constraints.pattern
+    # Validate the regex up front; a bad pattern is a SPEC bug, not a
+    # data bug, and we emit the same Issue shape so renderers don't
+    # special-case it.
+    import re
+
     try:
-        regex = re.compile(pattern)
+        re.compile(pattern)
     except re.error as e:
         return [
             Issue(
                 severity=Severity.ERROR,
                 category=Category.SCHEMA,
                 code="schema.pattern",
-                message=(f"{table_name}.{field.name}: invalid regex {pattern!r} in schema ({e})"),
+                message=f"{table_name}.{field.name}: invalid regex {pattern!r} in schema ({e})",
                 table=table_name,
                 column=field.name,
                 fix_hint=f"Fix the regex declared on {table_name}.{field.name}.",
             )
         ]
-    df = _materialise(engine, expr)
-    col = _column_or_none(df, field.name)
-    if col is None:
+    table = _with_row_index(to_ibis(expr))
+    if not _has_column(table, field.name):
         return []
-    non_null = col.dropna().astype(str)
-    # ``.items()`` is typed (idx: Hashable, value: Any). Coerce both
-    # through Any so pyright accepts the int() conversion below — the
-    # default RangeIndex makes every i an int at runtime.
-    items: list[tuple[Any, Any]] = list(non_null.items())
-    bad_rows = [(int(i), v) for i, v in items if regex.fullmatch(v) is None]
-    if not bad_rows:
+    col = table[field.name].cast("string")
+    # Anchor for full-match semantics — Frictionless ``pattern`` is a
+    # full-string regex, not a search.
+    full_pattern = pattern if pattern.startswith("^") else f"^{pattern}"
+    if not full_pattern.endswith("$"):
+        full_pattern = f"{full_pattern}$"
+    bad = table.filter(table[field.name].notnull() & ~col.re_search(full_pattern))
+    total = _count(bad)
+    if total == 0:
         return []
     issues: list[Issue] = []
-    for row, value in bad_rows[:MAX_ROW_ISSUES]:
+    for sample_row in _sample(bad, limit=MAX_ROW_ISSUES):
+        row_idx = _row_of(sample_row)
+        value = sample_row.get(field.name)
         issues.append(
             Issue(
                 severity=Severity.WARNING,
                 category=Category.SCHEMA,
                 code="schema.pattern",
-                message=(f"{table_name}.{field.name} row {row}: value {value!r} does not match pattern {pattern!r}"),
+                message=f"{table_name}.{field.name} row {row_idx}: value {value!r} does not match pattern {pattern!r}",
                 table=table_name,
                 column=field.name,
-                row=row,
+                row=row_idx,
                 fix_hint=f"Make {table_name}.{field.name} match the regex {pattern!r}.",
             )
         )
-    if len(bad_rows) > MAX_ROW_ISSUES:
+    if total > MAX_ROW_ISSUES:
         issues.append(
-            Issue(
+            _emit_summary(
                 severity=Severity.WARNING,
-                category=Category.SCHEMA,
                 code="schema.pattern",
-                message=(
-                    f"{table_name}.{field.name}: {len(bad_rows)} values fail pattern "
+                table_name=table_name,
+                field=field,
+                total=total,
+                summary_message=(
+                    f"{table_name}.{field.name}: {total} values fail pattern "
                     f"{pattern!r} (showing first {MAX_ROW_ISSUES})"
                 ),
-                table=table_name,
-                column=field.name,
-                extra={"total_violations": len(bad_rows), "pattern": pattern},
+                extra={"pattern": pattern},
             )
         )
     return issues
@@ -784,14 +801,13 @@ def check_unique(
 
     Nulls are excluded from the uniqueness check (Frictionless
     convention — duplicates of null don't violate uniqueness; the
-    ``required`` constraint handles nulls).
+    ``required`` constraint handles nulls). Built as
+    ``group_by(col).having(count > 1)`` so duplicate counting happens
+    in SQL.
 
     This is the regression site for the v0.3 ``_unique_constraint``
-    bug (``if s.dropna().duplicated(): ...`` on a Series). We use
-    ``.any()`` on the mask explicitly and enumerate offending values.
-
-    Emits one summary Issue (with the duplicate count) plus per-row
-    Issues for each duplicate (capped at :data:`MAX_ROW_ISSUES`).
+    bug (``if s.dropna().duplicated(): ...`` on a Series). The ibis
+    predicate can't trigger Series-bool ambiguity.
 
     Examples:
         >>> from datagrove.engines.pandas_engine import PandasEngine
@@ -805,18 +821,19 @@ def check_unique(
     """
     if not field.constraints or not field.constraints.unique:
         return []
-    df = _materialise(engine, expr)
-    col = _column_or_none(df, field.name)
-    if col is None:
+    table = _with_row_index(to_ibis(expr))
+    if not _has_column(table, field.name):
         return []
-    non_null = col.dropna()
-    duplicated_mask = non_null.duplicated(keep=False)
-    # ``.any()`` returns a scalar bool — explicitly NOT ``if duplicated_mask:``
-    # (the v0.3 bug). Pin this regression structurally.
-    if not bool(duplicated_mask.any()):
+    col_name = field.name
+    col = table[col_name]
+    # Group non-null values; the values appearing in >1 row are the
+    # duplicate set. Then anti-join with the original table to locate
+    # the offending rows + row indices.
+    non_null = table.filter(col.notnull())
+    dup_values = non_null.group_by(col_name).aggregate(_n=non_null.count()).filter(ibis._["_n"] > 1)
+    duplicate_count = _count(table.filter(col.isin(dup_values[col_name])))
+    if duplicate_count == 0:
         return []
-    dup_rows = _row_value_pairs(non_null, duplicated_mask)
-    duplicate_count = len(dup_rows)
     issues: list[Issue] = [
         Issue(
             severity=Severity.ERROR,
@@ -826,20 +843,23 @@ def check_unique(
             table=table_name,
             column=field.name,
             fix_hint=f"Remove or de-duplicate values in {table_name}.{field.name}.",
-            extra={"total_violations": duplicate_count},
+            extra={"total_violations": duplicate_count, "sample_shown": MAX_ROW_ISSUES},
         )
     ]
-    for row, value in dup_rows[:MAX_ROW_ISSUES]:
+    dup_rows = table.filter(col.isin(dup_values[col_name]))
+    for sample_row in _sample(dup_rows, limit=MAX_ROW_ISSUES):
+        row_idx = _row_of(sample_row)
+        value = sample_row.get(col_name)
         issues.append(
             Issue(
                 severity=Severity.ERROR,
                 category=Category.SCHEMA,
                 code="schema.unique",
-                message=(f"{table_name}.{field.name} row {row}: duplicate value {value!r}"),
+                message=f"{table_name}.{field.name} row {row_idx}: duplicate value {value!r}",
                 table=table_name,
                 column=field.name,
-                row=row,
-                fix_hint=f"Make {table_name}.{field.name} unique at row {row}.",
+                row=row_idx,
+                fix_hint=f"Make {table_name}.{field.name} unique at row {row_idx}.",
             )
         )
     return issues
@@ -882,17 +902,21 @@ def check_schema(
     max_length / pattern / unique) and appends one or more
     :class:`Issue` records per violation to ``report``.
 
-    The frame is materialised **once** (via :meth:`Engine.to_pandas`)
-    and shared across every rule — the per-rule helpers accept either a
-    ``TableExpr`` or an already-materialised pandas DataFrame so calling
-    this orchestrator is strictly cheaper than calling each helper
-    individually.
+    The expression is **normalised to ibis once** at the top of the
+    call — pandas / polars sources are wrapped as ``ibis.memtable``
+    via :func:`datagrove.validation._ibis.to_ibis`. Each rule then
+    pushes its violation count down as an ibis predicate (a SQL
+    aggregate, not a pandas materialisation) and samples only the
+    rows it needs for row-context Issues. At Bay-Area scale this is
+    the difference between a millisecond ``COUNT(*)`` and a gigabyte
+    materialisation.
 
     Args:
         expr: Engine-native lazy table expression to validate.
         schema: Parsed Frictionless :class:`~datagrove.spec.model.Schema`.
         engine: The :class:`~datagrove.engines.base.Engine` that produced
-            ``expr``. Used for materialisation.
+            ``expr``. Retained for signature compatibility; the
+            ibis-first refactor no longer routes through it.
         table_name: Logical name of the table (populates ``Issue.table``).
         report: Optional existing :class:`ValidationReport` to append
             into. When ``None`` (the default), a fresh report is
@@ -915,11 +939,12 @@ def check_schema(
     """
     if report is None:
         report = ValidationReport()
-    # Materialise once so every rule shares the same frame. Skip when
-    # the caller hands us a DataFrame directly (test convenience).
-    df = expr if isinstance(expr, pd.DataFrame) else engine.to_pandas(expr)
+    # Normalise to ibis once so every rule shares the same wrapped
+    # table; the per-rule helpers also call ``to_ibis`` but it's a
+    # pass-through on an ibis Table so we don't double-wrap.
+    table = to_ibis(expr)
     for field in schema.fields:
         for rule in _RULE_ORDER:
-            for issue in rule(df, field, engine=engine, table_name=table_name):
+            for issue in rule(table, field, engine=engine, table_name=table_name):
                 report.add_issue(issue)
     return report

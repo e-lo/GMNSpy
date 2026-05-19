@@ -62,6 +62,6 @@ packages = ["datagrove"]
 # ship in the wheel — hatchling defaults pick up .py files but not
 # resource siblings. Without this, render_html() would import-error
 # on installed wheels even though it works from a source checkout.
-"datagrove/validation/templates/report.html.j2" = "datagrove/validation/templates/report.html.j2"
-"datagrove/validation/templates/report.css" = "datagrove/validation/templates/report.css"
-"datagrove/validation/templates/report.js" = "datagrove/validation/templates/report.js"
+"datagrove/reports/templates/report.html.j2" = "datagrove/reports/templates/report.html.j2"
+"datagrove/reports/templates/report.css" = "datagrove/reports/templates/report.css"
+"datagrove/reports/templates/report.js" = "datagrove/reports/templates/report.js"
