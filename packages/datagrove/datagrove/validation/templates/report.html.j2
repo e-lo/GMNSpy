@@ -1,0 +1,136 @@
+{#-
+  Master template for the interactive ValidationReport HTML renderer.
+
+  Inputs (populated by datagrove.validation.report.render_html):
+    - title              : <title> + <h1> text
+    - report             : the ValidationReport.to_dict() payload
+    - summary            : report["summary"] alias
+    - issues_by_severity : dict[severity -> list[issue_dict]]
+    - severities         : canonical display order
+    - severity_labels    : per-severity display label
+    - filter_options     : {"category": [...], "table": [...]}
+    - has_geo            : bool — render the map section?
+    - map_spec_json      : pre-serialised Vega-Lite JSON string (when has_geo)
+    - vega_cdn_urls      : list of CDN URLs to inject when has_geo
+    - css                : entire bundled CSS as a string (inlined)
+    - js                 : entire bundled JS as a string (inlined)
+    - report_json        : json.dumps(report) for the export blob
+
+  Severity colours and section ordering are defined in CSS / inputs —
+  the template is severity-agnostic. The {% for severity in severities %}
+  loop drives the section order.
+-#}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>{{ title }}</title>
+  <style>{{ css }}</style>
+</head>
+<body>
+  <header>
+    <h1>{{ title }}</h1>
+    <div class="meta">
+      Spec:&nbsp;<strong>{{ report.spec_version or "unspecified" }}</strong>
+      &nbsp;·&nbsp; Source:&nbsp;<strong>{{ report.source or "unspecified" }}</strong>
+      &nbsp;·&nbsp; Generated:&nbsp;<strong>{{ report.created_at }}</strong>
+    </div>
+    <div class="summary">
+      <span class="badge error">{{ summary.error }} errors</span>
+      <span class="badge warning">{{ summary.warning }} warnings</span>
+      <span class="badge info">{{ summary.info }} info</span>
+      <span class="badge data_quality">{{ summary.data_quality }} quality</span>
+      <span class="verdict {{ 'clean' if summary.is_clean else 'unclean' }}">
+        {{ "CLEAN" if summary.is_clean else "ISSUES FOUND" }}
+      </span>
+    </div>
+  </header>
+
+  <nav class="filters">
+    <select id="filter-severity" aria-label="Filter by severity">
+      <option value="">All severities</option>
+      {% for sev in severities -%}
+      <option value="{{ sev }}">{{ severity_labels[sev] }}</option>
+      {% endfor -%}
+    </select>
+    <select id="filter-category" aria-label="Filter by category">
+      <option value="">All categories</option>
+      {% for cat in filter_options.category -%}
+      <option value="{{ cat }}">{{ cat }}</option>
+      {% endfor -%}
+    </select>
+    <select id="filter-table" aria-label="Filter by table">
+      <option value="">All tables</option>
+      {% for tbl in filter_options.table -%}
+      <option value="{{ tbl }}">{{ tbl }}</option>
+      {% endfor -%}
+    </select>
+    <input id="filter-code" type="search" placeholder="Filter by code substring..." aria-label="Filter by code">
+    <button id="export-json" type="button">Export JSON</button>
+  </nav>
+
+  {% if has_geo %}
+  <section id="map-section">
+    <h2>Located issues</h2>
+    <div id="map"></div>
+    <script id="map-spec" type="application/json">{{ map_spec_json|safe }}</script>
+    {#- Vega-Lite CDN scripts — the ONLY external dependency in the file.
+        Documented trade-off (see render_html docstring): the data + filter
+        UI work fully offline; only the map renders empty without internet.
+        Inlining ~250KB of Vega bytes into every report was the alternative
+        and was rejected as too heavy for an emailable artifact. -#}
+    {% for url in vega_cdn_urls -%}
+    <script src="{{ url }}"></script>
+    {% endfor %}
+  </section>
+  {% endif %}
+
+  <section id="issues">
+    {% for severity in severities %}
+    {% set group = issues_by_severity[severity] %}
+    <h2 class="severity-{{ severity }}">{{ severity_labels[severity] }} ({{ group|length }})</h2>
+    <table data-severity="{{ severity }}">
+      <thead>
+        <tr>
+          <th>Code</th>
+          <th>Table</th>
+          <th>Column</th>
+          <th>Row</th>
+          <th>Message</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for issue in group %}
+        <tr class="issue"
+            data-severity="{{ issue.severity }}"
+            data-category="{{ issue.category }}"
+            data-table="{{ issue.table or '' }}"
+            data-code="{{ issue.code }}">
+          <td class="code">{{ issue.code }}</td>
+          <td>{{ issue.table or "—" }}</td>
+          <td>{{ issue.column or "—" }}</td>
+          <td>{{ issue.row if issue.row is not none else "—" }}</td>
+          <td>{{ issue.message }}</td>
+        </tr>
+        <tr class="detail" hidden>
+          <td colspan="5">
+            <strong>Fix:</strong> {{ issue.fix_hint or "—" }}
+            <pre>{{ issue.extra|tojson(indent=2) }}</pre>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <p class="empty" data-for-severity="{{ severity }}"{% if group %} hidden{% endif %}>
+      {% if group %}(no matches for current filters){% else %}(no issues){% endif %}
+    </p>
+    {% endfor %}
+  </section>
+
+  {#- Embedded report-data: powers the "Export JSON" button AND lets any
+      future tooling re-read the structured report straight from the HTML
+      without re-running validation. -#}
+  <script id="report-data" type="application/json">{{ report_json|safe }}</script>
+  <script>{{ js|safe }}</script>
+</body>
+</html>
