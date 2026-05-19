@@ -3,8 +3,9 @@
 The pandas engine is the **compatibility target** of the engine layer:
 small, simple, no lazy expressions, and the convergence point every
 other engine round-trips through via ``to_pandas``. It is *eager* —
-``scan()`` returns a materialized :class:`pandas.DataFrame`, not a lazy
-plan. ``materialize()`` and ``to_pandas()`` are identities.
+``read_csv`` / ``read_parquet`` / ``read_duckdb_table`` / ``from_records``
+return materialized :class:`pandas.DataFrame`s, not lazy plans.
+``materialize()`` and ``to_pandas()`` are identities.
 
 For lazy / regional-scale work use the ibis engine (default) or polars.
 This engine exists for:
@@ -14,20 +15,16 @@ This engine exists for:
 * cross-engine glue (every other engine implements ``to_pandas``);
 * downstream code that depends on pandas-only libraries.
 
-Adapter migration note
-----------------------
+Dispatch model (post-issue-#134 inversion)
+------------------------------------------
 
-Today ``scan()`` calls pandas readers directly (``pd.read_csv``,
-``pd.read_parquet``, the ``duckdb`` Python API for ``.duckdb``,
-``compression="zip"`` for ``.csv.zip``). When the
-:class:`~datagrove.io.FormatAdapter` registry is wired up
-(tasks 1.7-1.11), the dispatch ladder will move into
-``datagrove.io.dispatch`` and this method will delegate to it via
-``adapter.read(source, engine=self, schema=schema, **kwargs)``. The
-adapter contract (``read`` returns a *lazy* expression for the engine)
-collapses for pandas: the pandas FormatAdapter implementations just
-return the eager DataFrame. The five extension branches below become
-the five default adapters - same code, moved one layer up.
+The engine exposes **per-format primitives** (``read_csv``,
+``read_parquet``, ``read_duckdb_table``, ``from_records`` + the
+matching ``write_*``). Adapters in :mod:`datagrove.io` call these
+primitives directly. :meth:`scan` and :meth:`write` are thin convenience
+methods that route format dispatch through ``datagrove.io.dispatch`` /
+``datagrove.io.get_adapter``. No per-format if/elif lives in this module
+anymore.
 
 Architecture note
 -----------------
@@ -79,11 +76,12 @@ _FRICTIONLESS_TO_PANDAS_NULLABLE: dict[str, str] = {
 class PandasEngine:
     """Eager pandas execution engine.
 
-    The lowest-common-denominator engine. ``scan()`` returns a
-    materialized :class:`pandas.DataFrame`; there is no lazy expression
-    layer. Cross-engine code that calls ``engine.to_pandas(expr)`` on
-    an arbitrary engine and then runs pandas ops can switch transparently
-    to this engine and skip the converter hop entirely.
+    The lowest-common-denominator engine. The read primitives return
+    materialized :class:`pandas.DataFrame`s; there is no lazy
+    expression layer. Cross-engine code that calls
+    ``engine.to_pandas(expr)`` on an arbitrary engine and then runs
+    pandas ops can switch transparently to this engine and skip the
+    converter hop entirely.
 
     Attributes:
         name: ``"pandas"`` — registry key.
@@ -97,7 +95,234 @@ class PandasEngine:
     name: str = "pandas"
 
     # ------------------------------------------------------------------
-    # scan
+    # Read primitives — adapters call these directly
+    # ------------------------------------------------------------------
+
+    def read_csv(
+        self,
+        source: SourceRef,
+        schema: Schema | None = None,
+        **kwargs: Any,
+    ) -> pd.DataFrame:
+        """Read a CSV file via :func:`pandas.read_csv`.
+
+        Args:
+            source: Path / URL. URLs use pandas' fsspec integration;
+                pass ``storage_options=`` for cloud credentials.
+            schema: Optional Frictionless schema; columns are cast after
+                read via :meth:`cast_schema`.
+            **kwargs: Forwarded verbatim to :func:`pandas.read_csv`
+                (``sep``, ``encoding``, ``compression``,
+                ``storage_options``, ...).
+
+        Returns:
+            A materialized :class:`pandas.DataFrame`.
+        """
+        df = pd.read_csv(str(source), **kwargs)
+        return self.cast_schema(df, schema) if schema is not None else df
+
+    def read_parquet(
+        self,
+        source: SourceRef,
+        schema: Schema | None = None,
+        *,
+        hive_partitioning: bool = False,
+        **kwargs: Any,
+    ) -> pd.DataFrame:
+        """Read parquet (single file or Hive-partitioned directory).
+
+        Pandas's :func:`~pandas.read_parquet` uses pyarrow underneath,
+        which natively handles Hive-partitioned directories and
+        reinjects partition columns into the result — no extra kwarg is
+        needed. The ``hive_partitioning`` flag is accepted for protocol
+        parity but ignored.
+
+        Args:
+            source: Path to a ``.parquet`` file or partitioned directory.
+            schema: Optional Frictionless schema.
+            hive_partitioning: Ignored — pyarrow auto-detects.
+            **kwargs: Forwarded to :func:`pandas.read_parquet`.
+
+        Returns:
+            A materialized :class:`pandas.DataFrame`.
+        """
+        del hive_partitioning  # pyarrow handles it natively
+        df = pd.read_parquet(str(source), **kwargs)
+        return self.cast_schema(df, schema) if schema is not None else df
+
+    def read_duckdb_table(
+        self,
+        source: SourceRef,
+        *,
+        table: str,
+        schema: Schema | None = None,
+        **kwargs: Any,
+    ) -> pd.DataFrame:
+        """Read one table out of a duckdb file via the duckdb Python relation API.
+
+        No SQL string is constructed — we use ``con.table(name).df()``.
+
+        Args:
+            source: Path to a ``.duckdb`` file.
+            table: The table name (required).
+            schema: Optional Frictionless schema.
+            **kwargs: Reserved (currently ignored).
+
+        Raises:
+            InvalidEngineCallError: If ``table`` is empty.
+            EngineNotAvailableError: If the duckdb dep is missing.
+        """
+        del kwargs  # reserved for future use
+        if not table:
+            raise InvalidEngineCallError("pandas engine: read_duckdb_table requires a non-empty table= argument")
+        try:
+            import duckdb
+        except ImportError as exc:  # pragma: no cover - duckdb ships with default install
+            raise EngineNotAvailableError(
+                "pandas engine: scanning .duckdb files requires the 'duckdb' package "
+                "(install with `pip install duckdb`)."
+            ) from exc
+
+        con = duckdb.connect(str(source), read_only=True)
+        try:
+            df = con.table(table).df()
+        finally:
+            con.close()
+        return self.cast_schema(df, schema) if schema is not None else df
+
+    def from_records(
+        self,
+        records: list[dict[str, Any]] | dict[str, list[Any]],
+        schema: Schema | None = None,
+    ) -> pd.DataFrame:
+        """Build a DataFrame from in-memory records.
+
+        :class:`pandas.DataFrame` accepts both list-of-row-dicts and
+        columnar-dict natively.
+
+        Args:
+            records: Either ``[{"a": 1}, {"a": 2}]`` or ``{"a": [1, 2]}``.
+            schema: Optional Frictionless schema.
+
+        Returns:
+            A :class:`pandas.DataFrame`.
+        """
+        df = pd.DataFrame(records)
+        return self.cast_schema(df, schema) if schema is not None else df
+
+    # ------------------------------------------------------------------
+    # Write primitives — adapters call these directly
+    # ------------------------------------------------------------------
+
+    def write_csv(self, expr: pd.DataFrame, dest: SourceRef, **kwargs: Any) -> None:
+        """Write ``expr`` to ``dest`` as CSV.
+
+        Always ``index=False`` (Frictionless tabular data has no
+        row-index concept). Callers passing ``index=True`` get an
+        exception from pandas' duplicate-kwarg detection — that's
+        intentional, we don't want a silent on-disk surprise.
+        """
+        expr.to_csv(str(dest), index=False, **kwargs)
+
+    def write_parquet(
+        self,
+        expr: pd.DataFrame,
+        dest: SourceRef,
+        *,
+        partition_by: list[str] | None = None,
+        **kwargs: Any,
+    ) -> None:
+        """Write ``expr`` to ``dest`` as parquet.
+
+        Partitioned writes are handled by :class:`~datagrove.io.parquet_adapter.ParquetAdapter`
+        via pyarrow; the engine primitive rejects ``partition_by`` to
+        surface that contract clearly.
+        """
+        if partition_by:
+            raise InvalidEngineCallError(
+                "pandas engine: partitioned writes go through "
+                "ParquetAdapter.write(partition_by=...) which routes "
+                "through pyarrow rather than this primitive"
+            )
+        expr.to_parquet(str(dest), index=False, **kwargs)
+
+    def write_duckdb_table(
+        self,
+        expr: pd.DataFrame,
+        dest: SourceRef,
+        *,
+        table: str,
+        **kwargs: Any,
+    ) -> None:
+        """Write ``expr`` into a duckdb file as a named table (no SQL).
+
+        Uses ``con.register(name, df)`` + ``con.table(name).create(target)``
+        — the duckdb Python relational API. No SQL DDL string crosses
+        our code boundary, so the no-raw-SQL rule is satisfied for the
+        pandas engine.
+
+        Args:
+            expr: A pandas DataFrame.
+            dest: Target duckdb file path.
+            table: Destination table name.
+            **kwargs: Reserved (currently ignored).
+        """
+        del kwargs
+        if not table:
+            raise InvalidEngineCallError("pandas engine: write_duckdb_table requires a non-empty table= argument")
+        import duckdb
+
+        con = duckdb.connect(str(dest))
+        try:
+            # Register the in-memory DataFrame as a temporary view, then
+            # materialize it as a real table via the relational API. No
+            # SQL strings cross our code boundary here.
+            con.register("__datagrove_pandas_write", expr)
+            con.table("__datagrove_pandas_write").create(table)
+        finally:
+            con.unregister("__datagrove_pandas_write")
+            con.close()
+
+    # ------------------------------------------------------------------
+    # Schema cast — promoted from internal helper to public primitive
+    # ------------------------------------------------------------------
+
+    def cast_schema(self, expr: pd.DataFrame, schema: Schema) -> pd.DataFrame:
+        """Cast columns of ``expr`` per a Frictionless schema.
+
+        Columns absent from the schema are left untouched. Columns
+        absent from the DataFrame are silently skipped (schema may
+        describe more columns than the source actually carries; FK /
+        structural validation in datagrove.validation surfaces
+        missing-column errors separately).
+
+        Args:
+            expr: A pandas DataFrame.
+            schema: A Frictionless :class:`~datagrove.spec.model.Schema`.
+
+        Returns:
+            A DataFrame with the casts applied, or ``expr`` unchanged
+            if no field type was castable.
+        """
+        if schema is None or not getattr(schema, "fields", None):
+            return expr
+        cast: dict[str, str] = {}
+        for field in schema.fields:
+            if field.type is None:
+                continue
+            pandas_dtype = _FRICTIONLESS_TO_PANDAS_NULLABLE.get(field.type)
+            if pandas_dtype is None:
+                # Unknown Frictionless type (datetime, geojson, any, ...) —
+                # leave as-is; validation surfaces type errors separately.
+                continue
+            if field.name in expr.columns:
+                cast[field.name] = pandas_dtype
+        if cast:
+            expr = expr.astype(cast)
+        return expr
+
+    # ------------------------------------------------------------------
+    # Convenience delegators — route through io.dispatch
     # ------------------------------------------------------------------
 
     def scan(
@@ -107,52 +332,21 @@ class PandasEngine:
         schema: Schema | None = None,
         **kwargs: Any,
     ) -> pd.DataFrame:
-        """Read ``source`` eagerly and return a :class:`pandas.DataFrame`.
+        """Open ``source`` via the FormatAdapter registry.
 
-        Naming note: pandas is eager, so the "scan" verb here is a slight
-        misnomer — the returned object is already materialized, not a
-        lazy plan. The verb matches the :class:`~datagrove.engines.base.Engine`
-        protocol so callers can swap engines without changing call sites.
-
-        Same shape as :meth:`IbisEngine.scan` / :meth:`PolarsEngine.scan`:
-        a single :func:`_resolve_kind` helper picks the dispatch key,
-        then a flat if/elif calls the per-kind reader, then
-        :func:`_apply_schema_casts` runs once at the end on every path.
+        3-line convenience over :func:`datagrove.io.dispatch` plus a
+        short carve-out for dict sources (the dispatcher rejects dicts;
+        they're routed to :meth:`from_records` /
+        :meth:`read_duckdb_table` directly).
 
         Args:
-            source: A path, URL, or dict handle. Accepted dict shapes:
-
-                - ``{"data": [...]}`` — inline data (list of row dicts
-                  or columnar dict).
-                - ``{"format": "duckdb", "path": "x.duckdb", "table":
-                  "link"}`` — a duckdb table handle.
-
-                Strings starting with ``http(s)://`` work via pandas'
-                fsspec integration; ``s3://`` etc. require the optional
-                ``s3fs`` extra. Pass ``storage_options=`` through
-                ``**kwargs`` for credentials.
-            format: Optional explicit format hint
-                (``"csv"`` / ``"parquet"`` / ``"duckdb"`` / ``"csv.zip"``
-                / ``"data"``). Wins over extension sniff.
-            schema: Optional Frictionless :class:`~datagrove.spec.model.Schema`.
-                When provided, integer / number / string / boolean
-                columns are cast to pandas **nullable** dtypes
-                (``Int64`` / ``Float64`` / ``string`` / ``boolean``)
-                so that missing values round-trip correctly.
-            **kwargs: Forwarded to the underlying reader
-                (e.g. ``sep``, ``encoding``, ``compression``,
-                ``storage_options``, plus ``table=`` for duckdb).
+            source: Path / URL / ``Path`` / handle dict.
+            format: Optional explicit format hint forwarded to dispatch.
+            schema: Optional Frictionless schema.
+            **kwargs: Forwarded to the resolved adapter's ``read``.
 
         Returns:
-            A materialized pandas DataFrame.
-
-        Raises:
-            NotImplementedError: For unsupported formats (the message
-                names the deferred FormatAdapter task).
-            InvalidEngineCallError: For valid formats with missing
-                required kwargs (e.g. ``.duckdb`` without ``table=``).
-            UnsupportedSourceError: For dict sources whose shape matches
-                neither ``{"data": ...}`` nor the duckdb handle.
+            A materialized :class:`pandas.DataFrame`.
 
         Examples:
             >>> from datagrove.engines.pandas_engine import PandasEngine
@@ -162,31 +356,22 @@ class PandasEngine:
             >>> isinstance(df, pd.DataFrame), len(df)
             (True, 2)
         """
-        kind = _resolve_kind(source, format)
+        if isinstance(source, dict):
+            return _scan_dict(self, source, schema=schema, **kwargs)
+        from datagrove.io import dispatch
 
-        if kind == "data":
-            # pd.DataFrame accepts both list-of-row-dicts and a columnar
-            # dict natively, so we hand the value through unchanged.
-            df = pd.DataFrame(source["data"])  # type: ignore[index]
-        elif kind == "csv":
-            df = pd.read_csv(str(source), **kwargs)
-        elif kind == "parquet":
-            # I3: pandas's read_parquet uses pyarrow underneath, which
-            # natively handles Hive-partitioned directories and reinjects
-            # partition columns — no extra kwarg is needed. The branch is
-            # symmetric with the ibis/polars engines so the parquet
-            # adapter can forward without engine-specific dispatch.
-            df = pd.read_parquet(str(source), **kwargs)
-        elif kind in {"csv.zip", "zip"}:
-            df = _read_csv_zip(str(source), **kwargs)
-        elif kind == "duckdb":
-            df = _read_duckdb(source, **kwargs)
-        else:  # pragma: no cover - _resolve_kind raises before reaching here
-            raise NotImplementedError(f"pandas engine: source kind {kind!r} not supported")
+        adapter = dispatch(source, format=format)
+        return adapter.read(source, engine=self, schema=schema, **kwargs)
 
-        if schema is not None:
-            df = _apply_schema_casts(df, schema)
-        return df
+    def write(self, expr: pd.DataFrame, dest: SourceRef, fmt: str, **kwargs: Any) -> None:
+        """Write ``expr`` to ``dest`` via the FormatAdapter registry.
+
+        3-line convenience over :func:`datagrove.io.get_adapter`.
+        """
+        from datagrove.io import get_adapter
+
+        adapter = get_adapter(fmt)
+        adapter.write(expr, dest, engine=self, **kwargs)
 
     # ------------------------------------------------------------------
     # materialize / to_pandas / to_polars
@@ -262,249 +447,48 @@ class PandasEngine:
             ) from exc
         return pl.from_pandas(expr)
 
-    # ------------------------------------------------------------------
-    # write
-    # ------------------------------------------------------------------
-
-    def write(self, expr: pd.DataFrame, dest: SourceRef, fmt: str, **kwargs: Any) -> None:
-        """Persist ``expr`` to ``dest`` in the given format.
-
-        Supported formats:
-
-        * ``"csv"``     — :meth:`pandas.DataFrame.to_csv`,
-          always ``index=False`` (Frictionless tabular data has no
-          row-index concept).
-        * ``"parquet"`` — :meth:`pandas.DataFrame.to_parquet` (pyarrow
-          backend), ``index=False``.
-        * ``"duckdb"``  — :mod:`duckdb` Python API: open ``dest`` as a
-          duckdb file, register the DataFrame, and write it as a table
-          named ``kwargs['table']`` via the no-SQL relational API
-          (``con.from_df(df).create(table)``).
-
-        Args:
-            expr: A pandas DataFrame.
-            dest: Output path. Coerced to ``str`` for pandas writers
-                that don't accept ``Path``.
-            fmt: Format identifier.
-            **kwargs: Format-specific options
-                (``table=`` is required for ``"duckdb"``).
-
-        Raises:
-            NotImplementedError: For unsupported formats.
-            ValueError: For ``fmt="duckdb"`` without ``kwargs['table']``.
-
-        Examples:
-            >>> from datagrove.engines.pandas_engine import PandasEngine
-            >>> import pandas as pd, tempfile, os
-            >>> df = pd.DataFrame({"a": [1, 2]})
-            >>> with tempfile.TemporaryDirectory() as d:
-            ...     p = os.path.join(d, "x.csv")
-            ...     PandasEngine().write(df, p, fmt="csv")
-            ...     pd.read_csv(p).shape
-            (2, 1)
-        """
-        dest_str = str(dest)
-        if fmt == "csv":
-            expr.to_csv(dest_str, index=False, **kwargs)
-            return
-        if fmt == "parquet":
-            expr.to_parquet(dest_str, index=False, **kwargs)
-            return
-        if fmt == "duckdb":
-            _write_duckdb(expr, dest_str, **kwargs)
-            return
-
-        raise NotImplementedError(
-            f"pandas engine: write fmt={fmt!r} is not supported. "
-            "Supported: csv, parquet, duckdb. "
-            "Custom formats can be added via the datagrove.io FormatAdapter registry "
-            "(tasks 1.7-1.11)."
-        )
-
 
 # ---------------------------------------------------------------------------
 # Helpers (module-level — small, single-consumer, but worth a name)
 # ---------------------------------------------------------------------------
 
 
-def _resolve_kind(source: SourceRef, format: str | None) -> str:
-    """Decide which in-engine reader to use for ``source``.
+def _scan_dict(
+    engine: PandasEngine,
+    source: dict[str, Any],
+    *,
+    schema: Schema | None,
+    **kwargs: Any,
+) -> pd.DataFrame:
+    """Route the two supported dict-source shapes to the right primitive.
 
-    Returns one of ``"data"`` / ``"csv"`` / ``"parquet"`` / ``"duckdb"``
-    / ``"csv.zip"`` / ``"zip"``. Raises :class:`NotImplementedError` for
-    unsupported formats (naming the task that will add the adapter), or
-    :class:`UnsupportedSourceError` for unrecognised dict shapes.
-
-    Same shape as :func:`datagrove.engines.ibis_engine._resolve_kind` and
-    :func:`datagrove.engines.polars_engine._resolve_kind` — symmetry is
-    the whole point (Lens C: a reader who understands one engine should
-    predict the others).
+    Symmetric with :func:`datagrove.engines.ibis_engine._scan_dict` and
+    :func:`datagrove.engines.polars_engine._scan_dict`. Both shapes
+    documented on :meth:`datagrove.engines.base.Engine.scan`.
     """
-    if format is not None:
-        f = format.lower()
-        if f in {"csv", "parquet", "duckdb", "data", "csv.zip", "zip"}:
-            return f
-        raise NotImplementedError(
-            f"pandas engine: unsupported format {f!r}. "
-            "Supported: csv, parquet, csv.zip, duckdb, data. "
-            "Custom formats can be added via the datagrove.io FormatAdapter "
-            "registry (tasks 1.7-1.11)."
-        )
+    if "data" in source:
+        return engine.from_records(source["data"], schema=schema)
 
-    if isinstance(source, dict):
-        # Cross-engine dict-source contract (see Engine.scan docstring):
-        #   {"data": ...}                                  → inline data
-        #   {"format": "duckdb", "path": ..., "table": ...} → duckdb handle
-        #   {"path": "x.duckdb", "table": ...}             → duckdb handle
-        if "data" in source:
-            return "data"
-        fmt = str(source.get("format", "")).lower()
-        if fmt == "duckdb":
-            return "duckdb"
-        path = source.get("path")
-        if isinstance(path, (str, Path)) and str(path).lower().endswith(".duckdb"):
-            return "duckdb"
-        raise UnsupportedSourceError(
-            f"pandas engine: dict source shape not recognised (keys={sorted(source)!r}). "
-            "Supported shapes: {'data': [...]} for inline data, or "
-            "{'format': 'duckdb', 'path': '...', 'table': '...'} for a duckdb handle."
-        )
-
-    lower = str(source).lower()
-    # Compound extensions first.
-    if lower.endswith(".csv.zip"):
-        return "csv.zip"
-    if lower.endswith(".zip"):
-        return "zip"
-    if lower.endswith(".parquet"):
-        return "parquet"
-    if lower.endswith(".duckdb"):
-        return "duckdb"
-    if lower.endswith(".csv"):
-        return "csv"
-    # Anything else — name the offending extension so the message is helpful.
-    suffix = Path(str(source)).suffix.lstrip(".") or "unknown"
-    raise NotImplementedError(
-        f"pandas engine: unsupported format {suffix!r} for source {str(source)!r}. "
-        "Supported: csv, parquet, csv.zip, duckdb. "
-        "Custom formats can be added via the datagrove.io FormatAdapter registry "
-        "(tasks 1.7-1.11)."
-    )
-
-
-def _read_csv_zip(path_str: str, **kwargs: Any) -> pd.DataFrame:
-    """Read a zipped csv. Single-csv-in-zip only; multi-csv defers to task 1.10."""
-    import zipfile
-
-    # Peek into the zip to count csvs and refuse the multi-csv case with
-    # a helpful pointer. pandas would silently grab the first csv-ish
-    # entry which is a footgun for GMNS packages (the leavenworth zip
-    # has 9 csvs and a datapackage.json - wrong behavior either way).
-    with zipfile.ZipFile(path_str) as z:
-        csv_names = [n for n in z.namelist() if n.lower().endswith(".csv")]
-    if len(csv_names) > 1:
-        raise NotImplementedError(
-            f"pandas engine: zip contains multiple csv files {csv_names!r}; "
-            "multi-table zip support is planned for task 1.10 "
-            "(zipcsv FormatAdapter - see docs/architecture.md section 4). "
-            "For now, extract the zip and read individual csvs."
-        )
-    if not csv_names:
-        raise InvalidEngineCallError(f"pandas engine: zip at {path_str!r} contains no .csv files")
-    # Single-csv case: pandas' compression="zip" auto-decompresses.
-    return pd.read_csv(path_str, compression="zip", **kwargs)
-
-
-def _read_duckdb(source: SourceRef, **kwargs: Any) -> pd.DataFrame:
-    """Read a single table out of a duckdb file or handle dict (no SQL).
-
-    Accepts both shapes:
-
-    - A path-like (``str``, ``Path``) plus ``kwargs['table']``.
-    - A duckdb handle dict (``{"format": "duckdb", "path": ..., "table": ...}``).
-
-    Pandas has no native duckdb reader, so we use the duckdb Python
-    relational API (``con.table(name)``) rather than embedding a SQL
-    string — that would violate the no-raw-SQL rule (see
-    ``scripts/lint_no_sql.py``).
-    """
-    import duckdb
-
-    if isinstance(source, dict):
-        path_str = str(source["path"])  # _resolve_kind guarantees presence
+    fmt = str(source.get("format", "")).lower()
+    path = source.get("path")
+    is_duckdb_handle = fmt == "duckdb" or (isinstance(path, (str, Path)) and str(path).lower().endswith(".duckdb"))
+    if is_duckdb_handle:
+        if path is None:
+            raise InvalidEngineCallError(
+                f"pandas engine: duckdb dict source requires 'path' (got keys={sorted(source)!r})"
+            )
         table = source.get("table") or kwargs.pop("table", None)
-    else:
-        path_str = str(source)
-        table = kwargs.pop("table", None)
+        if not table:
+            raise InvalidEngineCallError(
+                f"pandas engine: duckdb dict source requires 'table' (got keys={sorted(source)!r})"
+            )
+        return engine.read_duckdb_table(str(path), table=table, schema=schema, **kwargs)
 
-    if table is None:
-        raise InvalidEngineCallError(
-            f"pandas engine: scanning a .duckdb file requires kwargs['table']; "
-            f"got source={path_str!r} with no table name. "
-            "Example: engine.scan('mynet.duckdb', table='node')."
-        )
-    con = duckdb.connect(path_str, read_only=True)
-    try:
-        return con.table(table).df()
-    finally:
-        con.close()
-
-
-def _write_duckdb(df: pd.DataFrame, dest_str: str, **kwargs: Any) -> None:
-    """Write ``df`` as a duckdb table via the Python API (no SQL).
-
-    Uses ``con.register(name, df)`` to expose the DataFrame as a virtual
-    relation, then ``con.table(name).create(target_table)`` to
-    materialize it inside the duckdb file. Both calls are the no-SQL
-    relational API: they avoid the equivalent SQL DDL string entirely
-    and so stay within the lint_no_sql rule.
-    """
-    import duckdb
-
-    table = kwargs.pop("table", None)
-    if table is None:
-        raise InvalidEngineCallError(
-            "pandas engine: writing to a .duckdb file requires kwargs['table']; "
-            "got no table name. Example: engine.write(df, 'mynet.duckdb', fmt='duckdb', table='node')."
-        )
-    con = duckdb.connect(dest_str)
-    try:
-        # Register the in-memory DataFrame as a temporary view, then
-        # materialize it as a real table via the relational API. No SQL
-        # strings cross our code boundary here.
-        con.register("__datagrove_pandas_write", df)
-        con.table("__datagrove_pandas_write").create(table)
-    finally:
-        con.unregister("__datagrove_pandas_write")
-        con.close()
-
-
-def _apply_schema_casts(df: pd.DataFrame, schema: Schema) -> pd.DataFrame:
-    """Cast columns named in ``schema`` to pandas nullable dtypes.
-
-    Columns absent from the schema are left untouched. Columns absent
-    from the DataFrame are silently skipped (schema may describe more
-    columns than the source actually carries; FK / structural validation
-    in datagrove.validation surfaces missing-column errors separately).
-
-    Same name as :func:`datagrove.engines.ibis_engine._apply_schema_casts`
-    and :func:`datagrove.engines.polars_engine._apply_schema_casts` —
-    symmetric API surface across the three engines.
-    """
-    cast: dict[str, str] = {}
-    for field in schema.fields:
-        if field.type is None:
-            continue
-        pandas_dtype = _FRICTIONLESS_TO_PANDAS_NULLABLE.get(field.type)
-        if pandas_dtype is None:
-            # Unknown Frictionless type (datetime, geojson, any, ...) —
-            # leave as-is; validation surfaces type errors separately.
-            continue
-        if field.name in df.columns:
-            cast[field.name] = pandas_dtype
-    if cast:
-        df = df.astype(cast)
-    return df
+    raise UnsupportedSourceError(
+        f"pandas engine: dict source shape not recognised (keys={sorted(source)!r}). "
+        "Supported shapes: {'data': [...]} for inline data, or "
+        "{'format': 'duckdb', 'path': '...', 'table': '...'} for a duckdb handle."
+    )
 
 
 __all__ = ["PandasEngine"]

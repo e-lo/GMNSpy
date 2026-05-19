@@ -230,3 +230,169 @@ def test_polars_to_pandas_does_not_use_pyarrow_extension_dtypes():
     # Reference the polars import so the linter doesn't drop it from
     # the imports block above.
     assert pl is not None
+
+
+# ---------------------------------------------------------------------------
+# Cross-engine primitive parity (issue #134 — engine/adapter inversion)
+# ---------------------------------------------------------------------------
+#
+# Before #134 the only public read surface was ``engine.scan(source)``,
+# which dispatched per-format inside each engine. After #134 the
+# adapters call ``engine.read_csv`` / ``read_parquet`` /
+# ``read_duckdb_table`` / ``from_records`` directly. These tests pin
+# that the primitives produce dtype-equivalent output across engines —
+# the same regression promise as the ``scan``-based tests above, just
+# moved one layer deeper so the contract is locked at the call site
+# that adapters actually use.
+
+
+def _engine_for(name: str):
+    if name == "ibis":
+        return IbisEngine()
+    if name == "polars":
+        return PolarsEngine()
+    if name == "pandas":
+        return PandasEngine()
+    raise AssertionError(f"unknown engine name: {name}")
+
+
+PARQUET_LINK = leavenworth.parquet_dir() / "link.parquet"
+DUCKDB_PATH = leavenworth.duckdb_path()
+
+
+@pytest.mark.parametrize("engine_name", ["ibis", "polars", "pandas"])
+def test_read_csv_primitive_dtypes_match_scan(engine_name):
+    """``engine.read_csv(source)`` returns dtype-equivalent output to ``engine.scan(source)``.
+
+    The adapter calls ``read_csv`` directly post-#134; this pins that
+    the dispatch path and the direct-primitive path agree on dtypes.
+    """
+    e = _engine_for(engine_name)
+    try:
+        via_scan = e.to_pandas(e.scan(LINK_CSV))
+        via_primitive = e.to_pandas(e.read_csv(LINK_CSV))
+    finally:
+        if hasattr(e, "close"):
+            e.close()
+    for col, expected in EXPECTED_DTYPES.items():
+        assert str(via_primitive[col].dtype) == expected
+        assert str(via_scan[col].dtype) == str(via_primitive[col].dtype)
+
+
+@pytest.mark.parametrize("engine_name", ["ibis", "polars", "pandas"])
+def test_read_parquet_primitive_dtypes_consistent_across_engines(engine_name):
+    """``engine.read_parquet(source)`` produces the cross-engine dtype family."""
+    e = _engine_for(engine_name)
+    try:
+        df = e.to_pandas(e.read_parquet(PARQUET_LINK))
+    finally:
+        if hasattr(e, "close"):
+            e.close()
+    for col, expected in EXPECTED_DTYPES.items():
+        assert col in df.columns
+        assert str(df[col].dtype) == expected, f"{engine_name}.read_parquet col {col!r}: {df[col].dtype} != {expected}"
+
+
+@pytest.mark.parametrize("engine_name", ["ibis", "polars", "pandas"])
+def test_read_duckdb_table_primitive_consistent_across_engines(engine_name):
+    """``engine.read_duckdb_table(source, table=...)`` reads the duckdb fixture."""
+    e = _engine_for(engine_name)
+    try:
+        df = e.to_pandas(e.read_duckdb_table(DUCKDB_PATH, table="link"))
+    finally:
+        if hasattr(e, "close"):
+            e.close()
+    # Every engine sees the same rowcount and column set from the same
+    # duckdb file.
+    assert len(df) > 0
+    assert "from_node_id" in df.columns
+
+
+@pytest.mark.parametrize("engine_name", ["ibis", "polars", "pandas"])
+def test_from_records_primitive_accepts_both_dict_shapes(engine_name):
+    """``from_records`` handles the two contract shapes (list-of-row-dicts + columnar dict)."""
+    e = _engine_for(engine_name)
+    try:
+        rows = e.to_pandas(e.from_records([{"a": 1, "b": "x"}, {"a": 2, "b": "y"}]))
+        cols = e.to_pandas(e.from_records({"a": [1, 2], "b": ["x", "y"]}))
+    finally:
+        if hasattr(e, "close"):
+            e.close()
+    assert len(rows) == 2 and list(rows.columns) == ["a", "b"]
+    assert len(cols) == 2 and list(cols.columns) == ["a", "b"]
+
+
+# ---------------------------------------------------------------------------
+# Engine scan() is a thin delegator after #134
+# ---------------------------------------------------------------------------
+
+
+def test_engines_have_no_resolve_kind_method():
+    """Lock the engine/adapter inversion: no per-engine ``_resolve_kind`` lives on.
+
+    Before #134 each engine carried a private ``_resolve_kind`` that
+    dispatched per-format inside ``scan``. After #134 dispatch lives
+    exclusively in ``datagrove.io.dispatch``, called from the
+    delegating ``scan``. If a future contributor reintroduces a
+    per-engine resolver, this regression fires.
+    """
+    for name in ("ibis", "polars", "pandas"):
+        e = _engine_for(name)
+        try:
+            assert not hasattr(e, "_resolve_kind"), (
+                f"{name} engine grew a _resolve_kind — engine/adapter inversion "
+                "regressed; dispatch belongs in datagrove.io.dispatch"
+            )
+            # And the module-level helper should be gone too.
+            module = type(e).__module__
+            mod = __import__(module, fromlist=["*"])
+            assert not hasattr(mod, "_resolve_kind"), (
+                f"{module} grew a module-level _resolve_kind helper — same regression"
+            )
+        finally:
+            if hasattr(e, "close"):
+                e.close()
+
+
+@pytest.mark.parametrize("engine_name", ["ibis", "polars", "pandas"])
+def test_engine_scan_is_a_thin_delegator(engine_name):
+    """Engine.scan() is a short convenience over io.dispatch — pin the LOC budget.
+
+    The post-#134 ``scan`` body is the dict-source carve-out (one if
+    plus a helper call) and the dispatch+delegate (two lines). Keeping
+    it under ~10 executable statements is the rubric that prevents a
+    regression where someone re-grows the per-format if/elif inside
+    ``scan``.
+    """
+    import ast
+    import inspect
+    import textwrap
+
+    e = _engine_for(engine_name)
+    try:
+        src = textwrap.dedent(inspect.getsource(e.scan))
+    finally:
+        if hasattr(e, "close"):
+            e.close()
+
+    # Parse the function and count executable statements in its body,
+    # stripping the docstring expression. This avoids the heuristic
+    # mess of trying to skip docstrings by line.
+    tree = ast.parse(src)
+    func = tree.body[0]
+    assert isinstance(func, (ast.FunctionDef, ast.AsyncFunctionDef))
+    body = list(func.body)
+    if body and isinstance(body[0], ast.Expr) and isinstance(body[0].value, ast.Constant):
+        # Drop the docstring.
+        body = body[1:]
+
+    # A statement count <= 10 covers: ``if isinstance(source, dict): return _scan_dict(...)``,
+    # ``from datagrove.io import dispatch``, ``adapter = dispatch(...)``,
+    # ``return adapter.read(...)`` and a little slack for future minor
+    # additions. Anything substantially larger means a per-format
+    # if/elif has crept back in.
+    assert len(body) <= 10, (
+        f"{engine_name}.scan() body has {len(body)} top-level statements (budget 10); "
+        "engine/adapter inversion regressed — dispatch should live in "
+        f"datagrove.io.dispatch.\n{ast.unparse(func)}"
+    )

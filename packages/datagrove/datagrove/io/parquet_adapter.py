@@ -3,8 +3,8 @@
 Two physical layouts share one logical "parquet table":
 
 1. **Single file** — ``foo.parquet``. Trivial: pass the path through to
-   ``engine.scan(..., format='parquet')`` and let the engine call its
-   native reader.
+   the engine's :meth:`~datagrove.engines.base.Engine.read_parquet`
+   primitive.
 2. **Hive-partitioned directory** — ``mynet.gmns/link/h3=8829a0c00b/part-0.parquet``
    etc. This is the **recommended persistent layout**
    (see :doc:`architecture` §6.1). Reads here must enable Hive partition
@@ -12,12 +12,14 @@ Two physical layouts share one logical "parquet table":
    reinjected into the result, and so that a downstream filter on those
    columns becomes a true partition prune.
 
-The adapter does no I/O itself — it routes the source through to the
-engine, attaching the right kwargs per engine (duckdb auto-detects Hive
-style; polars wants a glob + explicit flag; pandas uses pyarrow under
-the hood and handles directories natively). Partitioned writes use
-pyarrow's ``write_to_dataset`` because not every engine exposes
-partitioned-write through its own writer.
+The adapter does no I/O itself — it detects "is this a partitioned
+dir" locally and calls the engine's
+:meth:`~datagrove.engines.base.Engine.read_parquet` primitive with
+``hive_partitioning=`` set. Each engine owns the per-library
+partitioning detail (duckdb auto-detects Hive style; polars wants a
+glob + explicit flag; pandas/pyarrow handles directories natively).
+Partitioned writes use pyarrow's ``write_to_dataset`` because not
+every engine exposes partitioned-write through its own writer.
 
 Examples:
     Single-file roundtrip with the default ibis engine::
@@ -203,7 +205,7 @@ class ParquetAdapter:
         return [ResourceRef(name=name or "parquet", path=str(path), format=self.name)]
 
     # ------------------------------------------------------------------
-    # read — delegates to engine.scan with format=parquet + Hive kwargs
+    # read — delegates to engine.read_parquet primitive + Hive detection
     # ------------------------------------------------------------------
 
     def read(
@@ -215,24 +217,37 @@ class ParquetAdapter:
     ) -> TableExpr:
         """Return a lazy table expression for ``source``.
 
-        For both single files and partitioned directories the adapter just
-        forwards the path to ``engine.scan(source, format="parquet", ...)``.
-        Each engine is responsible for detecting "this is a directory" and
-        applying its own native Hive-partitioning kwargs (I3) — the adapter
-        no longer dispatches on engine name, which previously coupled this
-        module to the specific set of engines that existed.
+        Detects whether ``source`` is a partitioned directory locally
+        and passes ``hive_partitioning=`` to the engine's
+        :meth:`~datagrove.engines.base.Engine.read_parquet` primitive.
+        The engine still owns the per-library partitioning detail (e.g.
+        polars needs an explicit glob); the adapter just tells it
+        "treat this as a Hive dataset" so the engine doesn't have to
+        re-stat the filesystem.
 
         Args:
             source: Path to a ``.parquet`` file or partitioned directory.
-            engine: Engine whose ``scan`` performs the actual read.
+            engine: Engine whose ``read_parquet`` performs the actual read.
             schema: Optional Frictionless schema forwarded to the engine.
-            **kwargs: Extra options forwarded verbatim to ``engine.scan``.
+            **kwargs: Extra options forwarded verbatim to
+                :meth:`~datagrove.engines.base.Engine.read_parquet`.
 
         Returns:
             An engine-native lazy table expression.
         """
         path = _as_path(source)
-        return engine.scan(str(path), format="parquet", schema=schema, **kwargs)
+        # Caller's explicit hive_partitioning kwarg wins; otherwise we
+        # detect "is this a partitioned dir" once here so the engine
+        # primitive doesn't have to re-walk the filesystem.
+        is_partitioned = kwargs.pop("hive_partitioning", None)
+        if is_partitioned is None:
+            is_partitioned = _looks_partitioned(path)
+        return engine.read_parquet(
+            str(path),
+            schema=schema,
+            hive_partitioning=bool(is_partitioned),
+            **kwargs,
+        )
 
     # ------------------------------------------------------------------
     # write — single file via engine; partitioned via pyarrow
@@ -249,8 +264,8 @@ class ParquetAdapter:
 
         Two modes:
 
-        * **Single file** (default) — delegates to
-          ``engine.write(expr, dest, fmt='parquet', **kwargs)``.
+        * **Single file** (default) — delegates to the engine's
+          :meth:`~datagrove.engines.base.Engine.write_parquet` primitive.
         * **Partitioned** — caller passes ``partition_by=['col', ...]``.
           We materialize ``expr`` through pyarrow and call
           :func:`pyarrow.parquet.write_to_dataset` with a Hive-style
@@ -289,9 +304,9 @@ class ParquetAdapter:
             self._write_partitioned(expr, dest, engine, partition_by, **kwargs)
             return
 
-        # Single-file: defer to the engine's parquet writer.
+        # Single-file: defer to the engine's parquet primitive.
         dest_path = _as_path(dest)
-        engine.write(expr, str(dest_path), fmt="parquet", **kwargs)
+        engine.write_parquet(expr, str(dest_path), **kwargs)
 
     def _write_partitioned(
         self,

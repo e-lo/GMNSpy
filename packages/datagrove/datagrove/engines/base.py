@@ -1,10 +1,12 @@
 """Engine protocol + supporting types for the datagrove engine layer.
 
 An ``Engine`` is the *execution* abstraction over a Frictionless tabular
-data package. It knows how to ``scan`` a source into a lazy table
-expression, ``materialize`` that expression into the engine's natural
-in-memory frame, convert to/from pandas and polars, and ``write`` an
-expression back out to a destination.
+data package. It exposes a set of **per-format read/write primitives**
+(``read_csv``, ``read_parquet``, ``read_duckdb_table``, ``from_records``,
+``write_csv``, ``write_parquet``, ``write_duckdb_table``) plus a
+``cast_schema`` helper. ``scan`` and ``write`` are thin convenience
+methods that delegate format routing to the
+:class:`~datagrove.io.FormatAdapter` registry.
 
 Concrete engines (one per file in this package) implement this protocol:
 
@@ -21,14 +23,23 @@ that hands an expression back to the same engine that produced it does
 not need to care; cross-engine flow goes through the
 ``to_pandas`` / ``to_polars`` converters.
 
-The protocol intentionally takes a ``SourceRef`` (a path / URL / dict
-handle) on ``scan`` rather than a pre-opened reader. Format dispatch is
-the job of the ``FormatAdapter`` layer (Phase 1 task 1.6, separate
-module ``datagrove.io``); engines call into that layer when they need
-to materialize bytes from a particular file shape (csv / parquet /
-duckdb / zipcsv / remote). For task 1.2 this contract is just declared
-— the wiring lands with the concrete engines (1.3 / 1.4 / 1.5) and
-the format adapter (1.6).
+Dispatch model (single source of truth)
+---------------------------------------
+
+After issue #134 (the engine/adapter inversion), format dispatch lives
+in exactly one place — the :class:`~datagrove.io.FormatAdapter` registry.
+
+- ``Adapter.read(source, engine, ...)`` calls the engine's matching
+  **primitive** (``engine.read_csv``, ``engine.read_parquet``,
+  ``engine.read_duckdb_table``, ``engine.from_records``). No
+  engine-name dispatch inside adapters.
+- ``Engine.scan(source, format=None, ...)`` is a 3-line convenience
+  that resolves ``source`` via ``datagrove.io.dispatch`` and delegates
+  to the chosen adapter's ``read``. It exists so callers who don't want
+  to think about adapters can just say ``engine.scan(path)``.
+
+The inversion means an engine never owns a per-format if/elif ladder
+and adapters never name engines; both can grow independently.
 """
 
 from __future__ import annotations
@@ -98,12 +109,222 @@ class Engine(Protocol):
     (``datagrove.engines``) holds singleton instances and resolves them
     by ``name``.
 
+    The contract has three layers:
+
+    1. **Per-format primitives** (``read_csv`` / ``read_parquet`` /
+       ``read_duckdb_table`` / ``from_records`` / their write
+       counterparts). Adapters call these directly. An engine that
+       doesn't natively support a primitive (e.g.
+       :class:`~datagrove.engines.polars_engine.PolarsEngine.write_duckdb_table`)
+       raises :class:`~datagrove.engines.errors.EngineNotAvailableError`
+       with a clear pointer at the engine that does.
+    2. **Schema casting** (``cast_schema``). Promoted from a per-engine
+       internal helper so adapters can apply Frictionless schema casts
+       uniformly after a primitive read.
+    3. **Convenience delegators** (``scan`` / ``write``). 3-line
+       wrappers that route through ``datagrove.io.dispatch``. They exist
+       so callers who don't care about adapters can still write
+       ``engine.scan(path)``.
+
     Attributes:
         name: Short identifier used as the registry key
             (``"ibis"`` / ``"polars"`` / ``"pandas"``).
     """
 
     name: str
+
+    # ------------------------------------------------------------------
+    # Per-format read primitives — adapters call these directly
+    # ------------------------------------------------------------------
+
+    def read_csv(
+        self,
+        source: SourceRef,
+        schema: Any | None = None,
+        **kwargs: Any,
+    ) -> TableExpr:
+        """Read a single CSV file into an engine-native lazy expression.
+
+        Adapters (``CsvAdapter``, ``ZipCsvAdapter`` after member
+        extraction, ``RemoteAdapter`` after URL resolution) call this
+        primitive directly. Engines should apply ``cast_schema`` at the
+        tail when ``schema`` is non-None so behaviour matches the
+        convenience ``scan(..., schema=...)`` path.
+
+        Args:
+            source: Filesystem path / URL / ``Path``.
+            schema: Optional Frictionless :class:`Schema` to cast columns
+                with after the read.
+            **kwargs: Forwarded verbatim to the underlying library reader.
+                Names follow the library, not a normalized vocabulary —
+                e.g. polars wants ``separator=``, pandas wants ``sep=``,
+                duckdb wants ``delim=``.
+        """
+        ...
+
+    def read_parquet(
+        self,
+        source: SourceRef,
+        schema: Any | None = None,
+        *,
+        hive_partitioning: bool = False,
+        **kwargs: Any,
+    ) -> TableExpr:
+        """Read parquet (single file or Hive-partitioned directory).
+
+        When ``hive_partitioning=True`` the engine must enable partition
+        discovery (so partition columns survive into the result and
+        downstream filters become true partition prunes). For
+        single-file parquet ``hive_partitioning`` is ignored.
+
+        Args:
+            source: Path to a ``.parquet`` file or partitioned directory.
+            schema: Optional Frictionless schema, applied after read.
+            hive_partitioning: Enable Hive-style partition discovery.
+            **kwargs: Forwarded to the underlying reader.
+        """
+        ...
+
+    def read_duckdb_table(
+        self,
+        source: SourceRef,
+        *,
+        table: str,
+        schema: Any | None = None,
+        **kwargs: Any,
+    ) -> TableExpr:
+        """Read one named table out of a ``.duckdb`` file.
+
+        Args:
+            source: Path / URL to a ``.duckdb`` file.
+            table: The table name to read. Required (no defaulting —
+                the duckdb adapter's ``scan()`` enumerates tables).
+            schema: Optional Frictionless schema, applied after read.
+            **kwargs: Forwarded to the engine-specific reader.
+
+        Raises:
+            EngineNotAvailableError: If the engine can't read duckdb
+                files (none of the stock engines raise — all three
+                support this primitive).
+        """
+        ...
+
+    def from_records(
+        self,
+        records: list[dict[str, Any]] | dict[str, list[Any]],
+        schema: Any | None = None,
+    ) -> TableExpr:
+        """Build a table expression from in-memory records.
+
+        Accepts the two shapes a caller might naturally write:
+
+        - **List of row dicts**: ``[{"a": 1, "b": 2}, {"a": 3, "b": 4}]``
+        - **Columnar dict**: ``{"a": [1, 3], "b": [2, 4]}``
+
+        Adapters do not call this primitive (no on-disk format produces
+        in-memory records); ``Engine.scan`` calls it directly for the
+        ``{"data": ...}`` dict-source contract documented on
+        :meth:`scan`.
+
+        Args:
+            records: Either shape above.
+            schema: Optional Frictionless schema, applied after build.
+        """
+        ...
+
+    # ------------------------------------------------------------------
+    # Per-format write primitives — adapters call these directly
+    # ------------------------------------------------------------------
+
+    def write_csv(self, expr: TableExpr, dest: SourceRef, **kwargs: Any) -> None:
+        """Write ``expr`` to ``dest`` as a single CSV file.
+
+        Args:
+            expr: Engine-native expression to materialize and write.
+            dest: Target path.
+            **kwargs: Forwarded to the underlying CSV writer (compression,
+                line terminator, ...). Names follow the library.
+        """
+        ...
+
+    def write_parquet(
+        self,
+        expr: TableExpr,
+        dest: SourceRef,
+        *,
+        partition_by: list[str] | None = None,
+        **kwargs: Any,
+    ) -> None:
+        """Write ``expr`` to ``dest`` as parquet (single file or partitioned).
+
+        When ``partition_by`` is given the engine writes a Hive-style
+        partitioned dataset under ``dest``. The parquet adapter
+        currently handles partitioned writes through pyarrow regardless
+        of engine; engines may either implement the partitioned-write
+        path natively or document that they only support the
+        single-file case.
+
+        Args:
+            expr: Engine-native expression.
+            dest: Target path or directory.
+            partition_by: Optional Hive partition columns. ``None``
+                writes a single file.
+            **kwargs: Forwarded to the underlying writer.
+        """
+        ...
+
+    def write_duckdb_table(
+        self,
+        expr: TableExpr,
+        dest: SourceRef,
+        *,
+        table: str,
+        **kwargs: Any,
+    ) -> None:
+        """Write ``expr`` into a ``.duckdb`` file as a named table.
+
+        Engines that cannot natively write duckdb without raw SQL
+        (notably :class:`~datagrove.engines.polars_engine.PolarsEngine`)
+        raise :class:`~datagrove.engines.errors.EngineNotAvailableError`
+        and point callers at :class:`~datagrove.engines.ibis_engine.IbisEngine`
+        for this primitive. The architecture's "no raw SQL outside
+        ibis_engine" rule is the constraint that forces this split.
+
+        Args:
+            expr: Engine-native expression.
+            dest: Target duckdb file path.
+            table: Destination table name (required).
+            **kwargs: Forwarded to the underlying writer.
+        """
+        ...
+
+    # ------------------------------------------------------------------
+    # Schema casting — promoted from per-engine internal helper
+    # ------------------------------------------------------------------
+
+    def cast_schema(self, expr: TableExpr, schema: Any) -> TableExpr:
+        """Cast columns of ``expr`` per a Frictionless ``schema``.
+
+        Fields whose Frictionless type does not map cleanly to an
+        engine-native type are left untouched (the v0.3 ``apply_schema_to_df``
+        bug was a reminder that silent-but-noisy is the safer default
+        for partial schemas). Fields named in the schema but absent from
+        ``expr`` are skipped — that's a validation concern, not a
+        scan-time concern.
+
+        Args:
+            expr: Engine-native expression.
+            schema: Frictionless :class:`~datagrove.spec.model.Schema`.
+
+        Returns:
+            A new expression with the casts applied, or ``expr``
+            unchanged if no field type was castable.
+        """
+        ...
+
+    # ------------------------------------------------------------------
+    # Convenience delegators — single dispatch point through io.dispatch
+    # ------------------------------------------------------------------
 
     def scan(
         self,
@@ -114,6 +335,12 @@ class Engine(Protocol):
     ) -> TableExpr:
         """Open ``source`` as a lazy table expression.
 
+        **Convenience method** — the body is a ~3-line delegation to
+        ``datagrove.io.dispatch(source, format=format).read(source,
+        engine=self, schema=schema, **kwargs)``. Power users and
+        adapters skip this method entirely and call the primitives
+        (:meth:`read_csv`, etc.) directly.
+
         Args:
             source: A path, URL, ``Path``, or handle dict pointing at a
                 tabular file or table. Format dispatch is delegated to
@@ -123,10 +350,15 @@ class Engine(Protocol):
                 - ``{"data": [...]}`` — inline data. Value is either a
                   list of row dicts (``[{"a": 1}, {"a": 2}]``) or a
                   columnar dict (``{"a": [1, 2]}``). Used for in-memory
-                  test fixtures and small synthetic frames.
+                  test fixtures and small synthetic frames. The
+                  dispatcher can't sniff a dict source so this case is
+                  short-circuited inside :meth:`scan` and routed
+                  directly to :meth:`from_records`.
                 - ``{"format": "duckdb", "path": "net.duckdb", "table":
                   "link"}`` — a duckdb table handle. ``"format"`` is
-                  optional when ``"path"`` ends in ``.duckdb``.
+                  optional when ``"path"`` ends in ``.duckdb``. Also
+                  short-circuited inside :meth:`scan` (the dispatcher
+                  rejects dict sources).
 
                 Any other dict shape MUST raise
                 :class:`~datagrove.engines.errors.UnsupportedSourceError`
@@ -199,6 +431,12 @@ class Engine(Protocol):
 
     def write(self, expr: TableExpr, dest: SourceRef, fmt: str, **kwargs: Any) -> None:
         """Write ``expr`` to ``dest`` in format ``fmt``.
+
+        **Convenience method** — the body is a ~3-line delegation to
+        ``datagrove.io.get_adapter(fmt).write(expr, dest, engine=self,
+        **kwargs)``. Adapters skip this and call the write primitives
+        (:meth:`write_csv`, :meth:`write_parquet`,
+        :meth:`write_duckdb_table`) directly.
 
         Args:
             expr: The expression to materialize and write.

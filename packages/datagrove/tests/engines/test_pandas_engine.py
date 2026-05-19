@@ -96,9 +96,16 @@ def test_scan_with_format_override():
     assert isinstance(df, pd.DataFrame)
 
 
-def test_scan_csv_zip_single_file_works(tmp_path):
-    """Single-csv inside a zip reads back correctly."""
+def test_scan_csv_zip_single_file_via_adapter_requires_table(tmp_path):
+    """Post-#134: scan(.csv.zip) routes through ZipCsvAdapter, which requires table=.
+
+    The single-csv shortcut was removed (finding I10 in earlier review)
+    to keep the selector contract identical across adapters. A caller
+    must specify ``table=`` even when the zip has one csv.
+    """
     import zipfile
+
+    from datagrove.engines.errors import InvalidEngineCallError
 
     src_csv = CSV_DIR / "node.csv"
     zip_path = tmp_path / "single.csv.zip"
@@ -106,20 +113,23 @@ def test_scan_csv_zip_single_file_works(tmp_path):
         z.write(src_csv, arcname="node.csv")
 
     e = PandasEngine()
-    df_zip = e.scan(zip_path)
+    # Without table= the adapter raises the expected selector error.
+    with pytest.raises(InvalidEngineCallError, match="table="):
+        e.scan(zip_path)
+    # With table= the read returns the materialized frame.
+    df_zip = e.scan(zip_path, table="node")
     df_raw = pd.read_csv(src_csv)
     assert len(df_zip) == len(df_raw)
     assert list(df_zip.columns) == list(df_raw.columns)
 
 
-def test_scan_csv_zip_multi_file_raises_helpful_error():
-    """The Leavenworth zip has 9 csvs + datapackage.json — must raise pointing at 1.10."""
+def test_scan_csv_zip_multi_file_requires_table_kwarg():
+    """Post-#134: ZipCsvAdapter requires table= for multi-csv zips."""
+    from datagrove.engines.errors import InvalidEngineCallError
+
     e = PandasEngine()
-    with pytest.raises(NotImplementedError) as excinfo:
+    with pytest.raises(InvalidEngineCallError, match="table="):
         e.scan(ZIP_PATH)
-    msg = str(excinfo.value)
-    assert "1.10" in msg
-    assert "multi" in msg.lower() or "multiple" in msg.lower()
 
 
 def test_scan_dict_source_with_data_key():
@@ -139,12 +149,15 @@ def test_scan_dict_source_without_data_key_raises():
 
 
 def test_scan_unknown_extension_raises_helpful_error(tmp_path):
+    """Post-#134: unknown extension raises FormatNotDetected from dispatch."""
+    from datagrove.io import FormatNotDetected
+
     e = PandasEngine()
     weird = tmp_path / "thing.xyz"
     weird.write_text("foo\n")
-    with pytest.raises(NotImplementedError) as excinfo:
+    with pytest.raises(FormatNotDetected) as excinfo:
         e.scan(weird)
-    assert ".xyz" in str(excinfo.value) or "xyz" in str(excinfo.value).lower()
+    assert "thing.xyz" in str(excinfo.value) or "Registered adapters" in str(excinfo.value)
 
 
 def test_scan_duckdb_via_python_api():
@@ -265,8 +278,11 @@ def test_write_duckdb_either_works_or_raises_clearly(tmp_path):
 
 
 def test_write_unsupported_format_raises_helpful_error(tmp_path):
+    """Post-#134: unknown write fmt raises AdapterNotAvailableError from the registry."""
+    from datagrove.io import AdapterNotAvailableError
+
     e = PandasEngine()
     df = pd.DataFrame({"a": [1]})
-    with pytest.raises(NotImplementedError) as excinfo:
+    with pytest.raises(AdapterNotAvailableError) as excinfo:
         e.write(df, tmp_path / "out.xyz", fmt="xyz")
     assert "xyz" in str(excinfo.value)

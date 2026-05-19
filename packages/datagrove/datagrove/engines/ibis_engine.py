@@ -16,37 +16,22 @@ pre-opened backend (``IbisEngine(con=ibis.duckdb.connect("net.duckdb"))``)
 to point at a file or share a connection. The engine owns one duckdb
 connection for its lifetime; call ``close()`` to release it.
 
-Source resolution (today)
--------------------------
+Dispatch model (post-issue-#134 inversion)
+------------------------------------------
 
-``scan()`` does not yet delegate to ``datagrove.io.dispatch`` because the
-FormatAdapter registry is empty until tasks 1.7-1.11 ship. Instead the
-engine inspects the source itself:
+The engine exposes **per-format primitives** (``read_csv``,
+``read_parquet``, ``read_duckdb_table``, ``from_records`` + the
+matching ``write_*``). Adapters in :mod:`datagrove.io` call these
+primitives directly. :meth:`scan` and :meth:`write` are thin
+convenience methods that route format dispatch through
+``datagrove.io.dispatch`` / ``datagrove.io.get_adapter`` — no per-format
+if/elif lives in this module anymore.
 
-1. Explicit ``format=`` kwarg wins (``"csv"`` / ``"parquet"`` /
-   ``"duckdb"``).
-2. ``dict`` sources are treated as duckdb table handles
-   (``{"path": "net.duckdb", "table": "link"}``).
-3. Filename extension: ``.csv`` / ``.parquet`` / ``.duckdb``.
-4. URL scheme: ``http(s)://`` and ``s3://`` are passed through to
-   duckdb's httpfs/s3 extensions via the relevant reader.
-5. Anything else raises ``NotImplementedError`` naming the task that
-   will add the missing adapter.
-
-Migration path (when adapters land, task 1.7+)
-----------------------------------------------
-
-When ``datagrove.io`` has registered adapters, ``scan()`` should:
-
-1. ``adapter = datagrove.io.dispatch(source, format=format)``
-2. ``return adapter.read(source, engine=self, schema=schema, **kwargs)``
-
-Each adapter's ``read`` will call back into the engine via its native
-``read_csv`` / ``read_parquet`` / ``read_*`` shortcuts (or via
-``con.register`` for in-memory frames). The dict / table-name handling
-for the duckdb adapter stays here because it is engine-specific. The
-``__resolve_kind`` helper below maps to roughly the same set of names
-the adapters will register under, so the swap is local.
+The single carve-out in :meth:`scan` is dict sources: the dispatcher
+can't sniff a ``{"data": ...}`` or ``{"format": "duckdb", ...}`` dict,
+so :meth:`scan` short-circuits those two shapes and calls
+:meth:`from_records` / :meth:`read_duckdb_table` directly before
+handing the rest off to ``dispatch``.
 """
 
 from __future__ import annotations
@@ -158,7 +143,269 @@ class IbisEngine:
             self._owns_con = False
 
     # ------------------------------------------------------------------
-    # scan
+    # Read primitives — adapters call these directly
+    # ------------------------------------------------------------------
+
+    def read_csv(
+        self,
+        source: SourceRef,
+        schema: Schema | None = None,
+        **kwargs: Any,
+    ) -> ir.Table:
+        """Read a CSV file via duckdb's ``read_csv`` (no SQL).
+
+        Args:
+            source: Path / URL / ``Path``. ``http(s)://`` and ``s3://``
+                are passed through to duckdb's httpfs/s3 extensions.
+            schema: Optional Frictionless schema; columns are cast after
+                read via :meth:`cast_schema`.
+            **kwargs: Forwarded verbatim to
+                :meth:`ibis.backends.duckdb.Backend.read_csv` (``delim``,
+                ``header``, ``columns``, ...).
+
+        Returns:
+            A lazy ``ibis.expr.types.Table`` over the file.
+
+        Examples:
+            >>> import tempfile, pathlib
+            >>> from datagrove.engines.ibis_engine import IbisEngine
+            >>> p = pathlib.Path(tempfile.mkdtemp()) / "t.csv"
+            >>> _ = p.write_text(chr(10).join(["a,b", "1,2", "3,4", ""]))
+            >>> e = IbisEngine()
+            >>> e.read_csv(p).count().to_pyarrow().as_py()
+            2
+            >>> e.close()
+        """
+        path = _as_path_str(source)
+        table = self.con.read_csv(path, **kwargs)
+        return self.cast_schema(table, schema) if schema is not None else table
+
+    def read_parquet(
+        self,
+        source: SourceRef,
+        schema: Schema | None = None,
+        *,
+        hive_partitioning: bool = False,
+        **kwargs: Any,
+    ) -> ir.Table:
+        """Read parquet (single file or Hive-partitioned directory).
+
+        Hive-partitioning is auto-detected for directory sources when
+        the adapter doesn't say otherwise: a directory + no caller
+        override turns ``hive_partitioning=True`` on so duckdb reinjects
+        the partition columns into the result. The caller's explicit
+        flag wins either way.
+
+        Args:
+            source: Path to a ``.parquet`` file or partitioned directory.
+            schema: Optional Frictionless schema.
+            hive_partitioning: Enable Hive-style partition discovery.
+                Auto-enabled for directory sources unless explicitly set.
+            **kwargs: Forwarded to duckdb's ``read_parquet``.
+
+        Returns:
+            A lazy ``ibis.expr.types.Table``.
+        """
+        path = _as_path_str(source)
+        # Auto-enable hive partitioning for directory sources (the
+        # adapter forwards the path verbatim and asks engines to handle
+        # partitioning natively — I3).
+        if not hive_partitioning and Path(path).is_dir():
+            hive_partitioning = True
+        if hive_partitioning:
+            kwargs = {"hive_partitioning": True, **kwargs}
+        table = self.con.read_parquet(path, **kwargs)
+        return self.cast_schema(table, schema) if schema is not None else table
+
+    def read_duckdb_table(
+        self,
+        source: SourceRef,
+        *,
+        table: str,
+        schema: Schema | None = None,
+        **kwargs: Any,
+    ) -> ir.Table:
+        """Read one named table out of a duckdb file.
+
+        Opens a fresh ibis duckdb backend pointed at the file and
+        returns the named table as an ibis expression. ``kwargs`` are
+        accepted for protocol symmetry but currently unused — duckdb's
+        relation API takes no per-read options for catalogue reads.
+
+        Args:
+            source: Path / URL to a ``.duckdb`` file. ``str`` / ``Path``
+                are both accepted.
+            table: The table name (required).
+            schema: Optional Frictionless schema.
+            **kwargs: Reserved for future use.
+
+        Returns:
+            A lazy ``ibis.expr.types.Table``.
+
+        Raises:
+            InvalidEngineCallError: If ``table`` is empty.
+        """
+        del kwargs  # reserved for future backend-specific options
+        if not table:
+            raise InvalidEngineCallError("ibis engine: read_duckdb_table requires a non-empty table= argument")
+        backend = ibis.duckdb.connect(_as_path_str(source))
+        expr = backend.table(table)
+        return self.cast_schema(expr, schema) if schema is not None else expr
+
+    def from_records(
+        self,
+        records: list[dict[str, Any]] | dict[str, list[Any]],
+        schema: Schema | None = None,
+    ) -> ir.Table:
+        """Materialize in-memory records as a duckdb temp table.
+
+        Accepts the two shapes :class:`pandas.DataFrame` accepts (list
+        of row dicts OR columnar dict) so callers can use the same
+        handle across all three engines. We round-trip through pyarrow
+        rather than ibis ``memtable`` so the table is materialized
+        eagerly inside our duckdb connection (matters because the
+        caller's source dict is mutable in its own scope).
+
+        Args:
+            records: Either ``[{"a": 1}, {"a": 2}]`` or ``{"a": [1, 2]}``.
+            schema: Optional Frictionless schema.
+
+        Returns:
+            A lazy ``ibis.expr.types.Table`` backed by a duckdb temp
+            table.
+        """
+        import pyarrow as pa
+
+        # pyarrow has two distinct constructors for the two inline shapes
+        # the cross-engine contract accepts.
+        arrow = pa.table(records) if isinstance(records, dict) else pa.Table.from_pylist(list(records))
+        name = _temp_table_name("inline")
+        self.con.create_table(name, obj=arrow, temp=True)
+        expr = self.con.table(name)
+        return self.cast_schema(expr, schema) if schema is not None else expr
+
+    # ------------------------------------------------------------------
+    # Write primitives — adapters call these directly
+    # ------------------------------------------------------------------
+
+    def write_csv(self, expr: ir.Table, dest: SourceRef, **kwargs: Any) -> None:
+        """Write ``expr`` to ``dest`` as CSV via duckdb's ``to_csv``.
+
+        Args:
+            expr: An ibis expression.
+            dest: Target path.
+            **kwargs: Forwarded to duckdb's ``to_csv``.
+        """
+        self.con.to_csv(expr, _as_path_str(dest), **kwargs)
+
+    def write_parquet(
+        self,
+        expr: ir.Table,
+        dest: SourceRef,
+        *,
+        partition_by: list[str] | None = None,
+        **kwargs: Any,
+    ) -> None:
+        """Write ``expr`` to ``dest`` as parquet.
+
+        For partitioned writes the ParquetAdapter handles the
+        hive-layout itself (via pyarrow) and never reaches this engine
+        primitive — so we reject ``partition_by`` here with a pointer
+        at the adapter. Engines could grow native partitioned-write
+        support later without changing the adapter.
+
+        Args:
+            expr: An ibis expression.
+            dest: Target file path.
+            partition_by: Must be ``None`` — see note above.
+            **kwargs: Forwarded to duckdb's ``to_parquet``.
+        """
+        if partition_by:
+            raise InvalidEngineCallError(
+                "ibis engine: partitioned writes go through "
+                "ParquetAdapter.write(partition_by=...), which routes "
+                "through pyarrow rather than this primitive"
+            )
+        self.con.to_parquet(expr, _as_path_str(dest), **kwargs)
+
+    def write_duckdb_table(
+        self,
+        expr: ir.Table,
+        dest: SourceRef,
+        *,
+        table: str,
+        **kwargs: Any,
+    ) -> None:
+        """Write ``expr`` into a duckdb file as a named table.
+
+        We can't ``create_table`` on a different backend directly with
+        an ibis expression rooted in ``self.con``, so we hop through
+        Arrow. For Leavenworth-sized fixtures this is free; for very
+        large writes the duckdb adapter could later ATTACH instead.
+
+        Overwrite semantics: the destination table is dropped if it
+        exists, so ``write_duckdb_table`` is idempotent (same as
+        ``to_parquet``'s file-replacement behaviour).
+
+        Args:
+            expr: An ibis expression.
+            dest: Target duckdb file path.
+            table: Destination table name.
+            **kwargs: Reserved for future options (currently ignored).
+        """
+        del kwargs  # reserved for future use
+        if not table:
+            raise InvalidEngineCallError("ibis engine: write_duckdb_table requires a non-empty table= argument")
+        arrow = expr.to_pyarrow()
+        dst = ibis.duckdb.connect(_as_path_str(dest))
+        try:
+            if table in dst.list_tables():
+                dst.drop_table(table)
+            dst.create_table(table, obj=arrow)
+        finally:
+            dst.disconnect()
+
+    # ------------------------------------------------------------------
+    # Schema cast — promoted from internal helper to public primitive
+    # ------------------------------------------------------------------
+
+    def cast_schema(self, expr: ir.Table, schema: Schema) -> ir.Table:
+        """Cast columns of ``expr`` per a Frictionless schema.
+
+        Only fields whose Frictionless type maps cleanly to an ibis
+        dtype (per :data:`_FRICTIONLESS_TO_IBIS`) are cast. Fields not
+        present in the table are skipped — that's a validation concern,
+        not a scan concern.
+
+        Implementation note: we collect casts into a single ``.cast()``
+        call rather than chaining per-field ``.mutate``s. ibis builds a
+        single projection either way, but the dict-form ``cast`` reads
+        closer to the Frictionless schema for someone debugging types.
+
+        Args:
+            expr: An ibis expression.
+            schema: A Frictionless :class:`~datagrove.spec.model.Schema`.
+
+        Returns:
+            A new expression with the casts applied, or ``expr``
+            unchanged if no field's type was castable.
+        """
+        if schema is None or not getattr(schema, "fields", None):
+            return expr
+        casts: dict[str, str] = {}
+        columns = set(expr.columns)
+        for field in schema.fields:
+            if field.name not in columns or field.type is None:
+                continue
+            ibis_type = _FRICTIONLESS_TO_IBIS.get(field.type)
+            if ibis_type is not None:
+                casts[field.name] = ibis_type
+        if not casts:
+            return expr
+        return expr.cast(casts)
+
+    # ------------------------------------------------------------------
+    # Convenience delegators — route through io.dispatch
     # ------------------------------------------------------------------
 
     def scan(
@@ -168,34 +415,24 @@ class IbisEngine:
         schema: Schema | None = None,
         **kwargs: Any,
     ) -> ir.Table:
-        """Open ``source`` as a lazy ibis ``Table``.
+        """Open ``source`` via the FormatAdapter registry.
 
-        See the module docstring for the resolution order and the
-        migration path for when the FormatAdapter registry is populated.
+        3-line convenience over :func:`datagrove.io.dispatch` plus a
+        short carve-out for dict sources (the dispatcher rejects dicts;
+        they're routed to :meth:`from_records` /
+        :meth:`read_duckdb_table` directly).
 
         Args:
-            source: A filesystem path, URL, ``Path``, or duckdb-table
-                handle dict (``{"path": "net.duckdb", "table": "link"}``).
-            format: Explicit format hint (``"csv"`` / ``"parquet"`` /
-                ``"duckdb"``). Overrides extension sniffing.
-            schema: Optional Frictionless :class:`Schema`. When given,
-                columns are cast to the declared types using ibis
-                expressions (no raw SQL).
-            **kwargs: Forwarded to the backend reader. For
-                ``"duckdb"`` source kind, ``table=...`` selects which
-                table to read.
+            source: Path / URL / ``Path`` / handle dict — see the
+                :class:`~datagrove.engines.base.Engine` protocol's
+                :meth:`~datagrove.engines.base.Engine.scan` for the
+                accepted dict shapes.
+            format: Optional explicit format hint forwarded to dispatch.
+            schema: Optional Frictionless schema.
+            **kwargs: Forwarded to the resolved adapter's ``read``.
 
         Returns:
             A lazy ``ibis.expr.types.Table``.
-
-        Raises:
-            NotImplementedError: If the source kind has no in-engine
-                reader yet (the relevant FormatAdapter ships in a later
-                task; the message names which).
-            InvalidEngineCallError: If ``format="duckdb"`` is used
-                without a ``table=`` kwarg.
-            UnsupportedSourceError: If ``source`` is a dict whose shape
-                matches neither ``{"data": ...}`` nor the duckdb handle.
 
         Examples:
             >>> import tempfile, pathlib
@@ -207,82 +444,31 @@ class IbisEngine:
             2
             >>> engine.close()
         """
-        kind = _resolve_kind(source, format)
-
-        if kind == "data":
-            # _resolve_kind only returns "data" when source is a dict
-            # carrying a "data" key — narrow for the type checker.
-            assert isinstance(source, dict)
-            table = self._scan_inline_data(source)
-        elif kind == "csv":
-            path = _as_path_str(source)
-            table = self.con.read_csv(path, **kwargs)
-        elif kind == "parquet":
-            path = _as_path_str(source)
-            # Hive-partitioned parquet datasets are local directories;
-            # the adapter forwards the path verbatim and asks the engine
-            # to enable partition discovery itself (I3 — keeps the
-            # adapter ignorant of engine-specific reader kwargs).
-            # ``hive_partitioning=True`` makes duckdb reinject the
-            # partition columns into the result. Caller kwargs win.
-            if "hive_partitioning" not in kwargs and Path(path).is_dir():
-                kwargs = {"hive_partitioning": True, **kwargs}
-            table = self.con.read_parquet(path, **kwargs)
-        elif kind == "duckdb":
-            table = self._scan_duckdb(source, **kwargs)
-        else:
-            # _resolve_kind already raises with a helpful message for
-            # the no-adapter-yet case; this branch is defence in depth.
-            raise NotImplementedError(  # pragma: no cover - unreachable today
-                f"ibis engine: source kind {kind!r} not supported yet"
-            )
-
-        if schema is not None:
-            table = _apply_schema_casts(table, schema)
-        return table
-
-    def _scan_inline_data(self, source: dict) -> ir.Table:
-        """Register an in-memory ``{"data": ...}`` dict as a duckdb temp table.
-
-        Accepts either a list of row dicts or a columnar dict — the same
-        two shapes :class:`pandas.DataFrame` accepts — so callers can use
-        the same handle across all three engines. We round-trip through
-        pyarrow rather than ibis ``memtable`` so the table is materialized
-        eagerly inside our duckdb connection (matters because the source
-        dict is mutable in the caller's scope).
-        """
-        import pyarrow as pa
-
-        data = source["data"]
-        # pyarrow has two distinct constructors for the two inline shapes
-        # the cross-engine contract accepts: ``pa.table(columnar_dict)`` and
-        # ``pa.Table.from_pylist(list_of_row_dicts)``.
-        arrow = pa.table(data) if isinstance(data, dict) else pa.Table.from_pylist(list(data))
-        name = _temp_table_name("inline")
-        self.con.create_table(name, obj=arrow, temp=True)
-        return self.con.table(name)
-
-    def _scan_duckdb(self, source: SourceRef, **kwargs: Any) -> ir.Table:
-        """Read one table out of a duckdb file or handle dict."""
+        # Dict-source carve-out — the dispatcher can't sniff dicts.
         if isinstance(source, dict):
-            path = source.get("path")
-            table_name = source.get("table") or kwargs.pop("table", None)
-            if path is None or table_name is None:
-                raise InvalidEngineCallError(
-                    "duckdb dict source must include 'path' and 'table' (e.g. {'path': 'net.duckdb', 'table': 'link'})"
-                )
-            backend = ibis.duckdb.connect(str(path))
-            return backend.table(table_name)
+            return _scan_dict(self, source, schema=schema, **kwargs)
+        # All other shapes go through the adapter registry.
+        from datagrove.io import dispatch
 
-        table_name = kwargs.pop("table", None)
-        if table_name is None:
-            raise InvalidEngineCallError(
-                "ibis engine: scan(<duckdb file>) requires table=<name>; "
-                "pass e.g. engine.scan(path, table='link'). Multi-table "
-                "enumeration ships with the duckdb FormatAdapter in task 1.9."
-            )
-        backend = ibis.duckdb.connect(_as_path_str(source))
-        return backend.table(table_name)
+        adapter = dispatch(source, format=format)
+        return adapter.read(source, engine=self, schema=schema, **kwargs)
+
+    def write(self, expr: ir.Table, dest: SourceRef, fmt: str, **kwargs: Any) -> None:
+        """Write ``expr`` to ``dest`` via the FormatAdapter registry.
+
+        3-line convenience over :func:`datagrove.io.get_adapter`.
+        Adapters skip this and call ``engine.write_<fmt>`` directly.
+
+        Args:
+            expr: An ibis expression.
+            dest: Target path / URL.
+            fmt: Format name (``"csv"``, ``"parquet"``, ``"duckdb"``, ...).
+            **kwargs: Forwarded to the adapter's ``write``.
+        """
+        from datagrove.io import get_adapter
+
+        adapter = get_adapter(fmt)
+        adapter.write(expr, dest, engine=self, **kwargs)
 
     # ------------------------------------------------------------------
     # materialize / converters
@@ -374,77 +560,6 @@ class IbisEngine:
             ) from exc
 
     # ------------------------------------------------------------------
-    # write
-    # ------------------------------------------------------------------
-
-    def write(self, expr: ir.Table, dest: SourceRef, fmt: str, **kwargs: Any) -> None:
-        """Persist ``expr`` to ``dest`` in ``fmt``.
-
-        Args:
-            expr: A lazy ibis ``Table``.
-            dest: Path or URL.
-            fmt: One of ``"csv"`` / ``"parquet"`` / ``"duckdb"``.
-            **kwargs: Forwarded to the backend writer. For
-                ``fmt="duckdb"``, ``table=<name>`` selects the
-                destination table name (defaults to the expression's
-                relation name when ibis exposes one, else ``"data"``).
-
-        Raises:
-            NotImplementedError: If ``fmt`` has no in-engine writer
-                yet — message names the task that will add the
-                adapter.
-
-        Examples:
-            >>> import tempfile, pathlib
-            >>> from datagrove.engines.ibis_engine import IbisEngine
-            >>> tmpdir = pathlib.Path(tempfile.mkdtemp())
-            >>> src = tmpdir / "t.csv"
-            >>> _ = src.write_text(chr(10).join(["a,b", "1,2", "3,4", ""]))
-            >>> engine = IbisEngine()
-            >>> dst = tmpdir / "out.parquet"
-            >>> engine.write(engine.scan(src), dst, "parquet")
-            >>> engine.scan(dst).count().to_pyarrow().as_py()
-            2
-            >>> engine.close()
-        """
-        dest_str = _as_path_str(dest)
-        fmt_lower = fmt.lower()
-
-        if fmt_lower == "parquet":
-            self.con.to_parquet(expr, dest_str, **kwargs)
-        elif fmt_lower == "csv":
-            self.con.to_csv(expr, dest_str, **kwargs)
-        elif fmt_lower == "duckdb":
-            self._write_duckdb(expr, dest_str, **kwargs)
-        else:
-            raise NotImplementedError(
-                f"ibis engine: write(fmt={fmt!r}) is not supported yet — "
-                "the relevant FormatAdapter lands in tasks 1.7-1.11"
-            )
-
-    def _write_duckdb(self, expr: ir.Table, dest_path: str, **kwargs: Any) -> None:
-        """Persist ``expr`` into a duckdb file at ``dest_path``.
-
-        We can't ``create_table`` on a different backend directly with
-        an ibis expression rooted in ``self.con``, so we hop through
-        Arrow. For Leavenworth-sized fixtures this is free; for very
-        large writes a future task (1.9) will teach the duckdb adapter
-        to ATTACH instead.
-        """
-        table_name = kwargs.pop("table", None) or _expr_relation_name(expr) or "data"
-        arrow = expr.to_pyarrow()
-        dst = ibis.duckdb.connect(dest_path)
-        try:
-            # Overwrite semantics: drop if it exists so write() is
-            # idempotent for tests. This mirrors how ``to_parquet``
-            # behaves (file is replaced).
-            if table_name in dst.list_tables():
-                dst.drop_table(table_name)
-            dst.create_table(table_name, obj=arrow)
-        finally:
-            dst.disconnect()
-
-    # ------------------------------------------------------------------
     # lifecycle
     # ------------------------------------------------------------------
 
@@ -491,95 +606,45 @@ def _as_path_str(source: SourceRef) -> str:
     )
 
 
-def _resolve_kind(source: SourceRef, format: str | None) -> str:
-    """Decide which in-engine reader to use for ``source``.
+def _scan_dict(
+    engine: IbisEngine,
+    source: dict[str, Any],
+    *,
+    schema: Schema | None,
+    **kwargs: Any,
+) -> ir.Table:
+    """Route the two supported dict-source shapes to the right primitive.
 
-    Returns one of ``"data"`` / ``"csv"`` / ``"parquet"`` / ``"duckdb"``.
-    Raises :class:`NotImplementedError` for unsupported formats (naming
-    the task that will add the adapter), or
-    :class:`UnsupportedSourceError` for unrecognised dict shapes.
+    The dispatcher rejects dict sources (it has no way to sniff them);
+    this helper keeps :meth:`IbisEngine.scan` short by handling the two
+    accepted shapes here. Both shapes are documented on
+    :meth:`datagrove.engines.base.Engine.scan`.
     """
-    if format is not None:
-        f = format.lower()
-        if f in {"csv", "parquet", "duckdb", "data"}:
-            return f
-        raise NotImplementedError(
-            f"ibis engine: format={format!r} not supported yet — the relevant FormatAdapter lands in tasks 1.7-1.11"
-        )
+    if "data" in source:
+        # Inline data — kwargs are intentionally ignored (records have
+        # no reader options).
+        return engine.from_records(source["data"], schema=schema)
 
-    if isinstance(source, dict):
-        # Cross-engine dict-source contract (see Engine.scan docstring):
-        #   {"data": ...}                                  → inline data
-        #   {"format": "duckdb", "path": ..., "table": ...} → duckdb handle
-        #   {"path": "x.duckdb", "table": ...}             → duckdb handle
-        #     (path-suffix shorthand)
-        if "data" in source:
-            return "data"
-        fmt = str(source.get("format", "")).lower()
-        if fmt == "duckdb":
-            return "duckdb"
-        path = source.get("path")
-        if isinstance(path, (str, Path)) and str(path).lower().endswith(".duckdb"):
-            return "duckdb"
-        raise UnsupportedSourceError(
-            f"ibis engine: dict source shape not recognised (keys={sorted(source)!r}). "
-            "Supported shapes: {'data': [...]} for inline data, or "
-            "{'format': 'duckdb', 'path': '...', 'table': '...'} for a duckdb handle."
-        )
+    fmt = str(source.get("format", "")).lower()
+    path = source.get("path")
+    is_duckdb_handle = fmt == "duckdb" or (isinstance(path, (str, Path)) and str(path).lower().endswith(".duckdb"))
+    if is_duckdb_handle:
+        if path is None:
+            raise InvalidEngineCallError(
+                "duckdb dict source must include 'path' (e.g. {'path': 'net.duckdb', 'table': 'link'})"
+            )
+        table = source.get("table") or kwargs.pop("table", None)
+        if not table:
+            raise InvalidEngineCallError(
+                "duckdb dict source must include 'table' (e.g. {'path': 'net.duckdb', 'table': 'link'})"
+            )
+        return engine.read_duckdb_table(str(path), table=table, schema=schema, **kwargs)
 
-    path_str = _as_path_str(source).lower()
-    # URL-scheme paths still typically have a recognizable extension
-    # at the tail. duckdb's httpfs/s3 extensions read https:// and
-    # s3:// directly via the matching reader.
-    if path_str.endswith(".csv") or path_str.endswith(".csv.gz"):
-        return "csv"
-    if path_str.endswith(".parquet"):
-        return "parquet"
-    if path_str.endswith(".duckdb"):
-        return "duckdb"
-
-    # Anything else — surface a clear "no adapter for this yet" error
-    # rather than a cryptic backend traceback. The task IDs let a
-    # reader trace the deferred work to the issue tree.
-    raise NotImplementedError(
-        f"ibis engine: source {str(source)!r} has no in-engine reader yet. "
-        "Adapters for csv.zip / xlsx / partitioned-parquet / remote-fsspec "
-        "ship in tasks 1.7-1.11; for now pass an explicit format= or a "
-        ".csv/.parquet/.duckdb path."
+    raise UnsupportedSourceError(
+        f"ibis engine: dict source shape not recognised (keys={sorted(source)!r}). "
+        "Supported shapes: {'data': [...]} for inline data, or "
+        "{'format': 'duckdb', 'path': '...', 'table': '...'} for a duckdb handle."
     )
-
-
-def _apply_schema_casts(table: ir.Table, schema: Schema) -> ir.Table:
-    """Cast ``table`` columns to match Frictionless ``schema`` types.
-
-    Only fields whose type maps cleanly to an ibis dtype (per
-    :data:`_FRICTIONLESS_TO_IBIS`) are cast. Fields not present in the
-    table are skipped — that's a validation concern, not a scan
-    concern.
-
-    Implementation note: we collect casts into a single ``.cast()``
-    call rather than chaining per-field ``.mutate``s. ibis builds a
-    single projection either way, but the dict-form ``cast`` reads
-    closer to the Frictionless schema for someone debugging types.
-    """
-    casts: dict[str, str] = {}
-    columns = set(table.columns)
-    for field in schema.fields:
-        if field.name not in columns or field.type is None:
-            continue
-        ibis_type = _FRICTIONLESS_TO_IBIS.get(field.type)
-        if ibis_type is not None:
-            casts[field.name] = ibis_type
-    if not casts:
-        return table
-    return table.cast(casts)
-
-
-def _expr_relation_name(expr: ir.Table) -> str | None:
-    """Return the underlying relation name of ``expr``, if it has one."""
-    op = expr.op()
-    name = getattr(op, "name", None)
-    return name if isinstance(name, str) else None
 
 
 _TEMP_COUNTER = count()
