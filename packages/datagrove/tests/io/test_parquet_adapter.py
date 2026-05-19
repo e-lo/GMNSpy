@@ -338,39 +338,42 @@ def test_write_partitioned_roundtrip(adapter: ParquetAdapter, tmp_path: Path) ->
 
 
 def test_read_passes_extra_kwargs_through(adapter: ParquetAdapter) -> None:
-    """Caller kwargs reach ``engine.scan`` unmodified.
+    """Caller kwargs reach ``engine.read_parquet`` unmodified.
 
-    Uses a stub engine that records ``scan`` invocations rather than a
-    real engine, because each engine has its own kwarg-allowlist for
-    parquet reads — we want to assert pass-through, not assert against
-    duckdb's specific kwarg vocabulary.
+    Uses a stub engine that records the primitive invocation rather
+    than a real engine, because each engine has its own kwarg-allowlist
+    for parquet reads — we want to assert pass-through, not assert
+    against duckdb's specific kwarg vocabulary.
     """
     captured: dict[str, Any] = {}
 
     class _RecordingEngine:
         name = "recording"
 
-        def scan(self, source: Any, format: str | None = None, schema: Any | None = None, **kw: Any) -> str:
-            captured.update({"source": source, "format": format, "schema": schema, **kw})
+        def read_parquet(
+            self,
+            source: Any,
+            schema: Any | None = None,
+            *,
+            hive_partitioning: bool = False,
+            **kw: Any,
+        ) -> str:
+            captured.update(
+                {
+                    "source": source,
+                    "schema": schema,
+                    "hive_partitioning": hive_partitioning,
+                    **kw,
+                }
+            )
             return "ok"
-
-        def materialize(self, expr: Any) -> Any:  # pragma: no cover - protocol parity
-            return expr
-
-        def to_pandas(self, expr: Any) -> Any:  # pragma: no cover - protocol parity
-            return expr
-
-        def to_polars(self, expr: Any) -> Any:  # pragma: no cover - protocol parity
-            return expr
-
-        def write(self, expr: Any, dest: Any, fmt: str, **kw: Any) -> None:  # pragma: no cover
-            return None
 
     result = adapter.read(LEAVENWORTH_LINK_PARQUET, _RecordingEngine(), my_custom_kwarg=42)
     assert result == "ok"
-    assert captured["format"] == "parquet"
     assert captured["my_custom_kwarg"] == 42
     assert captured["source"] == str(LEAVENWORTH_LINK_PARQUET)
+    # Single-file parquet: adapter did not auto-enable hive partitioning.
+    assert captured["hive_partitioning"] is False
 
 
 # ---------------------------------------------------------------------------

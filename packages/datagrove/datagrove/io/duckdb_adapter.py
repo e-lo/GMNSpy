@@ -258,11 +258,11 @@ class DuckdbAdapter:
         guess — the caller (or AI agent) should call :meth:`scan` first
         to see what's available.
 
-        Delegation: this method builds the engine-friendly source dict
-        ``{"format": "duckdb", "path": ..., "table": ...}`` and hands it
-        to ``engine.scan()``. Every engine implements that dict shape;
-        the polars and pandas engines use duckdb's Python relation API
-        (no SQL) and the ibis engine uses its duckdb backend.
+        Delegation: this method calls the engine's
+        :meth:`~datagrove.engines.base.Engine.read_duckdb_table`
+        primitive directly. The polars and pandas engines use duckdb's
+        Python relation API (no SQL); the ibis engine uses its duckdb
+        backend.
 
         Args:
             source: The duckdb file path / URL.
@@ -300,8 +300,9 @@ class DuckdbAdapter:
                 "to list available tables."
             )
         path_str = _coerce_path(source)
-        source_dict = {"format": "duckdb", "path": path_str, "table": table}
-        return engine.scan(source_dict, format="duckdb", schema=schema, **kwargs)
+        # Delegate to the engine's per-format primitive — no engine-name
+        # dispatch, no source-dict construction at this layer.
+        return engine.read_duckdb_table(path_str, table=table, schema=schema, **kwargs)
 
     # ------------------------------------------------------------------
     # write
@@ -317,10 +318,11 @@ class DuckdbAdapter:
         """Persist ``expr`` to a duckdb file as a named table.
 
         Mirrors :meth:`read` — ``table=`` is required and is consumed
-        from ``kwargs`` before delegating to ``engine.write``. The
-        engine handles the actual file mutation (the pandas engine uses
-        ``con.register`` + ``con.table(...).create(...)``, ibis hops
-        through Arrow + ``create_table``; both are no-SQL paths).
+        from ``kwargs`` before delegating to the engine's
+        :meth:`~datagrove.engines.base.Engine.write_duckdb_table`
+        primitive. The engine handles the actual file mutation (the
+        pandas engine uses ``con.register`` + the relational API; ibis
+        hops through Arrow + ``create_table``; both are no-SQL paths).
 
         Args:
             expr: An engine-native expression to write.
@@ -352,7 +354,7 @@ class DuckdbAdapter:
                 "DuckdbAdapter.write requires a 'table=' kwarg naming the destination table inside the duckdb file."
             )
         path_str = _coerce_path(dest)
-        engine.write(expr, path_str, fmt="duckdb", table=table, **kwargs)
+        engine.write_duckdb_table(expr, path_str, table=table, **kwargs)
 
 
 # ---------------------------------------------------------------------------

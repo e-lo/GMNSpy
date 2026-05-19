@@ -3,8 +3,8 @@
 Importing this module self-registers a ``"csv"`` adapter into the
 :mod:`datagrove.io` registry; from then on any source ending in
 ``.csv`` resolves to :class:`CsvAdapter`. The adapter itself contains
-no parsing logic — it forwards reads to ``engine.scan(..., format='csv')``
-and writes to ``engine.write(..., fmt='csv')``. Each engine
+no parsing logic — it forwards reads to the engine's :meth:`read_csv`
+primitive and writes to its :meth:`write_csv` primitive. Each engine
 (:class:`~datagrove.engines.ibis_engine.IbisEngine`,
 :class:`~datagrove.engines.polars_engine.PolarsEngine`,
 :class:`~datagrove.engines.pandas_engine.PandasEngine`) already owns a
@@ -133,11 +133,9 @@ class CsvAdapter:
     ) -> TableExpr:
         """Return a lazy table expression for ``source`` from ``engine``.
 
-        Delegates to ``engine.scan(source, format='csv', schema=schema,
-        **kwargs)`` so the engine resolves the call to its native CSV
-        reader without an extra extension lookup. Format is passed
-        explicitly because the adapter is the authority — we got here
-        because dispatch said this *is* a csv.
+        Delegates to ``engine.read_csv(source, schema=schema, **kwargs)``
+        — the per-format primitive on the Engine protocol. The adapter
+        owns format dispatch; the engine owns parsing.
 
         Args:
             source: Path, ``Path``, or URL pointing at a single CSV file.
@@ -163,7 +161,7 @@ class CsvAdapter:
             2
             >>> eng.close()
         """
-        return engine.scan(source, format="csv", schema=schema, **kwargs)
+        return engine.read_csv(source, schema=schema, **kwargs)
 
     # ------------------------------------------------------------------
     # write
@@ -178,9 +176,8 @@ class CsvAdapter:
     ) -> None:
         """Persist ``expr`` to ``dest`` as CSV via ``engine``.
 
-        Delegates to ``engine.write(expr, dest, fmt='csv', **kwargs)``.
-        Like :meth:`read`, the format is passed explicitly so the engine
-        doesn't re-sniff.
+        Delegates to ``engine.write_csv(expr, dest, **kwargs)`` — the
+        per-format primitive on the Engine protocol.
 
         Args:
             expr: An engine-native lazy or eager table expression.
@@ -207,7 +204,7 @@ class CsvAdapter:
             2
             >>> eng.close()
         """
-        engine.write(expr, dest, fmt="csv", **kwargs)
+        engine.write_csv(expr, dest, **kwargs)
 
     # ------------------------------------------------------------------
     # scan

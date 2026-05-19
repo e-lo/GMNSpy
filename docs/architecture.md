@@ -128,6 +128,45 @@ gmnspy/
     _gmnspy_meta.json   # spec version, write timestamp, dirty flags, content hash per file
   ```
 
+#### Engine ↔ Adapter dispatch (issue #134 — single source of truth)
+
+The `Engine` protocol and the `FormatAdapter` registry have an
+**inverted** relationship that keeps format dispatch in exactly one
+place:
+
+- **Engines expose per-format primitives** — `read_csv`,
+  `read_parquet`, `read_duckdb_table`, `from_records` plus the matching
+  `write_*` — and a `cast_schema` helper. These are what adapters
+  actually call.
+- **Adapters own format dispatch.** `Adapter.read(source, engine, ...)`
+  calls `engine.read_<format>(...)` directly. No engine-name `if/elif`
+  inside adapters; no per-format `if/elif` inside engines.
+- **`Engine.scan(source)` is a 3-line convenience** that resolves
+  `source` via `datagrove.io.dispatch` and delegates to the chosen
+  adapter's `read`. It exists so callers who don't want to think about
+  adapters can still write `engine.scan(path)`. The single carve-out
+  is dict sources (`{"data": ...}`, `{"format": "duckdb", ...}`) which
+  the dispatcher can't sniff — `scan` short-circuits those to
+  `from_records` / `read_duckdb_table` before delegating.
+- **`Engine.write(expr, dest, fmt)` is symmetric** — a 3-line
+  convenience over `datagrove.io.get_adapter(fmt).write`.
+
+This means a new format (xlsx, geoparquet, …) is added by writing one
+`FormatAdapter` plus a `read_<format>` primitive on each engine that
+supports it — no central dispatch needs editing. Engines that don't
+support a primitive (e.g. `PolarsEngine.write_duckdb_table`, which
+would need SQL DDL) raise `EngineNotAvailableError` and point the
+caller at the engine that does (typically `IbisEngine`).
+
+The cross-engine dtype parity test
+(`packages/datagrove/tests/engines/test_cross_engine_dtype_parity.py`)
+locks both the dispatch-path output (`engine.scan`) and the
+direct-primitive output (`engine.read_csv` / `read_parquet` /
+`read_duckdb_table`) to the same dtypes, so the two layers can't
+silently disagree. A regression test in the same file pins that
+`Engine.scan()` stays a thin delegator (≤10 top-level statements) so
+no future contributor can re-grow the per-format if/elif inside it.
+
 ### 6.2 Memory-efficient scoping
 
 - **Lazy by default.** `gmnspy.read(...)` returns a `Network` whose tables are unmaterialized ibis expressions. Materialization on `.to_pandas()` / `.collect()` / `.head()` / explicit consumer.

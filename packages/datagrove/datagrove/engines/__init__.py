@@ -87,8 +87,10 @@ def register_engine(engine: Engine, *, default: bool = False) -> None:
     if not isinstance(engine, Engine):
         raise TypeError(
             f"{engine!r} does not satisfy the Engine protocol "
-            "(needs a 'name' attribute plus scan/materialize/to_pandas/"
-            "to_polars/write methods)"
+            "(needs a 'name' attribute plus per-format primitives "
+            "read_csv/read_parquet/read_duckdb_table/from_records and "
+            "write_csv/write_parquet/write_duckdb_table, plus cast_schema, "
+            "scan, write, materialize, to_pandas, to_polars methods)"
         )
     if not getattr(engine, "name", None):
         raise ValueError("Engine.name must be a non-empty string")

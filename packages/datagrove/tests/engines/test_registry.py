@@ -16,14 +16,50 @@ from datagrove.engines import (
 
 
 class FakeEngine:
-    """Minimal in-test engine."""
+    """Minimal in-test engine satisfying the full post-#134 protocol.
+
+    Includes every per-format primitive plus ``cast_schema`` so the
+    runtime structural check passes after the engine/adapter inversion.
+    """
 
     def __init__(self, name: str = "fake"):
         self.name = name
 
-    def scan(self, source, schema=None):
+    # Read primitives
+    def read_csv(self, source, schema=None, **kwargs):
         return None
 
+    def read_parquet(self, source, schema=None, *, hive_partitioning: bool = False, **kwargs):
+        return None
+
+    def read_duckdb_table(self, source, *, table: str, schema=None, **kwargs):
+        return None
+
+    def from_records(self, records, schema=None):
+        return None
+
+    # Write primitives
+    def write_csv(self, expr, dest, **kwargs) -> None:
+        return None
+
+    def write_parquet(self, expr, dest, *, partition_by=None, **kwargs) -> None:
+        return None
+
+    def write_duckdb_table(self, expr, dest, *, table: str, **kwargs) -> None:
+        return None
+
+    # Schema cast
+    def cast_schema(self, expr, schema):
+        return expr
+
+    # Convenience delegators
+    def scan(self, source, format=None, schema=None, **kwargs):
+        return None
+
+    def write(self, expr, dest, fmt: str, **kwargs: Any) -> None:
+        return None
+
+    # Materialize / converters
     def materialize(self, expr):
         return None
 
@@ -31,9 +67,6 @@ class FakeEngine:
         return None
 
     def to_polars(self, expr):
-        return None
-
-    def write(self, expr, dest, fmt: str, **kwargs: Any) -> None:
         return None
 
 

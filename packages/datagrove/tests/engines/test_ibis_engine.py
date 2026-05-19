@@ -120,7 +120,10 @@ def test_scan_duckdb_dict_handle(engine: IbisEngine, duckdb_path: Path):
 
 
 def test_scan_duckdb_without_table_kwarg_raises(engine: IbisEngine, duckdb_path: Path):
-    with pytest.raises(ValueError, match=re.escape("requires table=")):
+    # Post-#134: the duckdb adapter owns this validation. The message
+    # still mentions the 'table=' kwarg so the caller can fix the call;
+    # the exception is still a ValueError subclass (InvalidEngineCallError).
+    with pytest.raises(ValueError, match=re.escape("table=")):
         engine.scan(duckdb_path)
 
 
@@ -148,18 +151,32 @@ def test_scan_with_schema_casts_types(engine: IbisEngine, link_csv: Path, link_s
 
 
 def test_unsupported_format_raises_helpful_error(engine: IbisEngine):
-    with pytest.raises(NotImplementedError) as exc:
+    """Post-#134: dispatch via the FormatAdapter registry raises FormatNotDetected.
+
+    Before the inversion the engine's own ``_resolve_kind`` raised
+    ``NotImplementedError`` for unknown extensions. After the
+    inversion the engine delegates to ``datagrove.io.dispatch``, which
+    raises :class:`~datagrove.io.FormatNotDetected` (the registry's
+    own structured exception) with the list of registered adapters
+    so the caller can see what *is* available.
+    """
+    from datagrove.io import FormatNotDetected
+
+    with pytest.raises(FormatNotDetected) as exc:
         engine.scan("foo.xlsx")
     msg = str(exc.value)
-    # Mentions a task ID so the reader can trace the deferred work.
-    assert "1." in msg
-    assert "task" in msg.lower() or "adapter" in msg.lower()
+    # Lists what the registry knows about so the caller can correct
+    # the call.
+    assert "Registered adapters" in msg or "registered" in msg.lower()
 
 
 def test_explicit_unsupported_format_raises(engine: IbisEngine):
-    with pytest.raises(NotImplementedError) as exc:
+    """Post-#134: an unknown explicit format= raises AdapterNotAvailableError."""
+    from datagrove.io import AdapterNotAvailableError
+
+    with pytest.raises(AdapterNotAvailableError) as exc:
         engine.scan("anything", format="excel")
-    assert "1." in str(exc.value)
+    assert "excel" in str(exc.value)
 
 
 # ---------------------------------------------------------------------------
@@ -245,9 +262,12 @@ def test_write_duckdb_roundtrip(engine: IbisEngine, link_csv: Path, tmp_path: Pa
 
 
 def test_write_unsupported_format_raises(engine: IbisEngine, link_csv: Path, tmp_path: Path):
-    with pytest.raises(NotImplementedError) as exc:
+    """Post-#134: unknown write fmt raises AdapterNotAvailableError from the registry."""
+    from datagrove.io import AdapterNotAvailableError
+
+    with pytest.raises(AdapterNotAvailableError) as exc:
         engine.write(engine.scan(link_csv), tmp_path / "x.xlsx", "xlsx")
-    assert "1." in str(exc.value)
+    assert "xlsx" in str(exc.value)
 
 
 # ---------------------------------------------------------------------------

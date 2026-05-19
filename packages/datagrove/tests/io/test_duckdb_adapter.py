@@ -274,9 +274,15 @@ def test_write_specific_table_roundtrip(engine_name, engine_cls, tmp_path) -> No
         if engine_name == "polars":
             # Confirm the documented deferral is in force; the adapter
             # correctly forwards the failure rather than masking it.
-            with pytest.raises(NotImplementedError, match="duckdb"):
+            # Post-#134: PolarsEngine.write_duckdb_table raises
+            # EngineNotAvailableError (the engine literally cannot do
+            # this without raw SQL — structurally not-supported, not
+            # not-yet-implemented).
+            from datagrove.engines.errors import EngineNotAvailableError
+
+            with pytest.raises(EngineNotAvailableError, match="duckdb"):
                 a.write(expr, str(out_path), engine=engine, table="node")
-            pytest.skip("polars engine defers duckdb writes to IbisEngine; see polars_engine.write()")
+            pytest.skip("polars engine defers duckdb writes to IbisEngine; see polars_engine.write_duckdb_table()")
 
         # Write to a new duckdb file under a chosen table name.
         a.write(expr, str(out_path), engine=engine, table="node")

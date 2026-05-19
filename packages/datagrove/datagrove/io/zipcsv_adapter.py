@@ -41,15 +41,12 @@ Design notes:
 Architecture cross-reference
 ----------------------------
 
-Once this adapter is registered, the ``NotImplementedError`` branches
-in :mod:`datagrove.engines.pandas_engine`,
-:mod:`datagrove.engines.polars_engine`, and
-:mod:`datagrove.engines.ibis_engine` that point at "task 1.10" become
-dead code — engines should delegate through
-``datagrove.io.dispatch(source).read(source, engine=self, ...)``
-instead. The cleanup is intentionally left for a follow-up PR (it
-touches three engine modules and the engine-side tests) so this task
-ships with a minimal blast radius.
+Post-issue-#134 the engine/adapter inversion landed: engines no longer
+own per-format if/elif inside ``scan``. Reads of ``.csv.zip`` /
+``.zip`` route here via :func:`datagrove.io.dispatch`, and this
+adapter calls the engine's
+:meth:`~datagrove.engines.base.Engine.read_csv` primitive directly
+after extracting the chosen member.
 """
 
 from __future__ import annotations
@@ -232,10 +229,10 @@ class ZipCsvAdapter:
     ) -> TableExpr:
         r"""Read one csv out of the zip and return an engine expression.
 
-        Strategy: extract the chosen member into a temp directory,
-        call ``engine.scan(extracted_path, format="csv", schema=schema,
-        **kwargs)``, then ``engine.materialize(expr)`` to sever the
-        path dependency, then delete the temp directory. The returned
+        Strategy: extract the chosen member into a temp directory, call
+        the engine's :meth:`~datagrove.engines.base.Engine.read_csv`
+        primitive, then ``engine.materialize(expr)`` to sever the path
+        dependency, then delete the temp directory. The returned
         expression is engine-managed and outlives the file.
 
         I10 standardisation: the **only** accepted selector kwarg is
@@ -252,7 +249,7 @@ class ZipCsvAdapter:
             **kwargs: Adapter-specific options. ``table=<name>`` selects
                 the csv to read and is **required** even for single-csv
                 zips. Any other kwargs are forwarded to
-                ``engine.scan(..., format="csv", **kwargs)``.
+                ``engine.read_csv(extracted_path, **kwargs)``.
 
         Returns:
             An engine-native expression backed by the engine's own
@@ -281,7 +278,7 @@ class ZipCsvAdapter:
         """
         path_str = normalize_to_str(source, adapter="zipcsv adapter")
         # I10: only ``table=`` is accepted. Pop it so we don't forward
-        # the selector to ``engine.scan``.
+        # the selector to ``engine.read_csv``.
         selector = kwargs.pop("table", None)
 
         with zipfile.ZipFile(path_str) as z:
@@ -298,12 +295,8 @@ class ZipCsvAdapter:
                 extracted = z.extract(chosen, path=td)
                 # An extracted nested-path member lands at td/<member>, with
                 # any subdirectories created. extract() returns the full path.
-                expr = engine.scan(
-                    extracted,
-                    format="csv",
-                    schema=schema,
-                    **kwargs,
-                )
+                # Use the engine's per-format primitive directly.
+                expr = engine.read_csv(extracted, schema=schema, **kwargs)
                 # Force engine-side materialization to cut the file-lifetime
                 # dependency before the TemporaryDirectory context exits.
                 # For pandas this is a no-op identity; for polars this
@@ -313,8 +306,8 @@ class ZipCsvAdapter:
                 # Polars' materialize() returns DataFrame but its
                 # to_pandas() / to_polars() / write() all expect a
                 # LazyFrame — re-lazify so downstream engine calls keep
-                # the contract that scan() produced. Pandas and ibis
-                # already round-trip cleanly.
+                # the contract that the read primitive produced. Pandas
+                # and ibis already round-trip cleanly.
                 materialized = _relazy_if_needed(engine, materialized)
 
         return materialized
@@ -357,7 +350,7 @@ class ZipCsvAdapter:
                 name. ``overwrite=False`` (default) refuses an existing
                 destination; pass ``overwrite=True`` to clobber. Any
                 other kwargs are forwarded to
-                ``engine.write(..., fmt="csv", **kwargs)``.
+                ``engine.write_csv(tmp_csv, **kwargs)``.
 
         Raises:
             FileExistsError: If ``dest`` exists and ``overwrite=True``
@@ -394,7 +387,7 @@ class ZipCsvAdapter:
         with contextlib.ExitStack() as stack:
             td = stack.enter_context(tempfile.TemporaryDirectory(prefix="datagrove_zipcsv_w_"))
             tmp_csv = Path(td) / inner_name
-            engine.write(expr, tmp_csv, fmt="csv", **kwargs)
+            engine.write_csv(expr, tmp_csv, **kwargs)
             with zipfile.ZipFile(dest_str, mode="w", compression=zipfile.ZIP_DEFLATED) as z:
                 z.write(tmp_csv, arcname=inner_name)
 

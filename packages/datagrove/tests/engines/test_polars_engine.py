@@ -173,19 +173,31 @@ def test_write_parquet_roundtrip(tmp_path):
 
 
 def test_write_duckdb_raises_helpful_error(tmp_path):
+    """Post-#134: polars defers duckdb writes to IbisEngine via the engine primitive.
+
+    The engine's :meth:`PolarsEngine.write_duckdb_table` raises
+    :class:`~datagrove.engines.errors.EngineNotAvailableError` (the
+    structurally-cannot-do-it exception, not the not-yet-implemented
+    one). The adapter forwards the failure unchanged.
+    """
+    from datagrove.engines.errors import EngineNotAvailableError
+
     engine = PolarsEngine()
     lazy = engine.scan(LINK_CSV)
-    with pytest.raises(NotImplementedError) as exc:
-        engine.write(lazy, tmp_path / "out.duckdb", fmt="duckdb")
+    with pytest.raises(EngineNotAvailableError) as exc:
+        engine.write(lazy, tmp_path / "out.duckdb", fmt="duckdb", table="link")
     msg = str(exc.value)
     # Must point users at IbisEngine for the duckdb write path.
     assert "IbisEngine" in msg or "ibis" in msg
 
 
 def test_write_unsupported_format_raises_helpful_error(tmp_path):
+    """Post-#134: unknown fmt raises AdapterNotAvailableError from the registry."""
+    from datagrove.io import AdapterNotAvailableError
+
     engine = PolarsEngine()
     lazy = engine.scan(LINK_CSV)
-    with pytest.raises(NotImplementedError) as exc:
+    with pytest.raises(AdapterNotAvailableError) as exc:
         engine.write(lazy, tmp_path / "out.xlsx", fmt="xlsx")
     # Mentions the offending format so the caller knows what failed.
     assert "xlsx" in str(exc.value)
@@ -196,25 +208,33 @@ def test_write_unsupported_format_raises_helpful_error(tmp_path):
 # ---------------------------------------------------------------------------
 
 
-def test_scan_zip_raises_helpful_error(tmp_path):
-    # Polars has no native zip reader; the dedicated adapter is task 1.10.
+def test_scan_zip_raises_when_zip_invalid(tmp_path):
+    """Post-#134: scan(.csv.zip) goes through ZipCsvAdapter.
+
+    An invalid (or empty) zip surfaces zipfile's own error when the
+    adapter tries to open it. A valid-but-table-less call raises the
+    adapter's structured InvalidEngineCallError, asking for a table=.
+    """
+    import zipfile
+
     engine = PolarsEngine()
     fake_zip = tmp_path / "links.csv.zip"
-    fake_zip.write_bytes(b"\x00")  # contents don't matter — we should bail on extension
-    with pytest.raises(NotImplementedError) as exc:
+    fake_zip.write_bytes(b"\x00")  # invalid zip body
+    with pytest.raises((zipfile.BadZipFile, OSError)):
         engine.scan(fake_zip)
-    assert "1.10" in str(exc.value) or "zipcsv" in str(exc.value)
 
 
 def test_scan_unsupported_format_raises_helpful_error(tmp_path):
-    # An extension polars/datagrove doesn't know yet.
+    """Post-#134: unknown extension raises FormatNotDetected from dispatch."""
+    from datagrove.io import FormatNotDetected
+
     engine = PolarsEngine()
     weird = tmp_path / "data.unknownfmt"
     weird.write_bytes(b"")
-    with pytest.raises(NotImplementedError) as exc:
+    with pytest.raises(FormatNotDetected) as exc:
         engine.scan(weird)
     msg = str(exc.value)
-    assert "unknownfmt" in msg or "format" in msg.lower()
+    assert "data.unknownfmt" in msg or "Registered adapters" in msg
 
 
 # ---------------------------------------------------------------------------
