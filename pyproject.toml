@@ -158,7 +158,6 @@ addopts = [
 ]
 filterwarnings = [
     "error",
-    "ignore::DeprecationWarning:frictionless.*",
     # duckdb >= 1.5 deprecated fetch_arrow_table() in favour of to_arrow_table();
     # the ibis-framework duckdb backend still calls the deprecated name until
     # its next minor release. Narrow ignore — DO NOT broaden to a blanket

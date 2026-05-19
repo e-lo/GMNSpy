@@ -23,7 +23,7 @@ classifiers = [
     "Topic :: Scientific/Engineering :: GIS",
 ]
 dependencies = [
-    "datagrove",  # transitively brings typer + rich + ibis + duckdb + frictionless
+    "datagrove",  # transitively brings typer + rich + ibis + duckdb + pyarrow + fsspec
 ]
 
 [project.optional-dependencies]

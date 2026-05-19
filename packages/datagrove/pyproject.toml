@@ -27,11 +27,15 @@ dependencies = [
     "duckdb>=1.0",
     "pyarrow>=16",
     "fsspec>=2024.3",
-    "frictionless>=5.16",
     "rich>=13",
     "jinja2>=3.1",
     "typer>=0.12",
 ]
+# Note: we model the Frictionless Data Package *format* (an open spec)
+# with our own Pydantic types — we do NOT depend on the `frictionless`
+# library. We have engines doing the actual data work and our own
+# validators; pulling in frictionless would add ~20 transitive deps
+# (jsonschema, validators, marko, etc.) for no functionality we use.
 
 [project.optional-dependencies]
 polars = ["polars>=1.0"]
