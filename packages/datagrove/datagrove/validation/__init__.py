@@ -54,17 +54,23 @@ Examples:
 from .foreign_keys import check_foreign_key, check_foreign_keys
 from .report import render_html, render_json, render_rich
 from .structural import check_structural, check_structural_from_source
+from .sync_state import DirtyTracker, FKStamp, TableHash, hash_column, hash_table
 from .types import Category, Issue, Severity, ValidationReport
 
 __all__ = [
     "Category",
+    "DirtyTracker",
+    "FKStamp",
     "Issue",
     "Severity",
+    "TableHash",
     "ValidationReport",
     "check_foreign_key",
     "check_foreign_keys",
     "check_structural",
     "check_structural_from_source",
+    "hash_column",
+    "hash_table",
     "render_html",
     "render_json",
     "render_rich",
