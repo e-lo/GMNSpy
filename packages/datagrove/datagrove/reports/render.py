@@ -1,4 +1,4 @@
-"""Rendering for :class:`~datagrove.validation.ValidationReport`.
+"""Rendering for :class:`~datagrove.reports.ValidationReport`.
 
 This module contains the three renderers shipped in Phase 2:
 
@@ -97,7 +97,7 @@ def render_rich(report: ValidationReport) -> str:
         needed.
 
     Examples:
-        >>> from datagrove.validation import (
+        >>> from datagrove.reports import (
         ...     ValidationReport, Severity, Category,
         ... )
         >>> r = ValidationReport(source="x.gmns", spec_version="0.97")
@@ -297,7 +297,7 @@ def render_json(report: ValidationReport, *, indent: int = 2) -> str:
 
     Examples:
         >>> import json
-        >>> from datagrove.validation import ValidationReport
+        >>> from datagrove.reports import ValidationReport
         >>> r = ValidationReport(source="empty.gmns")
         >>> json.loads(render_json(r))["report_version"]
         '1'
@@ -371,7 +371,7 @@ def render_html(
         A single HTML string suitable for ``write_text()`` or embedding.
 
     Examples:
-        >>> from datagrove.validation import (
+        >>> from datagrove.reports import (
         ...     ValidationReport, Severity, Category,
         ... )
         >>> r = ValidationReport(source="x.gmns", spec_version="0.97")
@@ -465,7 +465,7 @@ def _read_resource(name: str) -> str:
     package name is spelled out explicitly (rather than via ``__package__``)
     so a type checker can prove ``resources.files`` receives a ``str``.
     """
-    return (resources.files("datagrove.validation") / "templates" / name).read_text(encoding="utf-8")
+    return (resources.files("datagrove.reports") / "templates" / name).read_text(encoding="utf-8")
 
 
 def _sorted_unique(values: Iterable[str | None]) -> list[str]:

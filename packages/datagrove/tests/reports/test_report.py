@@ -1,8 +1,8 @@
 """Unit tests for the rich-console and JSON renderers.
 
-The HTML renderer (task 2.2 / issue #61) is intentionally out of scope —
-it will live in the same ``report.py`` module but consume the same
-:class:`~datagrove.validation.ValidationReport` instance.
+The HTML renderer (task 2.2 / issue #61) lives alongside in
+``render.py`` and consumes the same
+:class:`~datagrove.reports.ValidationReport` instance.
 """
 
 from __future__ import annotations
@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 
 import pytest
-from datagrove.validation import (
+from datagrove.reports import (
     Category,
     Issue,
     Severity,

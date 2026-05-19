@@ -3,8 +3,8 @@
 This module is the **schema** half of the datagrove validation layer.
 It takes a table expression (from any engine — ibis, polars, pandas)
 plus a parsed Frictionless :class:`~datagrove.spec.model.Schema` and
-emits :class:`~datagrove.validation.types.Issue` records — one per
-field-level violation — into a :class:`~datagrove.validation.types.ValidationReport`.
+emits :class:`~datagrove.reports.Issue` records — one per
+field-level violation — into a :class:`~datagrove.reports.ValidationReport`.
 
 Cross-engine strategy (read this — Lens C trade-off)
 ----------------------------------------------------
@@ -75,7 +75,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 import pandas as pd
 
-from .types import Category, Issue, Severity, ValidationReport
+from datagrove.reports import Category, Issue, Severity, ValidationReport
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from datagrove.engines.base import Engine, TableExpr

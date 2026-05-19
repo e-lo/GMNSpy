@@ -1,7 +1,7 @@
-"""Unit tests for the foundational validation types.
+"""Unit tests for the foundational report types.
 
 These tests exercise the small public contract of
-:mod:`datagrove.validation.types`: the two str-enums, the frozen
+:mod:`datagrove.reports.types`: the two str-enums, the frozen
 :class:`Issue` value object, and the mutable :class:`ValidationReport`
 that aggregates them across a run.
 
@@ -17,7 +17,7 @@ import json
 from datetime import datetime
 
 import pytest
-from datagrove.validation import (
+from datagrove.reports import (
     Category,
     Issue,
     Severity,

@@ -8,7 +8,7 @@ column. Cross-table FKs (``link.from_node_id -> node.node_id``) and
 same-table self-references (``node.parent_node_id -> node.node_id``) are
 both supported, and so are composite FKs (``[a, b] -> [x, y]``).
 
-Each violation becomes one :class:`~datagrove.validation.types.Issue`
+Each violation becomes one :class:`~datagrove.reports.Issue`
 with ``category=Category.FOREIGN_KEY`` and a stable dotted code
 (:data:`fk.missing_target`, :data:`fk.null_in_required_fk`,
 :data:`fk.unverifiable`, :data:`fk.target_field_missing`). The
@@ -85,7 +85,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 import pandas as pd
 
-from .types import Category, Issue, Severity, ValidationReport
+from datagrove.reports import Category, Issue, Severity, ValidationReport
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from datagrove.engines.base import Engine, TableExpr

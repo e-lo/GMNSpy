@@ -25,7 +25,7 @@ import json
 import re
 
 import pytest
-from datagrove.validation import (
+from datagrove.reports import (
     Category,
     Issue,
     Severity,
@@ -299,7 +299,7 @@ def test_render_html_doctest_example():
     """
     import doctest
 
-    from datagrove.validation.report import render_html
+    from datagrove.reports.render import render_html
 
     finder = doctest.DocTestFinder()
     runner = doctest.DocTestRunner(optionflags=doctest.ELLIPSIS)
@@ -320,11 +320,11 @@ def test_render_html_jinja2_template_loadable():
     """`importlib.resources` can read the bundled template files.
 
     Guards against packaging regressions where the .j2/.css/.js files in
-    `datagrove/validation/templates/` are missing from the wheel.
+    `datagrove/reports/templates/` are missing from the wheel.
     """
     from importlib import resources
 
-    files = resources.files("datagrove.validation.templates")
+    files = resources.files("datagrove.reports.templates")
     assert (files / "report.html.j2").is_file()
     assert (files / "report.css").is_file()
     assert (files / "report.js").is_file()

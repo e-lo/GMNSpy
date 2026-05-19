@@ -125,7 +125,7 @@ from typing import TYPE_CHECKING, cast
 
 import pandas as pd
 
-from .types import Category, Severity, ValidationReport
+from datagrove.reports import Category, Severity, ValidationReport
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from datagrove.engines.base import Engine, TableExpr
