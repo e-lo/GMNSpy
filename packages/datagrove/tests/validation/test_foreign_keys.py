@@ -182,7 +182,7 @@ class TestCleanLeavenworthFixture:
                     continue
                 rows = _load_rows(path)
                 tables[res.name] = _scan_rows(engine, rows)
-            report = check_foreign_keys(leavenworth_package, tables, engine=engine)
+            report = check_foreign_keys(leavenworth_package, tables)
         finally:
             if hasattr(engine, "close"):
                 engine.close()
@@ -211,7 +211,7 @@ class TestMissingTarget:
                 "link": _scan_rows(engine, link_rows),
                 "node": _scan_rows(engine, node_rows),
             }
-            report = check_foreign_keys(leavenworth_package, tables, engine=engine)
+            report = check_foreign_keys(leavenworth_package, tables)
         finally:
             if hasattr(engine, "close"):
                 engine.close()
@@ -249,7 +249,7 @@ class TestNullInRequiredFK:
                 "link": _scan_rows(engine, link_rows),
                 "node": _scan_rows(engine, node_rows),
             }
-            report = check_foreign_keys(leavenworth_package, tables, engine=engine)
+            report = check_foreign_keys(leavenworth_package, tables)
         finally:
             if hasattr(engine, "close"):
                 engine.close()
@@ -274,7 +274,7 @@ class TestUnverifiable:
         try:
             link_rows = _load_rows(csv_dir / "link.csv")
             tables = {"link": _scan_rows(engine, link_rows)}  # no "node"
-            report = check_foreign_keys(leavenworth_package, tables, engine=engine)
+            report = check_foreign_keys(leavenworth_package, tables)
         finally:
             if hasattr(engine, "close"):
                 engine.close()
@@ -290,7 +290,7 @@ class TestUnverifiable:
         try:
             link_rows = _load_rows(csv_dir / "link.csv")
             tables = {"link": _scan_rows(engine, link_rows)}
-            report = check_foreign_keys(leavenworth_package, tables, engine=engine, strict=True)
+            report = check_foreign_keys(leavenworth_package, tables, strict=True)
         finally:
             if hasattr(engine, "close"):
                 engine.close()
@@ -321,7 +321,6 @@ class TestTargetFieldMissing:
                 source_expr=src,
                 target_table_name="tgt",
                 target_expr=tgt,
-                engine=engine,
             )
         finally:
             if hasattr(engine, "close"):
@@ -355,7 +354,6 @@ class TestCompositeFK:
                 source_expr=src,
                 target_table_name="tgt",
                 target_expr=tgt,
-                engine=engine,
             )
         finally:
             if hasattr(engine, "close"):
@@ -378,7 +376,6 @@ class TestCompositeFK:
                 source_expr=src,
                 target_table_name="tgt",
                 target_expr=tgt,
-                engine=engine,
             )
         finally:
             if hasattr(engine, "close"):
@@ -419,7 +416,6 @@ class TestSameTableFK:
                 source_expr=tbl,
                 target_table_name="tree",
                 target_expr=tbl,
-                engine=engine,
             )
         finally:
             if hasattr(engine, "close"):
@@ -448,7 +444,6 @@ class TestSameTableFK:
                 source_expr=tbl,
                 target_table_name="tree",
                 target_expr=tbl,
-                engine=engine,
             )
         finally:
             if hasattr(engine, "close"):
@@ -484,7 +479,6 @@ class TestBoundedEnumeration:
                 source_expr=src,
                 target_table_name="tgt",
                 target_expr=tgt,
-                engine=engine,
             )
         finally:
             if hasattr(engine, "close"):
@@ -516,7 +510,7 @@ class TestIssueContracts:
                 "link": _scan_rows(engine, link_rows),
                 "node": _scan_rows(engine, node_rows),
             }
-            report = check_foreign_keys(leavenworth_package, tables, engine=engine)
+            report = check_foreign_keys(leavenworth_package, tables)
         finally:
             if hasattr(engine, "close"):
                 engine.close()
@@ -540,7 +534,6 @@ class TestIssueContracts:
                 source_expr=src,
                 target_table_name="tgt",
                 target_expr=tgt,
-                engine=engine,
             )
         finally:
             if hasattr(engine, "close"):
@@ -566,7 +559,6 @@ class TestIssueContracts:
                 source_expr=src,
                 target_table_name="tgt",
                 target_expr=tgt,
-                engine=engine,
             )
         finally:
             if hasattr(engine, "close"):
@@ -633,7 +625,7 @@ class TestV03Regression:
                     ),
                 ],
             )
-            report = check_foreign_keys(pkg, {"src": src, "tgt": tgt}, engine=engine)
+            report = check_foreign_keys(pkg, {"src": src, "tgt": tgt})
         finally:
             if hasattr(engine, "close"):
                 engine.close()
@@ -667,7 +659,7 @@ class TestReportAccumulation:
                 code="seed.note",
                 message="pre-existing finding",
             )
-            returned = check_foreign_keys(leavenworth_package, tables, engine=engine, report=seed)
+            returned = check_foreign_keys(leavenworth_package, tables, report=seed)
         finally:
             if hasattr(engine, "close"):
                 engine.close()
@@ -698,7 +690,7 @@ class TestCrossEngineParity:
                 "link": _scan_rows(engine, link_rows),
                 "node": _scan_rows(engine, node_rows),
             }
-            report = check_foreign_keys(leavenworth_package, tables, engine=engine)
+            report = check_foreign_keys(leavenworth_package, tables)
         finally:
             if hasattr(engine, "close"):
                 engine.close()

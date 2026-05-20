@@ -32,16 +32,34 @@ from datagrove.spec.loader import load_schema
 from datagrove.spec.model import Constraints, Field, Schema
 from datagrove.validation import Category, Severity, ValidationReport
 from datagrove.validation.schema_check import (
-    check_enum,
-    check_max_length,
-    check_maximum,
-    check_min_length,
-    check_minimum,
-    check_pattern,
-    check_required,
+    _check_enum as check_enum,
+)
+from datagrove.validation.schema_check import (
+    _check_max_length as check_max_length,
+)
+from datagrove.validation.schema_check import (
+    _check_maximum as check_maximum,
+)
+from datagrove.validation.schema_check import (
+    _check_min_length as check_min_length,
+)
+from datagrove.validation.schema_check import (
+    _check_minimum as check_minimum,
+)
+from datagrove.validation.schema_check import (
+    _check_pattern as check_pattern,
+)
+from datagrove.validation.schema_check import (
+    _check_required as check_required,
+)
+from datagrove.validation.schema_check import (
+    _check_type as check_type,
+)
+from datagrove.validation.schema_check import (
+    _check_unique as check_unique,
+)
+from datagrove.validation.schema_check import (
     check_schema,
-    check_type,
-    check_unique,
 )
 from gmnspy.fixtures import leavenworth
 
@@ -198,7 +216,7 @@ class TestCheckRequired:
         try:
             expr = _scan_rows(engine, rows)
             field = next(f for f in link_schema.fields if f.name == "from_node_id")
-            issues = check_required(expr, field, engine=engine, table_name="link")
+            issues = check_required(expr, field, table_name="link")
         finally:
             if hasattr(engine, "close"):
                 engine.close()
@@ -221,7 +239,7 @@ class TestCheckRequired:
         try:
             expr = _scan_rows(engine, rows)
             field = next(f for f in link_schema.fields if f.name == "from_node_id")
-            issues = check_required(expr, field, engine=engine, table_name="link")
+            issues = check_required(expr, field, table_name="link")
         finally:
             if hasattr(engine, "close"):
                 engine.close()
@@ -237,7 +255,7 @@ class TestCheckRequired:
         field = Field(name="name", type="string")
         try:
             expr = _scan_rows(engine, rows)
-            issues = check_required(expr, field, engine=engine, table_name="link")
+            issues = check_required(expr, field, table_name="link")
         finally:
             if hasattr(engine, "close"):
                 engine.close()
@@ -263,7 +281,7 @@ class TestCheckEnum:
         )
         try:
             expr = _scan_rows(engine, rows)
-            issues = check_enum(expr, field, engine=engine, table_name="link")
+            issues = check_enum(expr, field, table_name="link")
         finally:
             if hasattr(engine, "close"):
                 engine.close()
@@ -291,7 +309,7 @@ class TestCheckMinimum:
         field = next(f for f in link_schema.fields if f.name == "length")
         try:
             expr = _scan_rows(engine, rows)
-            issues = check_minimum(expr, field, engine=engine, table_name="link")
+            issues = check_minimum(expr, field, table_name="link")
         finally:
             if hasattr(engine, "close"):
                 engine.close()
@@ -313,7 +331,7 @@ class TestCheckMaximum:
         field = next(f for f in link_schema.fields if f.name == "free_speed")
         try:
             expr = _scan_rows(engine, rows)
-            issues = check_maximum(expr, field, engine=engine, table_name="link")
+            issues = check_maximum(expr, field, table_name="link")
         finally:
             if hasattr(engine, "close"):
                 engine.close()
@@ -339,7 +357,7 @@ class TestCheckLength:
         field = Field(name="name", type="string", constraints=Constraints(min_length=3))
         try:
             expr = _scan_rows(engine, rows)
-            issues = check_min_length(expr, field, engine=engine, table_name="link")
+            issues = check_min_length(expr, field, table_name="link")
         finally:
             if hasattr(engine, "close"):
                 engine.close()
@@ -357,7 +375,7 @@ class TestCheckLength:
         field = Field(name="name", type="string", constraints=Constraints(max_length=10))
         try:
             expr = _scan_rows(engine, rows)
-            issues = check_max_length(expr, field, engine=engine, table_name="link")
+            issues = check_max_length(expr, field, table_name="link")
         finally:
             if hasattr(engine, "close"):
                 engine.close()
@@ -387,7 +405,7 @@ class TestCheckPattern:
         )
         try:
             expr = _scan_rows(engine, rows)
-            issues = check_pattern(expr, field, engine=engine, table_name="link")
+            issues = check_pattern(expr, field, table_name="link")
         finally:
             if hasattr(engine, "close"):
                 engine.close()
@@ -418,7 +436,7 @@ class TestCheckUnique:
         )
         try:
             expr = _scan_rows(engine, rows)
-            issues = check_unique(expr, field, engine=engine, table_name="link")
+            issues = check_unique(expr, field, table_name="link")
         finally:
             if hasattr(engine, "close"):
                 engine.close()
@@ -439,7 +457,7 @@ class TestCheckUnique:
         )
         try:
             expr = _scan_rows(engine, rows)
-            issues = check_unique(expr, field, engine=engine, table_name="link")
+            issues = check_unique(expr, field, table_name="link")
         finally:
             if hasattr(engine, "close"):
                 engine.close()
@@ -456,7 +474,7 @@ class TestCheckUnique:
         field = Field(name="x", type="integer", constraints=Constraints(unique=True))
         try:
             expr = _scan_rows(engine, rows)
-            issues = check_unique(expr, field, engine=engine, table_name="t")
+            issues = check_unique(expr, field, table_name="t")
         finally:
             if hasattr(engine, "close"):
                 engine.close()
@@ -490,7 +508,7 @@ class TestCheckType:
         field = Field(name="lanes", type="integer")
         try:
             expr = _scan_rows(engine, rows)
-            issues = check_type(expr, field, engine=engine, table_name="link")
+            issues = check_type(expr, field, table_name="link")
         finally:
             if hasattr(engine, "close"):
                 engine.close()
@@ -511,7 +529,7 @@ class TestCheckSchema:
         rows = _coerce_link_rows(_load_link_rows(link_csv))
         try:
             expr = _scan_rows(engine, rows, schema=link_schema)
-            report = check_schema(expr, link_schema, engine=engine, table_name="link")
+            report = check_schema(expr, link_schema, table_name="link")
         finally:
             if hasattr(engine, "close"):
                 engine.close()
@@ -541,7 +559,7 @@ class TestCheckSchema:
         rows[2]["link_id"] = rows[0]["link_id"]  # schema.unique
         try:
             expr = _scan_rows(engine, rows, schema=schema_with_unique)
-            report = check_schema(expr, schema_with_unique, engine=engine, table_name="link")
+            report = check_schema(expr, schema_with_unique, table_name="link")
         finally:
             if hasattr(engine, "close"):
                 engine.close()
@@ -559,7 +577,7 @@ class TestCheckSchema:
         rows[1]["length"] = -5.0
         try:
             expr = _scan_rows(engine, rows, schema=link_schema)
-            report = check_schema(expr, link_schema, engine=engine, table_name="link")
+            report = check_schema(expr, link_schema, table_name="link")
         finally:
             if hasattr(engine, "close"):
                 engine.close()
@@ -581,7 +599,7 @@ class TestCheckSchema:
         rows[1]["facility_type"] = "urban"  # WARNING
         try:
             expr = _scan_rows(engine, rows, schema=schema_with_enum)
-            report = check_schema(expr, schema_with_enum, engine=engine, table_name="link")
+            report = check_schema(expr, schema_with_enum, table_name="link")
         finally:
             if hasattr(engine, "close"):
                 engine.close()
@@ -615,7 +633,7 @@ class TestCheckSchema:
                 return original_to_pandas(e)
 
             engine.to_pandas = counting_to_pandas  # type: ignore[method-assign]
-            check_schema(expr, link_schema, engine=engine, table_name="link")
+            check_schema(expr, link_schema, table_name="link")
         finally:
             if hasattr(engine, "close"):
                 engine.close()
@@ -644,7 +662,7 @@ class TestCheckSchema:
         )
         try:
             expr = _scan_rows(engine, rows, schema=link_schema)
-            result = check_schema(expr, link_schema, engine=engine, table_name="link", report=seed)
+            result = check_schema(expr, link_schema, table_name="link", report=seed)
         finally:
             if hasattr(engine, "close"):
                 engine.close()
@@ -688,7 +706,7 @@ class TestV03Regressions:
         try:
             expr = _scan_rows(engine, rows)
             # Must NOT raise.
-            issues = check_unique(expr, field, engine=engine, table_name="link")
+            issues = check_unique(expr, field, table_name="link")
         finally:
             if hasattr(engine, "close"):
                 engine.close()
@@ -713,7 +731,7 @@ class TestV03Regressions:
         )
         try:
             expr = _scan_rows(engine, rows)
-            issues = check_pattern(expr, field, engine=engine, table_name="link")
+            issues = check_pattern(expr, field, table_name="link")
         finally:
             if hasattr(engine, "close"):
                 engine.close()
@@ -740,7 +758,7 @@ class TestV03Regressions:
         rows[1]["facility_type"] = "urban"  # WARNING via schema.enum
         try:
             expr = _scan_rows(engine, rows, schema=schema_with_enum)
-            report = check_schema(expr, schema_with_enum, engine=engine, table_name="link")
+            report = check_schema(expr, schema_with_enum, table_name="link")
         finally:
             if hasattr(engine, "close"):
                 engine.close()

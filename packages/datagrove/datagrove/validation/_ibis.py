@@ -1,4 +1,4 @@
-"""Internal: normalise cross-engine ``TableExpr`` to an ibis Table.
+"""Internal: ibis wrap + shared helpers for the validators.
 
 The validators in this package use ibis predicates throughout
 (``expr[col].is_null()``, ``expr.filter(...).count().execute()``,
@@ -27,6 +27,13 @@ the overhead is bounded.
 
 Sample materialisation for Issue enumeration goes via ``.to_pyarrow()``
 + ``.to_pylist()`` — never pandas — so this module is pandas-free.
+
+This module is *also* the single home for the small ibis-shaped
+helpers every validator needs (row-index attach, push-down count,
+sample-as-pylist, source-row recovery, summary-issue builder). The
+``schema_check`` and ``foreign_keys`` modules used to keep their own
+copies; consolidating them here removes a ~70-LOC duplication and
+gives the validator authors one obvious place to look.
 """
 
 from __future__ import annotations
@@ -35,11 +42,38 @@ from typing import TYPE_CHECKING, Any
 
 import ibis
 
+from datagrove.reports import Category, Issue, Severity
+
 if TYPE_CHECKING:  # pragma: no cover - typing only
     import ibis.expr.types as ir
 
 
-__all__ = ["to_ibis"]
+__all__ = [
+    "MAX_ROW_ISSUES",
+    "ROW_COL",
+    "count",
+    "emit_summary",
+    "row_of",
+    "sample",
+    "to_ibis",
+    "with_row_index",
+]
+
+
+# Per-rule row-Issue enumeration cap. Beyond this every validator
+# emits one summary Issue plus the first ``MAX_ROW_ISSUES`` row-specific
+# Issues. The cap protects callers (rich-console, HTML renderer) from
+# million-issue reports while still letting a reviewer see concrete
+# examples.
+MAX_ROW_ISSUES: int = 100
+
+
+# Internal column name used to surface the original row position into
+# the materialised sample. We attach ``ibis.row_number()`` as this
+# column inside :func:`with_row_index`; per-rule enumerators read it
+# back from the pyarrow sample so ``Issue.row`` is the source-of-truth
+# row index, not the sample's 0-based offset.
+ROW_COL: str = "__dg_row__"
 
 
 def to_ibis(expr: Any) -> ir.Table:
@@ -103,3 +137,82 @@ def _looks_like_pandas_frame(obj: Any) -> bool:
     """
     cls = type(obj)
     return cls.__name__ == "DataFrame" and cls.__module__.startswith("pandas")
+
+
+def with_row_index(table: ir.Table) -> ir.Table:
+    """Attach a 0-based row-number column so enumerators carry positions.
+
+    ibis ``row_number()`` is the SQL window function; the cast to
+    int64 is defensive (ibis returns int64 universally but downstream
+    code consumes the value as a plain ``int``).
+    """
+    if ROW_COL in table.columns:
+        return table
+    return table.mutate(**{ROW_COL: ibis.row_number().cast("int64")})
+
+
+def count(predicate_table: ir.Table) -> int:
+    """Push a ``COUNT(*)`` to the backend and return a plain int.
+
+    Uses ``.to_pyarrow().as_py()`` rather than ``.execute()`` so the
+    return type is statically inferrable as ``Any`` (which pyright
+    accepts as an int) — ``.execute()`` is typed as
+    ``DataFrame | Series | Scalar`` even though the scalar branch
+    is the only one our usage hits.
+    """
+    return int(predicate_table.count().to_pyarrow().as_py())
+
+
+def sample(predicate_table: ir.Table, *, limit: int = MAX_ROW_ISSUES) -> list[dict[str, Any]]:
+    """Materialise up to ``limit`` rows of ``predicate_table`` as pylist dicts.
+
+    The pyarrow path keeps us pandas-free; ``to_pylist`` is the
+    cheapest stable way to iterate a small sample row-by-row.
+    """
+    arrow = predicate_table.limit(limit).to_pyarrow()
+    return arrow.to_pylist()
+
+
+def row_of(sample_row: dict[str, Any]) -> int:
+    """Pull the source row index out of a sampled dict.
+
+    Returns ``-1`` when the row dict carries no ``ROW_COL`` entry —
+    the validators emit that as the literal row index in the Issue,
+    making the failure mode obvious in renderers.
+    """
+    raw = sample_row.get(ROW_COL)
+    # Defensive cast: arrow may yield numpy ints depending on backend.
+    return int(raw) if raw is not None else -1
+
+
+def emit_summary(
+    *,
+    severity: Severity,
+    category: Category,
+    code: str,
+    table: str,
+    column: str | None,
+    total: int,
+    message: str,
+    sample_size: int = MAX_ROW_ISSUES,
+    extra: dict[str, Any] | None = None,
+) -> Issue:
+    """Build the "showing first N of total" summary Issue.
+
+    Unified across validators: ``extra["total_violations"]`` carries
+    the full count; ``extra["sample_shown"]`` carries the cap.
+    Renderers already understand both keys (HTML + JSON exercises pin
+    the contract).
+    """
+    payload: dict[str, Any] = {"total_violations": total, "sample_shown": sample_size}
+    if extra:
+        payload.update(extra)
+    return Issue(
+        severity=severity,
+        category=category,
+        code=code,
+        message=message,
+        table=table,
+        column=column,
+        extra=payload,
+    )

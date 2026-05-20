@@ -20,6 +20,17 @@ issues use ``category=DATA_QUALITY`` so they slot into the same report
 as everything else and the consumer doesn't need to know which package
 they came from.
 
+Validator-shape convention
+--------------------------
+
+Validators are flat public functions named ``check_*``. Per-rule
+decomposition is *internal* — private helpers (``_check_*``) are
+callable from tests for direct coverage but are deliberately not
+in any ``__all__``. Use the inline form (one function, top-to-bottom
+rules) when the rule count is ≤5; decompose into private helpers
+when it grows beyond that. ``structural.py`` (inline) and
+``schema_check.py`` (decomposed) are the two reference shapes.
+
 Examples:
     >>> from datagrove.validation import (
     ...     ValidationReport, Severity, Category, render_json,
@@ -51,6 +62,7 @@ from datagrove.reports import (
 )
 
 from .foreign_keys import check_foreign_key, check_foreign_keys
+from .schema_check import check_schema
 from .structural import check_structural, check_structural_from_source
 from .sync_state import DirtyTracker, FKStamp, TableHash, hash_column, hash_table
 
@@ -64,6 +76,7 @@ __all__ = [
     "ValidationReport",
     "check_foreign_key",
     "check_foreign_keys",
+    "check_schema",
     "check_structural",
     "check_structural_from_source",
     "hash_column",
