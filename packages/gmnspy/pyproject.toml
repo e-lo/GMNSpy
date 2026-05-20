@@ -67,6 +67,12 @@ Changelog = "https://github.com/e-lo/GMNSpy/blob/main/CHANGELOG.md"
 [project.scripts]
 gmnspy = "gmnspy.cli.app:app"
 
+[project.entry-points."datagrove.quality.rules"]
+# Discovered + registered automatically by datagrove.quality.run_quality on
+# first call. `register_all` is a zero-arg factory returning the rule
+# instances; it also calls register_rule on each so direct-invocation works.
+gmnspy_rules = "gmnspy.quality:register_all"
+
 [tool.hatch.build.targets.wheel]
 # Explicit include — we list every non-Python data file the package ships
 # (vendored GMNS spec JSON + bundled example-network binaries) so that a

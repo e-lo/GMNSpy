@@ -49,9 +49,18 @@ class _FakeRule:
 
 
 @pytest.fixture(autouse=True)
-def _clear_registry():
-    """Each test starts with an empty registry."""
+def _clear_registry(monkeypatch):
+    """Each test starts with an empty registry + a no-op entry-point walk by default.
+
+    The entry-point default is a no-op so that any sibling distribution
+    declaring a ``datagrove.quality.rules`` group (e.g. the installed
+    ``gmnspy`` package at dev time) does not leak its rules into the
+    registry on the first :func:`run_quality` call. Tests that
+    explicitly exercise discovery use their own ``with patch(...)``
+    block which shadows this default for the duration of the call.
+    """
     _reset_for_tests()
+    monkeypatch.setattr("datagrove.quality.registry.entry_points", lambda *, group: [])
     yield
     _reset_for_tests()
 
