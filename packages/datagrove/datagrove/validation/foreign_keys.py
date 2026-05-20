@@ -298,33 +298,6 @@ def check_foreign_key(
     Returns:
         A list of :class:`Issue` records. Empty when the FK is
         satisfied for every non-null source row.
-
-    Examples:
-        Clean single-field FK:
-
-        >>> from datagrove.engines.pandas_engine import PandasEngine
-        >>> from datagrove.spec.model import ForeignKey, ForeignKeyReference
-        >>> e = PandasEngine()
-        >>> src = e.scan({"data": [{"id": 1, "ref": 1}, {"id": 2, "ref": 1}]})
-        >>> tgt = e.scan({"data": [{"key": 1}]})
-        >>> fk = ForeignKey(fields="ref",
-        ...     reference=ForeignKeyReference(resource="tgt", fields="key"))
-        >>> check_foreign_key(fk, "src", src, "tgt", tgt, engine=e)
-        []
-
-        Missing target value:
-
-        >>> src = e.scan({"data": [{"id": 1, "ref": 99}]})
-        >>> tgt = e.scan({"data": [{"key": 1}]})
-        >>> issues = check_foreign_key(fk, "src", src, "tgt", tgt, engine=e)
-        >>> issues[0].code
-        'fk.missing_target'
-
-        Unverifiable (no target table):
-
-        >>> issues = check_foreign_key(fk, "src", src, "tgt", None, engine=e)
-        >>> issues[0].code
-        'fk.unverifiable'
     """
     source_fields = _as_field_list(fk.fields)
     target_fields = _as_field_list(fk.reference.fields)
