@@ -1,69 +1,38 @@
 """Lazy multi-table package wrapper — see :class:`Package`.
 
-A :class:`Package` is the user-facing surface for "a Frictionless data
-package opened lazily through one of the datagrove engines". It bundles:
+A :class:`Package` bundles the parsed
+:class:`~datagrove.spec.model.DataPackage` spec, a mapping of
+:class:`~datagrove.dataset.Table` instances, the
+:class:`~datagrove.engines.base.Engine` that produced them, the
+original ``source`` locator for round-trip writes, and an optional
+:class:`~datagrove.validation.sync_state.DirtyTracker`.
 
-* the parsed :class:`~datagrove.spec.model.DataPackage` (the *spec* —
-  what should be at the source);
-* a mapping ``{table_name: Table}`` of :class:`~datagrove.dataset.Table`
-  instances (the *data* — engine-native lazy expressions plus
-  metadata);
-* the :class:`~datagrove.engines.base.Engine` that produced them;
-* the original ``source`` identifier (path/URL) for round-trip writes;
-* an optional :class:`~datagrove.validation.sync_state.DirtyTracker`
-  (task 2.6) — when absent the sync-state validation pass and the
-  pre-write sync check both no-op gracefully.
+Key invariants:
 
-The dispatch surface that powers :meth:`Package.from_source` is the
-:mod:`datagrove.io` :class:`~datagrove.io.base.FormatAdapter` registry.
-Resolution order (per `docs/architecture.md` §6.1 + the io package
-docstring):
+* Lazy by default — table expressions stay engine-native until
+  someone asks for materialisation (``Table.to_pandas`` /
+  ``.collect`` / ``.count``).
+* All format dispatch routes through :mod:`datagrove.io`; this
+  module never embeds a format-specific branch.
+* The dirty-tracker is optional — every sync-aware code path no-ops
+  cleanly when the tracker is absent.
 
-    1. explicit ``format=`` short-circuits sniffing;
-    2. URL scheme (``duckdb://``, ``s3://``, ...);
-    3. file extension (``.csv``, ``.parquet``, ``.duckdb``, ``.csv.zip``);
-    4. directory-of-known-formats walk (``csv/``, ``parquet/``);
-    5. ``probe`` chain (any adapter that recognises the source);
-    6. :class:`~datagrove.io.FormatNotDetected`.
-
-The directory-of-files branch deserves its own callout: the Leavenworth
-``csv/`` and ``parquet/`` shapes have no extension to dispatch on, so
-:meth:`Package.from_source` walks the children and asks each adapter
-whose declared extension matches a child to scan that child. This
-mirrors :func:`datagrove.validation.structural._scan_directory_of_known_formats`
-so the structural validator and the package loader can't drift apart on
-"what counts as a directory of tables".
-
-Sync-state contract
--------------------
-
-The :class:`DirtyTracker` (task 2.6) records per-table content hashes
-and exposes:
-
-* ``stamp_table(name, expr, engine) -> TableHash`` — record a fresh
-  hash after a clean validation pass;
-* ``is_table_dirty(name, expr, engine) -> bool`` — compare the live
-  expression's hash against the stamped one;
-* ``check(current_tables, engine, report, strict) -> ValidationReport``
-  — walk every stamped table, emit one ``sync.*`` issue per stale one;
-* ``mark_dirty(name)`` — manually flip the stale flag.
-
-:meth:`Package.write` calls :meth:`DirtyTracker.is_table_dirty` (when a
-tracker is attached) plus the per-:class:`Table` ``dirty`` flag. Either
-signal triggers :class:`OutOfSyncWarning` (or :class:`OutOfSyncError`
-under ``strict_sync=True``). When no tracker is attached the per-table
-flag alone is consulted — so a user can still flag a mutation via
-:meth:`Table.invalidate` without installing the tracker.
+See :meth:`Package.from_source` for source dispatch order and
+:meth:`Package.validate` / :meth:`Package.write` for the sync-state
+contract.
 """
 
 from __future__ import annotations
 
+import logging
 import shutil
 import warnings
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
+
+import pyarrow as pa
 
 from datagrove.engines import get_engine
 from datagrove.io import (
@@ -74,7 +43,7 @@ from datagrove.io import (
     get_adapter,
     list_adapters,
 )
-from datagrove.reports import ValidationReport
+from datagrove.reports import Category, ValidationReport
 from datagrove.spec.loader import load_package
 from datagrove.spec.model import DataPackage, Resource, Schema
 from datagrove.validation import (
@@ -83,10 +52,13 @@ from datagrove.validation import (
 )
 from datagrove.validation.schema_check import check_schema
 
+from .errors import PackageError
 from .table import Table
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from datagrove.engines.base import Engine
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Optional sync-state import — task 2.6 may or may not have landed yet.
@@ -104,7 +76,7 @@ except ImportError:  # pragma: no cover - task 2.6 not landed yet
 DirtyTracker = _DirtyTrackerImpl
 
 
-__all__ = ["DirtyTracker", "OutOfSyncError", "OutOfSyncWarning", "Package"]
+__all__ = ["DirtyTracker", "OutOfSyncError", "OutOfSyncWarning", "Package", "PackageError"]
 
 
 # ---------------------------------------------------------------------------
@@ -205,23 +177,40 @@ class Package:
     ) -> Package:
         """Build a :class:`Package` from a source path/URL.
 
-        Dispatch order:
+        Dispatch order (per ``docs/architecture.md`` §6.1 + the
+        :mod:`datagrove.io` package docstring):
 
             1. Resolve ``engine`` (default: registry default).
-            2. Resolve ``spec`` — explicit ``DataPackage`` wins;
-               otherwise look for a ``datapackage.json`` alongside
-               ``source``; otherwise synthesise a minimal spec from
-               whatever resources are discovered.
-            3. Resolve ``source`` to a :class:`ResourceListing` via the
-               :mod:`datagrove.io` dispatcher, falling back to a
-               directory-of-known-formats walk for ``csv/``/``parquet/``
-               shapes that have no extension.
-            4. For each :class:`~datagrove.io.base.ResourceRef`, ask the
-               owning adapter to ``read`` it lazily through ``engine``,
-               then wrap the resulting :class:`~datagrove.engines.base.TableExpr`
-               in a :class:`~datagrove.dataset.Table`. The spec is
-               consulted for the matching :class:`~datagrove.spec.model.Schema`
-               so the validation layer doesn't have to re-load it.
+            2. Resolve ``spec`` — explicit :class:`DataPackage` wins;
+               else look for a ``datapackage.json`` alongside ``source``;
+               else synthesise a minimal spec from whatever resources
+               are discovered.
+            3. Resolve ``source`` to a :class:`ResourceListing`:
+
+                a. explicit ``format=`` short-circuits sniffing;
+                b. URL scheme (``duckdb://``, ``s3://``, ...);
+                c. file extension (``.csv``, ``.parquet``, ``.duckdb``,
+                   ``.csv.zip``);
+                d. directory-of-known-formats walk (``csv/``,
+                   ``parquet/``) — Leavenworth shapes have no extension
+                   to dispatch on, so we walk children and ask each
+                   matching adapter to scan one. Mirrors
+                   :func:`datagrove.validation.structural._scan_directory_of_known_formats`
+                   so the structural validator and the package loader
+                   can't drift apart on "what counts as a directory of
+                   tables".
+                e. ``probe`` chain (any adapter that recognises the
+                   source);
+                f. :class:`~datagrove.io.FormatNotDetected`.
+
+            4. For each :class:`~datagrove.io.base.ResourceRef`, ask
+               the owning adapter to ``read`` it lazily through
+               ``engine``, then wrap the resulting
+               :class:`~datagrove.engines.base.TableExpr` in a
+               :class:`~datagrove.dataset.Table`. The spec is
+               consulted for the matching
+               :class:`~datagrove.spec.model.Schema` so the validation
+               layer doesn't have to re-load it.
 
         Args:
             source: Path / URL / directory pointing at the data
@@ -411,6 +400,15 @@ class Package:
         sync_state. Each pass appends issues to the same report. Skip
         any pass by passing ``False`` for its flag.
 
+        Sync-state contract: after a clean FK pass, the
+        :class:`DirtyTracker` (when attached) stamps each
+        non-violating FK via :meth:`DirtyTracker.stamp_fk_from_exprs`
+        so subsequent edits surface ``sync.fk_stale`` instead of
+        silently writing the broken FK. The ``sync_state`` pass then
+        consults :meth:`DirtyTracker.check` to report any stamps that
+        no longer match the live tables. No-op when ``dirty_tracker``
+        is ``None``.
+
         Args:
             schema: Run per-table schema validation
                 (:func:`datagrove.validation.check_schema`).
@@ -479,6 +477,14 @@ class Package:
                 report=report,
                 strict=strict,
             )
+            # Stamp every cleanly-validated FK on the DirtyTracker so a
+            # later mutation surfaces ``sync.fk_stale`` instead of
+            # silently writing the broken FK. This is the "valve" the
+            # tracker was built for — the FK validator deliberately
+            # doesn't depend on the hash infrastructure, so the seam
+            # lives here in the package orchestrator.
+            if self.dirty_tracker is not None:
+                self._stamp_clean_fks(report)
 
         # Sync state: only meaningful with a tracker. The contract
         # (`DirtyTracker.check`) is documented on task 2.6; we keep
@@ -621,10 +627,16 @@ class Package:
     ) -> None:
         """Persist every table in the package to ``dest``.
 
-        Before writing, runs the sync-state check (per-table ``dirty``
-        flag plus :class:`DirtyTracker.is_table_dirty` if a tracker is
-        attached). Any stale table triggers :class:`OutOfSyncWarning`,
-        or :class:`OutOfSyncError` under ``strict_sync=True``.
+        Sync-state contract: before writing, consults two signals per
+        table — the per-:class:`Table` ``dirty`` flag (always
+        available) and :meth:`DirtyTracker.is_table_dirty` (when a
+        tracker is attached). EITHER signal flags the table as stale
+        — the union is the conservative thing to surface. Stale tables
+        trigger :class:`OutOfSyncWarning`, or :class:`OutOfSyncError`
+        under ``strict_sync=True``. When no tracker is attached, the
+        per-table flag alone is consulted, so a caller can still flag
+        a mutation via :meth:`Table.invalidate` without installing the
+        tracker.
 
         Format dispatch goes through :mod:`datagrove.io` exactly as on
         the read path:
@@ -654,6 +666,11 @@ class Package:
                 ``overwrite=False``.
             OutOfSyncError: When ``strict_sync=True`` and any table is
                 dirty.
+            PackageError: When the package has no engine attached (so
+                materialisation can't run).
+            FormatNotDetected: When ``format`` is not given and the
+                ``dest`` extension is unknown — the user must pass
+                ``format=`` explicitly to disambiguate.
 
         Examples:
             Roundtrip the Leavenworth fixture through parquet::
@@ -677,7 +694,11 @@ class Package:
                 True
         """
         if self.engine is None:
-            raise RuntimeError("Package has no engine attached; cannot write.")
+            raise PackageError(
+                "Package has no engine attached; cannot write. "
+                "Build the package via Package.from_source(..., engine=...) "
+                "or Package.from_tables(..., engine=...) before calling write()."
+            )
 
         # 1. Sync-state pre-check. Any dirty signal trips warning/error.
         stale = self._stale_tables()
@@ -836,6 +857,124 @@ class Package:
     # Internal helpers
     # ------------------------------------------------------------------
 
+    def _stamp_clean_fks(self, report: ValidationReport) -> None:
+        """Stamp every cleanly-validated FK on :attr:`dirty_tracker`.
+
+        Walks :attr:`spec.resources` for every declared FK; for each
+        FK whose validator did NOT emit a matching :class:`Issue`
+        (category=FOREIGN_KEY, table=source, extra.target_table+field
+        matching), call :meth:`DirtyTracker.stamp_fk_from_exprs` so the
+        tracker can later detect drift.
+
+        Composite FKs are stamped via :meth:`DirtyTracker.stamp_fk`
+        with combined hashes computed here so we don't impose the
+        composite case on :meth:`stamp_fk_from_exprs` (which is the
+        single-column convenience).
+
+        Safe to call when ``dirty_tracker`` is ``None`` (no-op) or
+        when no FKs are present in the spec (no-op).
+        """
+        if self.dirty_tracker is None or self.engine is None:
+            return
+        stamp_fk_from_exprs = getattr(self.dirty_tracker, "stamp_fk_from_exprs", None)
+        stamp_fk = getattr(self.dirty_tracker, "stamp_fk", None)
+        if not callable(stamp_fk_from_exprs) or not callable(stamp_fk):
+            return
+
+        # Pre-bucket FK issues by (source_table, target_table,
+        # target_field_spec) so the per-FK lookup is O(1).
+        fk_issue_keys: set[tuple[str | None, str | None, str | None]] = set()
+        for issue in report.issues:
+            if issue.category != Category.FOREIGN_KEY:
+                continue
+            fk_issue_keys.add(
+                (
+                    issue.table,
+                    issue.extra.get("target_table"),
+                    issue.extra.get("target_field"),
+                )
+            )
+
+        # Defer the heavy imports to avoid a load-time cycle into the
+        # validation layer — only needed when we actually stamp.
+        from datagrove.validation.sync_state import hash_column
+
+        for resource in self.spec.resources:
+            schema = resource.table_schema
+            if schema is None or isinstance(schema, str):
+                continue
+            if not schema.foreign_keys:
+                continue
+            source_name = resource.name
+            source_table = self.tables.get(source_name)
+            if source_table is None:
+                continue
+            for fk in schema.foreign_keys:
+                source_fields = [fk.fields] if isinstance(fk.fields, str) else list(fk.fields)
+                target_fields_raw = fk.reference.fields
+                target_fields = (
+                    [target_fields_raw] if isinstance(target_fields_raw, str) else list(target_fields_raw)
+                )
+                target_name = fk.reference.resource or source_name
+                target_table = self.tables.get(target_name)
+                if target_table is None:
+                    continue  # FK validator already emitted fk.unverifiable
+                target_field_spec = target_fields[0] if len(target_fields) == 1 else ",".join(target_fields)
+                # Skip if the FK validator surfaced ANY issue against
+                # this exact (source_table, target_table, target_field)
+                # triple — a stale stamp on a known-broken FK would be
+                # actively misleading.
+                if (source_name, target_name, target_field_spec) in fk_issue_keys:
+                    continue
+                source_field_spec = source_fields[0] if len(source_fields) == 1 else ",".join(source_fields)
+                try:
+                    if len(source_fields) == 1 and len(target_fields) == 1:
+                        stamp_fk_from_exprs(
+                            source_name,
+                            source_fields[0],
+                            source_table.expr,
+                            target_name,
+                            target_fields[0],
+                            target_table.expr,
+                            engine=self.engine,
+                        )
+                    else:
+                        # Composite FK — hash each component column and
+                        # combine, matching _column_hash_from_expr in
+                        # sync_state so stale-check uses the same recipe.
+                        import hashlib
+
+                        src_parts = [
+                            f"{c}:{hash_column(source_table.expr, c, self.engine)}" for c in source_fields
+                        ]
+                        tgt_parts = [
+                            f"{c}:{hash_column(target_table.expr, c, self.engine)}" for c in target_fields
+                        ]
+                        src_hash = hashlib.sha256("|".join(src_parts).encode("utf-8")).hexdigest()
+                        tgt_hash = hashlib.sha256("|".join(tgt_parts).encode("utf-8")).hexdigest()
+                        stamp_fk(
+                            source_name,
+                            source_field_spec,
+                            target_name,
+                            target_field_spec,
+                            source_hash=src_hash,
+                            target_hash=tgt_hash,
+                        )
+                except (KeyError, AttributeError, ValueError) as exc:
+                    # Column missing / spec-vs-data mismatch — the FK
+                    # validator would have surfaced this if it ran;
+                    # don't fail the validate() call just because we
+                    # couldn't compute a stamp.
+                    logger.warning(
+                        "could not stamp FK %s.%s -> %s.%s: %s",
+                        source_name,
+                        source_field_spec,
+                        target_name,
+                        target_field_spec,
+                        exc,
+                    )
+        return
+
     def _stale_tables(self) -> set[str]:
         """Return the set of table names that look out-of-sync.
 
@@ -858,9 +997,19 @@ class Package:
             try:
                 if is_dirty(name, table.expr, self.engine):
                     stale.add(name)
-            except Exception:
-                # Bubble the failure through as a stale signal so the
-                # user sees the warning rather than a hard crash.
+            except (pa.ArrowInvalid, ValueError, AttributeError) as exc:
+                # Hash-check raised against the live expression — most
+                # plausibly because the table shape drifted from what
+                # was stamped (schema change, dropped column). Treat as
+                # stale: that's the conservative "warn the user, don't
+                # crash" outcome. Real bugs (KeyError / TypeError) keep
+                # propagating so they show up loudly in CI.
+                logger.warning(
+                    "DirtyTracker.is_table_dirty raised for %r; treating as stale: %s",
+                    name,
+                    exc,
+                    exc_info=True,
+                )
                 stale.add(name)
         return stale
 
@@ -944,7 +1093,17 @@ def _scan_directory_of_known_formats(source_path: Path) -> ResourceListing:
                 adapter = get_adapter(adapter_name)
                 try:
                     refs = adapter.scan(child)
-                except Exception:
+                except (FormatNotDetected, OSError) as exc:
+                    # Adapter rejected the file (format mismatch under a
+                    # known extension, e.g. a `.csv` that's actually
+                    # binary; or an OS-level read failure). Skip the
+                    # child rather than abort the whole directory scan.
+                    logger.warning(
+                        "adapter %r failed to scan %s: %s",
+                        adapter_name,
+                        child,
+                        exc,
+                    )
                     refs = []
                 for ref in refs:
                     if ref.name in seen:
@@ -988,10 +1147,15 @@ def _infer_write_format(dest: Path) -> str:
     """Infer a write format from ``dest``.
 
     Order:
-        1. Extension match (``.parquet``, ``.csv``, ``.duckdb``).
-        2. ``.csv.zip`` compound.
-        3. Anything else → default to ``"parquet"`` (the recommended
-           persistent layout per architecture §6.1).
+        1. Extension match (``.parquet``, ``.csv``, ``.duckdb``,
+           ``.csv.zip``).
+        2. No extension at all → default to ``"parquet"`` (the
+           recommended persistent layout per architecture §6.1) so the
+           common "give me a directory" call site keeps working.
+        3. Unknown extension → raise :class:`FormatNotDetected` rather
+           than silently coercing to parquet; the user almost certainly
+           meant a specific format and a silent default would hide the
+           bug.
     """
     name = dest.name.lower()
     if name.endswith(".duckdb"):
@@ -1002,7 +1166,14 @@ def _infer_write_format(dest: Path) -> str:
         return "parquet"
     if name.endswith(".csv"):
         return "csv"
-    return "parquet"
+    # No extension at all → directory-ish; default to parquet per §6.1.
+    if "." not in name:
+        return "parquet"
+    raise FormatNotDetected(
+        f"Could not infer write format for {dest!s}; "
+        f"pass format= explicitly. Known write formats: "
+        f"{sorted(list_adapters())}."
+    )
 
 
 def _html_escape(value: str) -> str:

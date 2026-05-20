@@ -62,6 +62,14 @@ class Table:
     (:meth:`filter`, :meth:`select`, :meth:`head`) therefore return a
     new :class:`Table`, leaving the original unchanged.
 
+    Mutation: this class intentionally does not expose an in-place
+    ``update`` shim. For row-level edits with full diff / rollback /
+    audit, use :class:`datagrove.editing.Edit` +
+    :class:`datagrove.editing.Session`. For low-level mutations that
+    bypass the editing framework, build a new expression directly and
+    call :meth:`invalidate` on the table to flip its ``dirty`` flag so
+    the sync-state tracker sees the change.
+
     Attributes:
         name: Logical resource name. Matches
             :attr:`datagrove.spec.model.Resource.name` and is used as
@@ -194,7 +202,21 @@ class Table:
     # ------------------------------------------------------------------
 
     def count(self) -> int:
-        """Return the row count, materialising as needed.
+        """Return the row count, pushing down to the engine where possible.
+
+        Tries the engine-native count path before falling back to a
+        full materialisation:
+
+        * ibis ``Table`` exprs use
+          ``expr.count().to_pyarrow().as_py()`` so the aggregate is
+          pushed to duckdb (or whichever ibis backend) as a single SQL
+          scalar.
+        * polars ``LazyFrame`` exprs use
+          ``expr.select(polars.len()).collect().item()`` so the count
+          stays inside the lazy plan.
+        * pandas ``DataFrame`` exprs use ``len(expr)`` directly —
+          pandas is already eager so there's nothing to push.
+        * Anything else falls back to ``len(engine.to_pandas(expr))``.
 
         Examples:
             >>> from datagrove.engines.pandas_engine import PandasEngine
@@ -203,13 +225,7 @@ class Table:
             >>> Table(name="t", expr=e.from_records([{"a": 1}]), engine=e).count()
             1
         """
-        # The pandas convergence point is the universal cheap path:
-        # every engine implements to_pandas, and the cost is bounded by
-        # the materialised row count (which is exactly what we want
-        # here). A future Phase 5 optimisation may push the count down
-        # into ibis directly to skip the materialisation; the public
-        # contract is "returns an int" either way.
-        return len(self.engine.to_pandas(self.expr))
+        return _engine_count(self.engine, self.expr)
 
     def to_pandas(self) -> pd.DataFrame:
         """Materialise as a ``pandas.DataFrame`` using the engine's converter.
@@ -271,41 +287,6 @@ class Table:
     # ------------------------------------------------------------------
     # Mutation surface (marks dirty)
     # ------------------------------------------------------------------
-
-    def update(self, **changes: Any) -> Table:
-        """Placeholder mutation hook — full edit/diff semantics arrive in 2.9.
-
-        Today this just returns a new :class:`Table` flagged ``dirty``
-        with ``metadata["pending_update"]`` recording the requested
-        changes. The 2.9 Edit/Diff/Session work will replace this with
-        a real edit-rollback-audit pipeline that produces an
-        ``EditResult``. Until then, callers who need an actual data
-        edit should construct the new expression themselves and wrap
-        it in a fresh :class:`Table`.
-
-        Args:
-            **changes: Free-form mutation parameters. The current
-                implementation stores them under
-                ``metadata["pending_update"]`` and marks the table dirty.
-
-        Returns:
-            A new :class:`Table` carrying the pending-update metadata
-            and ``dirty=True``.
-
-        Examples:
-            >>> from datagrove.engines.pandas_engine import PandasEngine
-            >>> from datagrove.dataset import Table
-            >>> e = PandasEngine()
-            >>> t = Table(name="t", expr=e.from_records([{"a": 1}]), engine=e)
-            >>> t2 = t.update(a=2)
-            >>> t2.dirty
-            True
-        """
-        new = self._derived(self.expr)
-        new.dirty = True
-        new.metadata = dict(self.metadata)
-        new.metadata["pending_update"] = dict(changes)
-        return new
 
     def invalidate(self) -> None:
         """Manually mark the table dirty.
@@ -465,6 +446,67 @@ def _engine_select(engine: Engine, expr: TableExpr, columns: list[str]) -> Table
     except Exception:  # pragma: no cover - defensive fallback
         df = engine.to_pandas(expr)
         return df[columns]
+
+
+def _engine_count(engine: Engine, expr: TableExpr) -> int:
+    """Engine-native row count — avoids the full materialisation hop.
+
+    Probes the cheapest known count surface per engine in order. The
+    duck-typed checks intentionally don't require an ``isinstance``
+    against ibis / polars / pandas at this layer so a fourth engine
+    that follows the same structural surface keeps working without
+    edits here.
+
+    Order:
+        1. ``expr.count()`` returning an ibis scalar — call
+           ``.to_pyarrow().as_py()`` for the int.
+        2. ``expr.select(pl.len()).collect().item()`` for polars
+           ``LazyFrame``.
+        3. ``len(expr)`` for pandas / polars eager ``DataFrame``.
+        4. Last-resort fallback: ``len(engine.to_pandas(expr))``.
+    """
+    # ibis: `expr.count()` returns an ibis scalar expression whose
+    # `to_pyarrow().as_py()` produces the int via the configured
+    # backend. The whole computation pushes down as a SQL
+    # `SELECT COUNT(*)`. Mirrors the convention in
+    # :func:`datagrove.validation.schema_check._count`.
+    count_fn = getattr(expr, "count", None)
+    if callable(count_fn):
+        try:
+            result = count_fn()
+        except TypeError:
+            result = None
+        if result is not None:
+            to_pyarrow = getattr(result, "to_pyarrow", None)
+            if callable(to_pyarrow):
+                try:
+                    return int(to_pyarrow().as_py())
+                except Exception:  # pragma: no cover - defensive
+                    pass
+            # pandas Series exposes a `.count()` int directly — fall
+            # through to len() below.
+    # polars LazyFrame: select(pl.len()).collect().item() keeps the
+    # count inside the lazy plan. We only import polars when the
+    # expression actually has the `collect` + `select` shape so we
+    # don't pay an import cost for the ibis / pandas paths.
+    if hasattr(expr, "collect") and hasattr(expr, "select"):
+        try:
+            import polars as pl  # local import — polars is optional
+        except ImportError:  # pragma: no cover - polars not installed
+            pl = None  # type: ignore[assignment]
+        if pl is not None:
+            try:
+                return int(expr.select(pl.len()).collect().item())  # type: ignore[arg-type]
+            except Exception:  # pragma: no cover - defensive
+                pass
+    # pandas DataFrame / polars eager DataFrame: len() is cheap.
+    try:
+        return len(expr)  # type: ignore[arg-type]
+    except TypeError:
+        pass
+    # Last resort — materialise via the engine. Keeps the public
+    # contract intact for exotic engines.
+    return len(engine.to_pandas(expr))
 
 
 def _engine_head(engine: Engine, expr: TableExpr, n: int) -> TableExpr:

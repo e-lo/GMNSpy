@@ -60,11 +60,13 @@ both issue codes fire.
 DirtyTracker note (task 2.6)
 ----------------------------
 
-This validator does NOT stamp ``sync_state`` hashes. Task 2.6 wraps it
-in a hash-aware layer that checks the content hash of the source table
-+ target table before re-running the FK and stamps a fresh hash on a
-clean pass. This module deliberately doesn't depend on the hash
-infrastructure so the dependency points only one way.
+This validator does NOT stamp ``sync_state`` hashes. The DirtyTracker
+integration lives in :meth:`datagrove.dataset.Package.validate`, which
+walks the spec after a clean FK pass and calls
+:meth:`DirtyTracker.stamp_fk_from_exprs` for each FK whose validator
+produced no issues. This module deliberately doesn't depend on the
+hash infrastructure so the dependency points one way
+(dataset → validation).
 """
 
 from __future__ import annotations
@@ -470,10 +472,10 @@ def check_foreign_keys(
     with many FKs against the same target only pays the conversion
     cost for that target once.
 
-    DirtyTracker (task 2.6) wraps this validator to stamp a fresh
-    sync-state hash on a clean pass — this function deliberately
-    doesn't depend on the hash infrastructure so the dependency is
-    one-way.
+    DirtyTracker stamping happens in :meth:`Package.validate` after a
+    clean FK pass; this function only emits :class:`Issue` records and
+    deliberately doesn't depend on the hash infrastructure, so the
+    dependency points one way (dataset → validation).
 
     Args:
         package: :class:`~datagrove.spec.model.DataPackage` describing
