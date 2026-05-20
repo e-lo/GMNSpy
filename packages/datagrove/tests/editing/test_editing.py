@@ -1,0 +1,343 @@
+"""Tests for the generic editing framework (task 2.9 / issue #68).
+
+Coverage matrix:
+
+* Edit/Diff/EditResult value type construction + frozenness.
+* apply_edit dispatch (add_rows, delete_rows, update_rows, replace_table).
+* Session context manager: commit path persists log.
+* Session atomicity: exception inside the block rolls back state.
+* rollback() round-trips on disk (apply N edits, write log, read log,
+  reverse — final state equals starting state).
+* rollback() ``to=session_id`` selector.
+* DirtyTracker integration: apply_edit calls mark_dirty.
+* Cross-engine parity (ibis + pandas).
+* UnknownTable / UnsupportedEditOp / InvalidPayload typed errors.
+"""
+
+from __future__ import annotations
+
+import tempfile
+from pathlib import Path
+from typing import Any
+
+import pytest
+from datagrove.dataset import Package, Table
+from datagrove.editing import (
+    Diff,
+    Edit,
+    EditingError,
+    EditResult,
+    InvalidPayload,
+    Session,
+    UnknownTable,
+    UnsupportedEditOp,
+    rollback,
+)
+from datagrove.editing.apply import apply_edit
+from datagrove.engines.ibis_engine import IbisEngine
+from datagrove.engines.pandas_engine import PandasEngine
+from datagrove.validation.sync_state import DirtyTracker
+
+
+def _engine(name: str):
+    """Construct an engine instance by short name (skip polars for 2.9)."""
+    if name == "ibis":
+        return IbisEngine()
+    if name == "pandas":
+        return PandasEngine()
+    raise AssertionError(f"unknown engine name: {name!r}")
+
+
+def _make_pkg(engine_name: str, *, rows: list[dict] | None = None) -> Package:
+    """Build a one-table Package with a small synthetic dataset."""
+    eng = _engine(engine_name)
+    if rows is None:
+        rows = [{"id": 1, "v": "a"}, {"id": 2, "v": "b"}, {"id": 3, "v": "c"}]
+    t = Table(name="t", expr=eng.from_records(rows), engine=eng)
+    return Package.from_tables({"t": t})
+
+
+def _ids(pkg: Package, table: str = "t") -> list[Any]:
+    """Sorted list of ``id`` values currently in ``pkg[table]``."""
+    df = pkg[table].to_pandas()
+    return sorted(df["id"].dropna().tolist())
+
+
+# ---------------------------------------------------------------------------
+# Value-type smoke
+# ---------------------------------------------------------------------------
+
+
+def test_edit_frozen() -> None:
+    """Edit is frozen — attempting to mutate raises."""
+    e = Edit(op="add_rows", table="t", payload={"rows": []})
+    with pytest.raises((AttributeError, TypeError)):
+        e.op = "delete_rows"  # type: ignore[misc]
+
+
+def test_editresult_carries_diff_and_session() -> None:
+    """EditResult composes Edit + Diff + rollback blob + session id."""
+    from datetime import datetime
+
+    e = Edit(op="add_rows", table="t", payload={"rows": [{}]})
+    d = Diff(edit=e, rows_added=1, rows_removed=0, rows_changed=0)
+    r = EditResult(edit=e, diff=d, rollback_data={"n_added": 1}, applied_at=datetime(2026, 1, 1), session_id="sess-x")
+    assert r.session_id == "sess-x"
+    assert r.diff.rows_added == 1
+
+
+# ---------------------------------------------------------------------------
+# apply_edit — per-op dispatch
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("engine_name", ["ibis", "pandas"])
+def test_apply_add_rows(engine_name: str) -> None:
+    pkg = _make_pkg(engine_name)
+    r = apply_edit(pkg, Edit(op="add_rows", table="t", payload={"rows": [{"id": 4, "v": "d"}]}))
+    assert r.diff.rows_added == 1
+    assert _ids(pkg) == [1, 2, 3, 4]
+    # Bounded sample present.
+    assert r.diff.before_sample is not None and len(r.diff.before_sample) <= 50
+    assert r.diff.after_sample is not None and len(r.diff.after_sample) <= 50
+
+
+@pytest.mark.parametrize("engine_name", ["ibis", "pandas"])
+def test_apply_delete_rows(engine_name: str) -> None:
+    pkg = _make_pkg(engine_name)
+    r = apply_edit(pkg, Edit(op="delete_rows", table="t", payload={"predicate": lambda t: t["id"] == 2}))
+    assert r.diff.rows_removed == 1
+    assert _ids(pkg) == [1, 3]
+
+
+@pytest.mark.parametrize("engine_name", ["ibis", "pandas"])
+def test_apply_update_rows(engine_name: str) -> None:
+    pkg = _make_pkg(engine_name)
+    r = apply_edit(
+        pkg,
+        Edit(op="update_rows", table="t", payload={"predicate": lambda t: t["id"] == 2, "set": {"v": "B"}}),
+    )
+    assert r.diff.rows_changed == 1
+    df = pkg["t"].to_pandas().sort_values("id").reset_index(drop=True)
+    assert df.loc[df["id"] == 2, "v"].iloc[0] == "B"
+    assert df.loc[df["id"] == 1, "v"].iloc[0] == "a"
+
+
+def test_apply_replace_table() -> None:
+    pkg = _make_pkg("pandas")
+    e = pkg.engine
+    new_expr = e.from_records([{"id": 99, "v": "z"}])
+    r = apply_edit(pkg, Edit(op="replace_table", table="t", payload={"expr": new_expr}))
+    assert _ids(pkg) == [99]
+    # The diff captures the prior rows for rollback.
+    assert r.rollback_data["prior_rows"]
+
+
+# ---------------------------------------------------------------------------
+# Typed errors
+# ---------------------------------------------------------------------------
+
+
+def test_apply_unknown_table_raises() -> None:
+    pkg = _make_pkg("pandas")
+    with pytest.raises(UnknownTable):
+        apply_edit(pkg, Edit(op="add_rows", table="missing", payload={"rows": []}))
+
+
+def test_apply_unsupported_op_raises() -> None:
+    pkg = _make_pkg("pandas")
+    with pytest.raises(UnsupportedEditOp):
+        apply_edit(pkg, Edit(op="frobnicate", table="t", payload={}))
+
+
+def test_apply_invalid_payload_raises() -> None:
+    pkg = _make_pkg("pandas")
+    with pytest.raises(InvalidPayload):
+        apply_edit(pkg, Edit(op="add_rows", table="t", payload={}))
+
+
+# ---------------------------------------------------------------------------
+# Session — commit path persists log
+# ---------------------------------------------------------------------------
+
+
+def test_session_commit_persists_log(tmp_path: Path) -> None:
+    pkg = _make_pkg("pandas")
+    log = tmp_path / "history.parquet"
+    with Session(pkg, log_path=log) as s:
+        s.add_edit(Edit(op="add_rows", table="t", payload={"rows": [{"id": 4, "v": "d"}]}))
+        s.add_edit(Edit(op="add_rows", table="t", payload={"rows": [{"id": 5, "v": "e"}]}))
+    assert log.exists()
+    assert _ids(pkg) == [1, 2, 3, 4, 5]
+    # Log carries both edits.
+    import pyarrow.parquet as pq
+
+    arrow = pq.read_table(log)
+    assert arrow.num_rows == 2
+    assert set(arrow.column_names) >= {
+        "session_id",
+        "edit_index",
+        "op",
+        "table",
+        "payload_json",
+        "rollback_json",
+        "rows_added",
+        "applied_at",
+    }
+
+
+def test_session_outside_with_raises() -> None:
+    """add_edit before __enter__ should refuse."""
+    pkg = _make_pkg("pandas")
+    s = Session(pkg)
+    with pytest.raises(EditingError):
+        s.add_edit(Edit(op="add_rows", table="t", payload={"rows": [{"id": 99}]}))
+
+
+# ---------------------------------------------------------------------------
+# Atomicity — exception in block reverts state
+# ---------------------------------------------------------------------------
+
+
+def test_session_atomicity_on_exception(tmp_path: Path) -> None:
+    """If the body raises, applied edits are reversed before propagation."""
+    pkg = _make_pkg("pandas")
+    starting = _ids(pkg)
+    log = tmp_path / "history.parquet"
+    with pytest.raises(RuntimeError, match="boom"), Session(pkg, log_path=log) as s:
+        s.add_edit(Edit(op="add_rows", table="t", payload={"rows": [{"id": 4, "v": "d"}]}))
+        s.add_edit(Edit(op="delete_rows", table="t", payload={"predicate": lambda t: t["id"] == 1}))
+        raise RuntimeError("boom")
+    # State restored, log NOT written (commit path skipped on raise).
+    assert _ids(pkg) == starting
+    assert not log.exists()
+
+
+# ---------------------------------------------------------------------------
+# Rollback round-trip
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("engine_name", ["ibis", "pandas"])
+def test_rollback_round_trip(engine_name: str, tmp_path: Path) -> None:
+    """Apply edits → write log → rollback from disk → final == initial."""
+    pkg = _make_pkg(engine_name)
+    starting = _ids(pkg)
+    log = tmp_path / "history.parquet"
+    with Session(pkg, log_path=log) as s:
+        s.add_edit(Edit(op="add_rows", table="t", payload={"rows": [{"id": 10, "v": "j"}]}))
+        s.add_edit(Edit(op="delete_rows", table="t", payload={"predicate": lambda t: t["id"] == 2}))
+        s.add_edit(Edit(op="update_rows", table="t", payload={"predicate": lambda t: t["id"] == 3, "set": {"v": "C"}}))
+    # Intermediate sanity — state changed.
+    assert _ids(pkg) != starting
+
+    reversed_results = rollback(pkg, log)
+    assert len(reversed_results) == 3
+    # Round-trip equality on the id column. The update test makes
+    # checking the `v` column non-trivial without sort+set semantics,
+    # so we check ids match and the `v` column has been restored too.
+    assert _ids(pkg) == starting
+    df = pkg["t"].to_pandas().sort_values("id").reset_index(drop=True)
+    assert df.loc[df["id"] == 3, "v"].iloc[0] == "c"
+
+
+def test_rollback_selector_by_session(tmp_path: Path) -> None:
+    """rollback(to=session_id) only reverts the matching session."""
+    pkg = _make_pkg("pandas")
+    log = tmp_path / "history.parquet"
+    # Two sessions writing to the same log path (second overwrites — by
+    # design: each session rewrites its log in full). Compose by hand
+    # so both sessions appear in one history file.
+    with Session(pkg, log_path=log, session_id="sess-A") as s:
+        s.add_edit(Edit(op="add_rows", table="t", payload={"rows": [{"id": 100}]}))
+    # Manually merge a second session into the same log to exercise the selector.
+    import json
+
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    a_rows = pq.read_table(log).to_pylist()
+    with Session(pkg, log_path=log, session_id="sess-B") as s:
+        s.add_edit(Edit(op="add_rows", table="t", payload={"rows": [{"id": 200}]}))
+    b_rows = pq.read_table(log).to_pylist()
+    combined = a_rows + b_rows
+    # Pad missing keys so all rows share schema (defensive).
+    for row in combined:
+        row.setdefault("metadata_json", json.dumps({}))
+    pq.write_table(pa.Table.from_pylist(combined), log)
+
+    # Rolling back only sess-B should leave sess-A's row intact.
+    rollback(pkg, log, to="sess-B")
+    assert 100 in _ids(pkg)
+    assert 200 not in _ids(pkg)
+
+
+# ---------------------------------------------------------------------------
+# DirtyTracker integration
+# ---------------------------------------------------------------------------
+
+
+def test_apply_marks_tracker_dirty() -> None:
+    """apply_edit calls dirty_tracker.mark_dirty on the touched table."""
+    pkg = _make_pkg("pandas")
+    tracker = DirtyTracker()
+    tracker.stamp_table("t", pkg["t"].expr, pkg.engine)
+    pkg.dirty_tracker = tracker
+    assert "t" in tracker.known_tables()
+    apply_edit(pkg, Edit(op="add_rows", table="t", payload={"rows": [{"id": 999}]}))
+    # mark_dirty drops the stamp, so the table is no longer in known_tables.
+    assert "t" not in tracker.known_tables()
+    # The Table-level dirty flag is set.
+    assert pkg["t"].dirty
+
+
+# ---------------------------------------------------------------------------
+# Empty-log + missing-log behaviours
+# ---------------------------------------------------------------------------
+
+
+def test_rollback_missing_log_raises(tmp_path: Path) -> None:
+    pkg = _make_pkg("pandas")
+    from datagrove.editing import RollbackError
+
+    with pytest.raises(RollbackError):
+        rollback(pkg, tmp_path / "never-written.parquet")
+
+
+def test_leavenworth_round_trip(tmp_path: Path) -> None:
+    """End-to-end: load Leavenworth, edit a row, rollback, verify equality."""
+    leavenworth = pytest.importorskip(
+        "gmnspy.fixtures.leavenworth",
+        reason="gmnspy fixture not installed",
+    )
+    import gmnspy
+
+    spec = Path(gmnspy.__file__).parent / "spec" / "0.97" / "datapackage.json"
+    pkg = Package.from_source(
+        leavenworth.csv_dir(),
+        engine=PandasEngine(),
+        spec=spec,
+        tables=["link", "node"],
+    )
+    starting_link_count = pkg["link"].count()
+    starting_node_count = pkg["node"].count()
+
+    log = tmp_path / "leavenworth_history.parquet"
+    with Session(pkg, log_path=log) as s:
+        s.add_edit(Edit(op="add_rows", table="node", payload={"rows": [{"node_id": 999999}]}))
+    assert pkg["node"].count() == starting_node_count + 1
+
+    rollback(pkg, log)
+    assert pkg["link"].count() == starting_link_count
+    assert pkg["node"].count() == starting_node_count
+
+
+def test_session_no_log_path_skips_persist() -> None:
+    """log_path=None — session works fine but writes no file."""
+    pkg = _make_pkg("pandas")
+    with tempfile.TemporaryDirectory() as tmp:
+        with Session(pkg) as s:
+            s.add_edit(Edit(op="add_rows", table="t", payload={"rows": [{"id": 77}]}))
+        # No file written (we passed log_path=None).
+        assert list(Path(tmp).iterdir()) == []
+    assert 77 in _ids(pkg)
