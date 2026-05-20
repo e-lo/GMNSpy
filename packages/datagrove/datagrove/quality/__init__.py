@@ -1,9 +1,30 @@
 """Generic data-quality rule framework.
 
-Provides: ``Rule`` base class, threshold/config model, entry-point plugin
-discovery, ``Issue`` emission with ``category='data_quality'``, and a
-``run()`` orchestrator.
+Provides:
 
-Ships **no** domain rules itself — those live in consumer packages
-(e.g. ``gmnspy.quality`` registers GMNS-specific rules via entry point).
+- :class:`Rule` — Protocol every domain rule satisfies.
+- :class:`RuleConfig` — per-rule enable / severity / threshold knobs.
+- :func:`register_rule`, :func:`get_rule`, :func:`list_rules` — in-process
+  registry.
+- :func:`discover_rules` — entry-point plugin walk (``datagrove.quality.rules``).
+- :func:`run_quality` — orchestrator that returns a
+  :class:`~datagrove.reports.ValidationReport`.
+
+Ships **no** domain rules. ``gmnspy.quality`` registers the GMNS rule
+pack via the ``datagrove.quality.rules`` entry-point group, and any
+third-party package may do the same.
 """
+
+from .base import Rule, RuleConfig
+from .registry import discover_rules, get_rule, list_rules, register_rule
+from .runner import run_quality
+
+__all__ = [
+    "Rule",
+    "RuleConfig",
+    "discover_rules",
+    "get_rule",
+    "list_rules",
+    "register_rule",
+    "run_quality",
+]
