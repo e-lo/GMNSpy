@@ -57,6 +57,7 @@ from .errors import (
 if TYPE_CHECKING:  # pragma: no cover - typing only
     import pandas as pd
     import polars as pl
+    import pyarrow as pa
 
 # ---------------------------------------------------------------------------
 # Public type aliases
@@ -229,6 +230,44 @@ class Engine(Protocol):
         Args:
             records: Either shape above.
             schema: Optional Frictionless schema, applied after build.
+        """
+        ...
+
+    def from_arrow(self, arrow_table: pa.Table) -> TableExpr:
+        """Wrap a :class:`pyarrow.Table` as an engine-native lazy expression.
+
+        Type-preserving counterpart to :meth:`from_records`. Use this
+        whenever the source is already an Arrow table — going through
+        ``records = arrow.to_pylist()`` then ``from_records(records)``
+        is lossy (binary becomes ``bytes``, decimals become ``Decimal``,
+        timestamps lose tz, all numerics widen via JSON-ish coercion)
+        and is the round-trip the editing layer formerly used. Engines
+        materialise the Arrow buffer directly:
+
+        - **Ibis** registers it as a duckdb temp table via
+          ``con.create_table(name, obj=arrow_table, temp=True)``.
+        - **Polars** wraps it as a :class:`polars.LazyFrame` via
+          ``pl.from_arrow(arrow_table).lazy()``.
+        - **Pandas** materialises with
+          ``arrow_table.to_pandas().convert_dtypes()`` so the
+          numpy-backed nullable dtype contract documented on
+          :meth:`to_pandas` is preserved end-to-end.
+
+        Args:
+            arrow_table: Already-materialised :class:`pyarrow.Table`.
+
+        Returns:
+            An engine-native lazy expression; the contents match
+            ``arrow_table`` 1:1 modulo each engine's documented dtype
+            convention.
+
+        Examples:
+            >>> import pyarrow as pa
+            >>> from datagrove.engines.pandas_engine import PandasEngine
+            >>> tbl = pa.table({"a": [1, 2], "b": ["x", "y"]})
+            >>> expr = PandasEngine().from_arrow(tbl)
+            >>> list(expr.columns), len(expr)
+            (['a', 'b'], 2)
         """
         ...
 

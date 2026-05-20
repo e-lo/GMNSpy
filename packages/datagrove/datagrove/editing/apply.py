@@ -43,8 +43,15 @@ def _arrow_of(expr: TableExpr) -> pa.Table:
 
 
 def _engine_table(engine: Engine, arrow: pa.Table) -> TableExpr:
-    """Wrap a pyarrow Table back into an engine-native expression via from_records."""
-    return engine.from_records(arrow.to_pylist())
+    """Wrap a pyarrow Table back into an engine-native expression without dtype loss.
+
+    Goes straight through :meth:`Engine.from_arrow` so binary / decimal /
+    timestamp / large-string columns survive the round-trip. The old
+    ``from_records(arrow.to_pylist())`` path coerced binary to ``bytes``,
+    decimals to ``Decimal``, and dropped tz from timestamps — which
+    corrupted hash equality after edit + rollback.
+    """
+    return engine.from_arrow(arrow)
 
 
 def _require(payload: dict, key: str, op: str) -> Any:
@@ -288,16 +295,19 @@ def apply_edit(package: Package, edit: Edit, *, session_id: str | None = None) -
     engine = table.engine
     current_arrow = _arrow_of(table.expr)
     before_sample = _sample(current_arrow)
+    pre_edit_dirty = table.dirty
 
     new_arrow, rollback_data, counts = handler(current_arrow, edit, engine)
+    # Stash the pre-edit dirty flag inside the rollback blob so
+    # reverse_edit can restore it (else a rolled-back edit on a
+    # previously-clean table leaves it spuriously dirty).
+    rollback_data = {**rollback_data, "_pre_edit_dirty": pre_edit_dirty}
     after_sample = _sample(new_arrow)
 
     table.expr = _engine_table(engine, new_arrow)
     table.dirty = True
     if package.dirty_tracker is not None:
-        mark = getattr(package.dirty_tracker, "mark_dirty", None)
-        if callable(mark):
-            mark(edit.table)
+        package.dirty_tracker.mark_dirty(edit.table)
 
     diff = Diff(
         edit=edit,
@@ -334,8 +344,10 @@ def reverse_edit(package: Package, result: EditResult) -> None:
     current_arrow = _arrow_of(table.expr)
     rolled_back = reverser(current_arrow, result.rollback_data, engine)
     table.expr = _engine_table(engine, rolled_back)
-    table.dirty = True
+    # Restore the dirty flag the table carried *before* the apply. A
+    # rollback of an edit applied to a clean table should leave it
+    # clean; a rollback on an already-dirty table preserves that.
+    # Default to True for legacy rollback blobs missing the stamp.
+    table.dirty = bool(result.rollback_data.get("_pre_edit_dirty", True))
     if package.dirty_tracker is not None:
-        mark = getattr(package.dirty_tracker, "mark_dirty", None)
-        if callable(mark):
-            mark(result.edit.table)
+        package.dirty_tracker.mark_dirty(result.edit.table)

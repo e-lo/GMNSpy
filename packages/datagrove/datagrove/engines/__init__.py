@@ -88,7 +88,7 @@ def register_engine(engine: Engine, *, default: bool = False) -> None:
         raise TypeError(
             f"{engine!r} does not satisfy the Engine protocol "
             "(needs a 'name' attribute plus per-format primitives "
-            "read_csv/read_parquet/read_duckdb_table/from_records and "
+            "read_csv/read_parquet/read_duckdb_table/from_records/from_arrow and "
             "write_csv/write_parquet/write_duckdb_table, plus cast_schema, "
             "scan, write, materialize, to_pandas, to_polars methods)"
         )

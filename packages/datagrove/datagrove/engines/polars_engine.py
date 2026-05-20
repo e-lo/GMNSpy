@@ -205,6 +205,16 @@ class PolarsEngine:
         lf = pl.LazyFrame(records)
         return self.cast_schema(lf, schema) if schema is not None else lf
 
+    def from_arrow(self, arrow_table: Any) -> pl.LazyFrame:
+        """Wrap a :class:`pyarrow.Table` directly as a :class:`polars.LazyFrame`.
+
+        Type-preserving counterpart to :meth:`from_records`:
+        ``pl.from_arrow`` keeps Arrow's column types intact (binary,
+        decimal, timestamp, large-string), which the
+        ``records → from_records`` round-trip used to lose.
+        """
+        return pl.from_arrow(arrow_table).lazy()
+
     # ------------------------------------------------------------------
     # Write primitives — adapters call these directly
     # ------------------------------------------------------------------

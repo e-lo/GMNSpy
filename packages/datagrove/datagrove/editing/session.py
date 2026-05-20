@@ -78,6 +78,12 @@ class Session:
         self.log_path: Path | None = Path(log_path) if log_path is not None else None
         self.session_id = session_id or f"sess-{uuid.uuid4().hex[:12]}"
         self.results: list[EditResult] = []
+        #: Rollback exceptions captured during :meth:`__exit__` when the
+        #: body raised AND one or more ``reverse_edit`` calls failed.
+        #: Populated only on the failure-during-rollback path; the
+        #: original exception is still re-raised with the first rollback
+        #: error chained via ``__context__``.
+        self.rollback_errors: list[Exception] = []
         self._open = False
 
     # ------------------------------------------------------------------
@@ -95,14 +101,34 @@ class Session:
         exc_val: BaseException | None,
         exc_tb: TracebackType | None,
     ) -> bool:
-        """Commit (persist log) on clean exit; reverse every applied edit on exception."""
+        """Commit (persist log) on clean exit; reverse every applied edit on exception.
+
+        When the body raises AND one or more ``reverse_edit`` calls also
+        raise, the rollback exceptions are captured on
+        :attr:`rollback_errors` and the original body exception is
+        re-raised with the first rollback failure attached via
+        ``__context__`` so the package's inconsistent state is loudly
+        surfaced rather than silently swallowed.
+        """
         self._open = False
         if exc_type is not None:
             for result in reversed(self.results):
                 try:
                     reverse_edit(self.package, result)
-                except Exception:  # pragma: no cover - defensive
-                    logger.exception("session rollback failed on %s/%s", result.edit.table, result.edit.op)
+                except Exception as rollback_exc:
+                    self.rollback_errors.append(rollback_exc)
+                    logger.error(
+                        "session %s rollback failed for %s/%s — package left in inconsistent state",
+                        self.session_id,
+                        result.edit.table,
+                        result.edit.op,
+                    )
+            if self.rollback_errors and exc_val is not None:
+                # Chain the first rollback failure so callers can
+                # discover the secondary error via ``__context__`` even
+                # though we re-raise the original body exception.
+                exc_val.__context__ = self.rollback_errors[0]
+                raise exc_val
             return False
         if self.log_path is not None and self.results:
             self._persist_log(self.log_path)

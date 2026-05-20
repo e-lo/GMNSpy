@@ -56,6 +56,7 @@ from .errors import (
 if TYPE_CHECKING:  # pragma: no cover - typing only
     import pandas as pd
     import polars as pl
+    import pyarrow as pa
 
     from datagrove.spec.model import Schema
 
@@ -283,6 +284,18 @@ class IbisEngine:
         self.con.create_table(name, obj=arrow, temp=True)
         expr = self.con.table(name)
         return self.cast_schema(expr, schema) if schema is not None else expr
+
+    def from_arrow(self, arrow_table: pa.Table) -> ir.Table:
+        """Register ``arrow_table`` as a duckdb temp table without round-tripping records.
+
+        Type-preserving counterpart to :meth:`from_records` — the Arrow
+        buffer is handed straight to duckdb, so binary / decimal /
+        timestamp columns survive (the ``to_pylist`` round-trip used to
+        coerce them).
+        """
+        name = _temp_table_name("inline_arrow")
+        self.con.create_table(name, obj=arrow_table, temp=True)
+        return self.con.table(name)
 
     # ------------------------------------------------------------------
     # Write primitives — adapters call these directly
