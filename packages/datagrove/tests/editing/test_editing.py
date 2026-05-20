@@ -379,9 +379,7 @@ def test_engine_from_arrow_hash_preservation(engine_name: str) -> None:
     )
     a = eng.from_arrow(source)
     b = eng.from_arrow(source)
-    assert hash_table(a, eng) == hash_table(b, eng), (
-        "from_arrow must be deterministic for the same source"
-    )
+    assert hash_table(a, eng) == hash_table(b, eng), "from_arrow must be deterministic for the same source"
 
     # The lossy `from_records(to_pylist())` round-trip used by the old
     # `_engine_table` would coerce binary → bytes and back, but the
@@ -458,9 +456,7 @@ def test_reverse_edit_preserves_clean_dirty_flag() -> None:
         s.add_edit(Edit(op="add_rows", table="t", payload={"rows": [{"id": 99}]}))
     assert pkg["t"].dirty is True
     rollback(pkg, log_path)
-    assert pkg["t"].dirty is False, (
-        "rollback of an edit applied to a clean table should restore clean state"
-    )
+    assert pkg["t"].dirty is False, "rollback of an edit applied to a clean table should restore clean state"
 
 
 def test_reverse_edit_preserves_dirty_dirty_flag() -> None:
@@ -472,6 +468,4 @@ def test_reverse_edit_preserves_dirty_dirty_flag() -> None:
     with Session(pkg, log_path=log_path) as s:
         s.add_edit(Edit(op="add_rows", table="t", payload={"rows": [{"id": 99}]}))
     rollback(pkg, log_path)
-    assert pkg["t"].dirty is True, (
-        "rollback must preserve pre-edit dirty=True state"
-    )
+    assert pkg["t"].dirty is True, "rollback must preserve pre-edit dirty=True state"

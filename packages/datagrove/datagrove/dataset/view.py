@@ -107,7 +107,7 @@ def _ensure_spatial(backend: Any) -> None:
         raise EngineNotAvailableError(
             "datagrove.dataset.view: failed to load the duckdb 'spatial' extension. "
             "On an offline machine, prime the extension cache with "
-            "`duckdb -c \"INSTALL spatial;\"`, or pass an IbisEngine whose backend "
+            '`duckdb -c "INSTALL spatial;"`, or pass an IbisEngine whose backend '
             "already has it loaded."
         ) from exc
     setattr(backend, _SPATIAL_LOADED_ATTR, True)
@@ -136,9 +136,7 @@ def _geometry_to_wkt(geom: Any) -> str:
     wkt = getattr(geom, "wkt", None)
     if isinstance(wkt, str):
         return wkt
-    raise TypeError(
-        f"datagrove.dataset.view: expected a shapely geometry or WKT string; got {type(geom).__name__}."
-    )
+    raise TypeError(f"datagrove.dataset.view: expected a shapely geometry or WKT string; got {type(geom).__name__}.")
 
 
 # ---------------------------------------------------------------------------

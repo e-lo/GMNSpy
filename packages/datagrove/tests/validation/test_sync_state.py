@@ -644,9 +644,7 @@ class TestColumnScopedHashIO:
     because ibis enforces attribute immutability.
     """
 
-    def test_stale_fks_uses_column_scoped_hash_only(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_stale_fks_uses_column_scoped_hash_only(self, monkeypatch: pytest.MonkeyPatch) -> None:
         from datagrove.validation import sync_state as ss
 
         e = IbisEngine()
@@ -654,8 +652,12 @@ class TestColumnScopedHashIO:
         node = _scan(e, _NODE_ROWS)
         tracker = DirtyTracker()
         tracker.stamp_fk_from_exprs(
-            "link", "from_node_id", link,
-            "node", "node_id", node,
+            "link",
+            "from_node_id",
+            link,
+            "node",
+            "node_id",
+            node,
             engine=e,
         )
 
@@ -669,9 +671,7 @@ class TestColumnScopedHashIO:
         result = tracker.stale_fks({"link": link, "node": node}, e)
         assert result == []
 
-    def test_check_uses_column_scoped_hash_only(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_check_uses_column_scoped_hash_only(self, monkeypatch: pytest.MonkeyPatch) -> None:
         from datagrove.validation import sync_state as ss
 
         e = IbisEngine()
@@ -679,15 +679,17 @@ class TestColumnScopedHashIO:
         node = _scan(e, _NODE_ROWS)
         tracker = DirtyTracker()
         tracker.stamp_fk_from_exprs(
-            "link", "from_node_id", link,
-            "node", "node_id", node,
+            "link",
+            "from_node_id",
+            link,
+            "node",
+            "node_id",
+            node,
             engine=e,
         )
 
         def _exploding_hash_table(*_a, **_kw):
-            raise AssertionError(
-                "DirtyTracker.check must not call hash_table; use column-scoped hashes"
-            )
+            raise AssertionError("DirtyTracker.check must not call hash_table; use column-scoped hashes")
 
         monkeypatch.setattr(ss, "hash_table", _exploding_hash_table)
         report = tracker.check({"link": link, "node": node}, engine=e)

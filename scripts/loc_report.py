@@ -18,6 +18,7 @@ Usage:
     uv run python scripts/loc_report.py packages/datagrove/datagrove/validation/*.py
     uv run python scripts/loc_report.py --recursive packages/datagrove/datagrove/
 """
+
 from __future__ import annotations
 
 import argparse

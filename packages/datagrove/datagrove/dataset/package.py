@@ -567,9 +567,7 @@ class Package:
 
         spatial_count = sum(1 for x in (bbox, polygon, geometry_buffer) if x is not None)
         if spatial_count > 1:
-            raise ValueError(
-                "Package.scope: at most one of bbox=, polygon=, geometry_buffer= may be set per call."
-            )
+            raise ValueError("Package.scope: at most one of bbox=, polygon=, geometry_buffer= may be set per call.")
 
         # Table filter.
         if tables is not None:
@@ -910,9 +908,7 @@ class Package:
             for fk in schema.foreign_keys:
                 source_fields = [fk.fields] if isinstance(fk.fields, str) else list(fk.fields)
                 target_fields_raw = fk.reference.fields
-                target_fields = (
-                    [target_fields_raw] if isinstance(target_fields_raw, str) else list(target_fields_raw)
-                )
+                target_fields = [target_fields_raw] if isinstance(target_fields_raw, str) else list(target_fields_raw)
                 target_name = fk.reference.resource or source_name
                 target_table = self.tables.get(target_name)
                 if target_table is None:
@@ -942,12 +938,8 @@ class Package:
                         # sync_state so stale-check uses the same recipe.
                         import hashlib
 
-                        src_parts = [
-                            f"{c}:{hash_column(source_table.expr, c, self.engine)}" for c in source_fields
-                        ]
-                        tgt_parts = [
-                            f"{c}:{hash_column(target_table.expr, c, self.engine)}" for c in target_fields
-                        ]
+                        src_parts = [f"{c}:{hash_column(source_table.expr, c, self.engine)}" for c in source_fields]
+                        tgt_parts = [f"{c}:{hash_column(target_table.expr, c, self.engine)}" for c in target_fields]
                         src_hash = hashlib.sha256("|".join(src_parts).encode("utf-8")).hexdigest()
                         tgt_hash = hashlib.sha256("|".join(tgt_parts).encode("utf-8")).hexdigest()
                         stamp_fk(

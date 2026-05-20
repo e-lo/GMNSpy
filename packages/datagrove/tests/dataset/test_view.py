@@ -41,10 +41,7 @@ from gmnspy.fixtures import leavenworth
 _BBOX = (-120.67, 47.59, -120.66, 47.60)
 
 # Same area as a polygon for from_polygon parity.
-_WKT_POLY = (
-    "POLYGON ((-120.67 47.59, -120.66 47.59, -120.66 47.60, "
-    "-120.67 47.60, -120.67 47.59))"
-)
+_WKT_POLY = "POLYGON ((-120.67 47.59, -120.66 47.59, -120.66 47.60, -120.67 47.60, -120.67 47.59))"
 
 
 def _gmns_datapackage() -> Path:

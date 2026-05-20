@@ -156,9 +156,7 @@ def test_table_count_returns_int(engine_name: str) -> None:
 
 
 @pytest.mark.parametrize("engine_name", ["ibis", "pandas"])
-def test_table_count_does_not_materialise_via_to_pandas(
-    engine_name: str, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_table_count_does_not_materialise_via_to_pandas(engine_name: str, monkeypatch: pytest.MonkeyPatch) -> None:
     """``Table.count`` must push down to the engine, not materialise.
 
     Pinning the I3 fix: prior to it, ``count()`` was implemented as
