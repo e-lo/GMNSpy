@@ -155,6 +155,28 @@ def test_table_count_returns_int(engine_name: str) -> None:
     assert n == 3
 
 
+@pytest.mark.parametrize("engine_name", ["ibis", "pandas"])
+def test_table_count_does_not_materialise_via_to_pandas(
+    engine_name: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``Table.count`` must push down to the engine, not materialise.
+
+    Pinning the I3 fix: prior to it, ``count()`` was implemented as
+    ``len(engine.to_pandas(expr))`` which forced a full materialisation
+    for every count. The fix routes ibis through
+    ``expr.count().to_pyarrow().as_py()`` and pandas through ``len``
+    so neither path hits ``engine.to_pandas``. Monkeypatching that
+    method to raise proves the new path doesn't touch it.
+    """
+    t = _make_table(engine_name)
+
+    def _exploding_to_pandas(_expr: Any) -> Any:
+        raise AssertionError("Table.count must not call engine.to_pandas")
+
+    monkeypatch.setattr(t.engine, "to_pandas", _exploding_to_pandas)
+    assert t.count() == 3
+
+
 # ---------------------------------------------------------------------------
 # Materialisation
 # ---------------------------------------------------------------------------

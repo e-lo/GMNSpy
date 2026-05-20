@@ -315,6 +315,131 @@ def test_package_dirty_tracker_optional(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
+# I1 — Package.validate stamps the DirtyTracker after a clean FK pass
+# ---------------------------------------------------------------------------
+
+
+def test_validate_stamps_dirty_tracker_after_clean_fk_pass() -> None:
+    """A clean FK pass MUST stamp the tracker so later edits surface drift.
+
+    Pins the I1 fix. Prior to it, ``Package.validate`` ran the FK
+    validator but never called ``DirtyTracker.stamp_fk_from_exprs``,
+    so the "valve" was disconnected and a subsequent edit produced no
+    ``sync.fk_stale`` warning.
+    """
+    from datagrove.validation.sync_state import DirtyTracker
+
+    tracker = DirtyTracker()
+    pkg = Package.from_source(
+        leavenworth.csv_dir(),
+        engine=PandasEngine(),
+        spec=_gmns_datapackage(),
+        tables=["link", "node"],
+    )
+    pkg.dirty_tracker = tracker
+    # Sanity — tracker starts empty.
+    assert tracker._fks == []
+    report = pkg.validate()
+    # The Leavenworth fixture's link/node FK should be clean — no
+    # fk.* errors in the report.
+    fk_codes = [i.code for i in report.issues if i.code.startswith("fk.")]
+    fk_errors = [c for c in fk_codes if c != "fk.unverifiable"]
+    assert fk_errors == [], f"expected clean FK pass on Leavenworth; got: {fk_codes}"
+    # The valve must have fired — at least one FK stamped.
+    assert len(tracker._fks) >= 1, "Package.validate did not stamp any FKs on the tracker"
+    # The link.from_node_id -> node.node_id stamp should be among them.
+    stamped_pairs = {(s.source_table, s.source_field, s.target_table, s.target_field) for s in tracker._fks}
+    assert ("link", "from_node_id", "node", "node_id") in stamped_pairs
+
+
+def test_validate_does_not_stamp_broken_fk() -> None:
+    """A failing FK MUST NOT be stamped — a stale stamp on a known-broken
+    FK would actively mislead the user.
+
+    Negative side of the I1 fix.
+    """
+    from datagrove.engines.pandas_engine import PandasEngine as _PE
+    from datagrove.spec.loader import load_package as _load
+    from datagrove.validation.sync_state import DirtyTracker
+
+    e = _PE()
+    # Build an in-memory package with a deliberately broken FK.
+    pkg_spec = _load(
+        {
+            "name": "broken",
+            "resources": [
+                {
+                    "name": "node",
+                    "path": "node.csv",
+                    "schema": {"fields": [{"name": "node_id", "type": "integer"}]},
+                },
+                {
+                    "name": "link",
+                    "path": "link.csv",
+                    "schema": {
+                        "fields": [
+                            {"name": "link_id", "type": "integer"},
+                            {"name": "from_node_id", "type": "integer"},
+                        ],
+                        "foreignKeys": [
+                            {
+                                "fields": "from_node_id",
+                                "reference": {"resource": "node", "fields": "node_id"},
+                            }
+                        ],
+                    },
+                },
+            ],
+        }
+    )
+    link = Table(
+        name="link",
+        expr=e.from_records([{"link_id": 1, "from_node_id": 999}]),  # 999 doesn't exist in node
+        engine=e,
+    )
+    node = Table(name="node", expr=e.from_records([{"node_id": 1}]), engine=e)
+    pkg = Package.from_tables({"link": link, "node": node}, spec=pkg_spec, engine=e)
+    tracker = DirtyTracker()
+    pkg.dirty_tracker = tracker
+    report = pkg.validate()
+    # The FK MUST fire.
+    assert any(i.code == "fk.missing_target" for i in report.issues)
+    # And the tracker MUST NOT have stamped that broken FK.
+    stamped_pairs = {(s.source_table, s.target_table, s.target_field) for s in tracker._fks}
+    assert ("link", "node", "node_id") not in stamped_pairs
+
+
+# ---------------------------------------------------------------------------
+# I9 — Package.write raises PackageError / FormatNotDetected with helpful text
+# ---------------------------------------------------------------------------
+
+
+def test_package_write_raises_package_error_without_engine(tmp_path: Path) -> None:
+    """Calling write() on an engine-less Package raises PackageError."""
+    from datagrove.dataset import PackageError
+    from datagrove.spec.model import DataPackage
+
+    pkg = Package(spec=DataPackage(name="x", resources=[]), engine=None)
+    with pytest.raises(PackageError, match="engine"):
+        pkg.write(tmp_path / "out.parquet")
+
+
+def test_package_write_raises_format_not_detected_on_unknown_extension(tmp_path: Path) -> None:
+    """An unknown destination extension MUST raise FormatNotDetected, not
+    silently coerce to parquet."""
+    from datagrove.io import FormatNotDetected
+
+    pkg = Package.from_source(
+        leavenworth.csv_dir(),
+        engine=PandasEngine(),
+        spec=_gmns_datapackage(),
+        tables=["link"],
+    )
+    with pytest.raises(FormatNotDetected, match="format="):
+        pkg.write(tmp_path / "out.unknown_ext")
+
+
+# ---------------------------------------------------------------------------
 # Top-level re-export
 # ---------------------------------------------------------------------------
 

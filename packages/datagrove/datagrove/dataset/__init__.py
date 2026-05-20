@@ -50,7 +50,8 @@ Examples:
 
 # Package + sync-state errors land just below — import after Table so
 # circular references (package.py imports Table) resolve cleanly.
+from .errors import PackageError
 from .package import OutOfSyncError, OutOfSyncWarning, Package
 from .table import Table
 
-__all__ = ["OutOfSyncError", "OutOfSyncWarning", "Package", "Table"]
+__all__ = ["OutOfSyncError", "OutOfSyncWarning", "Package", "PackageError", "Table"]

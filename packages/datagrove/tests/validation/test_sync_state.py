@@ -595,8 +595,7 @@ class TestCompositeFK:
         specific hash algorithm (which moved from pandas to pyarrow
         buffers in the ibis-first refactor).
         """
-        from datagrove.validation._ibis import to_ibis
-        from datagrove.validation.sync_state import _column_hash_from_arrow
+        from datagrove.validation.sync_state import _column_hash_from_expr
 
         e = PandasEngine()
         # Synthetic composite-key tables.
@@ -604,10 +603,11 @@ class TestCompositeFK:
         tgt_rows = [{"a": 1, "b": "x", "name": "first"}, {"a": 2, "b": "y", "name": "second"}]
         src = _scan(e, src_rows)
         tgt = _scan(e, tgt_rows)
-        src_arrow = to_ibis(src).to_pyarrow()
-        tgt_arrow = to_ibis(tgt).to_pyarrow()
-        src_hash = _column_hash_from_arrow(src_arrow, "a,b")
-        tgt_hash = _column_hash_from_arrow(tgt_arrow, "a,b")
+        # The new helper operates on live exprs directly (column-scoped
+        # at the ibis layer), so we don't pre-materialise the whole
+        # table just to fingerprint two columns.
+        src_hash = _column_hash_from_expr(src, "a,b", e)
+        tgt_hash = _column_hash_from_expr(tgt, "a,b", e)
         tracker = DirtyTracker()
         tracker.stamp_fk(
             "src",
@@ -624,3 +624,86 @@ class TestCompositeFK:
         src2 = _scan(e, [{**r, "b": r["b"] + "_edit"} for r in src_rows])
         report2 = tracker.check({"src": src2, "tgt": tgt}, engine=e)
         assert any(i.code == "sync.fk_stale" for i in report2.issues)
+
+
+# ---------------------------------------------------------------------------
+# I10 regression — stale_fks / check use column-scoped hashes (no whole-table
+# materialisation just to fingerprint one column).
+# ---------------------------------------------------------------------------
+
+
+class TestColumnScopedHashIO:
+    """Pins the I10 fix: ``DirtyTracker.stale_fks`` / ``.check`` must not
+    materialise the WHOLE source/target table to hash a single FK column.
+
+    Strategy: monkey-patch ``hash_table`` in the sync_state module to
+    raise on any call. The post-fix paths use ``hash_column`` (which
+    projects at the ibis layer), never ``hash_table``; the pre-fix
+    paths reached for the full pyarrow table and would have tripped
+    the explosion. We can't monkeypatch the ibis Table object itself
+    because ibis enforces attribute immutability.
+    """
+
+    def test_stale_fks_uses_column_scoped_hash_only(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from datagrove.validation import sync_state as ss
+
+        e = IbisEngine()
+        link = _scan(e, _LINK_ROWS)
+        node = _scan(e, _NODE_ROWS)
+        tracker = DirtyTracker()
+        tracker.stamp_fk_from_exprs(
+            "link", "from_node_id", link,
+            "node", "node_id", node,
+            engine=e,
+        )
+
+        def _exploding_hash_table(*_a, **_kw):
+            raise AssertionError(
+                "stale_fks must not call hash_table; the column-scoped "
+                "path projects at the ibis layer and only hashes the FK column"
+            )
+
+        monkeypatch.setattr(ss, "hash_table", _exploding_hash_table)
+        result = tracker.stale_fks({"link": link, "node": node}, e)
+        assert result == []
+
+    def test_check_uses_column_scoped_hash_only(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from datagrove.validation import sync_state as ss
+
+        e = IbisEngine()
+        link = _scan(e, _LINK_ROWS)
+        node = _scan(e, _NODE_ROWS)
+        tracker = DirtyTracker()
+        tracker.stamp_fk_from_exprs(
+            "link", "from_node_id", link,
+            "node", "node_id", node,
+            engine=e,
+        )
+
+        def _exploding_hash_table(*_a, **_kw):
+            raise AssertionError(
+                "DirtyTracker.check must not call hash_table; use column-scoped hashes"
+            )
+
+        monkeypatch.setattr(ss, "hash_table", _exploding_hash_table)
+        report = tracker.check({"link": link, "node": node}, engine=e)
+        assert report.is_clean
+
+    def test_column_scoped_hash_matches_hash_column_direct(self) -> None:
+        """The composite/single-column helper output equals hash_column directly.
+
+        Belt-and-braces — pins the contract that the I10 refactor
+        didn't change what gets hashed, only how it's projected.
+        """
+        from datagrove.validation.sync_state import _column_hash_from_expr
+
+        e = IbisEngine()
+        link = _scan(e, _LINK_ROWS)
+        # Single-column round-trip.
+        a = _column_hash_from_expr(link, "from_node_id", e)
+        b = hash_column(link, "from_node_id", e)
+        assert a == b

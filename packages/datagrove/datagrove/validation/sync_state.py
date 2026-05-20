@@ -271,6 +271,12 @@ def hash_column(expr: TableExpr, column: str, engine: Engine) -> str:
     captures JUST the FK columns — a change to an unrelated column
     doesn't invalidate the stamp.
 
+    The column projection happens at the ibis layer (``ibis_table
+    .select(column).to_pyarrow()``) so duckdb materialises a
+    one-column arrow array, not the entire table. At Bay-Area scale
+    this turns a single-column hash from a multi-gigabyte
+    materialisation into a sub-second projection.
+
     Args:
         expr: Engine-native table expression.
         column: The column to hash. Must exist in the table; missing
@@ -293,33 +299,33 @@ def hash_column(expr: TableExpr, column: str, engine: Engine) -> str:
         >>> h_a == h_b
         False
     """
-    arrow = to_ibis(expr).to_pyarrow()
-    if column not in arrow.column_names:
-        raise KeyError(f"hash_column: column {column!r} not in table; available: {arrow.column_names}")
+    ibis_table = to_ibis(expr)
+    if column not in ibis_table.columns:
+        raise KeyError(f"hash_column: column {column!r} not in table; available: {list(ibis_table.columns)}")
+    arrow = ibis_table.select(column).to_pyarrow()
     return _hash_arrow_array(arrow.column(column))
 
 
-def _column_hash_from_arrow(arrow: pa.Table, field_spec: str) -> str:
-    """Hash a (possibly composite) column spec against a pyarrow Table.
+def _column_hash_from_expr(expr: TableExpr, field_spec: str, engine: Engine) -> str:
+    """Hash a (possibly composite) column spec against a live table expression.
 
     ``field_spec`` is either a single column name or a comma-joined
     list (the same convention :class:`FKStamp` stores). For the
-    composite case we hash each column independently and combine —
-    matching :func:`hash_table`'s combine step — so the result is
-    column-order aware and any single-column drift invalidates the
-    stamp.
+    single-column case we delegate straight to :func:`hash_column`,
+    which projects to just that column at the ibis layer — so duckdb
+    materialises a one-column arrow array instead of the whole table.
+    For composite specs we project each component column separately
+    and combine the digests, matching :func:`hash_table`'s combine
+    step so the result is column-order aware and any single-column
+    drift invalidates the stamp.
+
+    Raises :class:`KeyError` (via :func:`hash_column`) if any column is
+    not present.
     """
     fields = [f.strip() for f in field_spec.split(",")] if "," in field_spec else [field_spec]
     if len(fields) == 1:
-        column = fields[0]
-        if column not in arrow.column_names:
-            raise KeyError(column)
-        return _hash_arrow_array(arrow.column(column))
-    parts: list[str] = []
-    for column in fields:
-        if column not in arrow.column_names:
-            raise KeyError(column)
-        parts.append(f"{column}:{_hash_arrow_array(arrow.column(column))}")
+        return hash_column(expr, fields[0], engine)
+    parts = [f"{column}:{hash_column(expr, column, engine)}" for column in fields]
     combined = "|".join(parts).encode("utf-8")
     return hashlib.sha256(combined).hexdigest()
 
@@ -507,28 +513,15 @@ class DirtyTracker:
             []
         """
         stale: list[FKStamp] = []
-        # Cache materialised arrow tables so a package with many FKs
-        # against the same table only pays the conversion cost once.
-        cache: dict[str, pa.Table] = {}
-
-        def _arrow(name: str) -> pa.Table | None:
-            if name in cache:
-                return cache[name]
-            expr = current_tables.get(name)
-            if expr is None:
-                return None
-            cache[name] = to_ibis(expr).to_pyarrow()
-            return cache[name]
-
         for stamp in self._fks:
-            src_arrow = _arrow(stamp.source_table)
-            tgt_arrow = _arrow(stamp.target_table)
-            if src_arrow is None or tgt_arrow is None:
+            src_expr = current_tables.get(stamp.source_table)
+            tgt_expr = current_tables.get(stamp.target_table)
+            if src_expr is None or tgt_expr is None:
                 stale.append(stamp)
                 continue
             try:
-                current_src = _column_hash_from_arrow(src_arrow, stamp.source_field)
-                current_tgt = _column_hash_from_arrow(tgt_arrow, stamp.target_field)
+                current_src = _column_hash_from_expr(src_expr, stamp.source_field, engine)
+                current_tgt = _column_hash_from_expr(tgt_expr, stamp.target_field, engine)
             except KeyError:
                 stale.append(stamp)
                 continue
@@ -580,18 +573,6 @@ class DirtyTracker:
         severity = Severity.ERROR if strict else Severity.WARNING
         fix_hint = "Run validate() to refresh, or pass strict=False to skip this check."
 
-        # Cache materialised arrow tables; one round-trip per table.
-        cache: dict[str, pa.Table] = {}
-
-        def _arrow(name: str) -> pa.Table | None:
-            if name in cache:
-                return cache[name]
-            expr = current_tables.get(name)
-            if expr is None:
-                return None
-            cache[name] = to_ibis(expr).to_pyarrow()
-            return cache[name]
-
         for stamp in self._fks:
             src_label = f"{stamp.source_table}.{stamp.source_field}"
             tgt_label = f"{stamp.target_table}.{stamp.target_field}"
@@ -603,9 +584,9 @@ class DirtyTracker:
             }
 
             # Unverifiable — source or target table missing entirely.
-            src_arrow = _arrow(stamp.source_table)
-            tgt_arrow = _arrow(stamp.target_table)
-            if src_arrow is None:
+            src_expr = current_tables.get(stamp.source_table)
+            tgt_expr = current_tables.get(stamp.target_table)
+            if src_expr is None:
                 report.add(
                     severity=severity,
                     category=Category.SYNC_STATE,
@@ -618,7 +599,7 @@ class DirtyTracker:
                     extra=base_extra,
                 )
                 continue
-            if tgt_arrow is None:
+            if tgt_expr is None:
                 report.add(
                     severity=severity,
                     category=Category.SYNC_STATE,
@@ -632,9 +613,11 @@ class DirtyTracker:
                 )
                 continue
 
-            # Both tables present — recompute hashes.
+            # Both tables present — recompute hashes (column-scoped at
+            # the ibis layer so we don't materialise the whole table
+            # just to fingerprint one column).
             try:
-                current_src = _column_hash_from_arrow(src_arrow, stamp.source_field)
+                current_src = _column_hash_from_expr(src_expr, stamp.source_field, engine)
             except KeyError:
                 report.add(
                     severity=severity,
@@ -651,7 +634,7 @@ class DirtyTracker:
                 )
                 continue
             try:
-                current_tgt = _column_hash_from_arrow(tgt_arrow, stamp.target_field)
+                current_tgt = _column_hash_from_expr(tgt_expr, stamp.target_field, engine)
             except KeyError:
                 report.add(
                     severity=severity,
