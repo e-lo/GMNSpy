@@ -785,6 +785,45 @@ class Package:
         """
         del self.tables[name]
 
+    def batch(self, *, log_path: Path | str | None = None, strict: bool = False) -> Any:
+        """Return a :class:`~datagrove.operations.Batch` bound to this package.
+
+        Convenience wrapper for the deferred-mutation pattern from
+        architecture §6.5::
+
+            with pkg.batch() as b:
+                b.add_edit(...)
+                b.add_edit(...)
+            # On exit: coalesced + applied atomically + validated once.
+
+        Args:
+            log_path: Optional sidecar path forwarded to the underlying
+                :class:`~datagrove.editing.Session` (rollback-log file).
+            strict: When ``True``, an ERROR-severity issue in the
+                post-commit validation report triggers a Session
+                rollback and re-raises as
+                :class:`~datagrove.operations.BatchValidationError`.
+
+        Examples:
+            >>> from datagrove.dataset import Package, Table
+            >>> from datagrove.editing import Edit
+            >>> from datagrove.engines.pandas_engine import PandasEngine
+            >>> e = PandasEngine()
+            >>> pkg = Package.from_tables(
+            ...     {"t": Table(name="t", expr=e.from_records([{"id": 1}]), engine=e)}
+            ... )
+            >>> with pkg.batch() as b:
+            ...     b.add_edit(Edit(op="add_rows", table="t", payload={"rows": [{"id": 2}]}))
+            >>> pkg["t"].count()
+            2
+        """
+        # Local import so the dataset → operations edge stays one-way
+        # at module-load time (operations imports from editing + reports,
+        # not the other way around).
+        from datagrove.operations import Batch
+
+        return Batch(self, log_path=log_path, strict=strict)
+
     def invalidate(self, name: str) -> None:
         """Mark a single table dirty.
 
