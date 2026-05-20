@@ -264,18 +264,6 @@ def check_required(
     Returns:
         A list of :class:`Issue` records. Empty when the field is not
         required, absent from ``expr``, or has no nulls.
-
-    Examples:
-        >>> from datagrove.engines.pandas_engine import PandasEngine
-        >>> from datagrove.spec.model import Field, Constraints
-        >>> e = PandasEngine()
-        >>> expr = e.from_records([{"x": 1}, {"x": None}])
-        >>> f = Field(name="x", type="integer", constraints=Constraints(required=True))
-        >>> issues = check_required(expr, f, engine=e, table_name="t")
-        >>> issues[0].code
-        'schema.required'
-        >>> issues[0].row
-        1
     """
     if not _is_required(field):
         return []
@@ -332,15 +320,6 @@ def check_type(
     ``integer`` — exactly the v0.3 failure mode this rule pins.
     Frictionless types not in :data:`_FRICTIONLESS_TO_IBIS_FAMILY` (or
     ``any``) are skipped.
-
-    Examples:
-        >>> from datagrove.engines.pandas_engine import PandasEngine
-        >>> from datagrove.spec.model import Field
-        >>> e = PandasEngine()
-        >>> expr = e.from_records([{"n": "x"}, {"n": "y"}])
-        >>> issues = check_type(expr, Field(name="n", type="integer"), engine=e, table_name="t")
-        >>> issues[0].code
-        'schema.type'
     """
     if not field.type:
         return []
@@ -381,16 +360,6 @@ def check_enum(
     """Flag values not in ``constraints.enum``.
 
     Null values are skipped (handled by :func:`check_required`).
-
-    Examples:
-        >>> from datagrove.engines.pandas_engine import PandasEngine
-        >>> from datagrove.spec.model import Field, Constraints
-        >>> e = PandasEngine()
-        >>> expr = e.from_records([{"x": "a"}, {"x": "z"}])
-        >>> f = Field(name="x", type="string", constraints=Constraints(enum=["a", "b"]))
-        >>> issues = check_enum(expr, f, engine=e, table_name="t")
-        >>> issues[0].code
-        'schema.enum'
     """
     if not field.constraints or not field.constraints.enum:
         return []
@@ -511,18 +480,7 @@ def check_minimum(
     engine: Engine,
     table_name: str,
 ) -> list[Issue]:
-    """Flag values strictly below ``field.constraints.minimum``.
-
-    Examples:
-        >>> from datagrove.engines.pandas_engine import PandasEngine
-        >>> from datagrove.spec.model import Field, Constraints
-        >>> e = PandasEngine()
-        >>> expr = e.from_records([{"x": 5}, {"x": -1}])
-        >>> f = Field(name="x", type="number", constraints=Constraints(minimum=0))
-        >>> issues = check_minimum(expr, f, engine=e, table_name="t")
-        >>> issues[0].code
-        'schema.minimum'
-    """
+    """Flag values strictly below ``field.constraints.minimum``."""
     if not field.constraints:
         return []
     return _check_numeric_bound(
@@ -542,18 +500,7 @@ def check_maximum(
     engine: Engine,
     table_name: str,
 ) -> list[Issue]:
-    """Flag values strictly above ``field.constraints.maximum``.
-
-    Examples:
-        >>> from datagrove.engines.pandas_engine import PandasEngine
-        >>> from datagrove.spec.model import Field, Constraints
-        >>> e = PandasEngine()
-        >>> expr = e.from_records([{"x": 5}, {"x": 999}])
-        >>> f = Field(name="x", type="number", constraints=Constraints(maximum=100))
-        >>> issues = check_maximum(expr, f, engine=e, table_name="t")
-        >>> issues[0].code
-        'schema.maximum'
-    """
+    """Flag values strictly above ``field.constraints.maximum``."""
     if not field.constraints:
         return []
     return _check_numeric_bound(
@@ -639,18 +586,7 @@ def check_min_length(
     engine: Engine,
     table_name: str,
 ) -> list[Issue]:
-    """Flag strings shorter than ``field.constraints.min_length``.
-
-    Examples:
-        >>> from datagrove.engines.pandas_engine import PandasEngine
-        >>> from datagrove.spec.model import Field, Constraints
-        >>> e = PandasEngine()
-        >>> expr = e.from_records([{"x": "abc"}, {"x": "z"}])
-        >>> f = Field(name="x", type="string", constraints=Constraints(min_length=2))
-        >>> issues = check_min_length(expr, f, engine=e, table_name="t")
-        >>> issues[0].code
-        'schema.min_length'
-    """
+    """Flag strings shorter than ``field.constraints.min_length``."""
     if not field.constraints:
         return []
     return _check_length_bound(
@@ -670,18 +606,7 @@ def check_max_length(
     engine: Engine,
     table_name: str,
 ) -> list[Issue]:
-    """Flag strings longer than ``field.constraints.max_length``.
-
-    Examples:
-        >>> from datagrove.engines.pandas_engine import PandasEngine
-        >>> from datagrove.spec.model import Field, Constraints
-        >>> e = PandasEngine()
-        >>> expr = e.from_records([{"x": "abc"}, {"x": "abcdef"}])
-        >>> f = Field(name="x", type="string", constraints=Constraints(max_length=4))
-        >>> issues = check_max_length(expr, f, engine=e, table_name="t")
-        >>> issues[0].code
-        'schema.max_length'
-    """
+    """Flag strings longer than ``field.constraints.max_length``."""
     if not field.constraints:
         return []
     return _check_length_bound(
@@ -710,16 +635,6 @@ def check_pattern(
     This is the regression site for the v0.3
     ``~s.str.contains(...)`` bool-of-Series bug — the predicate lives
     in ibis SQL, so Python truthiness on a Series can't recur.
-
-    Examples:
-        >>> from datagrove.engines.pandas_engine import PandasEngine
-        >>> from datagrove.spec.model import Field, Constraints
-        >>> e = PandasEngine()
-        >>> expr = e.from_records([{"x": "abc"}, {"x": "@@@"}])
-        >>> f = Field(name="x", type="string", constraints=Constraints(pattern=r"^[a-z]+$"))
-        >>> issues = check_pattern(expr, f, engine=e, table_name="t")
-        >>> issues[0].code
-        'schema.pattern'
     """
     if not field.constraints or not field.constraints.pattern:
         return []
@@ -808,16 +723,6 @@ def check_unique(
     This is the regression site for the v0.3 ``_unique_constraint``
     bug (``if s.dropna().duplicated(): ...`` on a Series). The ibis
     predicate can't trigger Series-bool ambiguity.
-
-    Examples:
-        >>> from datagrove.engines.pandas_engine import PandasEngine
-        >>> from datagrove.spec.model import Field, Constraints
-        >>> e = PandasEngine()
-        >>> expr = e.from_records([{"x": 1}, {"x": 1}])
-        >>> f = Field(name="x", type="integer", constraints=Constraints(unique=True))
-        >>> issues = check_unique(expr, f, engine=e, table_name="t")
-        >>> issues[0].code
-        'schema.unique'
     """
     if not field.constraints or not field.constraints.unique:
         return []

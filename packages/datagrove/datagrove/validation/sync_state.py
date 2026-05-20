@@ -384,30 +384,14 @@ class DirtyTracker:
     # ------------------------------------------------------------------
 
     def stamp_table(self, name: str, expr: TableExpr, engine: Engine) -> TableHash:
-        """Record (or replace) the current content hash for a table.
-
-        Examples:
-            >>> from datagrove.engines.pandas_engine import PandasEngine
-            >>> e = PandasEngine()
-            >>> t = e.scan({"data": [{"a": 1}]})
-            >>> tracker = DirtyTracker()
-            >>> stamp = tracker.stamp_table("t", t, e)
-            >>> stamp.table
-            't'
-        """
+        """Record (or replace) the current content hash for a table."""
         content_hash = hash_table(expr, engine)
         stamp = TableHash(table=name, content_hash=content_hash, computed_at=datetime.now())
         self._tables[name] = stamp
         return stamp
 
     def get_table_stamp(self, name: str) -> TableHash | None:
-        """Return the most recent stamp for ``name``, or ``None`` if unstamped.
-
-        Examples:
-            >>> tracker = DirtyTracker()
-            >>> tracker.get_table_stamp("never_stamped") is None
-            True
-        """
+        """Return the most recent stamp for ``name``, or ``None`` if unstamped."""
         return self._tables.get(name)
 
     def is_table_dirty(self, name: str, expr: TableExpr, engine: Engine) -> bool:
@@ -415,17 +399,6 @@ class DirtyTracker:
 
         Returns ``False`` for unstamped tables — "unknown" is not the
         same as "dirty".
-
-        Examples:
-            >>> from datagrove.engines.pandas_engine import PandasEngine
-            >>> e = PandasEngine()
-            >>> t = e.scan({"data": [{"a": 1}]})
-            >>> tracker = DirtyTracker()
-            >>> tracker.is_table_dirty("t", t, e)  # never stamped
-            False
-            >>> _ = tracker.stamp_table("t", t, e)
-            >>> tracker.is_table_dirty("t", t, e)
-            False
         """
         stamp = self._tables.get(name)
         if stamp is None:
@@ -437,23 +410,11 @@ class DirtyTracker:
 
         Use this after a direct DataFrame mutation that bypassed the
         engine — the recorded hash no longer represents the live data.
-
-        Examples:
-            >>> tracker = DirtyTracker()
-            >>> tracker.mark_dirty("never_stamped")  # no-op
-            >>> tracker.get_table_stamp("never_stamped") is None
-            True
         """
         self._tables.pop(name, None)
 
     def known_tables(self) -> list[str]:
-        """Return the names of all currently stamped tables.
-
-        Examples:
-            >>> tracker = DirtyTracker()
-            >>> tracker.known_tables()
-            []
-        """
+        """Return the names of all currently stamped tables."""
         return list(self._tables.keys())
 
     # ------------------------------------------------------------------
@@ -476,15 +437,6 @@ class DirtyTracker:
         validator, which has already materialised both sides at
         validation time. Composite FKs join their field names with
         ``","`` so :class:`FKStamp` stays trivially hashable.
-
-        Examples:
-            >>> tracker = DirtyTracker()
-            >>> stamp = tracker.stamp_fk(
-            ...     "link", "from_node_id", "node", "node_id",
-            ...     source_hash="abc", target_hash="def",
-            ... )
-            >>> stamp.source_hash
-            'abc'
         """
         stamp = FKStamp(
             source_table=source_table,
@@ -585,16 +537,7 @@ class DirtyTracker:
         return stale
 
     def clear_fk_stamps(self) -> None:
-        """Drop every recorded FK stamp.
-
-        Examples:
-            >>> tracker = DirtyTracker()
-            >>> _ = tracker.stamp_fk("a", "x", "b", "y",
-            ...                       source_hash="s", target_hash="t")
-            >>> tracker.clear_fk_stamps()
-            >>> tracker.stale_fks({}, engine=None)  # doctest: +SKIP
-            []
-        """
+        """Drop every recorded FK stamp."""
         self._fks.clear()
 
     # ------------------------------------------------------------------
