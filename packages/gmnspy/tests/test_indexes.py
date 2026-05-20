@@ -114,17 +114,13 @@ def test_spatial_index_geometry_query(links_with_geom: Table) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_graph_index_builds_from_link_node(
-    links_with_geom: Table, nodes_table: Table
-) -> None:
+def test_graph_index_builds_from_link_node(links_with_geom: Table, nodes_table: Table) -> None:
     g = GraphIndex.build(links_with_geom, nodes_table)
     assert isinstance(g, GraphIndex)
     assert len(g) == len(_read_csv_table("node", PandasEngine()).to_pandas())
 
 
-def test_graph_index_neighbors_one_hop(
-    links_with_geom: Table, nodes_table: Table
-) -> None:
+def test_graph_index_neighbors_one_hop(links_with_geom: Table, nodes_table: Table) -> None:
     """Node 1's one-hop neighbors must include node 2 (link.csv row 1)."""
     g = GraphIndex.build(links_with_geom, nodes_table)
     n = g.neighbors(1, hops=1)
@@ -132,9 +128,7 @@ def test_graph_index_neighbors_one_hop(
     assert 1 not in n  # neighbors don't include seed itself
 
 
-def test_graph_index_neighbors_two_hops_strictly_grows(
-    links_with_geom: Table, nodes_table: Table
-) -> None:
+def test_graph_index_neighbors_two_hops_strictly_grows(links_with_geom: Table, nodes_table: Table) -> None:
     g = GraphIndex.build(links_with_geom, nodes_table)
     one = g.neighbors(1, hops=1)
     two = g.neighbors(1, hops=2)
@@ -142,9 +136,7 @@ def test_graph_index_neighbors_two_hops_strictly_grows(
     assert len(two) >= len(one)
 
 
-def test_graph_index_shortest_path(
-    links_with_geom: Table, nodes_table: Table
-) -> None:
+def test_graph_index_shortest_path(links_with_geom: Table, nodes_table: Table) -> None:
     """Shortest path from a node to itself is a single-element list."""
     g = GraphIndex.build(links_with_geom, nodes_table)
     path = g.shortest_path(1, 1)
@@ -155,9 +147,7 @@ def test_graph_index_shortest_path(
     assert path_12[-1] == 2
 
 
-def test_graph_index_network_buffer(
-    links_with_geom: Table, nodes_table: Table
-) -> None:
+def test_graph_index_network_buffer(links_with_geom: Table, nodes_table: Table) -> None:
     """A 200m network buffer around node 1 includes node 1 + at least one neighbor."""
     g = GraphIndex.build(links_with_geom, nodes_table)
     reachable = g.network_buffer([1], distance_m=200.0)
@@ -165,9 +155,7 @@ def test_graph_index_network_buffer(
     assert len(reachable) >= 2  # at least seed + one neighbor (link 1 is 232m, link 2 is 99m)
 
 
-def test_graph_index_connected_component(
-    links_with_geom: Table, nodes_table: Table
-) -> None:
+def test_graph_index_connected_component(links_with_geom: Table, nodes_table: Table) -> None:
     g = GraphIndex.build(links_with_geom, nodes_table)
     cc = g.connected_component(1)
     assert 1 in cc
@@ -202,9 +190,7 @@ def test_cache_round_trip_spatial(links_with_geom: Table) -> None:
         )
 
 
-def test_cache_round_trip_graph(
-    links_with_geom: Table, nodes_table: Table
-) -> None:
+def test_cache_round_trip_graph(links_with_geom: Table, nodes_table: Table) -> None:
     g = GraphIndex.build(links_with_geom, nodes_table)
     with tempfile.TemporaryDirectory() as td:
         p = Path(td) / "graph.parquet"
@@ -225,9 +211,7 @@ def test_cache_load_missing_returns_none() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_build_indexes_returns_both(
-    links_with_geom: Table, nodes_table: Table
-) -> None:
+def test_build_indexes_returns_both(links_with_geom: Table, nodes_table: Table) -> None:
     spatial, graph = build_indexes(
         links=links_with_geom,
         nodes=nodes_table,

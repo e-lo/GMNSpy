@@ -66,8 +66,16 @@ _DEFAULT_NAV: list[dict] = [
         "section": "Overview",
         "pages": [
             {"title": "Home", "href": "index.md", "description": "Project overview + install."},
-            {"title": "Architecture", "href": "architecture.md", "description": "Single source of truth for the v1.0 design."},
-            {"title": "GMNS data model", "href": "gmns-data-model.md", "description": "ER diagrams for link/node/lane/etc."},
+            {
+                "title": "Architecture",
+                "href": "architecture.md",
+                "description": "Single source of truth for the v1.0 design.",
+            },
+            {
+                "title": "GMNS data model",
+                "href": "gmns-data-model.md",
+                "description": "ER diagrams for link/node/lane/etc.",
+            },
         ],
     },
     {
@@ -149,7 +157,6 @@ def define_env(env: Any) -> None:
     ``env`` is the ``MacrosPlugin`` instance; ``env.macro`` is the decorator
     that registers a callable as a Jinja macro.
     """
-
     # --- AI docgen build artifacts (architecture §6.9) ---
     docs_dir = _docs_dir(env)
     site_url = (
@@ -157,7 +164,8 @@ def define_env(env: Any) -> None:
     ) or "https://e-lo.github.io/GMNSpy"
     try:
         _write_ai_artifacts(docs_dir, _DEFAULT_NAV, site_url)
-    except Exception as exc:  # noqa: BLE001 — docs build shouldn't fail on artifact emission
+    except Exception as exc:
+        # Docs build shouldn't fail on artifact emission — log & continue.
         logger.warning("AI docgen artifact emission failed: %s", exc)
 
     # --- Per-page macros ---
