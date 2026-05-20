@@ -24,10 +24,10 @@ from .pool import Batch, BatchValidationError, coalesce
 from .progress import Spinner, is_notebook, progress
 
 __all__ = [
+    "COEFFICIENTS",
     "ApprovalRequired",
     "Batch",
     "BatchValidationError",
-    "COEFFICIENTS",
     "OperationCost",
     "Spinner",
     "coalesce",
