@@ -210,6 +210,19 @@ class PandasEngine:
         df = pd.DataFrame(records)
         return self.cast_schema(df, schema) if schema is not None else df
 
+    def from_arrow(self, arrow_table: Any) -> pd.DataFrame:
+        """Materialise a :class:`pyarrow.Table` as a :class:`pandas.DataFrame`.
+
+        Type-preserving counterpart to :meth:`from_records`: the Arrow
+        buffer is handed to pandas directly, so nullable Int64 / string
+        / boolean / timestamp columns survive without going through a
+        ``records`` round-trip. The result is normalised through
+        ``convert_dtypes()`` so the **numpy-backed nullable** dtype
+        contract documented on :meth:`to_pandas` (the cross-engine
+        convergence point) is honoured end-to-end.
+        """
+        return arrow_table.to_pandas().convert_dtypes()
+
     # ------------------------------------------------------------------
     # Write primitives — adapters call these directly
     # ------------------------------------------------------------------

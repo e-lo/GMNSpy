@@ -38,6 +38,9 @@ class FakeEngine:
     def from_records(self, records, schema=None):
         return None
 
+    def from_arrow(self, arrow_table):
+        return None
+
     # Write primitives
     def write_csv(self, expr, dest, **kwargs) -> None:
         return None
