@@ -4,10 +4,18 @@ Thin orchestrator: lazily triggers entry-point discovery, walks the
 registry, respects per-rule :class:`RuleConfig`, and accumulates issues
 into a :class:`~datagrove.reports.ValidationReport`. No parallelism, no
 progress; rules do their own work via the lazy ``Package`` / ``Table`` API.
+
+Rules may opt into receiving their :class:`RuleConfig` by accepting a
+third positional argument on ``run`` (e.g. ``run(self, package, report,
+config)``). The orchestrator probes the signature once per rule and
+forwards config when the rule wants it. This keeps the simple-rule
+contract simple — ``run(self, package, report)`` — while letting
+threshold-driven rules read their own config.
 """
 
 from __future__ import annotations
 
+import inspect
 from typing import TYPE_CHECKING
 
 from datagrove.reports import Severity, ValidationReport
@@ -57,11 +65,31 @@ def run_quality(
         if not rule.applies_to(package):
             continue
         before = len(out.issues)
-        rule.run(package, out)
+        _invoke_run(rule, package, out, rc)
         if rc.severity_override is not None:
             _override_severity(out, start=before, new=rc.severity_override)
 
     return out
+
+
+def _invoke_run(rule, package, report, rc: RuleConfig) -> None:
+    """Call ``rule.run`` passing ``rc`` if it accepts a third arg, else the basic 2-arg form.
+
+    Signature introspected once per rule via :func:`inspect.signature`.
+    Rules that don't care about config (most "fire on presence" checks)
+    keep the simple 2-arg signature; threshold-driven rules opt in by
+    accepting a third arg.
+    """
+    try:
+        params = inspect.signature(rule.run).parameters
+    except (TypeError, ValueError):  # pragma: no cover - defensive
+        rule.run(package, report)
+        return
+    # `self` is already bound, so we count `package`, `report`, and optionally `config`.
+    if len(params) >= 3:
+        rule.run(package, report, rc)
+    else:
+        rule.run(package, report)
 
 
 def _override_severity(report: ValidationReport, *, start: int, new: Severity) -> None:
