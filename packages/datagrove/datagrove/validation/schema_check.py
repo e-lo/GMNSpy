@@ -18,7 +18,8 @@ gigabyte materialisation into a millisecond SQL ``COUNT(*) WHERE col
 IS NULL``.
 
 Only the per-rule sample used to populate row-context Issues is
-materialised — capped at :data:`MAX_ROW_ISSUES` rows — and goes
+materialised — capped at
+:data:`datagrove.validation._ibis.MAX_ROW_ISSUES` rows — and goes
 through pyarrow (``.to_pyarrow().to_pylist()``), never pandas.
 Pandas-backed and polars-backed sources route through
 :func:`datagrove.validation._ibis.to_ibis`, which wraps them once per
@@ -52,6 +53,15 @@ Severity defaults
 elevates to :class:`Severity.ERROR` (the field's contract is strict
 enough that an out-of-range value is treated as broken).
 
+Module shape
+------------
+
+:func:`check_schema` is the public orchestrator and the only symbol
+in ``__all__``. Per-rule helpers (``_check_required``, ``_check_type``,
+…) are decomposed for legibility and pinned by direct tests, but they
+are *internal* — callers should not import them. See
+``validation/__init__.py`` for the validator-shape convention.
+
 v0.3 bug-class regressions
 --------------------------
 
@@ -75,42 +85,23 @@ import ibis
 
 from datagrove.reports import Category, Issue, Severity, ValidationReport
 
-from ._ibis import to_ibis
+from ._ibis import (
+    MAX_ROW_ISSUES,
+    count,
+    emit_summary,
+    row_of,
+    sample,
+    to_ibis,
+    with_row_index,
+)
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     import ibis.expr.types as ir
 
-    from datagrove.engines.base import Engine, TableExpr
+    from datagrove.engines.base import TableExpr
     from datagrove.spec.model import Field, Schema
 
-__all__ = [
-    "MAX_ROW_ISSUES",
-    "check_enum",
-    "check_max_length",
-    "check_maximum",
-    "check_min_length",
-    "check_minimum",
-    "check_pattern",
-    "check_required",
-    "check_schema",
-    "check_type",
-    "check_unique",
-]
-
-
-# Per-rule row-Issue enumeration cap. Beyond this we emit one summary
-# Issue plus the first ``MAX_ROW_ISSUES`` row-specific Issues. The cap
-# protects callers (rich-console, HTML renderer) from million-issue
-# reports while still letting a reviewer see concrete examples.
-MAX_ROW_ISSUES: int = 100
-
-
-# Internal column name used to surface the original row position into
-# the materialised sample. We attach ``ibis.row_number()`` as this
-# column inside :func:`_with_row_index`; per-rule enumerators read it
-# back from the pyarrow sample so ``Issue.row`` is the source-of-truth
-# row index, not the sample's 0-based offset.
-_ROW_COL: str = "__dg_row__"
+__all__ = ["check_schema"]
 
 
 # Frictionless type → ibis dtype family. A column whose ibis dtype is
@@ -152,18 +143,6 @@ def _bound_severity(field: Field) -> Severity:
     return Severity.ERROR if _is_required(field) else Severity.WARNING
 
 
-def _with_row_index(table: ir.Table) -> ir.Table:
-    """Attach a 0-based row-number column so enumerators carry positions.
-
-    ibis ``row_number()`` is the SQL window function; the cast to int
-    is defensive (ibis returns int64 universally but downstream code
-    consumes the value as a plain ``int``).
-    """
-    if _ROW_COL in table.columns:
-        return table
-    return table.mutate(**{_ROW_COL: ibis.row_number().cast("int64")})
-
-
 def _has_column(table: ir.Table, name: str) -> bool:
     """Return ``True`` iff ``name`` is a column on ``table``.
 
@@ -174,36 +153,7 @@ def _has_column(table: ir.Table, name: str) -> bool:
     return name in table.columns
 
 
-def _count(predicate_table: ir.Table) -> int:
-    """Push a ``COUNT(*)`` to the backend and return a plain int.
-
-    Uses ``.to_pyarrow().as_py()`` rather than ``.execute()`` so the
-    return type is statically inferrable as ``Any`` (which pyright
-    accepts as an int) — ``.execute()`` is typed as
-    ``DataFrame | Series | Scalar`` even though the scalar branch
-    is the only one our usage hits.
-    """
-    return int(predicate_table.count().to_pyarrow().as_py())
-
-
-def _sample(predicate_table: ir.Table, *, limit: int) -> list[dict[str, Any]]:
-    """Materialise up to ``limit`` rows of ``predicate_table`` as pylist dicts.
-
-    The pyarrow path keeps us pandas-free; ``to_pylist`` is the
-    cheapest stable way to iterate a small sample row-by-row.
-    """
-    arrow = predicate_table.limit(limit).to_pyarrow()
-    return arrow.to_pylist()
-
-
-def _row_of(sample_row: dict[str, Any]) -> int:
-    """Pull the source row index out of a sampled dict."""
-    raw = sample_row.get(_ROW_COL)
-    # Defensive cast: arrow may yield numpy ints depending on backend.
-    return int(raw) if raw is not None else -1
-
-
-def _emit_summary(
+def _schema_summary(
     *,
     severity: Severity,
     code: str,
@@ -213,70 +163,45 @@ def _emit_summary(
     summary_message: str,
     extra: dict[str, Any] | None = None,
 ) -> Issue:
-    """Build the "showing first N of total" summary Issue.
-
-    Unified across rules: ``extra["total_violations"]`` carries the
-    full count; ``extra["sample_shown"]`` carries the cap. Renderers
-    already understand both keys (HTML + JSON exercises pin the
-    contract).
-    """
-    payload: dict[str, Any] = {"total_violations": total, "sample_shown": MAX_ROW_ISSUES}
-    if extra:
-        payload.update(extra)
-    return Issue(
+    """Wrap :func:`datagrove.validation._ibis.emit_summary` with SCHEMA defaults."""
+    return emit_summary(
         severity=severity,
         category=Category.SCHEMA,
         code=code,
-        message=summary_message,
         table=table_name,
         column=field.name,
-        extra=payload,
+        total=total,
+        message=summary_message,
+        extra=extra,
     )
 
 
 # ---------------------------------------------------------------------------
 # Per-rule helpers — each takes an ibis Table, pushes a count, samples
-# only when needed.
+# only when needed. Underscore prefix marks them as internal: tests
+# import them directly but they are not in ``__all__``.
 # ---------------------------------------------------------------------------
 
 
-def check_required(
+def _check_required(
     expr: TableExpr,
     field: Field,
     *,
-    engine: Engine,
     table_name: str,
 ) -> list[Issue]:
-    """Flag null values in a required field.
-
-    Returns an empty list when ``field.constraints.required`` is not
-    truthy. Per-row Issues are emitted up to :data:`MAX_ROW_ISSUES`;
-    beyond that one summary Issue records the total.
-
-    Args:
-        expr: Engine-native table expression (or a pre-normalised ibis
-            Table when called from :func:`check_schema`).
-        field: The :class:`~datagrove.spec.model.Field` to check.
-        engine: The engine that produced ``expr``. Retained for
-            signature compatibility; no longer used internally.
-        table_name: Logical table name — populates ``Issue.table``.
-
-    Returns:
-        A list of :class:`Issue` records. Empty when the field is not
-        required, absent from ``expr``, or has no nulls.
-    """
+    """Flag null values in a required field."""
     if not _is_required(field):
         return []
-    table = _with_row_index(to_ibis(expr))
+    table = with_row_index(to_ibis(expr))
     if not _has_column(table, field.name):
         return []
     bad = table.filter(table[field.name].isnull())
-    total = _count(bad)
+    total = count(bad)
     if total == 0:
         return []
     issues: list[Issue] = []
-    for sample_row in _sample(bad, limit=MAX_ROW_ISSUES):
-        row_idx = _row_of(sample_row)
+    for sample_row in sample(bad, limit=MAX_ROW_ISSUES):
+        row_idx = row_of(sample_row)
         issues.append(
             Issue(
                 severity=Severity.ERROR,
@@ -291,7 +216,7 @@ def check_required(
         )
     if total > MAX_ROW_ISSUES:
         issues.append(
-            _emit_summary(
+            _schema_summary(
                 severity=Severity.ERROR,
                 code="schema.required",
                 table_name=table_name,
@@ -305,22 +230,13 @@ def check_required(
     return issues
 
 
-def check_type(
+def _check_type(
     expr: TableExpr,
     field: Field,
     *,
-    engine: Engine,
     table_name: str,
 ) -> list[Issue]:
-    """Flag a column whose ibis dtype doesn't match ``field.type``.
-
-    The check is at the *column* level — ibis carries one dtype per
-    column. A column read from a CSV as strings (because a single cell
-    wouldn't coerce) lands as ``string`` and won't match e.g.
-    ``integer`` — exactly the v0.3 failure mode this rule pins.
-    Frictionless types not in :data:`_FRICTIONLESS_TO_IBIS_FAMILY` (or
-    ``any``) are skipped.
-    """
+    """Flag a column whose ibis dtype doesn't match ``field.type``."""
     if not field.type:
         return []
     allowed = _FRICTIONLESS_TO_IBIS_FAMILY.get(field.type)
@@ -350,32 +266,28 @@ def check_type(
     ]
 
 
-def check_enum(
+def _check_enum(
     expr: TableExpr,
     field: Field,
     *,
-    engine: Engine,
     table_name: str,
 ) -> list[Issue]:
-    """Flag values not in ``constraints.enum``.
-
-    Null values are skipped (handled by :func:`check_required`).
-    """
+    """Flag values not in ``constraints.enum`` (nulls skipped)."""
     if not field.constraints or not field.constraints.enum:
         return []
     allowed = list(field.constraints.enum)
-    table = _with_row_index(to_ibis(expr))
+    table = with_row_index(to_ibis(expr))
     if not _has_column(table, field.name):
         return []
     col = table[field.name]
     bad = table.filter(col.notnull() & ~col.isin(allowed))
-    total = _count(bad)
+    total = count(bad)
     if total == 0:
         return []
     issues: list[Issue] = []
     allowed_str = ", ".join(repr(v) for v in allowed)
-    for sample_row in _sample(bad, limit=MAX_ROW_ISSUES):
-        row_idx = _row_of(sample_row)
+    for sample_row in sample(bad, limit=MAX_ROW_ISSUES):
+        row_idx = row_of(sample_row)
         value = sample_row.get(field.name)
         issues.append(
             Issue(
@@ -391,7 +303,7 @@ def check_enum(
         )
     if total > MAX_ROW_ISSUES:
         issues.append(
-            _emit_summary(
+            _schema_summary(
                 severity=Severity.WARNING,
                 code="schema.enum",
                 table_name=table_name,
@@ -415,16 +327,10 @@ def _check_numeric_bound(
     code: str,
     direction: str,
 ) -> list[Issue]:
-    """Shared body for :func:`check_minimum` and :func:`check_maximum`.
-
-    Builds the directional predicate (``col < bound`` or ``col > bound``),
-    counts via SQL, samples up to :data:`MAX_ROW_ISSUES` rows for
-    per-row Issues, and emits a single summary Issue if the count
-    overflows the cap.
-    """
+    """Shared body for the minimum / maximum checks."""
     if bound is None:
         return []
-    table = _with_row_index(to_ibis(expr))
+    table = with_row_index(to_ibis(expr))
     if not _has_column(table, field.name):
         return []
     col = table[field.name]
@@ -436,13 +342,13 @@ def _check_numeric_bound(
         bad = table.filter(col.notnull() & (col > bound))
         rel = "above maximum"
         fix_word = "below"
-    total = _count(bad)
+    total = count(bad)
     if total == 0:
         return []
     severity = _bound_severity(field)
     issues: list[Issue] = []
-    for sample_row in _sample(bad, limit=MAX_ROW_ISSUES):
-        row_idx = _row_of(sample_row)
+    for sample_row in sample(bad, limit=MAX_ROW_ISSUES):
+        row_idx = row_of(sample_row)
         value = sample_row.get(field.name)
         issues.append(
             Issue(
@@ -458,7 +364,7 @@ def _check_numeric_bound(
         )
     if total > MAX_ROW_ISSUES:
         issues.append(
-            _emit_summary(
+            _schema_summary(
                 severity=severity,
                 code=code,
                 table_name=table_name,
@@ -473,11 +379,10 @@ def _check_numeric_bound(
     return issues
 
 
-def check_minimum(
+def _check_minimum(
     expr: TableExpr,
     field: Field,
     *,
-    engine: Engine,
     table_name: str,
 ) -> list[Issue]:
     """Flag values strictly below ``field.constraints.minimum``."""
@@ -493,11 +398,10 @@ def check_minimum(
     )
 
 
-def check_maximum(
+def _check_maximum(
     expr: TableExpr,
     field: Field,
     *,
-    engine: Engine,
     table_name: str,
 ) -> list[Issue]:
     """Flag values strictly above ``field.constraints.maximum``."""
@@ -522,10 +426,10 @@ def _check_length_bound(
     code: str,
     direction: str,
 ) -> list[Issue]:
-    """Shared body for :func:`check_min_length` / :func:`check_max_length`."""
+    """Shared body for the min_length / max_length checks."""
     if bound is None:
         return []
-    table = _with_row_index(to_ibis(expr))
+    table = with_row_index(to_ibis(expr))
     if not _has_column(table, field.name):
         return []
     col = table[field.name]
@@ -543,13 +447,13 @@ def _check_length_bound(
         bad = table.filter(col.notnull() & (length > bound_lit))
         rel = f"longer than max_length {bound}"
         fix_word = "no more than"
-    total = _count(bad)
+    total = count(bad)
     if total == 0:
         return []
     severity = _bound_severity(field)
     issues: list[Issue] = []
-    for sample_row in _sample(bad, limit=MAX_ROW_ISSUES):
-        row_idx = _row_of(sample_row)
+    for sample_row in sample(bad, limit=MAX_ROW_ISSUES):
+        row_idx = row_of(sample_row)
         value = sample_row.get(field.name)
         char_len = len(str(value)) if value is not None else 0
         issues.append(
@@ -566,7 +470,7 @@ def _check_length_bound(
         )
     if total > MAX_ROW_ISSUES:
         issues.append(
-            _emit_summary(
+            _schema_summary(
                 severity=severity,
                 code=code,
                 table_name=table_name,
@@ -579,11 +483,10 @@ def _check_length_bound(
     return issues
 
 
-def check_min_length(
+def _check_min_length(
     expr: TableExpr,
     field: Field,
     *,
-    engine: Engine,
     table_name: str,
 ) -> list[Issue]:
     """Flag strings shorter than ``field.constraints.min_length``."""
@@ -599,11 +502,10 @@ def check_min_length(
     )
 
 
-def check_max_length(
+def _check_max_length(
     expr: TableExpr,
     field: Field,
     *,
-    engine: Engine,
     table_name: str,
 ) -> list[Issue]:
     """Flag strings longer than ``field.constraints.max_length``."""
@@ -619,11 +521,10 @@ def check_max_length(
     )
 
 
-def check_pattern(
+def _check_pattern(
     expr: TableExpr,
     field: Field,
     *,
-    engine: Engine,
     table_name: str,
 ) -> list[Issue]:
     """Flag strings that don't match ``field.constraints.pattern``.
@@ -658,7 +559,7 @@ def check_pattern(
                 fix_hint=f"Fix the regex declared on {table_name}.{field.name}.",
             )
         ]
-    table = _with_row_index(to_ibis(expr))
+    table = with_row_index(to_ibis(expr))
     if not _has_column(table, field.name):
         return []
     col = table[field.name].cast("string")
@@ -668,12 +569,12 @@ def check_pattern(
     if not full_pattern.endswith("$"):
         full_pattern = f"{full_pattern}$"
     bad = table.filter(table[field.name].notnull() & ~col.re_search(full_pattern))
-    total = _count(bad)
+    total = count(bad)
     if total == 0:
         return []
     issues: list[Issue] = []
-    for sample_row in _sample(bad, limit=MAX_ROW_ISSUES):
-        row_idx = _row_of(sample_row)
+    for sample_row in sample(bad, limit=MAX_ROW_ISSUES):
+        row_idx = row_of(sample_row)
         value = sample_row.get(field.name)
         issues.append(
             Issue(
@@ -689,7 +590,7 @@ def check_pattern(
         )
     if total > MAX_ROW_ISSUES:
         issues.append(
-            _emit_summary(
+            _schema_summary(
                 severity=Severity.WARNING,
                 code="schema.pattern",
                 table_name=table_name,
@@ -705,11 +606,10 @@ def check_pattern(
     return issues
 
 
-def check_unique(
+def _check_unique(
     expr: TableExpr,
     field: Field,
     *,
-    engine: Engine,
     table_name: str,
 ) -> list[Issue]:
     """Flag duplicate values in a field declared ``unique=True``.
@@ -726,7 +626,7 @@ def check_unique(
     """
     if not field.constraints or not field.constraints.unique:
         return []
-    table = _with_row_index(to_ibis(expr))
+    table = with_row_index(to_ibis(expr))
     if not _has_column(table, field.name):
         return []
     col_name = field.name
@@ -736,7 +636,7 @@ def check_unique(
     # the offending rows + row indices.
     non_null = table.filter(col.notnull())
     dup_values = non_null.group_by(col_name).aggregate(_n=non_null.count()).filter(ibis._["_n"] > 1)
-    duplicate_count = _count(table.filter(col.isin(dup_values[col_name])))
+    duplicate_count = count(table.filter(col.isin(dup_values[col_name])))
     if duplicate_count == 0:
         return []
     issues: list[Issue] = [
@@ -752,8 +652,8 @@ def check_unique(
         )
     ]
     dup_rows = table.filter(col.isin(dup_values[col_name]))
-    for sample_row in _sample(dup_rows, limit=MAX_ROW_ISSUES):
-        row_idx = _row_of(sample_row)
+    for sample_row in sample(dup_rows, limit=MAX_ROW_ISSUES):
+        row_idx = row_of(sample_row)
         value = sample_row.get(col_name)
         issues.append(
             Issue(
@@ -780,15 +680,15 @@ def check_unique(
 # column-wide dtype mismatch surfaces before the per-row enum/min/max
 # noise it would generate.
 _RULE_ORDER: tuple = (
-    check_required,
-    check_type,
-    check_enum,
-    check_minimum,
-    check_maximum,
-    check_min_length,
-    check_max_length,
-    check_pattern,
-    check_unique,
+    _check_required,
+    _check_type,
+    _check_enum,
+    _check_minimum,
+    _check_maximum,
+    _check_min_length,
+    _check_max_length,
+    _check_pattern,
+    _check_unique,
 )
 
 
@@ -796,7 +696,6 @@ def check_schema(
     expr: TableExpr,
     schema: Schema,
     *,
-    engine: Engine,
     table_name: str,
     report: ValidationReport | None = None,
 ) -> ValidationReport:
@@ -819,9 +718,6 @@ def check_schema(
     Args:
         expr: Engine-native lazy table expression to validate.
         schema: Parsed Frictionless :class:`~datagrove.spec.model.Schema`.
-        engine: The :class:`~datagrove.engines.base.Engine` that produced
-            ``expr``. Retained for signature compatibility; the
-            ibis-first refactor no longer routes through it.
         table_name: Logical name of the table (populates ``Issue.table``).
         report: Optional existing :class:`ValidationReport` to append
             into. When ``None`` (the default), a fresh report is
@@ -838,7 +734,7 @@ def check_schema(
         >>> expr = e.from_records([{"id": 1}, {"id": 2}])
         >>> s = Schema(fields=[Field(name="id", type="any",
         ...     constraints=Constraints(required=True, unique=True))])
-        >>> report = check_schema(expr, s, engine=e, table_name="t")
+        >>> report = check_schema(expr, s, table_name="t")
         >>> report.is_clean
         True
     """
@@ -850,6 +746,6 @@ def check_schema(
     table = to_ibis(expr)
     for field in schema.fields:
         for rule in _RULE_ORDER:
-            for issue in rule(table, field, engine=engine, table_name=table_name):
+            for issue in rule(table, field, table_name=table_name):
                 report.add_issue(issue)
     return report

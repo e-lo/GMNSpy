@@ -72,35 +72,20 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any
 
-import ibis
-
 from datagrove.reports import Category, Issue, Severity, ValidationReport
 
-from ._ibis import to_ibis
+from ._ibis import MAX_ROW_ISSUES, ROW_COL, count, sample, to_ibis, with_row_index
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     import ibis.expr.types as ir
 
-    from datagrove.engines.base import Engine, TableExpr
+    from datagrove.engines.base import TableExpr
     from datagrove.spec.model import DataPackage, ForeignKey
 
 __all__ = [
-    "MAX_ROW_ISSUES",
     "check_foreign_key",
     "check_foreign_keys",
 ]
-
-
-# Per-FK row-Issue enumeration cap. Mirrors
-# :data:`datagrove.validation.schema_check.MAX_ROW_ISSUES`. Beyond this
-# the validator emits ``MAX_ROW_ISSUES`` per-row issues plus a single
-# summary issue carrying the true count in ``extra["total_violations"]``.
-MAX_ROW_ISSUES: int = 100
-
-
-# Internal column name surfaced into the sampled rows so Issue.row
-# carries the source-table row position, not the sample offset.
-_ROW_COL: str = "__dg_row__"
 
 
 # ---------------------------------------------------------------------------
@@ -127,13 +112,6 @@ def _format_value(value: Any) -> str:
     if isinstance(value, tuple):
         return "(" + ", ".join(repr(v) for v in value) + ")"
     return repr(value)
-
-
-def _with_row_index(table: ir.Table) -> ir.Table:
-    """Attach a 0-based row-number column so samples carry source positions."""
-    if _ROW_COL in table.columns:
-        return table
-    return table.mutate(**{_ROW_COL: ibis.row_number().cast("int64")})
 
 
 def _source_field_is_required(
@@ -178,12 +156,12 @@ def _emit_null_in_required_fk_issues(
         if not _source_field_is_required(package, source_table_name, source_field):
             continue
         bad = src_table.filter(src_table[source_field].isnull())
-        total = int(bad.count().to_pyarrow().as_py())
+        total = count(bad)
         if total == 0:
             continue
-        sample = bad.limit(MAX_ROW_ISSUES).to_pyarrow().to_pylist()
-        for sample_row in sample:
-            row_idx = int(sample_row.get(_ROW_COL, -1))
+        sampled = sample(bad, limit=MAX_ROW_ISSUES)
+        for sample_row in sampled:
+            row_idx = int(sample_row.get(ROW_COL, -1))
             issues.append(
                 Issue(
                     severity=Severity.ERROR,
@@ -264,7 +242,6 @@ def check_foreign_key(
     target_table_name: str,
     target_expr: TableExpr | None,
     *,
-    engine: Engine,
     package: DataPackage | None = None,
     strict: bool = False,
 ) -> list[Issue]:
@@ -285,9 +262,6 @@ def check_foreign_key(
         target_expr: Engine-native target table expression, or ``None``
             when the target table isn't available — in which case the
             helper emits one ``fk.unverifiable`` issue and returns.
-        engine: The engine that produced the expressions. Retained
-            for signature compatibility; the ibis-first refactor no
-            longer routes through it.
         package: Optional :class:`~datagrove.spec.model.DataPackage`,
             consulted to determine whether a source FK column is
             ``required=True`` (which upgrades a null to
@@ -328,7 +302,7 @@ def check_foreign_key(
             )
         ]
 
-    src = _with_row_index(to_ibis(source_expr))
+    src = with_row_index(to_ibis(source_expr))
     tgt = to_ibis(target_expr)
 
     issues: list[Issue] = []
@@ -377,19 +351,18 @@ def check_foreign_key(
         return issues
 
     bad = _missing_target_predicate(src, tgt, source_fields, target_fields)
-    total = int(bad.count().to_pyarrow().as_py())
+    total = count(bad)
     if total == 0:
         return issues
 
     # Sample the offending rows for per-row Issues. The sample carries
-    # ``_ROW_COL`` from the source-side row index plus the source key
+    # ``ROW_COL`` from the source-side row index plus the source key
     # columns themselves.
-    sample_cols = [_ROW_COL, *source_fields]
-    sample = bad.select(*sample_cols).limit(MAX_ROW_ISSUES).to_pyarrow().to_pylist()
+    sample_cols = [ROW_COL, *source_fields]
+    sampled = sample(bad.select(*sample_cols), limit=MAX_ROW_ISSUES)
 
-    enumerated = sample
-    for sample_row in enumerated:
-        row_idx = int(sample_row.get(_ROW_COL, -1))
+    for sample_row in sampled:
+        row_idx = int(sample_row.get(ROW_COL, -1))
         if len(source_fields) == 1:
             value: Any = sample_row.get(source_fields[0])
             value_repr = _format_value(value)
@@ -452,7 +425,6 @@ def check_foreign_keys(
     package: DataPackage,
     tables: Mapping[str, TableExpr],
     *,
-    engine: Engine,
     report: ValidationReport | None = None,
     strict: bool = False,
 ) -> ValidationReport:
@@ -481,10 +453,6 @@ def check_foreign_keys(
         tables: Mapping ``{table_name: TableExpr}``. Tables absent
             from the mapping become :data:`fk.unverifiable` issues
             (one per FK pointing at them).
-        engine: The :class:`~datagrove.engines.base.Engine` that
-            produced the table expressions. Retained for signature
-            compatibility; the ibis-first refactor no longer routes
-            through it.
         report: Existing :class:`ValidationReport` to append into.
             Created when ``None``; returned in either case.
         strict: When ``True``, :data:`fk.unverifiable` issues are
@@ -516,7 +484,7 @@ def check_foreign_keys(
         ...                                               fields="node_id"))],
         ...         )),
         ... ])
-        >>> report = check_foreign_keys(pkg, {"link": link, "node": node}, engine=e)
+        >>> report = check_foreign_keys(pkg, {"link": link, "node": node})
         >>> report.is_clean
         True
     """
@@ -556,7 +524,6 @@ def check_foreign_keys(
                 source_expr=source_table,
                 target_table_name=target_name,
                 target_expr=target_table,
-                engine=engine,
                 package=package,
                 strict=strict,
             ):

@@ -465,7 +465,6 @@ class Package:
                 check_schema(
                     table.expr,
                     table.schema,
-                    engine=self.engine,
                     table_name=table.name,
                     report=report,
                 )
@@ -475,7 +474,6 @@ class Package:
             check_foreign_keys(
                 self.spec,
                 {name: t.expr for name, t in self.tables.items()},
-                engine=self.engine,
                 report=report,
                 strict=strict,
             )

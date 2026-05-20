@@ -320,13 +320,6 @@ _VEGA_CDN_URLS: tuple[str, ...] = (
     "https://cdn.jsdelivr.net/npm/vega-embed@6",
 )
 
-_SEVERITY_LABELS_LOWER: dict[Severity, str] = {
-    Severity.ERROR: "ERROR",
-    Severity.WARNING: "WARNING",
-    Severity.INFO: "INFO",
-    Severity.DATA_QUALITY: "DATA_QUALITY",
-}
-
 
 def render_html(
     report: ValidationReport,
@@ -437,7 +430,7 @@ def render_html(
         summary=payload["summary"],
         issues_by_severity={sev.value: issues_by_severity[sev.value] for sev in severities},
         severities=[sev.value for sev in severities],
-        severity_labels={sev.value: _SEVERITY_LABELS_LOWER[sev] for sev in severities},
+        severity_labels={sev.value: _SEVERITY_LABEL[sev] for sev in severities},
         filter_options=filter_options,
         has_geo=has_geo,
         map_spec_json=map_spec_json,

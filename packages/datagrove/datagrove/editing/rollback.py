@@ -135,7 +135,7 @@ def _decode(blob: str | None) -> dict | list | None:
         return None
     try:
         return json.loads(blob)
-    except Exception:
+    except (json.JSONDecodeError, ValueError):
         return None
 
 
@@ -145,5 +145,5 @@ def _parse_dt(value: str | None) -> datetime:
         return datetime.min
     try:
         return datetime.fromisoformat(value)
-    except Exception:
+    except ValueError:
         return datetime.min
