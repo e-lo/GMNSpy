@@ -503,40 +503,70 @@ class Package:
         *,
         tables: Iterable[str] | None = None,
         columns: Mapping[str, list[str]] | None = None,
+        bbox: tuple[float, float, float, float] | None = None,
+        polygon: Any = None,
+        geometry_buffer: tuple[Any, float] | None = None,
+        geometry_column: str = "geometry",
     ) -> Package:
-        """Return a new :class:`Package` restricted to a table / column subset.
+        """Return a new :class:`Package` restricted to a table / column / spatial subset.
 
-        Pure table/column subsetting today; spatial scoping arrives in
-        task 2.8 (:mod:`datagrove.dataset.view`). The returned
-        :class:`Package` shares the same spec + engine + dirty tracker
-        as the original; only the table mapping is filtered.
+        Composes table+column subsetting with the spatial scopes in
+        :mod:`datagrove.dataset.view`. The spatial kwargs (``bbox``,
+        ``polygon``, ``geometry_buffer``) apply to **every** loaded
+        table that carries ``geometry_column``; tables without that
+        column are passed through untouched (link/node/use_definition
+        in the GMNS convention only the ``geometry`` table holds WKT,
+        so an ``bbox=`` scope effectively filters geometry and the
+        caller relies on FK trimming in a follow-up pass).
+
+        Exactly one of ``bbox`` / ``polygon`` / ``geometry_buffer`` may
+        be supplied per call. The returned :class:`Package` shares the
+        same spec + engine + dirty tracker; only the table mapping is
+        filtered.
 
         Args:
-            tables: Optional iterable of table names to keep. ``None``
-                keeps every table.
-            columns: Optional ``{table_name: [col, col, ...]}`` map. For
-                each named table the resulting :class:`Table` is
-                projected to the listed columns; tables not in the map
-                are unaffected.
+            tables: Optional iterable of table names to keep.
+            columns: Optional ``{table_name: [col, ...]}`` projection.
+            bbox: ``(minx, miny, maxx, maxy)`` — forwarded to
+                :func:`datagrove.dataset.view.from_bbox`.
+            polygon: A shapely (multi-)polygon or WKT string —
+                forwarded to :func:`datagrove.dataset.view.from_polygon`.
+            geometry_buffer: ``(geometry, distance_m)`` — forwarded to
+                :func:`datagrove.dataset.view.from_geometry_buffer`.
+            geometry_column: WKT/WKB column name shared across the
+                spatial calls. Default ``"geometry"``.
 
         Returns:
             A new :class:`Package` carrying the subset.
 
+        Raises:
+            ValueError: If more than one spatial scope kwarg is set.
+
         Examples:
-            >>> from gmnspy.fixtures import leavenworth
-            >>> from datagrove.dataset import Package
-            >>> from datagrove.engines.pandas_engine import PandasEngine
-            >>> import gmnspy, pathlib
-            >>> spec = pathlib.Path(gmnspy.__file__).parent / "spec" / "0.97" / "datapackage.json"
-            >>> pkg = Package.from_source(
-            ...     leavenworth.csv_dir(),
-            ...     engine=PandasEngine(),
-            ...     spec=spec,
-            ...     tables=["link", "node"],
-            ... )
-            >>> pkg.scope(tables=["link"]).keys()
-            ['link']
+            Table subset (the original surface)::
+
+                >>> from gmnspy.fixtures import leavenworth
+                >>> from datagrove.dataset import Package
+                >>> from datagrove.engines.pandas_engine import PandasEngine
+                >>> import gmnspy, pathlib
+                >>> spec = pathlib.Path(gmnspy.__file__).parent / "spec" / "0.97" / "datapackage.json"
+                >>> pkg = Package.from_source(
+                ...     leavenworth.csv_dir(),
+                ...     engine=PandasEngine(),
+                ...     spec=spec,
+                ...     tables=["link", "node"],
+                ... )
+                >>> pkg.scope(tables=["link"]).keys()
+                ['link']
         """
+        from .view import from_bbox, from_geometry_buffer, from_polygon
+
+        spatial_count = sum(1 for x in (bbox, polygon, geometry_buffer) if x is not None)
+        if spatial_count > 1:
+            raise ValueError(
+                "Package.scope: at most one of bbox=, polygon=, geometry_buffer= may be set per call."
+            )
+
         # Table filter.
         if tables is not None:
             wanted = set(tables)
@@ -549,6 +579,24 @@ class Package:
             for table_name, cols in columns.items():
                 if table_name in scoped:
                     scoped[table_name] = scoped[table_name].select(*cols)
+
+        # Spatial filter — applied to every table that has the geometry
+        # column. ``from_*`` no-ops on tables that don't, so this is
+        # safe to fan out blindly.
+        if bbox is not None:
+            minx, miny, maxx, maxy = bbox
+            scoped = {
+                name: from_bbox(t, minx, miny, maxx, maxy, geometry_column=geometry_column)
+                for name, t in scoped.items()
+            }
+        elif polygon is not None:
+            scoped = {name: from_polygon(t, polygon, geometry_column=geometry_column) for name, t in scoped.items()}
+        elif geometry_buffer is not None:
+            geom, distance_m = geometry_buffer
+            scoped = {
+                name: from_geometry_buffer(t, geom, distance_m, geometry_column=geometry_column)
+                for name, t in scoped.items()
+            }
 
         return Package(
             spec=self.spec,
