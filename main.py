@@ -1,30 +1,23 @@
-"""mkdocs-macros entry point — wires datagrove.docgen into the docs site.
+"""mkdocs-macros entry point — markdown macros + AI-docgen build hook.
 
-This file is consumed by ``mkdocs-macros-plugin`` (declared under
-``plugins:`` in :file:`mkdocs.yml`) and exposes a ``define_env(env)``
-function that registers per-page macros.
+Wired by ``mkdocs-macros-plugin`` (declared under ``plugins:`` in
+:file:`mkdocs.yml`). On every ``mkdocs build`` this module:
 
-Macros (matching the names used in :file:`docs/spec.md` and
-:file:`docs/spec-versions/*.md`):
+1. Registers per-page macros (:func:`include_file`,
+   :func:`local_frictionless_spec`, :func:`local_frictionless_schemas`,
+   :func:`official_frictionless_spec`, :func:`official_frictionless_schemas`)
+   for use inside markdown pages — see :file:`docs/spec.md` and
+   :file:`docs/spec-versions/*.md`.
+2. Emits AI-docgen artifacts (``llms.txt``, ``llms-full.txt``,
+   ``ai/api-index.json``) into ``docs_dir`` per architecture §6.9.
 
-- ``include_file(filename, downshift_h1=True, start_line=0, end_line=None)``
-  — verbatim file inclusion with optional H1 downshift and a built-in
-  link-rewrite table for files moved/renamed in the v1.0 docs layout.
-- ``local_frictionless_spec(version="0.97")`` — render the package
-  overview of a vendored ``packages/gmnspy/gmnspy/spec/<version>/``.
-- ``local_frictionless_schemas(version="0.97")`` — render the per-
-  schema markdown tables of the same vendored spec.
-- ``official_frictionless_spec(branch)`` /
-  ``official_frictionless_schemas(branch)`` — convenience aliases that
-  load the official upstream Frictionless package from GitHub for a
-  given branch (``master`` or ``development``); falls back to the
-  vendored ``0.97`` if the upstream load fails (so the docs build in
-  offline / sandboxed environments and on PRs without network egress).
+The renderers themselves live in :mod:`datagrove.docgen`; this file is
+intentionally thin so the macros stay trivial to test and the docgen
+module stays usable from the notebook, CLI, and AI api-index surfaces.
 
-The renderers themselves live in :mod:`datagrove.docgen.markdown` —
-this file is intentionally thin (no business logic) so the macros stay
-trivial to test and the docgen module stays usable from other surfaces
-(notebook, CLI, the AI api-index).
+Phase 4 follow-up: swap the static ``_DEFAULT_NAV`` for live mkdocs
+nav extraction (``env.conf['nav']`` + ``env.files``). Generator
+contracts won't change; only the nav source.
 """
 
 from __future__ import annotations
@@ -37,7 +30,13 @@ from typing import Any
 
 # The mkdocs-macros plugin imports this module from the repo root; the
 # packages are on ``sys.path`` because uv installs them in dev mode.
-from datagrove.docgen import package_to_md, schemas_to_md
+from datagrove.docgen import (
+    generate_api_index_json,
+    generate_llms_full_txt,
+    generate_llms_txt,
+    package_to_md,
+    schemas_to_md,
+)
 from datagrove.spec import SpecLoadError, load_package
 
 logger = logging.getLogger(__name__)
@@ -61,9 +60,31 @@ FIND_REPLACE: dict[str, str] = {
 _md_heading_re = {n: re.compile(rf"(#{{{n}}}\s)(.*)") for n in range(1, 6)}
 
 
+# Static nav stub — Phase 4 replaces with live mkdocs nav extraction.
+_DEFAULT_NAV: list[dict] = [
+    {
+        "section": "Overview",
+        "pages": [
+            {"title": "Home", "href": "index.md", "description": "Project overview + install."},
+            {"title": "Architecture", "href": "architecture.md", "description": "Single source of truth for the v1.0 design."},
+            {"title": "GMNS data model", "href": "gmns-data-model.md", "description": "ER diagrams for link/node/lane/etc."},
+        ],
+    },
+    {
+        "section": "Reference",
+        "pages": [
+            {"title": "API", "href": "api.md", "description": "Auto-generated symbol reference."},
+            {"title": "Spec", "href": "spec.md", "description": "GMNS spec field reference."},
+            {"title": "Development", "href": "development.md", "description": "Contributor workflow."},
+        ],
+    },
+]
+
+_PACKAGES_FOR_API_INDEX = ["datagrove", "datagrove.reports"]
+
+
 def _downshift_md(md: str) -> str:
     """Shift every markdown heading down by one level (H1→H2, H2→H3, …)."""
-    # Process deepest first so we don't double-shift an already-shifted line.
     for n in (5, 4, 3, 2, 1):
         md = re.sub(_md_heading_re[n], r"#\1\2", md)
     return md
@@ -89,13 +110,57 @@ def _load_official_package(branch: str):
         return _load_local_package(DEFAULT_LOCAL_VERSION)
 
 
-def define_env(env: Any) -> None:
-    """Register mkdocs-macros macros against the build environment.
+def _docs_dir(env: Any) -> Path:
+    """Resolve the mkdocs docs_dir from the macros env, with a fallback."""
+    try:
+        return Path(env.conf["docs_dir"])
+    except (AttributeError, KeyError, TypeError):
+        return REPO_ROOT / "docs"
 
-    ``env`` is the ``MacrosPlugin`` instance; ``env.macro`` is the
-    decorator that registers a callable as a Jinja macro.
+
+def _write_ai_artifacts(docs_dir: Path, nav: list[dict], site_url: str) -> None:
+    """Write llms.txt, llms-full.txt, ai/api-index.json into ``docs_dir``."""
+
+    def _page_loader(href: str) -> str:
+        page = docs_dir / href
+        if page.exists():
+            return page.read_text(encoding="utf-8")
+        return f"<!-- page {href} not found at build time -->"
+
+    (docs_dir / "llms.txt").write_text(
+        generate_llms_txt(site_url=site_url, nav=nav),
+        encoding="utf-8",
+    )
+    (docs_dir / "llms-full.txt").write_text(
+        generate_llms_full_txt(site_url=site_url, nav=nav, page_loader=_page_loader),
+        encoding="utf-8",
+    )
+    ai_dir = docs_dir / "ai"
+    ai_dir.mkdir(exist_ok=True)
+    (ai_dir / "api-index.json").write_text(
+        generate_api_index_json(packages=_PACKAGES_FOR_API_INDEX),
+        encoding="utf-8",
+    )
+
+
+def define_env(env: Any) -> None:
+    """Register mkdocs-macros macros + emit AI-docgen artifacts at build time.
+
+    ``env`` is the ``MacrosPlugin`` instance; ``env.macro`` is the decorator
+    that registers a callable as a Jinja macro.
     """
 
+    # --- AI docgen build artifacts (architecture §6.9) ---
+    docs_dir = _docs_dir(env)
+    site_url = (
+        getattr(env, "conf", {}).get("site_url") if hasattr(env, "conf") else None
+    ) or "https://e-lo.github.io/GMNSpy"
+    try:
+        _write_ai_artifacts(docs_dir, _DEFAULT_NAV, site_url)
+    except Exception as exc:  # noqa: BLE001 — docs build shouldn't fail on artifact emission
+        logger.warning("AI docgen artifact emission failed: %s", exc)
+
+    # --- Per-page macros ---
     @env.macro
     def include_file(
         filename: str,
