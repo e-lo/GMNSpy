@@ -268,7 +268,7 @@ Pluggable auth: none / bearer-token / OAuth2 (config-driven). Default download f
 
 ## 9. Conventions
 
-- **Docstrings:** Google style. Every public function has an `Examples:` block usable as a doctest.
+- **Docstrings:** Google style on every public function. **`Examples:` blocks required only on *user-facing* public symbols** — i.e., symbols re-exported via a package's `__init__.__all__`, the constructor / main methods of public classes, and convenience wrappers that appear in cookbook / quickstart material. Internal-public helpers (functions that lack a `_` prefix only because tests need to import them directly) get a Google-style summary docstring but skip the `Examples:` / doctest overhead. Examples bloat is real — see review-deferred LOC notes in #134-class issues. Rule of thumb: *if a user would type the symbol's name into their own code, it needs Examples; if only the test suite types it, the summary is enough.*
 - **Logging:** `logging.getLogger(__name__)` per module. Library never configures the root logger; only the CLI does.
 - **Pydantic:** v2, strict on datagrove core types.
 - **Type hints:** required on all public APIs. `pyright` strict on `datagrove`, basic on `gmnspy`.
