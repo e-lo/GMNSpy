@@ -80,6 +80,10 @@ convention = "google"
 "**/tests/**" = ["D"]
 "**/__init__.py" = ["D"]
 "scripts/**" = ["E501", "D"]  # scripts have long inline strings + don't need full docstrings
+# Typer CLI command signatures use `typer.Argument(...)` / `typer.Option(...)`
+# in argument defaults — that's the idiomatic typer API. B008 (function call
+# in default) is a false positive for this pattern, scoped to cli/ paths only.
+"**/cli/**" = ["B008"]
 
 # ---------------------------------------------------------------------------
 # Pyright (strict on datagrove; standard on gmnspy)
