@@ -259,6 +259,45 @@ def _build_gmnspy_app() -> typer.Typer:
         app_instance = server_module.build_app(settings)
         uvicorn.run(app_instance, host=settings.bind, port=settings.port)
 
+    # ------------------------------------------------------------------
+    # mcp serve — stateless MCP server over stdio (task 4.11 / issue #94)
+    # ------------------------------------------------------------------
+    mcp_app = typer.Typer(no_args_is_help=True, help="Run the gmnspy MCP server for AI-agent access.")
+    gmnspy_app.add_typer(mcp_app, name="mcp")
+
+    @mcp_app.command(name="serve")
+    def mcp_serve(
+        name: str = typer.Option("gmnspy", "--name", help="MCP server display name."),
+    ) -> None:
+        """Start the gmnspy MCP server on stdio (for Claude Desktop / Claude Code).
+
+        Configure your MCP client to launch ``gmnspy mcp serve`` as a
+        subprocess (typical example:
+
+        .. code-block:: json
+
+            {"mcpServers": {"gmnspy": {"command": "gmnspy", "args": ["mcp", "serve"]}}}
+
+        ). Tools exposed: ``describe_network``, ``validate_package``,
+        ``quality_check``, ``connected_components``, ``scope_from_nodes``,
+        plus the generic datagrove tools.
+        """
+        try:
+            gmnspy_mcp = importlib.import_module("gmnspy.mcp")
+        except ImportError as e:
+            typer.secho(
+                f"gmnspy mcp requires the [mcp] extra: pip install 'gmnspy[mcp]' ({e})",
+                fg="red",
+                err=True,
+            )
+            raise typer.Exit(code=1) from None
+
+        server = gmnspy_mcp.build_server(name=name)
+        # FastMCP.run() defaults to stdio when called with no transport;
+        # stdio is what MCP-host applications expect (Claude Desktop,
+        # Claude Code, etc.).
+        server.run()
+
     return gmnspy_app
 
 

@@ -17,10 +17,10 @@ from ._fakes import FakeCsvAdapter, FakeParquetAdapter
 
 
 @pytest.fixture(autouse=True)
-def _isolated_registry():
+def _start_clean():
+    """Each registry test starts with a cleared registry — the io/conftest.py snapshot covers restoration."""
     _clear_registry()
     yield
-    _clear_registry()
 
 
 def test_empty_registry_after_clear() -> None:
