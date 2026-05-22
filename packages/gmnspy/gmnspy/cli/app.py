@@ -298,6 +298,269 @@ def _build_gmnspy_app() -> typer.Typer:
         # Claude Code, etc.).
         server.run()
 
+    # ------------------------------------------------------------------
+    # clean — network-editing ops (task 4.6 / issue #88)
+    # ------------------------------------------------------------------
+    #
+    # Each subcommand wraps an op from :mod:`gmnspy.clean` (optional
+    # ``[clean]`` extra). The op runs inside a :class:`Session` so we
+    # get atomic rollback + a diff to show; ``--dry-run`` rolls back
+    # before write so the on-disk network is unchanged. Without
+    # ``--dest`` the modified network is written back over ``source``;
+    # with ``--dest`` it goes to the given path (mirroring the
+    # ``gmnspy info``/``validate`` convention of leaving the source
+    # alone when the caller asks for somewhere else).
+    clean_app = typer.Typer(no_args_is_help=True, help="GMNS network-editing ops (requires the 'clean' extra).")
+    gmnspy_app.add_typer(clean_app, name="clean")
+
+    @clean_app.command(name="simplify-geometry")
+    def clean_simplify(
+        source: Path = typer.Argument(..., help="Path to the GMNS network to edit."),
+        dest: Path = typer.Option(
+            None, "--dest", help="Where to write the modified network. Default: overwrite source."
+        ),
+        mode: str = typer.Option("redundant_only", "--mode", help="redundant_only or douglas_peucker."),
+        tolerance: float = typer.Option(0.0, "--tolerance", help="Tolerance in CRS units (douglas_peucker only)."),
+        engine: str = typer.Option(None, "--engine", help="ibis/pandas/polars (default: ibis)."),
+        dry_run: bool = typer.Option(False, "--dry-run", help="Print what would change; do not write."),
+        json_out: bool = typer.Option(False, "--json", help="Emit JSON on stdout."),
+    ) -> None:
+        """Simplify link geometries on the network at ``source``."""
+        clean = _import_clean()
+        net, Session = _load_network_and_session_cls(source, engine)
+        with Session(net) as session:
+            result = clean.simplify_geometry(net, session, mode=mode, tolerance=tolerance)
+            summary = _summarise_results(result, op="simplify_geometry", source=source, dest=dest, dry_run=dry_run)
+            if dry_run:
+                session.rollback()
+            else:
+                _write_network(net, source=source, dest=dest)
+        render_dict(summary, json_out=json_out, title=f"gmnspy clean simplify-geometry: {source}")
+
+    @clean_app.command(name="merge-close-nodes")
+    def clean_merge(
+        source: Path = typer.Argument(..., help="Path to the GMNS network to edit."),
+        dest: Path = typer.Option(
+            None, "--dest", help="Where to write the modified network. Default: overwrite source."
+        ),
+        threshold_m: float = typer.Option(5.0, "--threshold-m", help="Distance threshold in node CRS units."),
+        engine: str = typer.Option(None, "--engine", help="ibis/pandas/polars (default: ibis)."),
+        dry_run: bool = typer.Option(False, "--dry-run", help="Print what would change; do not write."),
+        json_out: bool = typer.Option(False, "--json", help="Emit JSON on stdout."),
+    ) -> None:
+        """Merge node pairs within ``--threshold-m`` of each other; rewrite incident links."""
+        clean = _import_clean()
+        net, Session = _load_network_and_session_cls(source, engine)
+        with Session(net) as session:
+            results = clean.merge_close_nodes(net, session, threshold_m=threshold_m)
+            summary = _summarise_results(results, op="merge_close_nodes", source=source, dest=dest, dry_run=dry_run)
+            if dry_run:
+                session.rollback()
+            else:
+                _write_network(net, source=source, dest=dest)
+        render_dict(summary, json_out=json_out, title=f"gmnspy clean merge-close-nodes: {source}")
+
+    @clean_app.command(name="remove-orphans")
+    def clean_remove_orphans(
+        source: Path = typer.Argument(..., help="Path to the GMNS network to edit."),
+        dest: Path = typer.Option(
+            None, "--dest", help="Where to write the modified network. Default: overwrite source."
+        ),
+        engine: str = typer.Option(None, "--engine", help="ibis/pandas/polars (default: ibis)."),
+        dry_run: bool = typer.Option(False, "--dry-run", help="Print what would change; do not write."),
+        json_out: bool = typer.Option(False, "--json", help="Emit JSON on stdout."),
+    ) -> None:
+        """Drop nodes with no incident links."""
+        clean = _import_clean()
+        net, Session = _load_network_and_session_cls(source, engine)
+        with Session(net) as session:
+            result = clean.remove_orphans(net, session)
+            summary = _summarise_results(result, op="remove_orphans", source=source, dest=dest, dry_run=dry_run)
+            if dry_run:
+                session.rollback()
+            else:
+                _write_network(net, source=source, dest=dest)
+        render_dict(summary, json_out=json_out, title=f"gmnspy clean remove-orphans: {source}")
+
+    @clean_app.command(name="recompute-lengths")
+    def clean_recompute_lengths(
+        source: Path = typer.Argument(..., help="Path to the GMNS network to edit."),
+        dest: Path = typer.Option(
+            None, "--dest", help="Where to write the modified network. Default: overwrite source."
+        ),
+        geodesic: bool = typer.Option(False, "--geodesic", help="Compute haversine length in meters (WGS84)."),
+        engine: str = typer.Option(None, "--engine", help="ibis/pandas/polars (default: ibis)."),
+        dry_run: bool = typer.Option(False, "--dry-run", help="Print what would change; do not write."),
+        json_out: bool = typer.Option(False, "--json", help="Emit JSON on stdout."),
+    ) -> None:
+        """Recompute ``link.length`` from the inline geometry column."""
+        clean = _import_clean()
+        net, Session = _load_network_and_session_cls(source, engine)
+        with Session(net) as session:
+            result = clean.recompute_lengths(net, session, geodesic=geodesic)
+            summary = _summarise_results(result, op="recompute_lengths", source=source, dest=dest, dry_run=dry_run)
+            if dry_run:
+                session.rollback()
+            else:
+                _write_network(net, source=source, dest=dest)
+        render_dict(summary, json_out=json_out, title=f"gmnspy clean recompute-lengths: {source}")
+
+    # ------------------------------------------------------------------
+    # scope — network-aware scope ops (task 4.6 / issue #88)
+    # ------------------------------------------------------------------
+    #
+    # Read-only: each subcommand builds a :class:`NetworkScope` from a
+    # seed and prints {node_count, link_count, node_ids, link_ids}.
+    # ``gmnspy.scope`` is part of core (no extra needed) but the
+    # underlying :class:`GraphIndex` requires igraph (the [clean]
+    # extra) — surface a typed error if igraph is absent.
+    scope_app = typer.Typer(no_args_is_help=True, help="Build a NetworkScope and print its (links, nodes) sets.")
+    gmnspy_app.add_typer(scope_app, name="scope")
+
+    @scope_app.command(name="from-nodes")
+    def scope_from_nodes_cmd(
+        source: Path = typer.Argument(..., help="Path to the GMNS network."),
+        node_ids: list[int] = typer.Argument(..., help="Seed node ids."),
+        path_between: bool = typer.Option(True, "--path-between/--no-path-between"),
+        json_out: bool = typer.Option(False, "--json", help="Emit JSON on stdout."),
+    ) -> None:
+        """Build a scope from seed node ids and print its (links, nodes) sets."""
+        scope_mod = _import_scope()
+        net = Network.from_source(source)
+        with _scope_errors():
+            scope = scope_mod.from_nodes(net, node_ids, path_between=path_between)
+        render_dict(_summarise_scope(scope), json_out=json_out, title=f"gmnspy scope from-nodes: {source}")
+
+    @scope_app.command(name="from-node")
+    def scope_from_node_cmd(
+        source: Path = typer.Argument(..., help="Path to the GMNS network."),
+        node_id: int = typer.Argument(..., help="Seed node id."),
+        network_buffer: str = typer.Option(
+            "0.5mi", "--network-buffer", help="Distance with unit (e.g. '0.5mi', '800m')."
+        ),
+        json_out: bool = typer.Option(False, "--json", help="Emit JSON on stdout."),
+    ) -> None:
+        """Scope = all nodes within ``--network-buffer`` network-distance of ``node_id``."""
+        scope_mod = _import_scope()
+        net = Network.from_source(source)
+        with _scope_errors():
+            scope = scope_mod.from_node(net, node_id, network_buffer=network_buffer)
+        render_dict(_summarise_scope(scope), json_out=json_out, title=f"gmnspy scope from-node: {source}")
+
+    @scope_app.command(name="connected-component")
+    def scope_connected_component_cmd(
+        source: Path = typer.Argument(..., help="Path to the GMNS network."),
+        seed_node_id: int = typer.Argument(..., help="Seed node id whose component to return."),
+        json_out: bool = typer.Option(False, "--json", help="Emit JSON on stdout."),
+    ) -> None:
+        """Scope = the weakly-connected component containing ``seed_node_id``."""
+        scope_mod = _import_scope()
+        net = Network.from_source(source)
+        with _scope_errors():
+            scope = scope_mod.connected_component(net, seed_node_id)
+        render_dict(_summarise_scope(scope), json_out=json_out, title=f"gmnspy scope connected-component: {source}")
+
+    @scope_app.command(name="from-zone")
+    def scope_from_zone_cmd(
+        source: Path = typer.Argument(..., help="Path to the GMNS network."),
+        zone_ids: list[int] = typer.Argument(..., help="Zone ids whose nodes (+ incident links) to include."),
+        json_out: bool = typer.Option(False, "--json", help="Emit JSON on stdout."),
+    ) -> None:
+        """Scope = all nodes with ``zone_id`` in ``zone_ids`` plus their incident links."""
+        scope_mod = _import_scope()
+        net = Network.from_source(source)
+        with _scope_errors():
+            scope = scope_mod.from_zone(net, zone_ids)
+        render_dict(_summarise_scope(scope), json_out=json_out, title=f"gmnspy scope from-zone: {source}")
+
+    # ------------------------------------------------------------------
+    # index — spatial + graph index build/status/drop (task 4.6 / issue #88)
+    # ------------------------------------------------------------------
+    #
+    # Sidecars land under ``<source.parent>/_gmnspy_indexes/`` per
+    # :func:`gmnspy.indexes.cache.cache_path`. ``build`` content-hashes
+    # the link table (and node table for the graph index) so a re-build
+    # over identical data is a cheap no-op.
+    index_app = typer.Typer(no_args_is_help=True, help="Spatial + graph index build/status/drop.")
+    gmnspy_app.add_typer(index_app, name="index")
+
+    @index_app.command(name="build")
+    def index_build(
+        source: Path = typer.Argument(..., help="Path to the GMNS network."),
+        spatial: bool = typer.Option(True, "--spatial/--no-spatial"),
+        graph: bool = typer.Option(True, "--graph/--no-graph"),
+        json_out: bool = typer.Option(False, "--json", help="Emit JSON on stdout."),
+    ) -> None:
+        """Build spatial + graph indexes for the network at ``source``; cache to disk."""
+        indexes = _import_indexes()
+        net = Network.from_source(source)
+        # Spatial index needs an inline ``geometry`` column on links;
+        # auto-skip (with a logged note) rather than crashing so the
+        # default ``build`` works on geometry-table-backed networks too.
+        # Callers wanting to assemble + index in one go should run
+        # :func:`gmnspy.semantics.assemble_link_geometry` first.
+        skipped_spatial = False
+        if spatial and "geometry" not in net.links.columns():
+            spatial = False
+            skipped_spatial = True
+        with _scope_errors():
+            spatial_idx, graph_idx = indexes.build_indexes(
+                links=net.links,
+                nodes=net.nodes if graph else None,
+                spatial=spatial,
+                graph=graph,
+            )
+        paths: list[str] = []
+        if spatial_idx is not None:
+            p = _save_index_sidecar(indexes, source, net, "spatial", spatial_idx, kind_target="link")
+            paths.append(str(p))
+        if graph_idx is not None:
+            p = _save_index_sidecar(indexes, source, net, "graph", graph_idx, kind_target="link+node")
+            paths.append(str(p))
+        summary = {
+            "source": str(source),
+            "spatial": spatial_idx is not None,
+            "graph": graph_idx is not None,
+            "paths": paths,
+            "skipped_spatial_no_geometry": skipped_spatial,
+        }
+        render_dict(summary, json_out=json_out, title=f"gmnspy index build: {source}")
+
+    @index_app.command(name="status")
+    def index_status(
+        source: Path = typer.Argument(..., help="Path to the GMNS network."),
+        json_out: bool = typer.Option(False, "--json", help="Emit JSON on stdout."),
+    ) -> None:
+        """Report which index sidecars exist next to ``source``."""
+        paths = _list_index_sidecars(source)
+        summary = {
+            "source": str(source),
+            "spatial": any(".spatial." in p.name for p in paths),
+            "graph": any(".graph." in p.name for p in paths),
+            "paths": [str(p) for p in paths],
+        }
+        render_dict(summary, json_out=json_out, title=f"gmnspy index status: {source}")
+
+    @index_app.command(name="drop")
+    def index_drop(
+        source: Path = typer.Argument(..., help="Path to the GMNS network."),
+        json_out: bool = typer.Option(False, "--json", help="Emit JSON on stdout."),
+    ) -> None:
+        """Delete cached spatial + graph sidecars next to ``source``."""
+        paths = _list_index_sidecars(source)
+        removed: list[str] = []
+        for p in paths:
+            try:
+                p.unlink()
+                removed.append(str(p))
+            except OSError:  # pragma: no cover - race; surface but don't crash
+                continue
+        render_dict(
+            {"source": str(source), "removed": removed, "count": len(removed)},
+            json_out=json_out,
+            title=f"gmnspy index drop: {source}",
+        )
+
     return gmnspy_app
 
 
@@ -481,6 +744,179 @@ def _check_leavenworth_loads() -> dict[str, object]:
             "ok": False,
             "detail": f"{exc.__class__.__name__}: {exc}",
         }
+
+
+# ---------------------------------------------------------------------------
+# clean / scope / index helpers (task 4.6 / issue #88)
+# ---------------------------------------------------------------------------
+#
+# Optional-extra resolution goes through importlib so the import-linter
+# contract ``gmnspy.cli ↛ gmnspy.clean`` (and the corollary for the
+# scope/index ops needing igraph) holds; the contract is enforced on
+# static imports only, so runtime discovery is the architecture-blessed
+# path. Each ``_import_*`` helper exits non-zero with the install hint
+# when the extra is missing — same shape as ``gmnspy server run``.
+
+
+def _import_clean():
+    """Resolve :mod:`gmnspy.clean` at call time so the import-linter contract holds."""
+    try:
+        return importlib.import_module("gmnspy.clean")
+    except ImportError as e:
+        typer.secho(
+            f"gmnspy clean requires the [clean] extra: pip install 'gmnspy[clean]' ({e})",
+            fg="red",
+            err=True,
+        )
+        raise typer.Exit(code=1) from None
+
+
+def _import_scope():
+    """Resolve :mod:`gmnspy.scope` — core module but its index ops need igraph."""
+    return importlib.import_module("gmnspy.scope")
+
+
+def _import_indexes():
+    """Resolve :mod:`gmnspy.indexes` — core module but build needs igraph + shapely at call time."""
+    return importlib.import_module("gmnspy.indexes")
+
+
+def _load_network_and_session_cls(source: Path, engine_name: str | None = None):
+    """Return ``(Network, Session class)`` — :class:`Session` lives in datagrove, imported here so each op is one-line.
+
+    ``engine_name`` follows the same ibis/pandas/polars resolution as
+    :func:`_resolve_engine`. Callers can override the default ibis
+    engine to dodge backend-specific edge cases (e.g. duckdb refusing
+    null-typed columns when re-materialising via ``engine.from_records``
+    during a ``replace_table`` edit on a fixture that carries empty
+    string columns typed as null).
+    """
+    from datagrove.editing import Session
+
+    return Network.from_source(source, engine=_resolve_engine(engine_name)), Session
+
+
+def _summarise_results(results, *, op: str, source: Path, dest: Path | None, dry_run: bool) -> dict[str, object]:
+    """Render an :class:`EditResult` (or list thereof) into the CLI's standard summary dict."""
+    if not isinstance(results, list):
+        results = [results]
+    return {
+        "op": op,
+        "source": str(source),
+        "dest": str(dest) if dest is not None else str(source),
+        "dry_run": dry_run,
+        "edits": [
+            {
+                "table": r.edit.table,
+                "op": r.edit.op,
+                "rows_added": r.diff.rows_added,
+                "rows_removed": r.diff.rows_removed,
+                "rows_changed": r.diff.rows_changed,
+            }
+            for r in results
+        ],
+    }
+
+
+def _write_network(net: Network, *, source: Path, dest: Path | None) -> None:
+    """Write ``net`` back to ``dest`` (or ``source`` when ``dest`` is None).
+
+    Uses :meth:`Package.write`; the format is inferred from the
+    target's extension, falling back to ``parquet`` for directory
+    targets — matches the read-path convention so a round-trip lands
+    the same logical package.
+
+    Suppresses :class:`OutOfSyncWarning` (raised by the dirty tracker
+    on tables we just edited). The whole point of these CLI ops is
+    "edit then write" — the dirty flag is expected, and the warning
+    would be promoted to an error under the project's
+    ``filterwarnings = ["error"]`` pytest config.
+    """
+    import warnings
+
+    from datagrove.dataset.package import OutOfSyncWarning
+
+    target = dest if dest is not None else source
+    overwrite = target.exists()
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", OutOfSyncWarning)
+        net.write(target, overwrite=overwrite)
+
+
+class _ScopeErrors:
+    """Context manager that converts library errors (ScopeError / ImportError) into typer.Exit(1) with a clean message.
+
+    Class form (not a function-decorated ``contextlib.contextmanager``)
+    so ``typer`` sees ``with _scope_errors():`` as a regular block — no
+    generator-induced surprises around its exception handling.
+    """
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if exc_type is None:
+            return False
+        # ScopeError or any sibling gmnspy error — surface the message
+        # rather than the full traceback (the user typed a CLI command).
+        if issubclass(exc_type, ImportError):
+            typer.secho(
+                f"missing optional extra: {exc_val} (try `pip install 'gmnspy[clean]'`)",
+                fg="red",
+                err=True,
+            )
+            raise typer.Exit(code=1) from None
+        # gmnspy.scope.ScopeError / gmnspy.clean.CleanError both subclass
+        # gmnspy.NetworkError; catch by name to avoid importing the optional
+        # modules just to register the class hierarchy here.
+        if exc_type.__name__ in {"ScopeError", "CleanError", "NetworkError", "ValueError"}:
+            typer.secho(f"error: {exc_val}", fg="red", err=True)
+            raise typer.Exit(code=1) from None
+        return False  # let everything else propagate (real bugs, KeyboardInterrupt, …)
+
+
+def _scope_errors() -> _ScopeErrors:
+    """Return the shared error-conversion context manager."""
+    return _ScopeErrors()
+
+
+def _summarise_scope(scope) -> dict[str, object]:
+    """Render a :class:`NetworkScope` into the CLI's standard summary dict."""
+    return {
+        "node_count": len(scope.node_ids),
+        "link_count": len(scope.link_ids),
+        "node_ids": sorted(scope.node_ids),
+        "link_ids": sorted(scope.link_ids),
+        "provenance": scope.provenance,
+    }
+
+
+def _save_index_sidecar(indexes, source: Path, net: Network, kind: str, index_obj, *, kind_target: str) -> Path:
+    """Hash the relevant source table(s), compute the sidecar path, write the index."""
+    from datagrove.validation import hash_table
+
+    if kind_target == "link":
+        content_hash = hash_table(net.links.expr, net.engine)
+    else:
+        # graph index keys off both links + nodes — combine the digests
+        # by hashing the concatenation; only the first 8 chars land in
+        # the filename anyway (see cache_path docstring).
+        import hashlib
+
+        link_h = hash_table(net.links.expr, net.engine)
+        node_h = hash_table(net.nodes.expr, net.engine)
+        content_hash = hashlib.sha256(f"{link_h}::{node_h}".encode()).hexdigest()
+    path = indexes.cache_path(str(source), kind, content_hash)
+    indexes.save_cached(path, index_obj)
+    return path
+
+
+def _list_index_sidecars(source: Path) -> list[Path]:
+    """Return sorted sidecar parquet files for the network at ``source`` (empty list when none)."""
+    sidecar_dir = source.parent / "_gmnspy_indexes"
+    if not sidecar_dir.is_dir():
+        return []
+    return sorted(sidecar_dir.glob(f"{source.stem}.*.parquet"))
 
 
 def _check_auto_approve_env() -> dict[str, object]:
