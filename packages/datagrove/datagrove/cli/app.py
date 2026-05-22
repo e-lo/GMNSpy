@@ -94,7 +94,125 @@ def build_app() -> typer.Typer:
         }
         render_dict(data, json_out=json_out, title=f"info: {source}")
 
+    @typer_app.command(name="convert")
+    def convert(
+        source: Path = typer.Argument(..., help="Source data package path/URL."),
+        dest: Path = typer.Argument(..., help="Destination path."),
+        fmt: str = typer.Option(
+            None,
+            "--format",
+            "-f",
+            help="Output format (csv/parquet/duckdb/zipcsv). Default: infer from dest extension; fall back to parquet.",
+        ),
+        engine: str = typer.Option(
+            None,
+            "--engine",
+            help="Engine: ibis/pandas/polars. Default: ibis.",
+        ),
+        json_out: bool = typer.Option(False, "--json", help="Emit JSON on stdout."),
+        yes: bool = typer.Option(False, "--yes", "-y", help="Auto-approve gated ops."),
+    ) -> None:
+        """Convert a data package from any supported format to another.
+
+        Loads ``source`` (any format datagrove can read) and writes the
+        same logical package to ``dest`` in the target format. Output
+        format is taken from ``--format`` when supplied, otherwise
+        inferred from the ``dest`` extension; an extension-less ``dest``
+        defaults to partitioned parquet (architecture §6.1).
+        """
+        resolved_engine = _resolve_engine(engine)
+        package = Package.from_source(source, engine=resolved_engine)
+
+        # Wrap the write through run_with_approval so a cost-model gate
+        # on a large conversion surfaces as a prompt instead of an
+        # uncaught exception. ``Package.write`` doesn't currently raise
+        # ApprovalRequired itself, but routing through the helper keeps
+        # the gating seam in place for when it grows one.
+        try:
+            run_with_approval(package.write, dest, format=fmt, yes=yes)
+        except ApprovalRequired:
+            console.print("[yellow]conversion declined — exiting 1.[/yellow]")
+            raise typer.Exit(code=1) from None
+
+        # Resolve the effective format for the summary — mirror the
+        # inference Package.write just did so callers can read it back.
+        effective_format = fmt or _infer_format_for_summary(dest)
+        total_rows = 0
+        for table in package.tables.values():
+            try:
+                total_rows += int(table.count())
+            except Exception as exc:  # pragma: no cover - per-table resilience
+                logger.warning("convert: could not count rows for %r — %s", table.name, exc)
+
+        summary = {
+            "source": str(source),
+            "dest": str(dest),
+            "format": effective_format,
+            "engine": type(resolved_engine).__name__,
+            "table_count": len(package.tables),
+            "total_rows": total_rows,
+        }
+        render_dict(summary, json_out=json_out, title=f"convert: {source} → {dest}")
+
     return typer_app
+
+
+def _resolve_engine(name: str | None):
+    """Resolve ``--engine`` flag to an :class:`~datagrove.engines.base.Engine`.
+
+    ``None`` returns the registry default (currently ibis). Explicit
+    names are case-insensitive and import the relevant engine lazily so
+    the CLI startup stays cheap when only one engine is in use.
+
+    Raises:
+        typer.BadParameter: when ``name`` is not one of the supported
+            engines — the CLI surfaces this as a non-zero exit with a
+            helpful message rather than a stack trace.
+    """
+    from datagrove.engines import get_engine
+
+    if name is None:
+        return get_engine()
+    name = name.lower()
+    if name == "ibis":
+        from datagrove.engines.ibis_engine import IbisEngine
+
+        return IbisEngine()
+    if name == "pandas":
+        from datagrove.engines.pandas_engine import PandasEngine
+
+        return PandasEngine()
+    if name == "polars":
+        from datagrove.engines.polars_engine import PolarsEngine
+
+        return PolarsEngine()
+    raise typer.BadParameter(f"unknown engine {name!r}; expected ibis/pandas/polars")
+
+
+def _infer_format_for_summary(dest: Path) -> str:
+    """Best-effort format name for the convert summary dict.
+
+    Mirrors :func:`datagrove.dataset.package._infer_write_format` so the
+    summary shows the same format ``Package.write`` actually used. We
+    re-implement the dispatch here (rather than importing the private
+    helper) to keep the CLI → dataset edge clean; the rules are short
+    and identical to the writer's: extension wins, no-extension
+    defaults to parquet, unknown extension falls back to ``"unknown"``
+    in the summary (the write itself would have raised before we got
+    here).
+    """
+    name = dest.name.lower()
+    if name.endswith(".duckdb"):
+        return "duckdb"
+    if name.endswith(".csv.zip"):
+        return "zipcsv"
+    if name.endswith(".parquet"):
+        return "parquet"
+    if name.endswith(".csv"):
+        return "csv"
+    if "." not in name:
+        return "parquet"
+    return "unknown"
 
 
 def _table_summary(package: Package) -> list[dict]:
