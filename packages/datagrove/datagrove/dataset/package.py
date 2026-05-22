@@ -859,34 +859,36 @@ class Package:
         return f"Package({', '.join(bits)})"
 
     def _repr_html_(self) -> str:
-        """Minimal Jupyter-friendly HTML rendering.
+        """Render a Jupyter-friendly card summarising the package.
 
-        A polished view is Phase 4 / notebook polish work; today we
-        ship a small list view so a notebook user can see the table
-        names + row counts at a glance without forcing a heavy
-        materialisation. The HTML is intentionally bare so it
-        composes inside DataFrames / docs without style collisions.
+        Header carries the package name (from
+        :attr:`spec.name`) and the source locator; the body lists the
+        engine and a small ``name | rows | cols`` table for the first
+        eight tables, truncated with a "…+N more" note when there are
+        more. Row counts use :meth:`Table.count` which pushes down to
+        the engine, and column lists use the engine's lazy schema —
+        nothing forces a full materialisation.
+
+        The card composes via :func:`datagrove.notebook.card` so every
+        ``_repr_html_`` on the public surface shares the same look.
 
         Examples:
             >>> from datagrove.engines.pandas_engine import PandasEngine
             >>> from datagrove.dataset import Package, Table
             >>> e = PandasEngine()
             >>> t = Table(name="a", expr=e.from_records([{"x": 1}]), engine=e)
-            >>> "Package" in Package.from_tables({"a": t})._repr_html_()
+            >>> html = Package.from_tables({"a": t})._repr_html_()
+            >>> html.startswith("<div")
+            True
+            >>> "Package" in html
             True
         """
-        rows = "".join(
-            f"<tr><td>{_html_escape(name)}</td>"
-            f"<td>{_html_escape(t.format or '')}</td>"
-            f"<td>{'dirty' if t.dirty else 'clean'}</td></tr>"
-            for name, t in self.tables.items()
-        )
-        src = _html_escape(self.source or "<in-memory>")
-        return (
-            f"<div><strong>Package</strong> source={src}"
-            f"<table><thead><tr><th>name</th><th>format</th><th>state</th></tr></thead>"
-            f"<tbody>{rows}</tbody></table></div>"
-        )
+        # Local import to keep dataset/package.py's top-level imports
+        # focused on dataset-layer deps. The notebook module is stdlib
+        # only so the cost is negligible.
+        from datagrove.notebook import card, kv_line, small_table, truncation_note
+
+        return _render_package_card(self, card, kv_line, small_table, truncation_note)
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -1206,5 +1208,96 @@ def _infer_write_format(dest: Path) -> str:
 
 
 def _html_escape(value: str) -> str:
-    """Tiny stdlib HTML escape — kept inline so :meth:`Package._repr_html_` has no deps."""
+    """Tiny stdlib HTML escape — kept inline for the legacy module surface."""
     return value.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
+# ---------------------------------------------------------------------------
+# Notebook card rendering — shared by :meth:`Package._repr_html_` and the
+# subclass override in :class:`gmnspy.Network` so the two can't drift.
+# ---------------------------------------------------------------------------
+
+
+#: Cap on how many tables to enumerate in the per-card rows table before
+#: collapsing the rest into a "…+N more" note. Keeps the card height
+#: bounded for very wide packages (every GMNS table at once is ~24 rows).
+_PACKAGE_TABLE_PREVIEW = 8
+
+
+def _render_package_card(
+    pkg: Package,
+    card: Any,
+    kv_line: Any,
+    small_table: Any,
+    truncation_note: Any,
+    *,
+    title: str = "Package",
+    extra_kv: list[tuple[str, object]] | None = None,
+) -> str:
+    """Render the shared Package/Network card body.
+
+    Factored out so :meth:`gmnspy.Network._repr_html_` can reuse the
+    same table preview without copy-pasting the row-count probing
+    (which catches every engine-specific failure mode for cheap counts).
+
+    ``title`` is the card header (``"Package"`` by default, ``"Network"``
+    for the subclass) and ``extra_kv`` is forwarded into the metadata
+    line so the subclass can prepend ``spec_version``, ``links``,
+    ``nodes`` without re-implementing the table preview.
+    """
+    items = list(pkg.tables.items())
+    preview = items[:_PACKAGE_TABLE_PREVIEW]
+    rows: list[list[object]] = []
+    for name, table in preview:
+        rows.append([name, _safe_row_count(table), _safe_col_count(table)])
+    table_html = small_table(["name", "rows", "cols"], rows)
+    note_html = truncation_note(len(items) - len(preview), "tables")
+    kv_items: list[tuple[str, object]] = []
+    if extra_kv:
+        kv_items.extend(extra_kv)
+    kv_items.append(("engine", _engine_label(pkg.engine)))
+    kv_items.append(("tables", len(items)))
+    body = kv_line(kv_items) + table_html + note_html
+    subtitle = pkg.source or "in-memory"
+    header_title = f"{title}: {pkg.spec.name}" if getattr(pkg.spec, "name", None) else title
+    return card(header_title, body, subtitle=subtitle)
+
+
+def _safe_row_count(table: Table) -> object:
+    """Return ``table.count()`` or ``"?"`` if the engine call raises.
+
+    The cheap count path on :meth:`Table.count` pushes through the
+    engine — for an ibis expression backed by an unreachable backend it
+    can throw. We don't want a notebook preview to crash, so we swallow
+    the most common engine errors and fall through to ``"?"``. Real
+    surprises (programmer errors like ``KeyError`` / ``TypeError``)
+    still propagate so they're visible during development.
+    """
+    try:
+        return int(table.count())
+    except (RuntimeError, OSError, ValueError):
+        return "?"
+
+
+def _safe_col_count(table: Table) -> object:
+    """Return ``len(table.columns())`` or ``"?"`` on engine error.
+
+    Same conservative posture as :func:`_safe_row_count` — a notebook
+    preview should never crash the cell.
+    """
+    try:
+        return len(table.columns())
+    except (RuntimeError, OSError, ValueError):
+        return "?"
+
+
+def _engine_label(engine: Engine | None) -> str:
+    """Short engine identifier for the metadata line.
+
+    Uses :attr:`Engine.name` when present (every stock engine sets it),
+    falling back to the class name so a third-party engine still shows
+    something meaningful.
+    """
+    if engine is None:
+        return "—"
+    return str(getattr(engine, "name", type(engine).__name__))

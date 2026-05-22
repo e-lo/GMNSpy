@@ -233,6 +233,61 @@ class Network(Package):
     # Validation
     # ------------------------------------------------------------------
 
+    def _repr_html_(self) -> str:  # type: ignore[override]
+        """Render a Jupyter-friendly card for the GMNS network.
+
+        Extends :meth:`Package._repr_html_` with a header label of
+        ``"Network"``, the active GMNS :attr:`spec_version`, and a
+        ``links``/``nodes`` row-count line so the GMNS shape of the
+        package is visible at a glance.
+
+        Reuses :func:`datagrove.dataset.package._render_package_card`
+        so the table preview and styling can't drift from the parent
+        class.
+
+        Examples:
+            >>> from gmnspy import Network
+            >>> from gmnspy.fixtures import leavenworth
+            >>> from datagrove.engines.pandas_engine import PandasEngine
+            >>> net = Network.from_source(leavenworth.csv_dir(), engine=PandasEngine())
+            >>> html = net._repr_html_()
+            >>> html.startswith("<div")
+            True
+            >>> "Network" in html
+            True
+            >>> "0.97" in html
+            True
+        """
+        from datagrove.dataset.package import _render_package_card
+        from datagrove.notebook import card, kv_line, small_table, truncation_note
+
+        extra: list[tuple[str, object]] = []
+        if self.spec_version:
+            extra.append(("gmns", self.spec_version))
+        # Only emit links/nodes counts when present — a partial load
+        # (e.g. just nodes) shouldn't crash the preview.
+        link_table = self.tables.get("link")
+        node_table = self.tables.get("node")
+        if link_table is not None:
+            try:
+                extra.append(("links", int(link_table.count())))
+            except (RuntimeError, OSError, ValueError):
+                extra.append(("links", "?"))
+        if node_table is not None:
+            try:
+                extra.append(("nodes", int(node_table.count())))
+            except (RuntimeError, OSError, ValueError):
+                extra.append(("nodes", "?"))
+        return _render_package_card(
+            self,
+            card,
+            kv_line,
+            small_table,
+            truncation_note,
+            title="Network",
+            extra_kv=extra,
+        )
+
     def validate(self, **kwargs) -> ValidationReport:  # type: ignore[override]
         """Run the inherited :meth:`Package.validate` and stamp :attr:`spec_version` on the report.
 
