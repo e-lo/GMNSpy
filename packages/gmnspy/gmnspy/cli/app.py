@@ -212,6 +212,53 @@ def _build_gmnspy_app() -> typer.Typer:
         }
         render_dict(data, json_out=json_out, title=f"bench: {source}")
 
+    # ------------------------------------------------------------------
+    # server — self-hostable FastAPI app (task 4.10 / issue #91)
+    # ------------------------------------------------------------------
+    server_app = typer.Typer(no_args_is_help=True, help="Run the gmnspy self-hostable HTTP server.")
+    gmnspy_app.add_typer(server_app, name="server")
+
+    @server_app.command(name="run")
+    def server_run(
+        config: Path = typer.Option(None, "--config", "-c", help="Path to server config (YAML/JSON)."),
+        bind: str = typer.Option(None, "--bind", help="Override config bind address (default 127.0.0.1)."),
+        port: int = typer.Option(None, "--port", help="Override config port (default 8000)."),
+    ) -> None:
+        """Start the gmnspy HTTP server with config from ``--config``.
+
+        Reads :class:`datagrove.api.ServerSettings` from the config
+        file (or uses defaults — localhost, no packages, auth=bearer
+        with no token, which fails fast on first request).
+
+        The CLI ``--bind`` / ``--port`` flags override the matching
+        config keys for one-off testing without editing the file.
+        """
+        # Optional-extra modules go through importlib so the
+        # static contract `gmnspy.cli must not import gmnspy.server`
+        # holds. The import-linter scans static imports only; runtime
+        # discovery via importlib is the architecture-blessed way to
+        # thread a CLI entry point into an optional submodule.
+        try:
+            server_module = importlib.import_module("gmnspy.server")
+            api_module = importlib.import_module("datagrove.api")
+            uvicorn = importlib.import_module("uvicorn")
+        except ImportError as e:
+            typer.secho(
+                f"gmnspy server requires the [server] extra: pip install 'gmnspy[server]' ({e})",
+                fg="red",
+                err=True,
+            )
+            raise typer.Exit(code=1) from None
+
+        settings = api_module.load_settings(config) if config else api_module.ServerSettings()
+        if bind is not None:
+            settings.bind = bind
+        if port is not None:
+            settings.port = port
+
+        app_instance = server_module.build_app(settings)
+        uvicorn.run(app_instance, host=settings.bind, port=settings.port)
+
     return gmnspy_app
 
 
