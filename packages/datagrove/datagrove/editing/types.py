@@ -118,3 +118,48 @@ class EditResult:
     rollback_data: Any
     applied_at: datetime
     session_id: str | None = None
+
+    def _repr_html_(self) -> str:
+        """Render a Jupyter-friendly card summarising the edit result.
+
+        Header carries the op + target table; the body shows the
+        ``+added | -removed | ~changed`` diff line, the session id (if
+        any), and the applied timestamp. Composes via
+        :func:`datagrove.notebook.card`.
+
+        Examples:
+            >>> from datetime import datetime
+            >>> from datagrove.editing import Diff, Edit, EditResult
+            >>> e = Edit(op="add_rows", table="link", payload={"rows": [{"id": 1}]})
+            >>> r = EditResult(
+            ...     edit=e,
+            ...     diff=Diff(edit=e, rows_added=1, rows_removed=0, rows_changed=0),
+            ...     rollback_data=None,
+            ...     applied_at=datetime(2026, 1, 1, 12, 0, 0),
+            ... )
+            >>> html = r._repr_html_()
+            >>> html.startswith("<div")
+            True
+            >>> "+1 added" in html
+            True
+        """
+        from datagrove.notebook import card, kv_line
+
+        diff_line = (
+            f'<div style="margin-bottom:4px;">'
+            f'<span style="color:#1a7f37;font-weight:600;">+{self.diff.rows_added} added</span>'
+            f' <span style="color:#656d76;">|</span> '
+            f'<span style="color:#bf3989;font-weight:600;">-{self.diff.rows_removed} removed</span>'
+            f' <span style="color:#656d76;">|</span> '
+            f'<span style="color:#9a6700;font-weight:600;">~{self.diff.rows_changed} changed</span>'
+            f"</div>"
+        )
+        meta = kv_line(
+            [
+                ("session", self.session_id or ""),
+                ("applied_at", self.applied_at.isoformat(sep=" ", timespec="seconds")),
+            ]
+        )
+        body = diff_line + meta
+        title = f"EditResult: {self.edit.op} → {self.edit.table}"
+        return card(title, body)

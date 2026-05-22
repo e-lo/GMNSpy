@@ -75,6 +75,14 @@ _SEVERITY_ORDER: tuple[Severity, ...] = (
     Severity.DATA_QUALITY,
 )
 
+#: How many issues to enumerate in :meth:`ValidationReport._repr_html_`
+#: before collapsing the rest into a "…+N more issues" note.
+_REPORT_ISSUE_PREVIEW = 10
+
+#: Per-message truncation cap inside the notebook card so a stack-trace
+#: -shaped message doesn't blow up cell height.
+_REPORT_MESSAGE_TRUNCATE = 120
+
 
 def severity_rank(severity: Severity) -> int:
     """Return the display rank for ``severity`` (0 = highest priority).
@@ -580,6 +588,59 @@ class ValidationReport:
     def __str__(self) -> str:
         """Alias for :meth:`to_rich` — usable from ``print(report)``."""
         return self.to_rich()
+
+    def _repr_html_(self) -> str:
+        """Render a compact Jupyter-friendly card summarising the report.
+
+        Header carries the source locator + spec version; the body
+        shows per-severity counts and the first ten issues as a
+        ``severity | code | table | message`` table, with a "…+N more
+        issues" note when more are present. For the full standalone
+        HTML report (with the issue table + optional map), use
+        :meth:`to_html`.
+
+        Examples:
+            >>> from datagrove.reports import Category, Severity, ValidationReport
+            >>> r = ValidationReport(source="empty.gmns")
+            >>> r._repr_html_().startswith("<div")
+            True
+            >>> _ = r.add(severity=Severity.ERROR, category=Category.SCHEMA,
+            ...           code="schema.required", message="x", table="t")
+            >>> "ERROR" in r._repr_html_()
+            True
+        """
+        # Local import — the notebook helper is stdlib-only but we
+        # don't want the load-time edge from reports → notebook.
+        from datagrove.notebook import card, escape, kv_line, small_table, truncation_note
+
+        # Per-severity counts in canonical display order — matches the
+        # CLI / rich renderer so the visual hierarchy is the same.
+        counts: list[tuple[str, object]] = []
+        for sev in _SEVERITY_ORDER:
+            n = self.count(sev)
+            label = sev.name  # ERROR / WARNING / INFO / DATA_QUALITY
+            counts.append((label, n))
+        if self.spec_version:
+            counts.append(("spec", self.spec_version))
+
+        preview = self.issues[:_REPORT_ISSUE_PREVIEW]
+        rows: list[list[object]] = []
+        for issue in preview:
+            msg = issue.message
+            if len(msg) > _REPORT_MESSAGE_TRUNCATE:
+                msg = msg[: _REPORT_MESSAGE_TRUNCATE - 1] + "…"
+            rows.append([issue.severity.name, issue.code, issue.table or "—", msg])
+        table_html = small_table(["severity", "code", "table", "message"], rows)
+        note_html = truncation_note(max(0, len(self.issues) - len(preview)), "issues")
+        # ``escape`` is imported but not directly used here — the helpers
+        # escape everything they touch. Kept in the import for symmetry
+        # with the other call sites and so a future inline cell stays
+        # safe-by-default.
+        _ = escape
+
+        body = kv_line(counts) + table_html + note_html
+        subtitle = self.source or ""
+        return card("ValidationReport", body, subtitle=subtitle)
 
 
 # ---------------------------------------------------------------------------

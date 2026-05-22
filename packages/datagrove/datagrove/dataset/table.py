@@ -339,21 +339,30 @@ class Table:
         return f"Table({', '.join(bits)})"
 
     def _repr_html_(self) -> str:
-        """Minimal Jupyter-friendly HTML rendering.
+        """Render a Jupyter-friendly card summarising the table.
 
-        A polished render is Phase 4 / notebook polish work; today we
-        ship a ``<pre>``-wrapped :meth:`__repr__` so notebooks don't
-        break. The contract this guarantees is "non-empty string that
-        is safe to insert into a notebook cell".
+        Header carries the table name plus a ``dirty`` / ``clean``
+        badge; the body shows the engine, the row count
+        (:meth:`count` — pushes down to the engine), and the column
+        list truncated to twelve names with a "…+N more" note when
+        there are more. The card composes via
+        :func:`datagrove.notebook.card`.
 
         Examples:
             >>> from datagrove.engines.pandas_engine import PandasEngine
             >>> from datagrove.dataset import Table
             >>> e = PandasEngine()
-            >>> Table(name="t", expr=e.from_records([{"a": 1}]), engine=e)._repr_html_().startswith("<pre>")
+            >>> html = Table(name="t", expr=e.from_records([{"a": 1}]), engine=e)._repr_html_()
+            >>> html.startswith("<div")
+            True
+            >>> "Table" in html
             True
         """
-        return f"<pre>{_html_escape(repr(self))}</pre>"
+        # Local import — keeps the dataset → notebook edge load-time
+        # free and confines the dependency to the render path.
+        from datagrove.notebook import card, escape, kv_line, truncation_note
+
+        return _render_table_card(self, card, escape, kv_line, truncation_note)
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -527,5 +536,62 @@ def _engine_head(engine: Engine, expr: TableExpr, n: int) -> TableExpr:
 
 
 def _html_escape(value: str) -> str:
-    """Tiny stdlib HTML escape — keeps :meth:`Table._repr_html_` dependency-free."""
+    """Tiny stdlib HTML escape — kept inline for the legacy module surface."""
     return value.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
+# ---------------------------------------------------------------------------
+# Notebook card rendering
+# ---------------------------------------------------------------------------
+
+#: Cap on how many columns to show in the notebook card before
+#: collapsing the rest into a "…+N more" note. Twelve is wide enough
+#: for a typical GMNS table header line at default font size.
+_TABLE_COLUMN_PREVIEW = 12
+
+
+def _render_table_card(
+    table: Table,
+    card: Any,
+    escape: Any,
+    kv_line: Any,
+    truncation_note: Any,
+) -> str:
+    """Render the per-:class:`Table` notebook card.
+
+    Lives at module level so callers (the method on :class:`Table` plus
+    any subclass that wants to reuse the layout) can share the
+    column-truncation + dirty-badge logic.
+    """
+    try:
+        all_cols = list(table.columns())
+    except (RuntimeError, OSError, ValueError):
+        all_cols = []
+    preview_cols = all_cols[:_TABLE_COLUMN_PREVIEW]
+    cols_html = ", ".join(escape(c) for c in preview_cols) if preview_cols else "<em>(no columns)</em>"
+    extra_cols = max(0, len(all_cols) - len(preview_cols))
+    if extra_cols:
+        cols_html += f" <span style='color:#656d76;'>(+{extra_cols} more)</span>"
+
+    try:
+        row_count: object = int(table.count())
+    except (RuntimeError, OSError, ValueError):
+        row_count = "?"
+
+    badge_word = "dirty" if table.dirty else "clean"
+    kv_items: list[tuple[str, object]] = [
+        ("engine", getattr(table.engine, "name", type(table.engine).__name__)),
+        ("rows", row_count),
+        ("cols", len(all_cols) if all_cols else "?"),
+        ("state", badge_word),
+    ]
+    if table.format:
+        kv_items.append(("format", table.format))
+
+    body = (
+        kv_line(kv_items)
+        + f'<div style="margin-top:4px;"><span style="color:#656d76;">columns:</span> {cols_html}</div>'
+        + truncation_note(0)  # no-op; column truncation already inlined above
+    )
+    subtitle = table.source or ""
+    return card(f"Table: {table.name}", body, subtitle=subtitle)
