@@ -37,6 +37,7 @@ server = [
     "fastapi>=0.110",
     "uvicorn[standard]>=0.29",
     "pydantic-settings>=2.2",
+    "httpx>=0.27",  # required by fastapi.testclient + nice-to-have client
 ]
 mcp = [
     "mcp>=1.0",
