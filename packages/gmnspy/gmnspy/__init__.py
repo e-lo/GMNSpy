@@ -15,6 +15,50 @@ from gmnspy.spec import DEFAULT_SPEC, SUPPORTED_SPECS, get_spec_path, load_gmns_
 
 if TYPE_CHECKING:
     from datagrove.engines.base import Engine
+    from datagrove.reports import ValidationReport
+
+
+def validate(
+    source: str | Path | Network,
+    *,
+    engine: Engine | None = None,
+    spec_version: str | None = None,
+    **kwargs: object,
+) -> ValidationReport:
+    """Validate a GMNS network. Accepts a path/URL or an already-loaded Network.
+
+    Thin wrapper around :meth:`Network.validate` — exists so the
+    documented top-level form ``gmnspy.validate(...)`` works without
+    callers needing to load a :class:`Network` first.
+
+    If ``source`` is already a :class:`Network`, calls ``.validate()``
+    on it directly. Otherwise loads via :func:`gmnspy.read` first.
+
+    Args:
+        source: A :class:`Network`, or anything :func:`read` accepts
+            (local path, URL, package directory).
+        engine: Engine to materialise through. Only consulted when
+            ``source`` is a path — ignored when it's already a Network.
+        spec_version: GMNS spec version to validate against. Only
+            consulted when ``source`` is a path.
+        **kwargs: Forwarded to :meth:`Network.validate`.
+
+    Returns:
+        A :class:`~datagrove.reports.ValidationReport` whose
+        ``spec_version`` field is stamped with the GMNS version the
+        data was checked against.
+
+    Examples:
+        >>> import gmnspy
+        >>> from gmnspy.fixtures import leavenworth
+        >>> report = gmnspy.validate(leavenworth.csv_dir())
+        >>> report.spec_version
+        '0.97'
+    """
+    if isinstance(source, Network):
+        return source.validate(**kwargs)
+    net = read(source, engine=engine, spec_version=spec_version)
+    return net.validate(**kwargs)
 
 
 def read(
@@ -67,4 +111,5 @@ __all__ = [
     "get_spec_path",
     "load_gmns_spec",
     "read",
+    "validate",
 ]
