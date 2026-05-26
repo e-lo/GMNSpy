@@ -7,31 +7,31 @@ summary: Walk through the bundled Leavenworth fixture end-to-end — map, valida
 
 # Visual tour
 
-## What you'll see
+## What you'll build
 
-You'll work through the bundled Leavenworth, WA network from one notebook and produce, in order:
+You'll work through the bundled Leavenworth, WA network in one notebook session and produce, in order:
 
 1. A folium / matplotlib map of the full network.
 2. A validation report rendered as an HTML card.
 3. A data-quality report grouped by severity.
 4. A simplify-geometry edit, rendered as a before/after diff (then rolled back).
-5. A scoped subgraph around a single node, rendered as a second map next to the first.
+5. A scoped subgraph around a single node, rendered side-by-side with the original.
 
-Total runtime: under two minutes on a laptop. The fixture is ~5 MB and ships inside the gmnspy wheel.
+Total runtime: under two minutes on a laptop. The fixture is ~5 MB and ships inside the `gmnspy` wheel.
 
 ## Prerequisites
 
-```text
-$ pip install 'gmnspy[clean,notebook]'
+The `[clean]` extra brings in `shapely` + `igraph` for geometry simplification and scope operations. The `[notebook]` extra brings in `ipywidgets` so the `_repr_html_` cards render in classic Jupyter as well as JupyterLab.
+
+```bash
+pip install 'gmnspy[clean,notebook]'
 ```
 
-The `[clean]` extra brings in `shapely` + `igraph` for the geometry simplification and scope operations. The `[notebook]` extra brings in `ipywidgets` so the `_repr_html_` cards render in classic Jupyter as well as JupyterLab.
+For the map steps, either `folium` (interactive Leaflet) or `matplotlib` (static fallback) works — pick one:
 
-For the map step, `folium` is recommended but optional. Either of these works:
-
-```text
-$ pip install folium       # interactive Leaflet map
-$ pip install matplotlib   # static fallback
+```bash
+pip install folium       # interactive Leaflet map
+pip install matplotlib   # static fallback
 ```
 
 The steps below show both paths.
@@ -39,6 +39,8 @@ The steps below show both paths.
 ## Steps
 
 ### 1. Load the fixture
+
+Start by loading the bundled Leavenworth network. `Network.from_source` returns a lazy `Network` — no rows have been read from disk yet; `net.links` is still an ibis expression.
 
 ```python
 from gmnspy import Network
@@ -54,11 +56,14 @@ You should see:
 0.97: 214 links, 75 nodes
 ```
 
-The fixture is loaded lazily through the default ibis + duckdb engine. Nothing has been materialised yet — `net.links` is still an ibis expression.
+In a notebook, evaluating `net` on its own renders an HTML summary card with the spec version, table inventory, and a thumbnail map.
+
+![Network summary card for the Leavenworth fixture](../assets/screenshots/leavenworth-network-card.png){ .screenshot }
+*Network summary card (`net._repr_html_()`). Spec version 0.97, 25 tables, 214 links / 75 nodes, with a thumbnail of the link geometry.*
 
 ### 2. Render the network as a map
 
-The `link` table is keyed to `geometry` by `geometry_id`; the `geometry.geometry` column carries the WKT LineString per link. To plot, materialise both:
+The `link` table is keyed to `geometry` by `geometry_id`; the `geometry.geometry` column carries the WKT LineString per link. Materialise both with `.to_pandas()` and join them before plotting.
 
 ```python
 import pandas as pd
@@ -70,7 +75,7 @@ links = links.join(geoms[["geometry"]], on="geometry_id")
 links["shape"] = links["geometry"].map(wkt.loads)
 ```
 
-With folium (interactive):
+For an interactive Leaflet map, use folium. Compute the centroid from the node table, then add one PolyLine per link.
 
 ```python
 import folium
@@ -88,7 +93,10 @@ m  # in a notebook, this renders the map inline
 
 You should see the downtown Leavenworth grid — a compact, walkable core wrapped around Highway 2 / Front Street, surrounded by a few residential tertiary streets.
 
-Without folium (static fallback):
+![Leavenworth network rendered on a folium map](../assets/screenshots/leavenworth-folium-map.png){ .screenshot }
+*Folium map of the full Leavenworth fixture. The compact downtown grid is visible around Highway 2, with tertiary residential streets fanning out.*
+
+If `folium` isn't available, the static matplotlib fallback gives an equivalent view (without basemap tiles):
 
 ```python
 import matplotlib.pyplot as plt
@@ -104,16 +112,21 @@ plt.show()
 
 Either way: a recognisable Bavarian-themed downtown core in roughly 600 m of OSM-derived street network.
 
-### 3. Validate + display the report
+### 3. Validate and display the report
+
+`net.validate()` runs the four-pass validator (structural / schema / FK / sync-state) and returns a `ValidationReport`. In a notebook, evaluating the report on its own renders a styled HTML card.
 
 ```python
 report = net.validate()
 report  # in a notebook, the _repr_html_ renders a styled card
 ```
 
-You should see a green header ("0 errors") with a summary of the four passes the validator runs — structural (all required tables present), schema (field types + constraints), foreign-key (cross-table integrity), and sync-state (have any FKs gone stale since the last edit?). The Leavenworth fixture is clean by construction.
+You should see a green header ("0 errors") with a per-pass summary. The Leavenworth fixture is clean by construction — no ERRORs.
 
-In a non-notebook context:
+![Validation report card for the Leavenworth fixture](../assets/screenshots/leavenworth-validation-report.png){ .screenshot }
+*Validation report card. Zero ERRORs, with the four passes (structural / schema / FK / sync-state) summarised across 25 tables.*
+
+In a non-notebook context, drop down to the text representation:
 
 ```python
 print(f"{report.spec_version}: {len(report.issues)} issues")
@@ -121,9 +134,9 @@ for issue in report.issues[:5]:
     print(f"  {issue.severity.value:9} {issue.code:30} {issue.message[:60]}")
 ```
 
-### 4. Run quality + display
+### 4. Run quality and display
 
-The data-quality pack flags things the spec is silent on but every real network has — disconnected components, lane-count mismatches, high speeds on residential facilities, near-duplicate nodes.
+The data-quality pack flags things the spec is silent on but every real network has — disconnected components, lane-count mismatches, high speeds on residential facilities, near-duplicate nodes. Run it the same way as validation; the result has its own `_repr_html_`.
 
 ```python
 from datagrove.quality import run_quality
@@ -132,18 +145,21 @@ qreport = run_quality(net)
 qreport  # _repr_html_ renders severity-grouped findings
 ```
 
-You should see a card with WARNING / INFO findings (no ERRORs). Leavenworth's tertiary streets carry posted speeds in the 25-30 mph range with `facility_type=residential`, which triggers `quality.high_speed_residential` if you've configured a low threshold — useful for seeing what a real finding looks like.
+You should see a card with WARNING / INFO findings (no ERRORs). Leavenworth's tertiary streets carry posted speeds in the 25-30 mph range with `facility_type=residential`, which trips `quality.high_speed_residential` when configured with a low threshold — useful for seeing what a real finding looks like.
 
-To see one in detail:
+![Quality report card for the Leavenworth fixture](../assets/screenshots/leavenworth-quality-report.png){ .screenshot }
+*Quality report card. Severity-grouped findings; the residential-speed rule fires on a handful of tertiary streets.*
+
+To see the top findings in detail, iterate over `qreport.issues`:
 
 ```python
 for issue in qreport.issues[:3]:
     print(f"  {issue.severity.value:9} {issue.code:35} {issue.message}")
 ```
 
-### 5. Simplify geometry + render before/after
+### 5. Simplify geometry and render before/after
 
-The `simplify_geometry` op in `gmnspy.clean` removes redundant vertices from link geometries. Wrap it in a `Session` so you can roll back:
+The `simplify_geometry` op in `gmnspy.clean` removes redundant vertices from link geometries. Wrap it in a `Session` so the edit can be rolled back atomically.
 
 ```python
 from datagrove.editing import Session
@@ -154,9 +170,12 @@ with Session(net) as s:
     edit  # in a notebook, _repr_html_ shows the diff (vertices removed per link)
 ```
 
-You should see a diff card listing the number of vertices removed per affected link. `mode="redundant_only"` removes only colinear vertices and is loss-free; `mode="douglas_peucker"` is the lossy alternative with an explicit tolerance.
+You should see an `EditResult` diff card listing the number of vertices removed per affected link. `mode="redundant_only"` removes only colinear vertices and is loss-free; `mode="douglas_peucker"` is the lossy alternative with an explicit tolerance.
 
-To visualise before/after, snapshot the geometry before opening the session and overlay both on one map:
+![EditResult diff card for the simplify-geometry edit](../assets/screenshots/leavenworth-simplify-edit-result.png){ .screenshot }
+*EditResult diff card. Per-link vertex counts before / after, with a summary of links touched and vertices removed.*
+
+To visualise before-and-after on one map, snapshot the geometry before opening the session, then overlay both:
 
 ```python
 links_before = links[["link_id", "shape"]].copy()
@@ -179,15 +198,17 @@ m
 
 Grey underneath = before; red on top = after. On Leavenworth most links don't change (the OSM source is already minimal), but a handful of curved tertiary links visibly simplify.
 
-To restore the original state:
+To restore the original state, roll the session back:
 
 ```python
 s.rollback()
 ```
 
-The session's chronological log reverses every edit atomically — the network returns to byte-identical to step 1.
+The session's chronological log reverses every edit atomically — the network returns byte-identical to step 1.
 
 ### 6. Build a scope from a single node and render
+
+`from_node` builds a network-distance-bounded subgraph around a seed node. The 200 m buffer below is Dijkstra-bounded along the routable graph — links that are spatially close but only reachable via long detours fall outside.
 
 ```python
 from gmnspy.scope import from_node
@@ -196,9 +217,9 @@ scoped = from_node(net, node_id=1, network_buffer="200m").apply()
 print(f"scoped: {scoped.links.count()} links, {scoped.nodes.count()} nodes")
 ```
 
-That's a 200 m **network-distance** (Dijkstra-bounded) buffer around node 1, with every other table — `lane`, `link_tod`, `movement`, etc. — pre-filtered by FK chain.
+Every related table (`lane`, `link_tod`, `movement`, signal tables) is pre-filtered by FK chain, so the result is a self-consistent GMNS network you can write back out.
 
-Render it side-by-side with the original:
+Render the scope side-by-side with the original to see the contrast — full network as grey context, scoped subgraph highlighted.
 
 ```python
 scoped_links = scoped.links.to_pandas().join(geoms[["geometry"]], on="geometry_id")
@@ -216,7 +237,47 @@ for shape in scoped_links["shape"]:
 m
 ```
 
-You should see a small green subgraph centred on one intersection, with the rest of the network greyed out as context. The scope respects the routable graph — links reachable only via long detours fall outside the 200 m buffer even if they're spatially close.
+You should see a small green subgraph centred on one intersection, with the rest of the network greyed out as context.
+
+![Scoped subgraph rendered next to the full Leavenworth network](../assets/screenshots/leavenworth-scoped-map.png){ .screenshot }
+*Scope visualisation. The 200 m network-distance buffer around node 1 highlighted in green, full network in grey context. Long-detour links are excluded even when spatially nearby.*
+
+## Variations you might try
+
+Each accordion below is a one-line tweak that shows off a different facet of the toolkit. Pick whichever matches what you want to learn next.
+
+???+ note "Try a different fixture or your own network"
+    The bundled fixture is Leavenworth. Point `Network.from_source` at any GMNS package on disk or in cloud storage to repeat the tour with your own data — every step above is fixture-agnostic.
+
+    ```python
+    net = Network.from_source("./my-network/")
+    net = Network.from_source("s3://my-bucket/network.parquet/")
+    ```
+
+??? note "Switch to the pandas engine for eager evaluation"
+    The default ibis + DuckDB engine is lazy. Switch to pandas if you'd rather have every table materialised up-front (handy for small fixtures where you'll touch every row).
+
+    ```python
+    from datagrove.engines.pandas_engine import PandasEngine
+
+    net = Network.from_source(leavenworth.csv_dir(), engine=PandasEngine())
+    ```
+
+??? note "Configure a custom quality threshold"
+    Override the `quality.high_speed_residential` threshold (default is conservative). Tightening it surfaces more findings on a network with mixed posted speeds.
+
+    ```python
+    from datagrove.quality import RuleConfig, run_quality
+
+    qreport = run_quality(
+        net,
+        config={
+            "quality.high_speed_residential": RuleConfig(
+                thresholds={"speed_limit_mph": 30.0}
+            )
+        },
+    )
+    ```
 
 ## Next steps
 
