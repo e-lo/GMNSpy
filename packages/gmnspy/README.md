@@ -16,14 +16,40 @@ Python toolkit for the [General Modeling Network Specification (GMNS)](https://g
 
 ## Install
 
+Pick the tool you already use — these are equivalent:
+
 ```bash
-pip install gmnspy                       # core
-pip install 'gmnspy[clean]'              # add network editing + cleanup
-pip install 'gmnspy[server]'             # add self-hostable API server
-pip install 'gmnspy[mcp]'                # add MCP server for AI agents
-pip install 'gmnspy[notebook]'           # add Jupyter widgets
-pip install 'gmnspy[all]'                # everything
+# uv (recommended — fastest, handles workspace projects + lockfiles)
+uv add gmnspy
+
+# uv pip (drop-in pip replacement, no project file needed)
+uv pip install gmnspy
+
+# pip (classic)
+pip install gmnspy
+
+# pipx (CLI-only, isolated env; gives you the `gmnspy` command without
+#       polluting your project env)
+pipx install gmnspy
 ```
+
+`datagrove` comes along automatically — you don't install both.
+
+### Optional extras
+
+```bash
+uv add 'gmnspy[clean]'        # network editing + cleanup (shapely + igraph + pyproj)
+uv add 'gmnspy[server]'       # self-hostable HTTP server (FastAPI + uvicorn)
+uv add 'gmnspy[mcp]'          # MCP server for Claude Desktop / Code
+uv add 'gmnspy[notebook]'     # scope-builder Jupyter widget (ipywidgets)
+uv add 'gmnspy[all]'          # everything above
+```
+
+Combine extras with commas: `uv add 'gmnspy[clean,server,mcp]'`.
+
+> **Note:** the basic `_repr_html_` for `Network` / `ValidationReport` /
+> `EditResult` works **without** `[notebook]` — that extra only adds the
+> interactive scope-builder widget.
 
 ## Quickstart
 

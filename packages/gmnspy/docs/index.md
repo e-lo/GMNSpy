@@ -86,18 +86,60 @@ net = Network.from_source("./network.duckdb")              # single duckdb
 
 ## Install
 
+Pick the tool you already use — these all produce the same install:
+
+=== "uv (recommended)"
+
+    ```bash
+    uv add gmnspy
+    ```
+
+    Fastest. Works inside a `uv`-managed project and writes to your `pyproject.toml` + `uv.lock`.
+
+=== "uv pip"
+
+    ```bash
+    uv pip install gmnspy
+    ```
+
+    Drop-in `pip` replacement. Use this in a plain `venv` without a project file.
+
+=== "pip"
+
+    ```bash
+    pip install gmnspy
+    ```
+
+    Classic. Works anywhere Python does.
+
+=== "pipx"
+
+    ```bash
+    pipx install gmnspy
+    ```
+
+    Isolated env for the `gmnspy` CLI only — your project env stays untouched.
+
+`datagrove` comes along automatically — you don't install both.
+
+### Optional extras
+
 Pick by what you need:
 
-```bash
-pip install gmnspy                # core: read, validate, scope
-pip install 'gmnspy[clean]'       # + shapely + igraph + editing ops
-pip install 'gmnspy[server]'      # + self-hostable HTTP server (FastAPI + uvicorn)
-pip install 'gmnspy[mcp]'         # + MCP server for AI agents
-pip install 'gmnspy[notebook]'    # + Jupyter rendering helpers
-pip install 'gmnspy[clean,server,mcp,notebook]'  # everything
-```
+| Extra | Pulls in | When you need it |
+|---|---|---|
+| `clean` | `shapely` + `geopandas` + `igraph` + `pyproj` | Network editing (simplify, merge, snap) + connectivity ops |
+| `server` | `fastapi` + `uvicorn` + `pydantic-settings` | Self-hostable HTTP server |
+| `mcp` | `mcp>=1.0` | Run `gmnspy mcp serve` for Claude Desktop / Code |
+| `notebook` | `ipywidgets` + `anywidget` | Interactive scope-builder widget *(the basic `_repr_html_` for `Network` / `ValidationReport` / `EditResult` works without this)* |
+| `all` | every extra above | Single-flag full install |
 
-`datagrove` comes along automatically. You don't install both.
+Install with the same syntax (uv shown — substitute your tool):
+
+```bash
+uv add 'gmnspy[clean,server]'       # combine with commas
+uv add 'gmnspy[all]'                # everything
+```
 
 ## Where to go next
 

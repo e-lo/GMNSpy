@@ -73,11 +73,57 @@ pkg = Package.from_source("./mydata.csv.zip")                   # zipped CSV bun
 
 ## Install
 
-```bash
-pip install datagrove
-```
+Pick the tool you already use — these all produce the same install:
 
-That's it. No optional extras at the datagrove level — every dependency is core. (Optional extras live one level up in `gmnspy`.)
+=== "uv (recommended)"
+
+    ```bash
+    uv add datagrove
+    ```
+
+    Fastest. Works inside a `uv`-managed project and writes to your `pyproject.toml` + `uv.lock`.
+
+=== "uv pip"
+
+    ```bash
+    uv pip install datagrove
+    ```
+
+    Drop-in `pip` replacement. Use this in a plain `venv` without a project file.
+
+=== "pip"
+
+    ```bash
+    pip install datagrove
+    ```
+
+    Classic. Works anywhere Python does.
+
+=== "pipx"
+
+    ```bash
+    pipx install datagrove
+    ```
+
+    Isolated env for the `datagrove` CLI only — your project env stays untouched.
+
+### Optional extras
+
+The default install ships the ibis + DuckDB engine and Frictionless loader. Extras let you opt in to specific engines, cloud backends, and the AI surface:
+
+| Extra | Pulls in | When you need it |
+|---|---|---|
+| `polars` | `polars>=1.0` | Use the polars engine for in-memory speed (see [engines decision guide](concepts/engines.md)) |
+| `pandas` | `pandas>=2.2` | Use the pandas engine for DataFrame ergonomics |
+| `s3` / `gcs` / `azure` | corresponding fsspec adapter | Read from cloud-storage URLs |
+| `keyring` | `keyring>=24` | Resolve credentials from the system keychain |
+| `mcp` | `mcp>=1.0` | Run `datagrove mcp serve` for Claude Desktop / Code |
+
+Install with the same syntax (uv shown — substitute your tool):
+
+```bash
+uv add 'datagrove[polars,s3,keyring]'   # combine with commas
+```
 
 ## Where to go next
 
