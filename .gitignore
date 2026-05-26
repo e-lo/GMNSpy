@@ -138,3 +138,9 @@ dmypy.json
 
 # osmnx HTTP cache (created by fixture build scripts)
 /cache/
+
+# Generated AI artifacts (written by main.py at mkdocs build time)
+docs/llms.txt
+docs/llms-full.txt
+docs/ai/api-index.json
+

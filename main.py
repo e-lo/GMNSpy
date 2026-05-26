@@ -60,35 +60,120 @@ FIND_REPLACE: dict[str, str] = {
 _md_heading_re = {n: re.compile(rf"(#{{{n}}}\s)(.*)") for n in range(1, 6)}
 
 
-# Static nav stub — Phase 4 replaces with live mkdocs nav extraction.
+# Static nav fallback — used when ``env.conf["nav"]`` is missing or
+# unparseable. Kept in sync with ``mkdocs.yml`` by hand for now; the
+# live-nav extraction below prefers ``env.conf["nav"]`` and only falls
+# back to this when the build-time config doesn't expose it.
 _DEFAULT_NAV: list[dict] = [
     {
-        "section": "Overview",
+        "section": "Get started",
         "pages": [
             {"title": "Home", "href": "index.md", "description": "Project overview + install."},
+            {
+                "title": "Quickstart",
+                "href": "intro/quickstart.md",
+                "description": "5-minute install-to-validation path.",
+            },
+            {
+                "title": "What is GMNS?",
+                "href": "intro/what-is-gmns.md",
+                "description": "Plain-English intro to the spec.",
+            },
+            {
+                "title": "Visual tour",
+                "href": "intro/visual-tour.md",
+                "description": "Leavenworth fixture + map + report screenshots.",
+            },
+        ],
+    },
+    {
+        "section": "Cookbook",
+        "pages": [{"title": "Cookbook", "href": "cookbook/index.md", "description": "Task-oriented recipes."}],
+    },
+    {
+        "section": "Reference",
+        "pages": [
+            {"title": "API", "href": "reference/api.md", "description": "Auto-generated symbol reference."},
+            {"title": "Schema", "href": "reference/spec.md", "description": "GMNS spec field reference."},
+            {
+                "title": "Table of tables",
+                "href": "reference/table-of-tables.md",
+                "description": "Every GMNS table with purpose + FK diagram.",
+            },
+            {"title": "Glossary", "href": "reference/glossary.md", "description": "GMNS terms + project conventions."},
+        ],
+    },
+    {
+        "section": "Migration",
+        "pages": [
+            {"title": "v0.3 → v1.0", "href": "migration/v0.3-to-v1.0.md", "description": "Side-by-side API mapping."}
+        ],
+    },
+    {
+        "section": "AI surface",
+        "pages": [
+            {
+                "title": "AI surface",
+                "href": "ai/index.md",
+                "description": "llms.txt + api-index.json + Skills + MCP — how to drive this with an agent.",
+            }
+        ],
+    },
+    {
+        "section": "Project",
+        "pages": [
             {
                 "title": "Architecture",
                 "href": "architecture.md",
                 "description": "Single source of truth for the v1.0 design.",
             },
-            {
-                "title": "GMNS data model",
-                "href": "gmns-data-model.md",
-                "description": "ER diagrams for link/node/lane/etc.",
-            },
-        ],
-    },
-    {
-        "section": "Reference",
-        "pages": [
-            {"title": "API", "href": "api.md", "description": "Auto-generated symbol reference."},
-            {"title": "Spec", "href": "spec.md", "description": "GMNS spec field reference."},
             {"title": "Development", "href": "development.md", "description": "Contributor workflow."},
         ],
     },
 ]
 
-_PACKAGES_FOR_API_INDEX = ["datagrove", "datagrove.reports"]
+_PACKAGES_FOR_API_INDEX = ["datagrove", "datagrove.reports", "gmnspy"]
+
+
+def _extract_live_nav(env_conf: dict) -> list[dict] | None:
+    """Flatten ``env.conf["nav"]`` into the {section, pages} shape ``_DEFAULT_NAV`` uses.
+
+    mkdocs nav is a nested list of dicts/strings, e.g.::
+
+        [
+            {"Home": "index.md"},
+            {"Get started": [{"Quickstart": "intro/quickstart.md"}, ...]},
+            ...
+        ]
+
+    Returns ``None`` when ``env_conf`` doesn't carry a nav we can parse;
+    callers fall back to :data:`_DEFAULT_NAV`. Descriptions come from the
+    target page's frontmatter ``summary`` when available (next iteration);
+    today we leave the description empty and let the llms.txt generator
+    fall back to the page's first paragraph.
+    """
+    raw_nav = env_conf.get("nav") if isinstance(env_conf, dict) else None
+    if not raw_nav:
+        return None
+
+    sections: list[dict] = []
+    for entry in raw_nav:
+        if not isinstance(entry, dict) or len(entry) != 1:
+            continue
+        title, body = next(iter(entry.items()))
+        if isinstance(body, str):
+            # Flat single-page section — emit under a one-element section.
+            sections.append({"section": title, "pages": [{"title": title, "href": body, "description": ""}]})
+        elif isinstance(body, list):
+            pages: list[dict] = []
+            for child in body:
+                if isinstance(child, dict) and len(child) == 1:
+                    sub_title, sub_href = next(iter(child.items()))
+                    if isinstance(sub_href, str):
+                        pages.append({"title": sub_title, "href": sub_href, "description": ""})
+            if pages:
+                sections.append({"section": title, "pages": pages})
+    return sections or None
 
 
 def _downshift_md(md: str) -> str:
@@ -159,11 +244,14 @@ def define_env(env: Any) -> None:
     """
     # --- AI docgen build artifacts (architecture §6.9) ---
     docs_dir = _docs_dir(env)
-    site_url = (
-        getattr(env, "conf", {}).get("site_url") if hasattr(env, "conf") else None
-    ) or "https://e-lo.github.io/GMNSpy"
+    env_conf = getattr(env, "conf", {}) if hasattr(env, "conf") else {}
+    site_url = (env_conf.get("site_url") if isinstance(env_conf, dict) else None) or "https://e-lo.github.io/GMNSpy"
+    # Prefer the live mkdocs nav so llms.txt can't drift from the user-
+    # facing site map; fall back to the hand-maintained _DEFAULT_NAV
+    # when the macros plugin runs outside a normal build (e.g. tests).
+    nav = _extract_live_nav(env_conf) or _DEFAULT_NAV
     try:
-        _write_ai_artifacts(docs_dir, _DEFAULT_NAV, site_url)
+        _write_ai_artifacts(docs_dir, nav, site_url)
     except Exception as exc:
         # Docs build shouldn't fail on artifact emission — log & continue.
         logger.warning("AI docgen artifact emission failed: %s", exc)

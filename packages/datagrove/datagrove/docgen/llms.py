@@ -127,7 +127,20 @@ def _classify(obj: Any) -> str:
 
 
 def _safe_signature(obj: Any) -> str:
-    """Return a printable signature, or ``""`` if introspection fails."""
+    """Return a printable signature, or ``""`` if introspection fails.
+
+    Handles non-callable module-level symbols (constants, exported
+    instances) by returning their type+repr instead of crashing — a
+    public ``DEFAULT_SPEC = "0.97"`` is a real part of the API surface
+    and should appear in the index.
+    """
+    # Non-callable: report type + repr so the api-index consumer can
+    # tell "this is a constant string" without trying to call it.
+    if not callable(obj):
+        try:
+            return f"{type(obj).__name__} = {obj!r}"
+        except Exception:  # pragma: no cover - exotic repr failures
+            return type(obj).__name__
     try:
         return f"{obj.__name__}{inspect.signature(obj)}"
     except (TypeError, ValueError):
