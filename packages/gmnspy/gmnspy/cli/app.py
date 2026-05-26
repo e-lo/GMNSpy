@@ -678,17 +678,40 @@ _EXTRA_PROBES: tuple[tuple[str, str], ...] = (
 
 
 def _check_optional_extras() -> list[dict[str, object]]:
-    """One check per (extra, probe-module). ``ok=False`` is informational, not fatal — see _check_leavenworth_loads."""
+    """Probe each optional [extra] for importability. Adds ``installed: bool`` to each check.
+
+    Schema (per check)::
+
+        {
+            "name": "extra:<extra-name>[<module>]",
+            "ok": bool,         # True = check passed (importable OR allowed-absent)
+            "installed": bool,  # True = the module was importable; False = absent
+            "detail": str,      # human-readable status
+        }
+
+    All optional extras have ``ok=True`` regardless of installed state — being
+    absent is not a failure for an OPTIONAL extra. But agents reading ``--json``
+    can now branch on ``installed`` to find what's actually present (the literal
+    presence/absence signal previously hidden inside the ``detail`` string).
+    """
     out: list[dict[str, object]] = []
     for extra, module in _EXTRA_PROBES:
         try:
             importlib.import_module(module)
-            out.append({"name": f"extra:{extra}[{module}]", "ok": True, "detail": "importable"})
+            out.append(
+                {
+                    "name": f"extra:{extra}[{module}]",
+                    "ok": True,
+                    "installed": True,
+                    "detail": "importable",
+                }
+            )
         except ImportError as exc:
             out.append(
                 {
                     "name": f"extra:{extra}[{module}]",
                     "ok": True,  # optional — absence is not a failure
+                    "installed": False,
                     "detail": f"not installed ({exc.__class__.__name__}); install with `uv sync --extra {extra}`",
                 }
             )
