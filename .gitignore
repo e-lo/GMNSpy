@@ -115,6 +115,8 @@ venv.bak/
 
 # mkdocs documentation
 /site
+# per-package mkdocs build outputs (datagrove + gmnspy each have their own site)
+packages/*/site/
 
 # mypy
 .mypy_cache/
@@ -143,4 +145,8 @@ dmypy.json
 docs/llms.txt
 docs/llms-full.txt
 docs/ai/api-index.json
+# per-package equivalents (each package emits its own AI artifacts)
+packages/*/docs/llms.txt
+packages/*/docs/llms-full.txt
+packages/*/docs/ai/api-index.json
 

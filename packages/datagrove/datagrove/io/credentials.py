@@ -151,6 +151,12 @@ def _lookup_keyring(host: str) -> dict:
     Optional dependency: ``[keyring]`` extra. When the ``keyring``
     package is missing (or has been disabled with
     ``sys.modules['keyring'] = None``), this returns ``{}`` silently.
+
+    Headless environments (CI, containers, WSL without an unlocked
+    secret service) have ``keyring`` installed but no usable backend.
+    The library raises ``NoKeyringError`` from a fail-backend; treat
+    that as "no credentials" rather than letting it propagate — the
+    cascade contract is "never raise on missing".
     """
     try:
         import keyring  # type: ignore[import-not-found]
@@ -161,7 +167,10 @@ def _lookup_keyring(host: str) -> dict:
     if keyring is None:  # type: ignore[unreachable]
         return {}
 
-    value = keyring.get_password(_KEYRING_SERVICE, host)
+    try:
+        value = keyring.get_password(_KEYRING_SERVICE, host)
+    except keyring.errors.KeyringError:
+        return {}
     if value:
         return {"token": value}
     return {}

@@ -1,0 +1,159 @@
+site_name: "gmnspy documentation"
+site_description: "Python toolkit for the General Modeling Network Specification — load, validate, scope, edit GMNS networks at regional scale, with CLI / notebook / HTTP / MCP surfaces."
+site_url: https://e-lo.github.io/GMNSpy/gmnspy/
+repo_url: https://github.com/e-lo/GMNSpy
+edit_uri: edit/main/packages/gmnspy/docs/
+
+docs_dir: docs
+
+exclude_docs: |
+  _*.md
+
+theme:
+  name: material
+  features:
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.sections
+    - navigation.indexes
+    - navigation.top
+    - navigation.tracking
+    - toc.follow
+    - content.code.copy
+    - content.code.annotate
+    - content.tabs.link
+    - content.tooltips
+    - content.action.edit
+    - content.action.view
+    - search.suggest
+    - search.highlight
+    - search.share
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: green                    # gmnspy = green branding
+      accent: green
+      toggle:
+        icon: material/toggle-switch-off-outline
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: green
+      accent: green
+      toggle:
+        icon: material/toggle-switch
+        name: Switch to light mode
+  icon:
+    repo: fontawesome/brands/github
+    edit: material/pencil
+    view: material/eye
+
+plugins:
+  - search:
+      separator: '[\s​\-_,:!=\[\]()"`/]+|\.(?!\d)|&[lg]t;|(?!\b)(?=[A-Z][a-z])'
+  - autorefs
+  - awesome-pages
+  - section-index
+  - glightbox:
+      touchNavigation: true
+      loop: false
+      effect: zoom
+      zoomable: true
+      draggable: true
+  - git-revision-date-localized:
+      enable_creation_date: true
+      type: date
+      fallback_to_build_date: true
+      enable_git_follow: false
+  - mkdocstrings:
+      handlers:
+        python:
+          options:
+            show_source: false
+            show_root_heading: true
+            heading_level: 3
+            members_order: source
+            docstring_style: google
+            merge_init_into_class: true
+  - macros                              # for the gmnspy spec macros (local_frictionless_spec, etc.)
+  - mermaid2:
+      arguments:
+        theme: |
+            ^(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light'
+        securityLevel: 'loose'
+  - htmlproofer:
+      raise_error_excludes:
+        404: ['*']
+
+extra_javascript:
+  - https://unpkg.com/mermaid@9.4.3/dist/mermaid.min.js
+
+extra_css:
+  - assets/stylesheets/extra.css
+
+markdown_extensions:
+  - abbr
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - meta
+  - tables
+  - toc:
+      permalink: " ¶"
+      toc_depth: 3
+  - pymdownx.betterem
+  - pymdownx.caret
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.keys
+  - pymdownx.mark
+  - pymdownx.smartsymbols
+  - pymdownx.snippets:
+      auto_append:
+        - docs/_abbreviations.md
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.tilde
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:mermaid2.fence_mermaid
+  - smarty
+
+
+nav:
+  - Home: index.md
+  - Quickstart: quickstart.md
+  - What is GMNS?: what-is-gmns.md
+  - Visual tour: visual-tour.md
+  - Cookbook:
+      - cookbook/index.md
+      - Validate a network: cookbook/validate-network.md
+      - Customise quality rules: cookbook/customise-quality.md
+      - Scope from seed nodes: cookbook/scope-from-nodes.md
+      - Edit with rollback: cookbook/edit-with-rollback.md
+      - Run the bench: cookbook/run-bench.md
+      - Self-host the HTTP server: cookbook/serve-http.md
+      - Wire up the MCP server: cookbook/serve-mcp.md
+  - Reference:
+      - API: reference/api.md
+      - Schema: reference/spec.md
+      - Table of tables: reference/table-of-tables.md
+      - Glossary: reference/glossary.md
+  - Migration v0.3 → v1.0: migration/v0.3-to-v1.0.md
+  - MCP tools reference: ai/mcp-tools.md
+  - GMNS data model: gmns-data-model.md
+  - "« GMNSpy umbrella": https://e-lo.github.io/GMNSpy/
+  - "datagrove site »": https://e-lo.github.io/GMNSpy/datagrove/

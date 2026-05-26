@@ -99,8 +99,15 @@ jobs:
         with:
           enable-cache: true
           python-version: ${{ matrix.python-version }}
-      - name: Install workspace
-        run: uv sync --all-packages
+      - name: Install workspace (with all extras for --doctest-modules)
+        # --doctest-modules makes pytest import every module under the package
+        # to scan for doctests. Modules that import optional deps at module
+        # top level (api/app.py → fastapi, polars_engine.py → polars,
+        # mcp/server.py → mcp) fail to import without the corresponding
+        # extras. Install them all so the doctest sweep can collect every
+        # file. Tests with `pytest.importorskip("…")` still skip cleanly
+        # when an extra is genuinely missing.
+        run: uv sync --all-packages --all-extras
       - name: Test datagrove
         run: uv run pytest packages/datagrove/tests --doctest-modules packages/datagrove/datagrove
       - name: Test gmnspy
