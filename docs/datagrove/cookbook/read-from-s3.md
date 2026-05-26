@@ -13,25 +13,32 @@ Your data lives on cloud storage and you want the same lazy-load surface you get
 
 ## Quick example
 
+Open a package directly from S3 by URL. The default AWS credential chain (env vars, `~/.aws/credentials`, IAM role) is tried automatically — you only pass `credential=` when you need to override it.
+
 ```python
 from gmnspy import Network
 
 net = Network.from_source("s3://my-bucket/networks/leavenworth/")
 print(f"{net.spec_version}: {net.links.count()} links")
-# AWS creds discovered from the default chain — env, ~/.aws/credentials, IAM role.
 ```
 
-If your bucket is public-readable, no credential resolution runs at all. If it's private and a credential is discoverable, the load is still lazy — `net.links` is an ibis expression, not a materialised frame.
+Expected (will vary by network):
+
+```text
+0.97: 214 links
+```
+
+If your bucket is public-readable, no credential resolution runs at all. Either way the load is lazy — `net.links` is an ibis expression, not a materialised frame.
 
 ## Step-by-step
 
 ### 1. Install
 
-```text
-$ pip install 'gmnspy[server]'
-```
+Cloud filesystem drivers (`fsspec`, `s3fs`, `adlfs`, `gcsfs`) come with the `[server]`, `[clean]`, and `[mcp]` extras. If you only installed bare `gmnspy` and hit `ImportError: No module named 's3fs'`, that's the missing extra:
 
-The cloud filesystem drivers (`fsspec`, `s3fs`, `adlfs`, `gcsfs`) come along with the `[server]`, `[clean]`, and `[mcp]` extras. If you only installed the bare `gmnspy` and hit `ImportError: No module named 's3fs'`, that's the missing extra — re-install with one of those tags.
+```bash
+pip install 'gmnspy[server]'
+```
 
 ### 2. Provide credentials
 
@@ -44,7 +51,7 @@ Credentials cascade in a fixed order. The first one resolved wins:
 
 For AWS specifically, the default boto credential chain runs *inside* step 1 — IAM role, `~/.aws/credentials`, `AWS_*` env vars. You only need a `DATAGROVE_CRED_*` variable when the bucket needs a non-default credential (e.g. a different AWS account, a custom MinIO instance with HTTP Basic).
 
-To store a credential in the keyring (one-off, on dev machines):
+To store a credential in the keyring on a dev machine — once, interactively — call the keyring API directly:
 
 ```python
 import keyring
@@ -54,6 +61,8 @@ keyring.set_password("datagrove", "my-bucket", "AKIA…/secret-here")
 The same call from `python -c` works for CI bootstrapping if you'd rather not put the secret in an env file.
 
 ### 3. Load the package
+
+Discovery via the cascade is the common path. An explicit kwarg overrides discovery, which is handy in notebooks where you'd rather not depend on shell environment:
 
 ```python
 from gmnspy import Network
@@ -72,11 +81,12 @@ The result is the same `Network` you'd get from a local path. Every table (`net.
 
 ### 4. Verify the load is lazy
 
+Inspect the underlying expression and confirm it's an ibis `Table`. Then push a filter down — only matching rows transit:
+
 ```python
 expr = net.links.expr  # underlying ibis Table
 print(type(expr).__name__)  # 'Table'
 
-# No bytes pulled yet. Push a filter down — only matching rows transit:
 fast_links = net.links.filter(net.links.free_speed > 45.0).to_polars()
 ```
 
@@ -84,7 +94,7 @@ Filters and column projections push down to the parquet readers, so a 10 GB pack
 
 ### 5. Cache for repeat reads
 
-If the same script will hit the package many times — a notebook, a debugging loop, a CI matrix — convert it once and load locally:
+If the same script will hit the package many times — a notebook, a debugging loop, a CI matrix — convert it once and load locally afterwards:
 
 ```python
 from gmnspy import Network
@@ -100,13 +110,56 @@ Parquet is faster to re-read than CSV-over-S3 by an order of magnitude on cold c
 
 ## Common variations
 
-| Scheme | Install extra | Credential field | Notes |
-|---|---|---|---|
-| `s3://…` | `[server]` (s3fs) | AWS chain or `DATAGROVE_CRED_*_TOKEN` | Custom endpoints via `endpoint_url` kwarg. |
-| `https://…` | `[server]` (httpx) | `Bearer <token>` or HTTP Basic `user:pass` | Bearer is detected when token has no `:`. |
-| `az://container@account/…` | `[server]` (adlfs) | `DATAGROVE_CRED_<ACCOUNT>_TOKEN` | Account key, SAS token, or default Azure credential. |
-| `gs://bucket/…` | `[server]` (gcsfs) | GCP application-default creds or service-account JSON path | Set `GOOGLE_APPLICATION_CREDENTIALS` for the file path. |
-| `duckdb://https://…/file.duckdb` | bare `gmnspy` | HTTP creds as above | DuckDB native httpfs reader; one round-trip per table. |
+???+ note "S3 (default) — AWS chain or `DATAGROVE_CRED_*_TOKEN`"
+    Requires `pip install 'gmnspy[server]'` (brings in `s3fs`). The boto chain handles standard AWS auth automatically. Custom endpoints (MinIO, R2, Wasabi) need an `endpoint_url` kwarg.
+
+    ```python
+    net = Network.from_source(
+        "s3://my-bucket/networks/leavenworth/",
+        endpoint_url="https://s3.us-west-2.minio.local",
+    )
+    ```
+
+??? note "HTTPS with bearer token or HTTP Basic"
+    Bearer is detected when the token has no `:`; pass `user:pass` for HTTP Basic.
+
+    ```python
+    net = Network.from_source(
+        "https://data.example.org/networks/leavenworth/",
+        credential="ey...JWT...",
+    )
+    ```
+
+??? note "Azure Blob Storage (`az://`)"
+    Requires `adlfs` from the `[server]` extra. Credential can be an account key, SAS token, or default Azure credential chain.
+
+    ```python
+    net = Network.from_source("az://container@account/networks/leavenworth/")
+    ```
+
+??? note "Google Cloud Storage (`gs://`)"
+    Requires `gcsfs` from the `[server]` extra. Set `GOOGLE_APPLICATION_CREDENTIALS` to the path of your service-account JSON file.
+
+    ```python
+    net = Network.from_source("gs://my-bucket/networks/leavenworth/")
+    ```
+
+??? note "DuckDB over HTTP"
+    Single-file DuckDB databases read directly over HTTPS via the native `httpfs` reader — one round-trip per table.
+
+    ```python
+    net = Network.from_source("duckdb://https://data.example.org/leavenworth.duckdb")
+    ```
+
+??? note "Force anonymous reads on a public bucket"
+    The AWS chain still attempts to sign requests if any credential is present in the environment. Force unsigned access:
+
+    ```python
+    net = Network.from_source(
+        "s3://public-open-data/networks/leavenworth/",
+        credential={"anon": True},
+    )
+    ```
 
 ## Pitfalls
 

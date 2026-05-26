@@ -13,6 +13,8 @@ You're applying a destructive operation to a network — simplify geometry, merg
 
 ## Quick example
 
+Open a session, run a geometry simplification, and exit cleanly so the edit commits. Then write the result out:
+
 ```python
 from gmnspy import Network
 from gmnspy.fixtures import leavenworth
@@ -30,17 +32,22 @@ net.write("./leavenworth-simplified.parquet")
 
 If the `with` block raises, the session rolls back all ops and `net` is byte-identical to the pre-edit state.
 
+![Diff card showing the simplify_geometry result on Leavenworth](../../assets/screenshots/leavenworth-simplify-edit-result.png){ .screenshot }
+*EditResult diff card: per-table row counts (added / removed / changed) plus a before/after geometry preview.*
+
 ## Step-by-step
 
 ### 1. Install
 
-```text
-$ pip install 'gmnspy[clean]'
+The `[clean]` extra brings in `shapely` and `igraph`, which most of the editing ops depend on for geometry / connectivity work:
+
+```bash
+pip install 'gmnspy[clean]'
 ```
 
-The `[clean]` extra brings in `shapely` and `igraph`, which most of the editing ops depend on for geometry / connectivity work.
-
 ### 2. Open a Session
+
+A `Session` wraps the network in an editable view. Inside the `with` block you pass *both* `net` and `s` into each editing op — the op uses `net` to read state and `s` to record the change so the session can undo it later:
 
 ```python
 from datagrove.editing import Session
@@ -49,9 +56,9 @@ with Session(net) as s:
     ...
 ```
 
-A `Session` wraps the network in an editable view. Inside the `with` block you pass *both* `net` and `s` into each editing op — the op uses `net` to read state and `s` to record the change so the session can undo it later.
-
 ### 3. Apply one or more ops
+
+Multiple ops in the same `with` block share a single transactional boundary — rollback undoes all of them:
 
 ```python
 from gmnspy.clean import simplify_geometry, merge_close_nodes, remove_orphans
@@ -62,7 +69,7 @@ with Session(net) as s:
     r3 = remove_orphans(net, s)
 ```
 
-Each call returns an `EditResult`:
+Each call returns an `EditResult` with three fields:
 
 | Field | Type | Description |
 |---|---|---|
@@ -72,7 +79,7 @@ Each call returns an `EditResult`:
 
 ### 4. Commit or rollback
 
-Clean exit from the `with` block commits all ops. Anything else rolls back in LIFO order:
+Clean exit from the `with` block commits all ops. An exception or an explicit `s.rollback()` undoes them in LIFO order:
 
 ```python
 # Commit:
@@ -97,13 +104,15 @@ with Session(net) as s:
 
 ### 5. Persist the edit log (optional)
 
+Pass `log_path=` to write a chronological record of each op (name, params, diff, rollback blob) to a sidecar parquet. The log is the only way to undo edits across process boundaries:
+
 ```python
 with Session(net, log_path="history.parquet") as s:
     simplify_geometry(net, s, mode="redundant_only")
     merge_close_nodes(net, s, threshold="2m")
 ```
 
-The session writes a chronological record of each op (name, params, diff, rollback blob) to `history.parquet`. Later, in a fresh process:
+Later, in a fresh process, replay the log in LIFO to undo:
 
 ```python
 from datagrove.editing import rollback
@@ -112,15 +121,17 @@ net = Network.from_source("./edited.parquet")
 rollback(net, log_path="history.parquet")  # replay in LIFO
 ```
 
-This is the same mechanism the CLI's `--dry-run` uses, and the only way to undo edits across process boundaries.
+This is the same mechanism the CLI's `--dry-run` uses.
 
 ### 6. Write the result
+
+Persist the edited network. If you see an `OutOfSyncWarning` when running outside the CLI, that's [#164](https://github.com/e-lo/GMNSpy/issues/164) — an FK index didn't refresh after the edit:
 
 ```python
 net.write("./leavenworth-edited.parquet")
 ```
 
-If you see an `OutOfSyncWarning` here when running outside the CLI, that's [#164](https://github.com/e-lo/GMNSpy/issues/164) — an FK index didn't refresh after the edit. Workaround until the fix lands:
+Workaround until the fix lands — call `recompute_fks` explicitly before the write:
 
 ```python
 net.recompute_fks()
@@ -129,13 +140,52 @@ net.write("./leavenworth-edited.parquet")
 
 ## Common variations
 
-| You want... | Do this |
-|---|---|
-| Preview without committing | `gmnspy clean simplify-geometry <src> --dry-run` — runs the op, prints the diff, never writes. |
-| Chain ops in one transactional block | Put multiple ops in the same `with Session(net) as s:` block. Rollback undoes all of them. |
-| Run one op via the CLI | `gmnspy clean simplify-geometry <src> --mode redundant_only --out ./out.parquet`. |
-| Capture diffs for a PR description | `result.diff` has a `_repr_html_` — display in a notebook or `print(result.diff)` for plain text. |
-| Replay only the last N ops | Trim `history.parquet` before calling `rollback`, or pass `n=N` if your version supports it (see [API reference](../reference/api.md)). |
+???+ note "Default — transactional block with a single op"
+    Most common pattern: open session, run one op, exit cleanly to commit.
+
+    ```python
+    with Session(net) as s:
+        simplify_geometry(net, s, mode="redundant_only")
+    ```
+
+??? note "Chain multiple ops in one atomic block"
+    All-or-nothing: rollback undoes the whole batch.
+
+    ```python
+    with Session(net) as s:
+        simplify_geometry(net, s, mode="redundant_only")
+        merge_close_nodes(net, s, threshold="2m")
+        remove_orphans(net, s)
+    ```
+
+??? note "Preview without committing"
+    `--dry-run` on the CLI runs the op, prints the diff, and reverts before exit.
+
+    ```bash
+    gmnspy clean simplify-geometry <src> --dry-run
+    ```
+
+??? note "Run one op from the shell"
+    Useful in pipelines; the CLI handles `recompute_fks` for you.
+
+    ```bash
+    gmnspy clean simplify-geometry <src> --mode redundant_only --out ./out.parquet
+    ```
+
+??? note "Capture the diff for a PR description"
+    `Diff` ships a `_repr_html_` for notebooks and a clean `__str__` for plain text.
+
+    ```python
+    print(result.diff)
+    ```
+
+??? note "Replay an edit log to undo across processes"
+    The log is a parquet sidecar; pass the path and `rollback` replays in LIFO.
+
+    ```python
+    from datagrove.editing import rollback
+    rollback(net, log_path="history.parquet")
+    ```
 
 ## Pitfalls
 

@@ -13,6 +13,8 @@ You want HTTP access to your GMNS networks — for dashboards, non-Python consum
 
 ## Quick example
 
+Write a minimal config that binds localhost on port 8000, requires a bearer token, and exposes one package. Start it with `gmnspy server run`:
+
 ```yaml
 # server.yaml
 bind: 127.0.0.1
@@ -25,32 +27,49 @@ packages:
     source: packages/gmnspy/gmnspy/fixtures/leavenworth/csv
 ```
 
+```bash
+gmnspy server run --config server.yaml
+```
+
+Expected:
+
 ```text
-$ gmnspy server run --config server.yaml
 INFO:     Uvicorn running on http://127.0.0.1:8000
 ```
+
+![Interactive OpenAPI docs for the gmnspy HTTP server](../../assets/screenshots/serve-http-openapi.png){ .screenshot }
+*Interactive OpenAPI at `/docs` — every endpoint with try-it-out forms and the JSON response schema.*
 
 ## Step-by-step
 
 ### 1. Install the `[server]` extra
 
-```text
-$ pip install 'gmnspy[server]'
-```
+Brings in FastAPI + uvicorn + the auth dependencies:
 
-Brings in FastAPI + uvicorn + the auth dependencies.
+```bash
+pip install 'gmnspy[server]'
+```
 
 ### 2. Generate a dev token
 
+The dev-token helper prints both the raw token (which clients use) and the Argon2 hash (which the server stores). The raw token is never persisted server-side:
+
+```bash
+python -c "from datagrove.api import generate_dev_token; print(generate_dev_token())"
+```
+
+Expected:
+
 ```text
-$ python -c "from datagrove.api import generate_dev_token; print(generate_dev_token())"
 token:     7yK3-...-Q9p
 token_hash: $argon2id$v=19$m=65536,t=3,p=4$...
 ```
 
-Save the raw `token` somewhere safe (clients need it); paste `token_hash` into your config. The raw token is never stored on the server.
+Save the raw `token` somewhere safe; paste `token_hash` into your config.
 
 ### 3. Write a config YAML
+
+A config declares network bind, auth mode, and one entry per exposed package. Sources accept any path or URL that `Network.from_source` accepts:
 
 ```yaml
 # server.yaml
@@ -74,22 +93,42 @@ logging:
 
 ### 4. Run it + verify
 
-```text
-$ gmnspy server run --config server.yaml
-$ curl http://127.0.0.1:8000/health
+Start the server, then hit `/health` (the unauthenticated liveness probe) to confirm it's up:
+
+```bash
+gmnspy server run --config server.yaml
+```
+
+```bash
+curl http://127.0.0.1:8000/health
+```
+
+Expected:
+
+```json
 {"status": "ok", "version": "1.0.0"}
 ```
 
 ### 5. Make authenticated requests
 
-```text
-$ TOKEN="7yK3-...-Q9p"
-$ curl -H "Authorization: Bearer $TOKEN" http://127.0.0.1:8000/networks
-[{"id": "leavenworth", "spec_version": "0.97", "link_count": 214, ...}]
+Pass the raw token from step 2 as a bearer header. The server returns JSON by default and HTML when the request sets `Accept: text/html`:
 
-$ curl -H "Authorization: Bearer $TOKEN" \
-       http://127.0.0.1:8000/networks/leavenworth/quality
-{"issues": [...], "spec_version": "0.97"}
+```bash
+TOKEN="7yK3-...-Q9p"
+curl -H "Authorization: Bearer $TOKEN" http://127.0.0.1:8000/networks
+```
+
+Expected:
+
+```json
+[{"id": "leavenworth", "spec_version": "0.97", "link_count": 214, ...}]
+```
+
+Run quality checks with a POST:
+
+```bash
+curl -H "Authorization: Bearer $TOKEN" \
+     http://127.0.0.1:8000/networks/leavenworth/quality
 ```
 
 ### 6. Endpoint list
@@ -109,13 +148,58 @@ Interactive OpenAPI at `http://127.0.0.1:8000/docs`.
 
 ## Common variations
 
-| You want... | Change |
-|---|---|
-| Off-host access | `bind: 0.0.0.0` *and keep auth on* |
-| Behind nginx / Caddy | Bind to `127.0.0.1`; let the proxy terminate TLS + forward |
-| Multiple tokens (per client) | List under `auth.token_hashes:` instead of `auth.token_hash:` |
-| Disable auth (dev only) | `auth: { mode: none }` — refuses to start unless bound to localhost |
-| Docker | Dockerfile is on the Phase 5 roadmap; for now `pip install` in your own image and copy the config |
+???+ note "Default — localhost bind with bearer auth"
+    Safe default for dev and single-host production behind a reverse proxy.
+
+    ```yaml
+    bind: 127.0.0.1
+    auth: { mode: bearer, token_hash: "$argon2id$..." }
+    ```
+
+??? note "Off-host access (LAN, etc.)"
+    Bind `0.0.0.0` — but keep auth on.
+
+    ```yaml
+    bind: 0.0.0.0
+    auth: { mode: bearer, token_hash: "$argon2id$..." }
+    ```
+
+??? note "Behind nginx / Caddy"
+    Bind to `127.0.0.1`; let the proxy terminate TLS and forward. No server-side TLS config needed.
+
+    ```yaml
+    bind: 127.0.0.1
+    port: 8000
+    ```
+
+??? note "Multiple tokens (one per client)"
+    Use the plural `token_hashes:` form; clients still pass a single bearer header.
+
+    ```yaml
+    auth:
+      mode: bearer
+      token_hashes:
+        - "$argon2id$...client-a..."
+        - "$argon2id$...client-b..."
+    ```
+
+??? note "Disable auth (dev only)"
+    Server refuses to start unless bound to localhost.
+
+    ```yaml
+    bind: 127.0.0.1
+    auth: { mode: none }
+    ```
+
+??? note "Docker"
+    Dockerfile is on the Phase 5 roadmap; for now `pip install` in your own image and copy the config alongside.
+
+    ```dockerfile
+    FROM python:3.12-slim
+    RUN pip install 'gmnspy[server]'
+    COPY server.yaml /etc/gmnspy/server.yaml
+    CMD ["gmnspy", "server", "run", "--config", "/etc/gmnspy/server.yaml"]
+    ```
 
 ## Pitfalls
 
