@@ -8,9 +8,9 @@ stability: stable
 
 # datagrove API reference
 
-Auto-generated from package docstrings via [mkdocstrings](https://mkdocstrings.github.io/). Every public symbol gets a stable anchor (`#<dotted.qualname>`) that matches the entries in [`ai/api-index.json`](../../shared/ai/index.md).
+Auto-generated from package docstrings via [mkdocstrings](https://mkdocstrings.github.io/). Every public symbol gets a stable anchor (`#<dotted.qualname>`) that matches the entries in [`ai/api-index.json`](../ai/index.md).
 
-For task-oriented recipes see the [cookbook](../cookbook/index.md). For design rationale see [architecture](../../shared/architecture.md).
+For task-oriented recipes see the [cookbook](../cookbook/index.md). For design rationale see [architecture](../architecture.md).
 
 ## Top-level
 
@@ -120,6 +120,6 @@ For task-oriented recipes see the [cookbook](../cookbook/index.md). For design r
 
 ## See also
 
-* [`shared/ai/index.md`](../../shared/ai/index.md) — explains the api-index.json + llms.txt artifacts.
+* [`shared/ai/index.md`](../ai/index.md) — explains the api-index.json + llms.txt artifacts.
 * [datagrove cookbook](../cookbook/index.md)
-* [Architecture](../../shared/architecture.md)
+* [Architecture](../architecture.md)
