@@ -64,59 +64,128 @@ _md_heading_re = {n: re.compile(rf"(#{{{n}}}\s)(.*)") for n in range(1, 6)}
 # unparseable. Kept in sync with ``mkdocs.yml`` by hand for now; the
 # live-nav extraction below prefers ``env.conf["nav"]`` and only falls
 # back to this when the build-time config doesn't expose it.
+#
+# Updated for docs Wave D-1: split into datagrove/ + gmnspy/ + shared/
+# subtrees per audience separation feedback.
 _DEFAULT_NAV: list[dict] = [
     {
-        "section": "Get started",
+        "section": "Home",
         "pages": [
-            {"title": "Home", "href": "index.md", "description": "Project overview + install."},
+            {
+                "title": "Home",
+                "href": "index.md",
+                "description": "Top-level landing — pick datagrove or gmnspy.",
+            },
+        ],
+    },
+    {
+        "section": "datagrove",
+        "pages": [
+            {
+                "title": "Overview",
+                "href": "datagrove/index.md",
+                "description": "Generic Frictionless data-package engine — what / use cases / install.",
+            },
             {
                 "title": "Quickstart",
-                "href": "intro/quickstart.md",
-                "description": "5-minute install-to-validation path.",
+                "href": "datagrove/quickstart.md",
+                "description": "Install, load, validate any Frictionless package in 5 minutes.",
+            },
+            {
+                "title": "Cookbook",
+                "href": "datagrove/cookbook/index.md",
+                "description": "Generic recipes — S3 reads, format conversion, spatial scope.",
+            },
+            {
+                "title": "API reference",
+                "href": "datagrove/reference/api.md",
+                "description": "Public datagrove API symbols.",
+            },
+        ],
+    },
+    {
+        "section": "gmnspy",
+        "pages": [
+            {
+                "title": "Overview",
+                "href": "gmnspy/index.md",
+                "description": "GMNS Python toolkit — what / use cases / install.",
+            },
+            {
+                "title": "Quickstart",
+                "href": "gmnspy/quickstart.md",
+                "description": "Load the bundled Leavenworth fixture and run validation in 5 minutes.",
             },
             {
                 "title": "What is GMNS?",
-                "href": "intro/what-is-gmns.md",
+                "href": "gmnspy/what-is-gmns.md",
                 "description": "Plain-English intro to the spec.",
             },
             {
                 "title": "Visual tour",
-                "href": "intro/visual-tour.md",
-                "description": "Leavenworth fixture + map + report screenshots.",
+                "href": "gmnspy/visual-tour.md",
+                "description": "Leavenworth rendered as map + validation + edit + scope.",
             },
-        ],
-    },
-    {
-        "section": "Cookbook",
-        "pages": [{"title": "Cookbook", "href": "cookbook/index.md", "description": "Task-oriented recipes."}],
-    },
-    {
-        "section": "Reference",
-        "pages": [
-            {"title": "API", "href": "reference/api.md", "description": "Auto-generated symbol reference."},
-            {"title": "Schema", "href": "reference/spec.md", "description": "GMNS spec field reference."},
+            {
+                "title": "Cookbook",
+                "href": "gmnspy/cookbook/index.md",
+                "description": "GMNS-specific recipes — validate, scope, edit, host, drive from AI.",
+            },
+            {
+                "title": "API reference",
+                "href": "gmnspy/reference/api.md",
+                "description": "Public gmnspy API symbols (Network, scope, clean, quality).",
+            },
+            {
+                "title": "Schema reference",
+                "href": "gmnspy/reference/spec.md",
+                "description": "GMNS field-level reference per table.",
+            },
             {
                 "title": "Table of tables",
-                "href": "reference/table-of-tables.md",
+                "href": "gmnspy/reference/table-of-tables.md",
                 "description": "Every GMNS table with purpose + FK diagram.",
             },
-            {"title": "Glossary", "href": "reference/glossary.md", "description": "GMNS terms + project conventions."},
-        ],
-    },
-    {
-        "section": "Migration",
-        "pages": [
-            {"title": "v0.3 → v1.0", "href": "migration/v0.3-to-v1.0.md", "description": "Side-by-side API mapping."}
+            {
+                "title": "Glossary",
+                "href": "gmnspy/reference/glossary.md",
+                "description": "GMNS terms + project conventions.",
+            },
+            {
+                "title": "Migration v0.3 → v1.0",
+                "href": "gmnspy/migration/v0.3-to-v1.0.md",
+                "description": "Side-by-side API mapping for v0.3 users.",
+            },
+            {
+                "title": "MCP tools reference",
+                "href": "gmnspy/ai/mcp-tools.md",
+                "description": "MCP server tools shipped with gmnspy.",
+            },
         ],
     },
     {
         "section": "AI surface",
         "pages": [
             {
-                "title": "AI surface",
-                "href": "ai/index.md",
+                "title": "Overview",
+                "href": "shared/ai/index.md",
                 "description": "llms.txt + api-index.json + Skills + MCP — how to drive this with an agent.",
-            }
+            },
+            {
+                "title": "Drive the CLI from an agent",
+                "href": "shared/ai/json-cli.md",
+                "description": "--json contract patterns for tool-call loops.",
+            },
+        ],
+    },
+    {
+        "section": "Concepts",
+        "pages": [
+            {
+                "title": "Frictionless data packages",
+                "href": "shared/concepts/frictionless.md",
+                "description": "The spec both packages build on, with GMNS mapping.",
+            },
         ],
     },
     {
@@ -124,10 +193,19 @@ _DEFAULT_NAV: list[dict] = [
         "pages": [
             {
                 "title": "Architecture",
-                "href": "architecture.md",
+                "href": "shared/architecture.md",
                 "description": "Single source of truth for the v1.0 design.",
             },
-            {"title": "Development", "href": "development.md", "description": "Contributor workflow."},
+            {
+                "title": "Migration map",
+                "href": "shared/migration.md",
+                "description": "Where to find migration guidance per package.",
+            },
+            {
+                "title": "Development",
+                "href": "shared/development.md",
+                "description": "Contributor workflow — monorepo setup, tests, PRs.",
+            },
         ],
     },
 ]
@@ -138,41 +216,57 @@ _PACKAGES_FOR_API_INDEX = ["datagrove", "datagrove.reports", "gmnspy"]
 def _extract_live_nav(env_conf: dict) -> list[dict] | None:
     """Flatten ``env.conf["nav"]`` into the {section, pages} shape ``_DEFAULT_NAV`` uses.
 
-    mkdocs nav is a nested list of dicts/strings, e.g.::
+    mkdocs nav is a recursive list of dict-or-string entries:
 
-        [
-            {"Home": "index.md"},
-            {"Get started": [{"Quickstart": "intro/quickstart.md"}, ...]},
-            ...
-        ]
+    * ``{"Title": "path.md"}`` — a titled leaf page.
+    * ``"path.md"`` — a bare leaf (title comes from the page's H1 / frontmatter).
+    * ``{"Title": [<more entries>]}`` — a section with children.
 
-    Returns ``None`` when ``env_conf`` doesn't carry a nav we can parse;
-    callers fall back to :data:`_DEFAULT_NAV`. Descriptions come from the
-    target page's frontmatter ``summary`` when available (next iteration);
-    today we leave the description empty and let the llms.txt generator
-    fall back to the page's first paragraph.
+    The flattener walks recursively, collecting every leaf under the
+    nearest section header. For our purposes a "section" is the
+    second-level container (datagrove / gmnspy / AI surface / etc.) so
+    the resulting structure is two-level — section → pages — and
+    deeper nesting (e.g. gmnspy → Cookbook → recipes) collapses into
+    the section's flat page list.
+
+    Returns ``None`` when ``env_conf`` doesn't carry a parseable nav;
+    callers fall back to :data:`_DEFAULT_NAV`.
     """
     raw_nav = env_conf.get("nav") if isinstance(env_conf, dict) else None
     if not raw_nav:
         return None
 
+    def _walk(entries: list, default_title: str | None = None) -> list[dict]:
+        """Recurse into a nav-entry list, collecting (title, href) leaves."""
+        pages: list[dict] = []
+        for entry in entries:
+            if isinstance(entry, str):
+                # Bare path — title falls back to the section name or filename.
+                pages.append({"title": default_title or entry, "href": entry, "description": ""})
+            elif isinstance(entry, dict) and len(entry) == 1:
+                title, body = next(iter(entry.items()))
+                if isinstance(body, str):
+                    pages.append({"title": title, "href": body, "description": ""})
+                elif isinstance(body, list):
+                    # Nested section — flatten children under the parent.
+                    pages.extend(_walk(body, default_title=title))
+        return pages
+
     sections: list[dict] = []
     for entry in raw_nav:
-        if not isinstance(entry, dict) or len(entry) != 1:
-            continue
-        title, body = next(iter(entry.items()))
-        if isinstance(body, str):
-            # Flat single-page section — emit under a one-element section.
-            sections.append({"section": title, "pages": [{"title": title, "href": body, "description": ""}]})
-        elif isinstance(body, list):
-            pages: list[dict] = []
-            for child in body:
-                if isinstance(child, dict) and len(child) == 1:
-                    sub_title, sub_href = next(iter(child.items()))
-                    if isinstance(sub_href, str):
-                        pages.append({"title": sub_title, "href": sub_href, "description": ""})
-            if pages:
-                sections.append({"section": title, "pages": pages})
+        if isinstance(entry, str):
+            # Top-level bare string (e.g. just "index.md") → its own section.
+            sections.append({"section": entry, "pages": [{"title": entry, "href": entry, "description": ""}]})
+        elif isinstance(entry, dict) and len(entry) == 1:
+            title, body = next(iter(entry.items()))
+            if isinstance(body, str):
+                # Single-page section.
+                sections.append({"section": title, "pages": [{"title": title, "href": body, "description": ""}]})
+            elif isinstance(body, list):
+                # Multi-page section — recurse and flatten.
+                pages = _walk(body, default_title=title)
+                if pages:
+                    sections.append({"section": title, "pages": pages})
     return sections or None
 
 
