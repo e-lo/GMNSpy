@@ -13,6 +13,8 @@ You're building an agent loop (Claude Code, a LangChain tool, a one-off shell ha
 
 ## Quick example
 
+Wrap `gmnspy validate --json` as a Python tool the LLM can invoke. The function parses stdout, summarises the report, and caps the issue list to keep agent context cost predictable:
+
 ```python
 import json, subprocess
 
@@ -37,20 +39,22 @@ print(validate("packages/gmnspy/gmnspy/fixtures/leavenworth/csv"))
 
 ### 1. Every command supports `--json`
 
-```text
-$ gmnspy info     --json <source>
-$ gmnspy validate --json <source>
-$ gmnspy quality  --json <source>
-$ gmnspy scope from-nodes --json <source> 1 25 50
-$ gmnspy clean    --json <source>
-$ gmnspy bench    --json <source>
+Add `--json` to any `gmnspy` (or `datagrove`) CLI command and the output becomes a single machine-readable JSON document on stdout — pipe into `jq`, save to a file, feed to a script or AI agent. Default output is human-readable rich panels:
+
+```bash
+gmnspy info     --json <source>
+gmnspy validate --json <source>
+gmnspy quality  --json <source>
+gmnspy scope from-nodes --json <source> 1 25 50
+gmnspy clean    --json <source>
+gmnspy bench    --json <source>
 ```
 
 The `--json` contract: exactly one parseable JSON document on stdout, no log prefix, no progress bars, no trailing whitespace. `json.loads(proc.stdout)` always works on a successful run.
 
 ### 2. Stderr stays separate
 
-Rich output (panels, tables, progress, approval prompts) goes to stderr. With `--json` on stdout the parser stays clean even when an approval prompt fires on stderr — the agent loop can either suppress stderr or surface it as side-channel feedback.
+Rich output (panels, tables, progress, approval prompts) goes to stderr. With `--json` on stdout the parser stays clean even when an approval prompt fires on stderr — the agent loop can either suppress stderr or surface it as side-channel feedback:
 
 ```python
 result = subprocess.run(
@@ -63,7 +67,7 @@ diagnostics = result.stderr             # human-readable, optional to display
 
 ### 3. Pre-approve gated operations
 
-Mutating commands (`clean`, edit sessions) prompt for confirmation by default. In an agent loop, set the env var once instead of repeating `--yes` per call:
+Mutating commands (`clean`, edit sessions) prompt for confirmation by default. In an agent loop, set the env var once instead of repeating `--yes` per call. The env var is preferable for agents because it scopes to the process tree and survives `subprocess` calls from inside the loop:
 
 ```python
 import os, subprocess
@@ -71,7 +75,7 @@ env = {**os.environ, "DATAGROVE_AUTO_APPROVE": "1"}
 subprocess.run(["gmnspy", "clean", "--json", source], env=env, check=False)
 ```
 
-`--yes` on the command line works too. The env var is preferable for agents because it scopes to the process tree and survives `subprocess` calls from inside the loop.
+`--yes` on the command line works too.
 
 ### 4. Schema stability
 
@@ -87,6 +91,8 @@ Full details: [API reference](../../gmnspy/reference/api.md).
 
 ### 5. Exit codes
 
+Check `returncode` *and* parse the JSON in agent loops — `returncode != 0` plus an `issues` array tells the model what went wrong:
+
 | Command | Exit 0 | Exit 1 | Exit 2 |
 |---|---|---|---|
 | `validate` | no ERROR-severity issues | ≥1 ERROR issue | CLI usage error |
@@ -94,16 +100,31 @@ Full details: [API reference](../../gmnspy/reference/api.md).
 | `clean` / edit | success or pure dry-run | failed precondition | CLI usage error |
 | others | success | unhandled error | CLI usage error |
 
-In agent loops, check `returncode` *and* parse the JSON — `returncode != 0` plus an `issues` array tells the model what went wrong.
-
 ## Common variations
 
-| You want... | Pipe through |
-|---|---|
-| Quick filter on the shell | `gmnspy validate --json src \| jq '.issues[] \| select(.severity=="error")'` |
-| One-liner in Python | `json.loads(subprocess.check_output(["gmnspy", "info", "--json", src]))` |
-| Stateful flow (sessions, history) | use MCP — see [Wire the MCP server](../../gmnspy/cookbook/serve-mcp.md) |
-| Streaming output | not supported; commands emit one document on completion |
+???+ note "Default — `subprocess.run` + `json.loads`"
+    The simplest pattern: one shell out, one JSON parse, hand the dict back to the model.
+
+    ```python
+    import json, subprocess
+    out = subprocess.check_output(["gmnspy", "info", "--json", src])
+    report = json.loads(out)
+    ```
+
+??? note "Quick shell filter via `jq`"
+    Useful inside ad-hoc agent shells where you want only ERROR issues.
+
+    ```bash
+    gmnspy validate --json src | jq '.issues[] | select(.severity=="error")'
+    ```
+
+??? note "Stateful flows (sessions, history)"
+    The CLI is stateless. For multi-step agent flows that need to inspect intermediate state, use MCP instead.
+
+    See [Wire the MCP server](../../gmnspy/cookbook/serve-mcp.md).
+
+??? note "Streaming output"
+    Not supported — commands emit one document on completion. For long-running operations, poll a sidecar log or use the HTTP server.
 
 ## Pitfalls
 
@@ -114,4 +135,4 @@ In agent loops, check `returncode` *and* parse the JSON — `returncode != 0` pl
 ## See also
 
 * [MCP tools reference](../../gmnspy/ai/mcp-tools.md) — richer, stateful surface for agents that can speak MCP.
-* [AI surface](../ai/index.md) — how `--json` fits with `llms.txt`, `api-index.json`, and the Claude Code Skills.
+* [AI surface](index.md) — how `--json` fits with `llms.txt`, `api-index.json`, and the Claude Code Skills.

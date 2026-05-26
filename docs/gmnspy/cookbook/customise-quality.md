@@ -17,6 +17,8 @@ GMNS defaults are designed for typical mid-sized urban networks. Override them w
 
 ## Quick example
 
+Tighten the residential-speed threshold from the default 35 mph down to 30 mph. `RuleConfig.thresholds` merges into the rule's defaults — you only specify the keys you want to change:
+
 ```python
 from gmnspy import Network
 from gmnspy.fixtures import leavenworth
@@ -30,9 +32,14 @@ report = run_quality(
 print(f"{len(report.issues)} issues at the lower 30 mph threshold")
 ```
 
+![Quality report card for the Leavenworth fixture](../../assets/screenshots/leavenworth-quality-report.png){ .screenshot }
+*Quality report card. The custom 30 mph threshold surfaces a handful of extra residential-speed warnings that the default 35 mph threshold would have hidden.*
+
 ## Step-by-step
 
 ### 1. List the rules currently registered
+
+Inspect the registered rule pack to see codes, defaults, and severities. The GMNS pack ships seven rules out of the box:
 
 ```python
 from datagrove.quality import list_rules
@@ -40,8 +47,6 @@ from datagrove.quality import list_rules
 for rule in list_rules():
     print(f"{rule.code:42} {rule.severity.value:8} {rule.description[:50]}")
 ```
-
-The GMNS rule pack registers seven rules out of the box:
 
 | Code | Threshold key | Default | Severity |
 |---|---|---|---|
@@ -55,7 +60,7 @@ The GMNS rule pack registers seven rules out of the box:
 
 ### 2. Override a threshold
 
-`RuleConfig.thresholds` is merged into the rule's defaults — you only specify the keys you want to change:
+`RuleConfig.thresholds` is merged into the rule's defaults — you only specify the keys you want to change. Override multiple rules in one call:
 
 ```python
 report = run_quality(
@@ -69,6 +74,8 @@ report = run_quality(
 
 ### 3. Disable a rule entirely
 
+A disabled rule produces no issues and isn't listed in the report:
+
 ```python
 report = run_quality(
     net,
@@ -76,11 +83,9 @@ report = run_quality(
 )
 ```
 
-A disabled rule produces no issues and isn't listed in the report.
-
 ### 4. Promote (or demote) severity
 
-A common case: your CI pipeline should fail on lane-count mismatches even though the rule ships as WARNING.
+A common case: your CI pipeline should fail on lane-count mismatches even though the rule ships as WARNING. Use `severity_override` to promote, then check `report.issues` and exit non-zero accordingly:
 
 ```python
 from datagrove.reports import Severity
@@ -94,7 +99,7 @@ exit(1 if any(i.severity is Severity.ERROR for i in report.issues) else 0)
 
 ### 5. Write your own rule and register it
 
-A rule is a class with five attributes + a `run` method:
+A rule is a class with five attributes plus a `run` generator. Yield one `Issue` per finding; let `config.severity_override` win if it's set so callers can promote / demote the rule:
 
 ```python
 from datagrove.quality import Rule, register_rule
@@ -122,12 +127,49 @@ class NoTollLinksRule(Rule):
 register_rule(NoTollLinksRule())
 ```
 
-Or declare it via the `datagrove.quality.rules` entry point in `pyproject.toml` so it auto-registers on import:
+For auto-registration on import, declare the rule via the `datagrove.quality.rules` entry point in your package's `pyproject.toml`:
 
 ```toml
 [project.entry-points."datagrove.quality.rules"]
 no_toll_links = "myproject.rules:NoTollLinksRule"
 ```
+
+## Common variations
+
+???+ note "Default — override one threshold for one run"
+    Most common pattern: tighten or loosen a single threshold without touching anything else.
+
+    ```python
+    report = run_quality(
+        net,
+        config={"quality.high_speed_residential": RuleConfig(thresholds={"speed_limit_mph": 30.0})},
+    )
+    ```
+
+??? note "Silence a noisy rule entirely"
+    Disable it via `RuleConfig(enabled=False)`; the rule contributes no issues and doesn't appear in the report.
+
+    ```python
+    report = run_quality(net, config={"quality.orphan_node": RuleConfig(enabled=False)})
+    ```
+
+??? note "Promote a WARNING to ERROR for CI"
+    Use `severity_override`; then exit non-zero if any ERROR issue appears.
+
+    ```python
+    report = run_quality(
+        net,
+        config={"quality.lane_count_mismatch": RuleConfig(severity_override=Severity.ERROR)},
+    )
+    ```
+
+??? note "Ship a custom rule with your package"
+    Register via the `datagrove.quality.rules` entry point so it auto-loads on import.
+
+    ```toml
+    [project.entry-points."datagrove.quality.rules"]
+    no_toll_links = "myproject.rules:NoTollLinksRule"
+    ```
 
 ## Pitfalls
 

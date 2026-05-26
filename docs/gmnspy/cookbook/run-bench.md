@@ -13,8 +13,15 @@ You want a fast read on how `gmnspy` performs on your hardware against your netw
 
 ## Quick example
 
-```text
-$ gmnspy bench packages/gmnspy/gmnspy/fixtures/leavenworth/csv --json
+Run the bench against the bundled Leavenworth fixture. Add `--json` to any `gmnspy` (or `datagrove`) CLI command and the output becomes a single machine-readable JSON document on stdout — pipe into `jq`, save to a file, feed to a script or AI agent. Default output is human-readable rich panels:
+
+```bash
+gmnspy bench packages/gmnspy/gmnspy/fixtures/leavenworth/csv --json
+```
+
+Expected:
+
+```json
 {
   "source": "packages/gmnspy/gmnspy/fixtures/leavenworth/csv",
   "engine": "ibis",
@@ -32,39 +39,39 @@ $ gmnspy bench packages/gmnspy/gmnspy/fixtures/leavenworth/csv --json
 
 ### 1. Run against the bundled reference
 
-```text
-$ gmnspy bench packages/gmnspy/gmnspy/fixtures/leavenworth/csv
-```
+The Leavenworth fixture is small (214 links / 75 nodes) — total runtime is under a second. It's a baseline, not a benchmark; useful for confirming nothing's wrong with the install:
 
-The Leavenworth fixture is small (214 links / 75 nodes) — total runtime is under a second. It's a baseline, not a benchmark; useful for confirming nothing's wrong with the install.
+```bash
+gmnspy bench packages/gmnspy/gmnspy/fixtures/leavenworth/csv
+```
 
 ### 2. Run against your own network
 
-```text
-$ gmnspy bench /path/to/my/network --json > bench.json
-```
+Same command, different path. The bench accepts the same source surface as `Network.from_source` — local dirs, `s3://`, `duckdb://`, etc.:
 
-Same command, different path. The bench accepts the same source surface as `Network.from_source` — local dirs, `s3://`, `duckdb://`, etc.
+```bash
+gmnspy bench /path/to/my/network --json > bench.json
+```
 
 ### 3. Compare engines
 
-```text
-$ gmnspy bench /path/to/net --engine ibis --json > ibis.json
-$ gmnspy bench /path/to/net --engine pandas --json > pandas.json
-$ gmnspy bench /path/to/net --engine polars --json > polars.json
-```
+`ibis` (the default) typically wins for partitioned Parquet on a fast disk; `polars` wins for CSV bulk loads; `pandas` is the slowest of the three on anything > 100k rows but is the most portable:
 
-Typical patterns: `ibis` (the default) wins for partitioned Parquet on a fast disk; `polars` wins for CSV bulk loads; `pandas` is the slowest of the three on anything > 100k rows but is the most portable.
+```bash
+gmnspy bench /path/to/net --engine ibis --json > ibis.json
+gmnspy bench /path/to/net --engine pandas --json > pandas.json
+gmnspy bench /path/to/net --engine polars --json > polars.json
+```
 
 ### 4. Capture a baseline for CI
 
-For regression tracking, save a baseline JSON in-repo and compare on every PR:
+For regression tracking, save a baseline JSON in-repo and compare on every PR. A 30% tolerance is reasonable for the Leavenworth fixture given timing noise; tighten on larger networks:
 
-```text
-$ gmnspy bench packages/gmnspy/gmnspy/fixtures/leavenworth/csv --json > bench-baseline.json
-$ # in CI:
-$ gmnspy bench packages/gmnspy/gmnspy/fixtures/leavenworth/csv --json > bench-current.json
-$ python -c "
+```bash
+gmnspy bench packages/gmnspy/gmnspy/fixtures/leavenworth/csv --json > bench-baseline.json
+# in CI:
+gmnspy bench packages/gmnspy/gmnspy/fixtures/leavenworth/csv --json > bench-current.json
+python -c "
 import json
 b = json.load(open('bench-baseline.json'))['total_seconds']
 c = json.load(open('bench-current.json'))['total_seconds']
@@ -72,11 +79,9 @@ assert c < b * 1.3, f'regression: {c:.2f}s vs baseline {b:.2f}s (+{(c/b-1)*100:.
 "
 ```
 
-A 30% tolerance is reasonable for the Leavenworth fixture given timing noise; tighten on larger networks.
-
 ### 5. Read the JSON
 
-The shape is stable inside a major version:
+The shape is stable inside a major version. Each phase is one logical operation: `load` opens the package and instantiates the engine; `validate` runs structural + schema + FK + sync passes; `quality` runs the GMNS rule pack; `connectivity` builds the igraph index and counts components:
 
 ```json
 {
@@ -94,16 +99,44 @@ The shape is stable inside a major version:
 }
 ```
 
-Each phase is one logical operation: `load` opens the package and instantiates the engine; `validate` runs structural + schema + FK + sync passes; `quality` runs the GMNS rule pack; `connectivity` builds the igraph index and counts components.
-
 ## Common variations
 
-| You want... | Pipe through |
-|---|---|
-| Just the total | `jq -r .total_seconds bench.json` |
-| Phase breakdown as CSV | `jq -r '.phases[] \| [.name,.seconds] \| @csv' bench.json` |
-| CI regression check | save baseline `bench.json`; compare with `jq -e '.total_seconds < 5.0'` |
-| Engine sweep | shell loop over `--engine ibis pandas polars` with `--json` |
+???+ note "Default — Leavenworth fixture, JSON out"
+    Quickest smoke-test that the install works and the engine is wired up.
+
+    ```bash
+    gmnspy bench packages/gmnspy/gmnspy/fixtures/leavenworth/csv --json
+    ```
+
+??? note "Just the total seconds (for shell pipelines)"
+    Pipe through `jq` to extract a single number.
+
+    ```bash
+    gmnspy bench ./my-net --json | jq -r .total_seconds
+    ```
+
+??? note "Phase breakdown as CSV"
+    For charting or copying into a spreadsheet.
+
+    ```bash
+    gmnspy bench ./my-net --json | jq -r '.phases[] | [.name,.seconds] | @csv'
+    ```
+
+??? note "CI regression check (one-liner)"
+    Fails the CI step if the total exceeds your budget.
+
+    ```bash
+    gmnspy bench ./my-net --json | jq -e '.total_seconds < 5.0'
+    ```
+
+??? note "Engine sweep"
+    Loop over engines in shell and compare.
+
+    ```bash
+    for e in ibis pandas polars; do
+      gmnspy bench ./my-net --engine "$e" --json > "bench-$e.json"
+    done
+    ```
 
 ## Pitfalls
 

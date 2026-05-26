@@ -13,16 +13,25 @@ You have data in format X (a regulator handed you a folder of CSVs, an upstream 
 
 ## Quick example
 
+Convert the bundled Leavenworth CSV directory into a parquet directory. Destination extension determines the output format:
+
+```bash
+gmnspy convert packages/gmnspy/gmnspy/fixtures/leavenworth/csv ./leavenworth.parquet
+```
+
+Expected:
+
 ```text
-$ gmnspy convert packages/gmnspy/gmnspy/fixtures/leavenworth/csv ./leavenworth.parquet
 wrote 9 tables to ./leavenworth.parquet (parquet)
 ```
 
-That writes a parquet directory (one file per table) inferred from the destination extension. The same network reloads ~5× faster than the CSV directory it came from.
+The same network reloads ~5× faster than the CSV directory it came from.
 
 ## Step-by-step
 
 ### 1. Pick the destination format
+
+Each format has different trade-offs for cold-read latency, write speed, and predicate pushdown. Rule of thumb: **parquet for interchange, duckdb for repeated local use, zipcsv for emailing, csv only when a downstream tool demands it**.
 
 | Format | Cold read | Write | Predicate pushdown | Portability |
 |---|---|---|---|---|
@@ -31,22 +40,22 @@ That writes a parquet directory (one file per table) inferred from the destinati
 | `duckdb` (single file) | Fastest — pre-indexed, statistics cached. | Slowest — DDL + insert per table. | Yes — full SQL. | DuckDB-only readers. |
 | `zipcsv` (single `.zip`) | Slow — text decode after unzip. | Medium. | None. | Universal + single-file. |
 
-Rule of thumb: **parquet for interchange, duckdb for repeated local use, zipcsv for emailing, csv only when a downstream tool demands it**.
-
 ### 2. Run `gmnspy convert`
 
-```text
-$ gmnspy convert <source> <dest>
+The CLI infers format from the destination extension (`.parquet`, `.duckdb`, `.zip`) or from whether the target is an existing directory:
+
+```bash
+gmnspy convert <source> <dest>
 ```
 
-The format of `<dest>` is inferred from the extension (`.parquet`, `.duckdb`, `.zip`) or from whether it's an existing directory (CSV / Parquet). Override the inference with `--format`:
+Override the inference with `--format` when the extension is missing or ambiguous:
 
-```text
-$ gmnspy convert ./csv_dir ./out.duckdb --format duckdb
-$ gmnspy convert ./csv_dir ./out          --format parquet
+```bash
+gmnspy convert ./csv_dir ./out.duckdb --format duckdb
+gmnspy convert ./csv_dir ./out          --format parquet
 ```
 
-Or programmatically:
+The same dispatch is available from Python — `Network.write` and `Package.write` accept the same destination + optional `format=` kwarg as the CLI:
 
 ```python
 from gmnspy import Network
@@ -56,17 +65,17 @@ net = Network.from_source(leavenworth.csv_dir())
 net.write("./leavenworth.duckdb")
 ```
 
-`Network.write` and `Package.write` use the same dispatch as the CLI — extension inference plus an optional `format=` kwarg.
-
 ### 3. (Optional) Pick an engine
 
-```text
-$ gmnspy convert ./csv_dir ./out.parquet --engine pandas
+Switch to the pandas engine if you hit the null-typed column issue in [#163](https://github.com/e-lo/GMNSpy/issues/163) — DuckDB's strict typing rejects columns that are entirely null in the source, while pandas coerces them to object/None:
+
+```bash
+gmnspy convert ./csv_dir ./out.parquet --engine pandas
 ```
 
-The default is the ibis engine. Switch to `pandas` if you hit the null-typed column issue tracked in [#163](https://github.com/e-lo/GMNSpy/issues/163) — DuckDB's strict typing rejects columns that are entirely null in the source. The pandas engine coerces them to object/None so the write succeeds.
-
 ### 4. Verify the round-trip
+
+Load the destination back and validate against the spec. This catches any schema drift introduced by the conversion (e.g. a string column that came back as int because every value happened to parse):
 
 ```python
 from gmnspy import Network
@@ -77,27 +86,64 @@ assert report.passed, [i.code for i in report.issues if i.is_error()]
 print(f"{net.spec_version}: {net.links.count()} links — round-trip clean")
 ```
 
-Validation against the spec catches any schema drift introduced by the conversion (e.g. a string column that came back as int because every value happened to parse). See [validate-network](../../gmnspy/cookbook/validate-network.md) for what's in the report.
+See [validate-network](../../gmnspy/cookbook/validate-network.md) for what's in the report.
 
 ### 5. (Optional) Convert remote → local
 
-`convert` accepts the same URL surface as `from_source`, so cloud → local is a one-liner:
+`convert` accepts the same URL surface as `from_source`, so cloud → local is a one-liner. The download happens once; from then on you load the local copy:
 
-```text
-$ gmnspy convert s3://my-bucket/networks/leavenworth/ ./leavenworth.parquet
+```bash
+gmnspy convert s3://my-bucket/networks/leavenworth/ ./leavenworth.parquet
 ```
 
-That downloads once, writes parquet locally, and from then on you load the local copy. See [Read from S3](read-from-s3.md) for credential handling.
+See [Read from S3](read-from-s3.md) for credential handling.
 
 ## Common variations
 
-| You want... | Do this |
-|---|---|
-| Programmatic conversion | `Package.from_source(src).write(dest)` — same dispatch as the CLI. |
-| Re-pack only a few tables | `Package.from_source(src).select(["link", "node"]).write(dest)` — see [scope recipes](index.md#scope--geographic-subsetting) for FK-aware variants. |
-| Partitioned parquet | `--format parquet` to a directory and the writer will create one file per table. Per-table row-group partitioning is the parquet engine's default. |
-| Compress the CSV output | Convert to `zipcsv` instead — same wire format, 5-10× smaller. |
-| Validate during the write | `Package.from_source(src).validate().write(dest)` raises before writing if any ERROR finding fires. |
+???+ note "Default — CLI conversion with extension inference"
+    Most conversions are one-line CLI calls. The destination extension picks the format.
+
+    ```bash
+    gmnspy convert ./csv_dir ./out.parquet
+    ```
+
+??? note "Programmatic conversion in Python"
+    Same dispatch as the CLI; useful inside scripts and notebooks.
+
+    ```python
+    from datagrove.package import Package
+    Package.from_source(src).write(dest)
+    ```
+
+??? note "Re-pack only a subset of tables"
+    Keep just the tables you need; the writer drops the rest.
+
+    ```python
+    Package.from_source(src).select(["link", "node"]).write(dest)
+    ```
+
+    See the [scope recipes](index.md) for FK-aware variants that walk relationships.
+
+??? note "Partitioned parquet (one file per table)"
+    Pass a directory destination with `--format parquet`. The writer creates one file per table; per-table row-group partitioning is the parquet engine's default.
+
+    ```bash
+    gmnspy convert ./csv_dir ./parquet_dir --format parquet
+    ```
+
+??? note "Compress the CSV output (zipcsv)"
+    Same wire format as CSV but typically 5–10× smaller — useful for emailing or storing in artifact stores.
+
+    ```bash
+    gmnspy convert ./csv_dir ./out.zip --format zipcsv
+    ```
+
+??? note "Validate during the write"
+    Raises before writing if any ERROR finding fires.
+
+    ```python
+    Package.from_source(src).validate().write(dest)
+    ```
 
 ## Pitfalls
 
