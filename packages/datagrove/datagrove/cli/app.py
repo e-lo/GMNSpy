@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
+from typing import Any
 
 import typer
 
@@ -120,7 +121,7 @@ def build_app() -> typer.Typer:
         inferred from the ``dest`` extension; an extension-less ``dest``
         defaults to partitioned parquet (architecture §6.1).
         """
-        resolved_engine = _resolve_engine(engine)
+        resolved_engine = _resolve_engine_or_exit(engine)
         package = Package.from_source(source, engine=resolved_engine)
 
         # Wrap the write through run_with_approval so a cost-model gate
@@ -157,36 +158,21 @@ def build_app() -> typer.Typer:
     return typer_app
 
 
-def _resolve_engine(name: str | None):
-    """Resolve ``--engine`` flag to an :class:`~datagrove.engines.base.Engine`.
+def _resolve_engine_or_exit(name: str | None) -> Any:
+    """Thin CLI wrapper around :func:`datagrove.engines.resolve_engine`.
 
-    ``None`` returns the registry default (currently ibis). Explicit
-    names are case-insensitive and import the relevant engine lazily so
-    the CLI startup stays cheap when only one engine is in use.
-
-    Raises:
-        typer.BadParameter: when ``name`` is not one of the supported
-            engines — the CLI surfaces this as a non-zero exit with a
-            helpful message rather than a stack trace.
+    Converts the public resolver's :class:`ValueError` (raised on an
+    unknown engine name) into :class:`typer.BadParameter` so the CLI
+    exits with a clean non-zero + help message instead of a traceback.
+    Existed as a private duplicate of the registry helper until task
+    PR-A (Batch A review) consolidated it.
     """
-    from datagrove.engines import get_engine
+    from datagrove.engines import resolve_engine
 
-    if name is None:
-        return get_engine()
-    name = name.lower()
-    if name == "ibis":
-        from datagrove.engines.ibis_engine import IbisEngine
-
-        return IbisEngine()
-    if name == "pandas":
-        from datagrove.engines.pandas_engine import PandasEngine
-
-        return PandasEngine()
-    if name == "polars":
-        from datagrove.engines.polars_engine import PolarsEngine
-
-        return PolarsEngine()
-    raise typer.BadParameter(f"unknown engine {name!r}; expected ibis/pandas/polars")
+    try:
+        return resolve_engine(name)
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
 
 
 def _infer_format_for_summary(dest: Path) -> str:
