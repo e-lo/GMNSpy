@@ -13,7 +13,7 @@ You have a GMNS network — yours, a vendor's, the output of an edit — and you
 
 ## Quick example
 
-```text
+```shell-session
 $ gmnspy validate --json packages/gmnspy/gmnspy/fixtures/leavenworth/csv
 {"spec_version": "0.97", "passed": true, "issues": [], ...}
 ```
@@ -42,7 +42,7 @@ report = net.validate(passes=["schema", "fk"])       # only two of them
 
 Equivalent CLI:
 
-```text
+```shell-session
 $ gmnspy validate <source>                  # human-readable summary
 $ gmnspy validate <source> --json           # machine-readable
 $ gmnspy validate <source> --format html    # standalone HTML report

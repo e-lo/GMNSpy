@@ -196,7 +196,7 @@ Requires `attr_list` + `md_in_html` markdown extensions (already wired).
 
 We maintain `docs/_abbreviations.md`. Every entry there becomes a hover tooltip on every page where the acronym appears:
 
-```text
+```markdown
 # in docs/_abbreviations.md
 *[TOD]: Time Of Day — per-period overrides on GMNS link / lane / segment / movement attributes
 *[MCP]: Model Context Protocol

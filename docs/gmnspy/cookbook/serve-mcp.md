@@ -32,7 +32,7 @@ The agent will pick `describe_package`, call it with `{"source": "/tmp/leavenwor
 
 ### 1. Install
 
-```text
+```shell-session
 $ pip install 'gmnspy[mcp]'
 ```
 
@@ -40,7 +40,7 @@ The `[mcp]` extra brings in `mcp` (the official Python SDK). If you've already i
 
 ### 2. Test the server runs
 
-```text
+```shell-session
 $ gmnspy mcp serve --help
 Usage: gmnspy mcp serve [OPTIONS]
 

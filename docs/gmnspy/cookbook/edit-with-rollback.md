@@ -34,7 +34,7 @@ If the `with` block raises, the session rolls back all ops and `net` is byte-ide
 
 ### 1. Install
 
-```text
+```shell-session
 $ pip install 'gmnspy[clean]'
 ```
 

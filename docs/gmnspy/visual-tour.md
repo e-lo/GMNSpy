@@ -21,7 +21,7 @@ Total runtime: under two minutes on a laptop. The fixture is ~5 MB and ships ins
 
 ## Prerequisites
 
-```text
+```shell-session
 $ pip install 'gmnspy[clean,notebook]'
 ```
 
@@ -29,7 +29,7 @@ The `[clean]` extra brings in `shapely` + `igraph` for the geometry simplificati
 
 For the map step, `folium` is recommended but optional. Either of these works:
 
-```text
+```shell-session
 $ pip install folium       # interactive Leaflet map
 $ pip install matplotlib   # static fallback
 ```

@@ -20,6 +20,34 @@ Two files at the site root, regenerated on every `mkdocs build`:
 
 Both follow the [llms.txt convention](https://llmstxt.org/).
 
+### Use it from Claude / ChatGPT / your MCP host
+
+The fastest way to bootstrap a model with this project's docs is to paste the `llms.txt` URL into a chat. The model fetches it, indexes the pages, then decides which ones to pull for follow-up questions:
+
+```text
+Read https://e-lo.github.io/GMNSpy/llms.txt to learn the structure
+of the gmnspy + datagrove docs, then walk me through validating a
+GMNS network at <path>.
+```
+
+The result is a model that knows what pages exist and what each one is for — without you having to remember the URL of every concept doc. Replace `<path>` with a real local path or the bundled fixture (`packages/gmnspy/gmnspy/fixtures/leavenworth/csv`) to anchor the conversation in something concrete.
+
+### When to use which
+
+The two variants serve different agent loops:
+
+| Artifact | Best for | Trade-off |
+|---|---|---|
+| `llms.txt` | An agent picking the right page for a question. Minimum context. | The agent has to make a second fetch to actually read a page. |
+| `llms-full.txt` | An agent that needs everything in one shot — large context windows, offline use, or one-pass synthesis. | Heavy. Don't drop into a 4k-token context. |
+
+### Concrete use cases
+
+* Drop into a fresh chat to bootstrap context before asking gmnspy-specific questions.
+* Pin in an MCP client's system prompt so every conversation starts with the doc map loaded.
+* Feed `llms-full.txt` to a model with a large context window for one-pass synthesis (migration planning, cross-page audits).
+* CI: have an agent verify cookbook recipes still match the `api-index.json` shape after a refactor.
+
 ## 2. `ai/api-index.json` — public-API surface
 
 [`ai/api-index.json`](api-index.json) is a structured snapshot of every public symbol in `datagrove` + `datagrove.reports` (and, in v1.1, `gmnspy`). Schema:
@@ -48,11 +76,56 @@ Both follow the [llms.txt convention](https://llmstxt.org/).
 
 Built by `datagrove.docgen.llms.generate_api_index_json`. Refreshes each build.
 
+### Use it from an agent
+
+The index is small and structured — an agent can fetch the whole thing, then answer "which symbol should I use for X?" without round-tripping through the full API reference:
+
+```text
+Fetch https://e-lo.github.io/GMNSpy/ai/api-index.json. Find every
+symbol with stability=stable in the gmnspy.scope module and tell me
+which one I should use to get the connected component a node
+belongs to.
+```
+
+That sort of question used to need either a search over the full reference page or a brittle grep over the codebase. With the index, the agent has the same answer in one fetch.
+
+### Concrete use cases
+
+* Bootstrap context for an MCP client without loading the full API docs into the context window.
+* CI gate: an agent verifies cookbook code samples still reference symbols that exist (and at the expected stability level).
+* Tool dispatch: an agent picks the right function from a user's question by grepping the index for matching names + summaries.
+* Migration assistance: diff two versions' indexes to spot removed / renamed / newly-experimental symbols.
+* Build a typed wrapper or client SDK directly from the JSON shape — every symbol has a signature and an anchor back to the docs.
+
+### jq cheatsheet
+
+The JSON shape is shallow enough that `jq` covers most ad-hoc questions. Fetch the file once and explore locally:
+
+```bash
+# List all public functions in gmnspy.scope
+jq '.packages.gmnspy.symbols[]
+    | select(.module | startswith("gmnspy.scope"))
+    | select(.kind == "function")
+    | .name' api-index.json
+
+# Find every experimental symbol across all packages
+jq '.packages | to_entries[] | .value.symbols[]
+    | select(.stability == "experimental")' api-index.json
+
+# Count stable vs beta vs experimental per package
+jq '.packages | to_entries[] | {
+      pkg: .key,
+      counts: (.value.symbols | group_by(.stability) | map({(.[0].stability): length}) | add)
+    }' api-index.json
+```
+
+These compose well inside CI scripts and one-liner agent prompts (`subprocess.run(["jq", "...", "api-index.json"])`).
+
 ## 3. Claude Code Skills (`skills/` in the repo)
 
 Five skills shipped in-repo, installed via git URL:
 
-```text
+```shell-session
 $ claude code skill add https://github.com/e-lo/GMNSpy#path=skills/gmns-validate
 ```
 

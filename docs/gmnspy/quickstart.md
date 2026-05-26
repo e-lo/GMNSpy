@@ -13,7 +13,7 @@ You're new to `gmnspy` and want to see what it does on a real GMNS network befor
 
 ## Quick example
 
-```text
+```shell-session
 $ pip install 'gmnspy[clean]'
 $ python -c "
 from gmnspy import Network
@@ -30,7 +30,7 @@ You just loaded the bundled Leavenworth WA network through the default ibis + du
 
 ### 1. Install
 
-```text
+```shell-session
 $ pip install 'gmnspy[clean]'
 ```
 
@@ -89,7 +89,7 @@ That's a 200-metre network-distance buffer around node 1. The returned `Network`
 
 Every command supports `--json` for piping into scripts or AI agents:
 
-```text
+```shell-session
 $ gmnspy info --json packages/gmnspy/gmnspy/fixtures/leavenworth/csv
 $ gmnspy validate --json packages/gmnspy/gmnspy/fixtures/leavenworth/csv
 $ gmnspy quality --json packages/gmnspy/gmnspy/fixtures/leavenworth/csv

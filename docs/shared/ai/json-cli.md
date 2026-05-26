@@ -37,7 +37,7 @@ print(validate("packages/gmnspy/gmnspy/fixtures/leavenworth/csv"))
 
 ### 1. Every command supports `--json`
 
-```text
+```shell-session
 $ gmnspy info     --json <source>
 $ gmnspy validate --json <source>
 $ gmnspy quality  --json <source>

@@ -27,7 +27,7 @@ If your bucket is public-readable, no credential resolution runs at all. If it's
 
 ### 1. Install
 
-```text
+```shell-session
 $ pip install 'gmnspy[server]'
 ```
 

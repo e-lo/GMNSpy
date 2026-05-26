@@ -13,7 +13,7 @@ You want a fast read on how `gmnspy` performs on your hardware against your netw
 
 ## Quick example
 
-```text
+```shell-session
 $ gmnspy bench packages/gmnspy/gmnspy/fixtures/leavenworth/csv --json
 {
   "source": "packages/gmnspy/gmnspy/fixtures/leavenworth/csv",
@@ -32,7 +32,7 @@ $ gmnspy bench packages/gmnspy/gmnspy/fixtures/leavenworth/csv --json
 
 ### 1. Run against the bundled reference
 
-```text
+```shell-session
 $ gmnspy bench packages/gmnspy/gmnspy/fixtures/leavenworth/csv
 ```
 
@@ -40,7 +40,7 @@ The Leavenworth fixture is small (214 links / 75 nodes) — total runtime is und
 
 ### 2. Run against your own network
 
-```text
+```shell-session
 $ gmnspy bench /path/to/my/network --json > bench.json
 ```
 
@@ -48,7 +48,7 @@ Same command, different path. The bench accepts the same source surface as `Netw
 
 ### 3. Compare engines
 
-```text
+```shell-session
 $ gmnspy bench /path/to/net --engine ibis --json > ibis.json
 $ gmnspy bench /path/to/net --engine pandas --json > pandas.json
 $ gmnspy bench /path/to/net --engine polars --json > polars.json
@@ -60,7 +60,7 @@ Typical patterns: `ibis` (the default) wins for partitioned Parquet on a fast di
 
 For regression tracking, save a baseline JSON in-repo and compare on every PR:
 
-```text
+```shell-session
 $ gmnspy bench packages/gmnspy/gmnspy/fixtures/leavenworth/csv --json > bench-baseline.json
 $ # in CI:
 $ gmnspy bench packages/gmnspy/gmnspy/fixtures/leavenworth/csv --json > bench-current.json

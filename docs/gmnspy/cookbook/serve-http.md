@@ -25,7 +25,7 @@ packages:
     source: packages/gmnspy/gmnspy/fixtures/leavenworth/csv
 ```
 
-```text
+```shell-session
 $ gmnspy server run --config server.yaml
 INFO:     Uvicorn running on http://127.0.0.1:8000
 ```
@@ -34,7 +34,7 @@ INFO:     Uvicorn running on http://127.0.0.1:8000
 
 ### 1. Install the `[server]` extra
 
-```text
+```shell-session
 $ pip install 'gmnspy[server]'
 ```
 
@@ -42,7 +42,7 @@ Brings in FastAPI + uvicorn + the auth dependencies.
 
 ### 2. Generate a dev token
 
-```text
+```shell-session
 $ python -c "from datagrove.api import generate_dev_token; print(generate_dev_token())"
 token:     7yK3-...-Q9p
 token_hash: $argon2id$v=19$m=65536,t=3,p=4$...
@@ -74,7 +74,7 @@ logging:
 
 ### 4. Run it + verify
 
-```text
+```shell-session
 $ gmnspy server run --config server.yaml
 $ curl http://127.0.0.1:8000/health
 {"status": "ok", "version": "1.0.0"}
@@ -82,7 +82,7 @@ $ curl http://127.0.0.1:8000/health
 
 ### 5. Make authenticated requests
 
-```text
+```shell-session
 $ TOKEN="7yK3-...-Q9p"
 $ curl -H "Authorization: Bearer $TOKEN" http://127.0.0.1:8000/networks
 [{"id": "leavenworth", "spec_version": "0.97", "link_count": 214, ...}]

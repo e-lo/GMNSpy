@@ -13,7 +13,7 @@ You have data in format X (a regulator handed you a folder of CSVs, an upstream 
 
 ## Quick example
 
-```text
+```shell-session
 $ gmnspy convert packages/gmnspy/gmnspy/fixtures/leavenworth/csv ./leavenworth.parquet
 wrote 9 tables to ./leavenworth.parquet (parquet)
 ```
@@ -35,13 +35,13 @@ Rule of thumb: **parquet for interchange, duckdb for repeated local use, zipcsv 
 
 ### 2. Run `gmnspy convert`
 
-```text
+```shell-session
 $ gmnspy convert <source> <dest>
 ```
 
 The format of `<dest>` is inferred from the extension (`.parquet`, `.duckdb`, `.zip`) or from whether it's an existing directory (CSV / Parquet). Override the inference with `--format`:
 
-```text
+```shell-session
 $ gmnspy convert ./csv_dir ./out.duckdb --format duckdb
 $ gmnspy convert ./csv_dir ./out          --format parquet
 ```
@@ -60,7 +60,7 @@ net.write("./leavenworth.duckdb")
 
 ### 3. (Optional) Pick an engine
 
-```text
+```shell-session
 $ gmnspy convert ./csv_dir ./out.parquet --engine pandas
 ```
 
@@ -83,7 +83,7 @@ Validation against the spec catches any schema drift introduced by the conversio
 
 `convert` accepts the same URL surface as `from_source`, so cloud → local is a one-liner:
 
-```text
+```shell-session
 $ gmnspy convert s3://my-bucket/networks/leavenworth/ ./leavenworth.parquet
 ```
 

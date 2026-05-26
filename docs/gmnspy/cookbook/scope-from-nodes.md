@@ -27,7 +27,7 @@ print(f"scoped: {sub.links.count()} links, {sub.nodes.count()} nodes")
 
 ### 1. Install the `[clean]` extra
 
-```text
+```shell-session
 $ pip install 'gmnspy[clean]'
 ```
 
@@ -82,7 +82,7 @@ sub = combined.apply()
 
 ### 6. CLI equivalent
 
-```text
+```shell-session
 $ gmnspy scope from-nodes packages/gmnspy/gmnspy/fixtures/leavenworth/csv 1 25 50 --json
 {
   "operation": "from_nodes",
