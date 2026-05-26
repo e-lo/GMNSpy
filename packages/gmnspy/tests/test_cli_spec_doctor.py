@@ -89,3 +89,23 @@ def test_doctor_json_mode():
         assert isinstance(check["name"], str)
         assert isinstance(check["ok"], bool)
         assert isinstance(check["detail"], str)
+
+
+def test_doctor_extras_check_includes_installed_field():
+    """`doctor --json` extras checks carry `installed: bool` agents can filter on."""
+    result = runner.invoke(app, ["doctor", "--json"])
+    # Doctor may exit non-zero on actual failures; --json shape still must be parseable.
+    payload = json.loads(result.stdout)
+    extras = [c for c in payload if c["name"].startswith("extra:")]
+    assert len(extras) >= 1, "doctor should report at least one extras check"
+    assert all("installed" in c for c in extras), "every extras check should carry an `installed: bool` field"
+    assert all(isinstance(c["installed"], bool) for c in extras)
+
+
+def test_doctor_extras_ok_stays_true_when_extra_absent():
+    """Optional extras keep ok=True when absent — installed=False is the agent-readable signal."""
+    result = runner.invoke(app, ["doctor", "--json"])
+    payload = json.loads(result.stdout)
+    extras = [c for c in payload if c["name"].startswith("extra:")]
+    # All optional extras report ok=True regardless of installed state.
+    assert all(c["ok"] is True for c in extras)
