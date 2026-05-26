@@ -242,6 +242,50 @@ except ImportError:  # pragma: no cover - pandas is optional
     pass
 
 
+# ---------------------------------------------------------------------------
+# CLI-facing convenience: resolve a user-typed name to an Engine instance.
+# ---------------------------------------------------------------------------
+
+
+def resolve_engine(name: str | None) -> Engine:
+    """Return an :class:`Engine` for ``name`` (or the default when ``name`` is None).
+
+    User-facing helper for CLI / config / MCP flag parsing. Accepts
+    one of ``"ibis"`` / ``"pandas"`` / ``"polars"`` (case-insensitive).
+    ``None`` returns the registered default (typically ibis).
+
+    This wraps :func:`get_engine` with a single concession: unknown
+    names raise :class:`ValueError` with a list of known engines, so
+    CLI wrappers can convert that to ``typer.BadParameter`` without
+    re-deriving the message.
+
+    Args:
+        name: Engine name to resolve. ``None`` returns the default.
+
+    Returns:
+        A registered :class:`Engine` instance.
+
+    Raises:
+        ValueError: If ``name`` doesn't match a known engine.
+
+    Examples:
+        >>> from datagrove.engines import resolve_engine
+        >>> eng = resolve_engine(None)  # default (typically IbisEngine)
+        >>> isinstance(eng, Engine)
+        True
+        >>> eng_p = resolve_engine("pandas")
+        >>> type(eng_p).__name__
+        'PandasEngine'
+    """
+    if name is None:
+        return get_engine()
+    key = name.strip().lower()
+    if key not in {"ibis", "pandas", "polars"}:
+        known = ", ".join(sorted({"ibis", "pandas", "polars"}))
+        raise ValueError(f"unknown engine {name!r}; expected one of: {known}")
+    return get_engine(key)
+
+
 __all__ = [
     "Engine",
     "EngineNotAvailableError",
@@ -253,5 +297,6 @@ __all__ = [
     "get_engine",
     "list_engines",
     "register_engine",
+    "resolve_engine",
     "set_default_engine",
 ]

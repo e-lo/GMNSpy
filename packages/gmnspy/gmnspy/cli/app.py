@@ -71,8 +71,8 @@ def _build_gmnspy_app() -> typer.Typer:
             "source": str(source),
             "spec_version": net.spec_version,
             "engine": type(net.engine).__name__,
-            "links": _safe_count(net, "link"),
-            "nodes": _safe_count(net, "node"),
+            "links": net.safe_count("link"),
+            "nodes": net.safe_count("node"),
             "table_count": len(net.tables),
             "tables": sorted(net.tables.keys()),
         }
@@ -565,40 +565,20 @@ def _build_gmnspy_app() -> typer.Typer:
 
 
 def _resolve_engine(name: str | None):
-    """Resolve an engine by name (``ibis`` / ``pandas`` / ``polars``).
+    """Thin CLI wrapper around :func:`datagrove.engines.resolve_engine`.
 
-    Mirrors the helper used by other Phase-4 commands; kept local so this
-    module doesn't depend on the 4.2 helper landing first.
+    Converts the public resolver's :class:`ValueError` (raised on an
+    unknown engine name) into :class:`typer.BadParameter` so the CLI
+    exits with a clean non-zero + help message instead of a traceback.
+    The actual ``name → Engine`` logic lives in :mod:`datagrove.engines`
+    so both CLIs share it.
     """
-    from datagrove.engines import get_engine
+    from datagrove.engines import resolve_engine
 
-    if name is None:
-        return get_engine()
-    name = name.lower()
-    if name == "ibis":
-        from datagrove.engines.ibis_engine import IbisEngine
-
-        return IbisEngine()
-    if name == "pandas":
-        from datagrove.engines.pandas_engine import PandasEngine
-
-        return PandasEngine()
-    if name == "polars":
-        from datagrove.engines.polars_engine import PolarsEngine
-
-        return PolarsEngine()
-    raise typer.BadParameter(f"unknown engine {name!r}")
-
-
-def _safe_count(net: Network, table_name: str) -> int | None:
-    """Return ``net.tables[table_name].count()`` or ``None`` if the table is absent."""
-    table = net.tables.get(table_name)
-    if table is None:
-        return None
     try:
-        return table.count()
-    except Exception:  # pragma: no cover - best effort for `info`
-        return None
+        return resolve_engine(name)
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
 
 
 # ---------------------------------------------------------------------------
@@ -668,14 +648,21 @@ def _diff_specs(v1: str, v2: str) -> dict[str, object]:
 # ---------------------------------------------------------------------------
 
 
+#: Minimum supported Python — kept in lockstep with pyproject ``requires-python``.
+#: Lift to a constant so the ``_check_python_version`` doctor entry can format
+#: both the comparison and the message from one source of truth.
+_MIN_PYTHON: tuple[int, int] = (3, 11)
+
+
 def _check_python_version() -> dict[str, object]:
-    """Verify Python 3.11+ — matches pyproject ``requires-python``."""
+    """Verify Python is at or above :data:`_MIN_PYTHON` — matches pyproject ``requires-python``."""
     ver = sys.version_info
-    ok = ver >= (3, 11)
+    min_str = ".".join(str(p) for p in _MIN_PYTHON)
+    ok = (ver.major, ver.minor) >= _MIN_PYTHON
     return {
         "name": "python_version",
         "ok": ok,
-        "detail": f"{ver.major}.{ver.minor}.{ver.micro} ({'>=3.11' if ok else 'requires >=3.11'})",
+        "detail": f"{ver.major}.{ver.minor}.{ver.micro} ({'>=' + min_str if ok else 'requires >=' + min_str})",
     }
 
 
@@ -732,7 +719,7 @@ def _check_leavenworth_loads() -> dict[str, object]:
         from gmnspy.fixtures import leavenworth
 
         net = Network.from_source(leavenworth.csv_dir())
-        link_count = _safe_count(net, "link")
+        link_count = net.safe_count("link")
         return {
             "name": "fixture:leavenworth",
             "ok": link_count is not None and link_count > 0,

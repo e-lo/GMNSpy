@@ -6,7 +6,8 @@ describe/validate/list tools:
 * ``describe_network(source)`` — GMNS metadata (spec_version + named
   link/node counts), richer than the generic describe_package.
 * ``quality_check(source)`` — runs the :mod:`gmnspy.quality` rule
-  pack; returns the report as a JSON dict.
+  pack; returns the report as a JSON dict via
+  :meth:`~datagrove.reports.ValidationReport.to_dict`.
 * ``connected_components(source)`` — returns the component count +
   sizes (uses :mod:`gmnspy.semantics.connectivity`; requires the
   ``[clean]`` extra for igraph).
@@ -15,12 +16,13 @@ describe/validate/list tools:
   sets as lists.
 
 All tools are stateless — each call loads the network fresh. Stateful
-surfaces (editing sessions with rollback) deferred to follow-ups.
+surfaces (editing sessions with rollback) deferred to follow-ups; the
+:func:`build_server` ``state=`` kwarg is the seam those will plug into.
 """
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from gmnspy import Network
 from gmnspy.quality import register_all
@@ -32,7 +34,11 @@ if TYPE_CHECKING:  # pragma: no cover - typing only
 __all__ = ["build_server"]
 
 
-def build_server(name: str = "gmnspy") -> FastMCP:
+def build_server(
+    name: str = "gmnspy",
+    *,
+    state: dict[str, Any] | None = None,
+) -> FastMCP:
     """Return a :class:`FastMCP` exposing GMNS-aware + generic datagrove tools.
 
     Wraps :func:`datagrove.mcp.build_server` (so the generic tools are
@@ -41,6 +47,11 @@ def build_server(name: str = "gmnspy") -> FastMCP:
 
     Args:
         name: Display name for the MCP server. Default ``"gmnspy"``.
+        state: Optional shared-state dict forwarded to
+            :func:`datagrove.mcp.build_server`. Stateful tools land
+            here when the architecture's ``edit_session`` tool grows
+            in; see datagrove.mcp.server.build_server for the seam
+            contract.
 
     Returns:
         A configured :class:`FastMCP` ready to serve.
@@ -56,13 +67,13 @@ def build_server(name: str = "gmnspy") -> FastMCP:
     from datagrove.mcp import build_server as build_generic
     from datagrove.quality import run_quality
 
-    server = build_generic(name=name)
+    server = build_generic(name=name, state=state)
 
     # Register the GMNS rule pack so quality_check has rules to run.
     register_all()
 
     @server.tool(name="describe_network", description=_DESCRIBE_NET_DOC)
-    def describe_network(source: str) -> dict:
+    def describe_network(source: str) -> dict[str, Any]:
         """Return GMNS metadata for the network at ``source``."""
         net = Network.from_source(source)
         return {
@@ -70,21 +81,21 @@ def build_server(name: str = "gmnspy") -> FastMCP:
             "name": net.spec.name,
             "spec_version": net.spec_version,
             "engine": type(net.engine).__name__,
-            "links": _safe_count(net, "link"),
-            "nodes": _safe_count(net, "node"),
+            "links": net.safe_count("link"),
+            "nodes": net.safe_count("node"),
             "table_count": len(net.tables),
             "tables": sorted(net.tables.keys()),
         }
 
     @server.tool(name="quality_check", description=_QUALITY_DOC)
-    def quality_check(source: str) -> dict:
+    def quality_check(source: str) -> dict[str, Any]:
         """Run the GMNS data-quality rule pack against the network at ``source``."""
         net = Network.from_source(source)
         report = run_quality(net)
-        return _report_to_dict(report)
+        return report.to_dict()
 
     @server.tool(name="connected_components", description=_COMPONENTS_DOC)
-    def connected_components_tool(source: str) -> dict:
+    def connected_components_tool(source: str) -> dict[str, Any]:
         """Return weakly-connected component count + sizes for the network at ``source``."""
         from gmnspy.semantics import connected_components
 
@@ -94,7 +105,7 @@ def build_server(name: str = "gmnspy") -> FastMCP:
         return {"source": source, "component_count": len(comps), "sizes": sizes}
 
     @server.tool(name="scope_from_nodes", description=_SCOPE_DOC)
-    def scope_from_nodes_tool(source: str, node_ids: list[int], path_between: bool = True) -> dict:
+    def scope_from_nodes_tool(source: str, node_ids: list[int], path_between: bool = True) -> dict[str, Any]:
         """Build a network scope from seed ``node_ids`` and return its (links, nodes) sets."""
         from gmnspy.scope import from_nodes
 
@@ -113,41 +124,6 @@ def build_server(name: str = "gmnspy") -> FastMCP:
     return server
 
 
-def _safe_count(net: Network, table_name: str) -> int | None:
-    """Return ``net.tables[table_name].count()`` or ``None``."""
-    table = net.tables.get(table_name)
-    if table is None:
-        return None
-    try:
-        return table.count()
-    except Exception:  # pragma: no cover
-        return None
-
-
-def _report_to_dict(report) -> dict:
-    """Flatten a :class:`ValidationReport` to a JSON-safe dict (duplicate of datagrove.mcp helper).
-
-    Intentional duplication — coupling the gmnspy MCP tools to a
-    private helper in datagrove.mcp would be tighter than the benefit.
-    The helper is 10 lines.
-    """
-    issues = []
-    for issue in report.issues:
-        issues.append(
-            {
-                "severity": getattr(getattr(issue, "severity", None), "value", None),
-                "category": getattr(getattr(issue, "category", None), "value", None),
-                "code": getattr(issue, "code", None),
-                "message": getattr(issue, "message", None),
-                "table": getattr(issue, "table", None),
-                "column": getattr(issue, "column", None),
-                "row": getattr(issue, "row", None),
-                "fix_hint": getattr(issue, "fix_hint", None),
-            }
-        )
-    return {"issues": issues, "spec_version": getattr(report, "spec_version", None)}
-
-
 _DESCRIBE_NET_DOC = """\
 Return GMNS metadata about the network at ``source``: spec_version,
 link count, node count, engine name, full table list. Richer than the
@@ -157,10 +133,9 @@ agent typically wants up front.
 
 _QUALITY_DOC = """\
 Run the GMNS data-quality rule pack against the network at ``source``.
-Returns ``{issues: [...], spec_version}`` — each issue is a dict with
-severity (WARNING / INFO), category (always ``data_quality``), code
-(e.g. ``quality.high_speed_residential``), message, table, column,
-row, fix_hint.
+Returns the canonical ValidationReport.to_dict() shape — every issue
+includes severity, category, code, message, table, column, row,
+fix_hint, extra.
 """
 
 _COMPONENTS_DOC = """\

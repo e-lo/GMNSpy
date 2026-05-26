@@ -8,13 +8,12 @@ know Python.
 Tools shipped here are **stateless**: each call takes a ``source``
 path/URL and loads the package fresh. No server-side session, no
 caching, no cross-call mutation. Stateful surfaces (editing sessions
-with rollback, indexed scope ops) would need a different design and
-are deliberately deferred to follow-up issues.
+with rollback, indexed scope ops) need per-session state and will
+land via the :data:`state` kwarg seam (see :func:`build_server`).
 
 Use via :func:`build_server` which returns a configured
 :class:`mcp.server.fastmcp.FastMCP`. The companion CLI command
-``datagrove mcp serve`` (not in this PR; defer to follow-up) hooks
-this into the stdio transport.
+``datagrove mcp serve`` hooks this into the stdio transport.
 """
 
 from __future__ import annotations
@@ -30,7 +29,11 @@ if TYPE_CHECKING:  # pragma: no cover - typing only
 __all__ = ["build_server"]
 
 
-def build_server(name: str = "datagrove") -> FastMCP:
+def build_server(
+    name: str = "datagrove",
+    *,
+    state: dict[str, Any] | None = None,
+) -> FastMCP:
     """Return a configured :class:`FastMCP` exposing generic datagrove tools.
 
     The returned server is ready to ``run(transport="stdio")``. Tools:
@@ -38,12 +41,23 @@ def build_server(name: str = "datagrove") -> FastMCP:
     * ``describe_package(source)`` — package metadata: table list +
       row counts + engine name.
     * ``validate_package(source)`` — full validation; returns the
-      :class:`~datagrove.reports.ValidationReport` as a JSON dict.
+      :class:`~datagrove.reports.ValidationReport` as a JSON dict
+      via :meth:`~datagrove.reports.ValidationReport.to_dict`
+      (canonical wire shape).
     * ``list_tables(source)`` — short list of table names (cheap, no
       row counts).
 
     Args:
         name: MCP server display name. Default ``"datagrove"``.
+        state: Optional shared-state dict for stateful tools (sessions,
+            indexed scope caches, etc.) that compose on this server
+            via :func:`gmnspy.mcp.build_server`. Stored on the
+            returned server's ``settings`` under the key
+            ``"datagrove_state"`` so domain extensions can read /
+            write keys cooperatively. ``None`` (default) means the
+            server is purely stateless — today's contract. The kwarg
+            is documented + accepted now so the public signature can
+            grow stateful tools later without a breaking change.
 
     Returns:
         A :class:`FastMCP` instance with the tools registered. Caller
@@ -59,10 +73,20 @@ def build_server(name: str = "datagrove") -> FastMCP:
         >>> # registry instead.
         >>> isinstance(server.name, str)
         True
+        >>> # Stateful seam: pass a dict that future stateful tools
+        >>> # (gmnspy.mcp.edit_session etc.) will read + write into.
+        >>> shared = {}
+        >>> server2 = build_server(state=shared)
+        >>> isinstance(server2.name, str)
+        True
     """
     from mcp.server.fastmcp import FastMCP
 
     server = FastMCP(name=name, instructions=_INSTRUCTIONS)
+    # Stash shared state on a stable attribute the domain MCP
+    # extensions look up. Empty dict default so callers can always
+    # do `server.datagrove_state.setdefault(...)` without a None check.
+    server.datagrove_state = state if state is not None else {}  # type: ignore[attr-defined]
 
     @server.tool(name="describe_package", description=_DESCRIBE_DOC)
     def describe_package(source: str) -> dict[str, Any]:
@@ -84,10 +108,10 @@ def build_server(name: str = "datagrove") -> FastMCP:
 
     @server.tool(name="validate_package", description=_VALIDATE_DOC)
     def validate_package(source: str) -> dict[str, Any]:
-        """Run full validation; return issues as a JSON-safe dict."""
+        """Run full validation; return :meth:`ValidationReport.to_dict` (canonical shape)."""
         pkg = Package.from_source(source)
         report = pkg.validate()
-        return _report_to_dict(report)
+        return report.to_dict()
 
     @server.tool(name="list_tables", description=_LIST_DOC)
     def list_tables(source: str) -> list[str]:
@@ -96,25 +120,6 @@ def build_server(name: str = "datagrove") -> FastMCP:
         return sorted(pkg.tables.keys())
 
     return server
-
-
-def _report_to_dict(report: Any) -> dict[str, Any]:
-    """Flatten a :class:`ValidationReport` to a JSON-safe dict for the MCP wire."""
-    issues = []
-    for issue in report.issues:
-        issues.append(
-            {
-                "severity": getattr(getattr(issue, "severity", None), "value", None),
-                "category": getattr(getattr(issue, "category", None), "value", None),
-                "code": getattr(issue, "code", None),
-                "message": getattr(issue, "message", None),
-                "table": getattr(issue, "table", None),
-                "column": getattr(issue, "column", None),
-                "row": getattr(issue, "row", None),
-                "fix_hint": getattr(issue, "fix_hint", None),
-            }
-        )
-    return {"issues": issues, "spec_version": getattr(report, "spec_version", None)}
 
 
 _INSTRUCTIONS = """\
@@ -137,9 +142,9 @@ columns} entries.
 
 _VALIDATE_DOC = """\
 Run full validation (structural + schema + foreign-key + sync-state)
-on the package at ``source``. Returns ``{issues: [...], spec_version}``
-where each issue is a dict with severity, category, code, message,
-table, column, row, fix_hint.
+on the package at ``source``. Returns the canonical
+ValidationReport.to_dict() shape — {report_version, spec_version,
+source, created_at, metadata, summary, issues}.
 """
 
 _LIST_DOC = """\

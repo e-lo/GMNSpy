@@ -19,12 +19,15 @@ scope, HTML validation report, OAuth2) live in follow-up issues —
 the v1 contract is small on purpose.
 """
 
-from .app import PackageRegistry, build_app
+from .app import AuthDep, ExtraRouterFactory, PackageLoader, PackageRegistry, build_app
 from .auth import build_auth_dependency
 from .config import AuthSettings, PackageRef, ServerSettings, generate_dev_token, load_settings
 
 __all__ = [
+    "AuthDep",
     "AuthSettings",
+    "ExtraRouterFactory",
+    "PackageLoader",
     "PackageRef",
     "PackageRegistry",
     "ServerSettings",

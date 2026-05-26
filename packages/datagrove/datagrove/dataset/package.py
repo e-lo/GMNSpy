@@ -381,6 +381,38 @@ class Package:
         """Return ``(name, table)`` pairs as a list (insertion order)."""
         return list(self.tables.items())
 
+    def safe_count(self, name: str) -> int | None:
+        """Return ``self[name].count()`` or ``None`` if absent / transiently uncountable.
+
+        Convenience used by previews (notebook ``_repr_html_``, CLI
+        ``info``, HTTP ``/networks/{id}``) where a missing or
+        transiently-broken table should degrade to a friendly "?"
+        rather than crash the surrounding render.
+
+        The contract: returns ``None`` when the table is absent OR
+        when ``table.count()`` raises any :class:`Exception` (e.g. a
+        transient backend hiccup on an ibis-against-remote-duckdb
+        connection). Hard exceptions in surrounding code still
+        propagate — this only shields the count call itself.
+
+        Examples:
+            >>> from datagrove.dataset import Package, Table
+            >>> from datagrove.engines.pandas_engine import PandasEngine
+            >>> e = PandasEngine()
+            >>> pkg = Package.from_tables({"x": Table(name="x", expr=e.from_records([{"a": 1}]), engine=e)})
+            >>> pkg.safe_count("x")
+            1
+            >>> pkg.safe_count("absent_table") is None
+            True
+        """
+        table = self.tables.get(name)
+        if table is None:
+            return None
+        try:
+            return int(table.count())
+        except Exception:  # pragma: no cover - resilient preview path
+            return None
+
     # ------------------------------------------------------------------
     # Validation orchestration
     # ------------------------------------------------------------------
