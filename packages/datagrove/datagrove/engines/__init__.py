@@ -69,11 +69,20 @@ def register_engine(engine: Engine, *, default: bool = False) -> None:
         ... )
         >>> class _DoctestEngine:
         ...     name = "doctest-register"
-        ...     def scan(self, source, schema=None): return None
+        ...     def read_csv(self, source, schema=None, **kw): return None
+        ...     def read_parquet(self, source, schema=None, **kw): return None
+        ...     def read_duckdb_table(self, source, table, schema=None, **kw): return None
+        ...     def from_records(self, records, schema=None): return None
+        ...     def from_arrow(self, arrow_table): return None
+        ...     def write_csv(self, expr, dest, **kw): return None
+        ...     def write_parquet(self, expr, dest, **kw): return None
+        ...     def write_duckdb_table(self, expr, dest, table, **kw): return None
+        ...     def cast_schema(self, expr, schema): return expr
+        ...     def scan(self, source, schema=None, **kw): return None
+        ...     def write(self, expr, dest, fmt, **kw): return None
         ...     def materialize(self, expr): return None
         ...     def to_pandas(self, expr): return None
         ...     def to_polars(self, expr): return None
-        ...     def write(self, expr, dest, fmt, **kw): return None
         >>> fake = _DoctestEngine()
         >>> try:
         ...     register_engine(fake)
@@ -168,11 +177,20 @@ def set_default_engine(name: str) -> None:
         >>> from datagrove import engines as _eng
         >>> class _DoctestEngine:
         ...     name = "doctest-default"
-        ...     def scan(self, source, schema=None): return None
+        ...     def read_csv(self, source, schema=None, **kw): return None
+        ...     def read_parquet(self, source, schema=None, **kw): return None
+        ...     def read_duckdb_table(self, source, table, schema=None, **kw): return None
+        ...     def from_records(self, records, schema=None): return None
+        ...     def from_arrow(self, arrow_table): return None
+        ...     def write_csv(self, expr, dest, **kw): return None
+        ...     def write_parquet(self, expr, dest, **kw): return None
+        ...     def write_duckdb_table(self, expr, dest, table, **kw): return None
+        ...     def cast_schema(self, expr, schema): return expr
+        ...     def scan(self, source, schema=None, **kw): return None
+        ...     def write(self, expr, dest, fmt, **kw): return None
         ...     def materialize(self, expr): return None
         ...     def to_pandas(self, expr): return None
         ...     def to_polars(self, expr): return None
-        ...     def write(self, expr, dest, fmt, **kw): return None
         >>> previous = _eng._DEFAULT
         >>> try:
         ...     register_engine(_DoctestEngine())

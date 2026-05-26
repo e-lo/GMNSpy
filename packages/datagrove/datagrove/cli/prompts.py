@@ -96,7 +96,7 @@ def run_with_approval(
         >>> from datagrove.operations import OperationCost, gate
         >>> from datagrove.cli.prompts import run_with_approval
         >>> def heavy(*, approve=False):
-        ...     gate(OperationCost(op_name='demo', row_count=1), approve=approve)
+        ...     gate(OperationCost(op_name='demo', n_rows=1), approve=approve)
         ...     return 'ok'
         >>> run_with_approval(heavy, yes=True)
         'ok'

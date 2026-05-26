@@ -404,6 +404,19 @@ def _engine_columns(engine: Engine, expr: TableExpr) -> list[str]:
     with downstream engines that follow the protocol structurally but
     have a different schema-introspection API.
     """
+    # polars LazyFrame: collect_schema().names() (Polars >= 1.0).
+    # Check this BEFORE `expr.schema` — on polars LazyFrame `.schema` is a
+    # property whose access emits a PerformanceWarning steering users to
+    # collect_schema(). We don't want to trip that warning.
+    collect_schema = getattr(expr, "collect_schema", None)
+    if callable(collect_schema):
+        try:
+            sch = collect_schema()
+            names_fn = getattr(sch, "names", None)
+            if callable(names_fn):
+                return list(names_fn())
+        except Exception:
+            pass
     # ibis: expr.schema() returns an ibis.Schema whose .names is a list[str].
     schema_fn = getattr(expr, "schema", None)
     if callable(schema_fn):
@@ -412,16 +425,6 @@ def _engine_columns(engine: Engine, expr: TableExpr) -> list[str]:
             names = getattr(sch, "names", None)
             if isinstance(names, list):
                 return list(names)
-        except Exception:
-            pass
-    # polars LazyFrame: collect_schema().names() (Polars >= 1.0)
-    collect_schema = getattr(expr, "collect_schema", None)
-    if callable(collect_schema):
-        try:
-            sch = collect_schema()
-            names_fn = getattr(sch, "names", None)
-            if callable(names_fn):
-                return list(names_fn())
         except Exception:
             pass
     # pandas / polars DataFrame: .columns
