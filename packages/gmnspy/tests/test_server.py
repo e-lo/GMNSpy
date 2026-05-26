@@ -119,11 +119,16 @@ def test_gmnspy_server_subcommand_listed_in_help():
     assert "server" in result.stdout
 
 
-def test_gmnspy_server_run_help_runs():
+def test_gmnspy_server_run_help_runs(monkeypatch):
     """`gmnspy server run --help` exits 0 (smoke; doesn't actually serve)."""
     from gmnspy.cli.app import app as gmnspy_cli_app
     from typer.testing import CliRunner
 
+    # Widen the terminal so Rich's help table doesn't line-wrap '--config'
+    # / '--bind' across rows under CI's narrow (80-col) default —
+    # CliRunner runs in-process so we have to set COLUMNS for Rich's
+    # auto-detection.
+    monkeypatch.setenv("COLUMNS", "200")
     runner = CliRunner()
     result = runner.invoke(gmnspy_cli_app, ["server", "run", "--help"])
     assert result.exit_code == 0

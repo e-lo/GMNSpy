@@ -118,11 +118,15 @@ def test_mcp_subcommand_listed_in_gmnspy_help():
     assert "mcp" in result.stdout
 
 
-def test_mcp_serve_help_lists_options():
+def test_mcp_serve_help_lists_options(monkeypatch):
     """`gmnspy mcp serve --help` shows the --name option."""
     from gmnspy.cli.app import app as gmnspy_cli_app
     from typer.testing import CliRunner
 
+    # Widen the terminal so Rich's help table doesn't line-wrap '--name'
+    # across rows under CI's narrow (80-col) default — CliRunner runs
+    # in-process so we have to set COLUMNS for Rich's auto-detection.
+    monkeypatch.setenv("COLUMNS", "200")
     runner = CliRunner()
     result = runner.invoke(gmnspy_cli_app, ["mcp", "serve", "--help"])
     assert result.exit_code == 0
