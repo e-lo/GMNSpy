@@ -22,7 +22,7 @@ from datagrove.editing import Session
 net = Network.from_source(leavenworth.csv_dir())
 with Session(net) as s:
     result = simplify_geometry(net, s, mode="redundant_only")
-    print(f"removed {result.diff.removed_rows} redundant shape points")
+    print(f"removed {result.diff.rows_changed} redundant shape points")
 
 # Clean exit committed. Persist:
 net.write("./leavenworth-simplified.parquet")
@@ -91,7 +91,7 @@ except RuntimeError:
 # Rollback explicitly while staying in the block:
 with Session(net) as s:
     result = remove_orphans(net, s)
-    if result.diff.removed_rows > 100:
+    if result.diff.rows_changed > 100:
         s.rollback()  # too aggressive — undo
 ```
 

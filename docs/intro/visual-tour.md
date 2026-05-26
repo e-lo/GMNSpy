@@ -150,7 +150,7 @@ from datagrove.editing import Session
 from gmnspy.clean import simplify_geometry
 
 with Session(net) as s:
-    edit = simplify_geometry(s, mode="redundant_only", tolerance=1.0)
+    edit = simplify_geometry(net, s, mode="redundant_only", tolerance=1.0)
     edit  # in a notebook, _repr_html_ shows the diff (vertices removed per link)
 ```
 
