@@ -125,6 +125,9 @@ Install with the same syntax (uv shown — substitute your tool):
 uv add 'datagrove[polars,s3,keyring]'   # combine with commas
 ```
 
+!!! tip "zsh users: quote the brackets"
+    On **zsh** (the default shell on macOS), `[` and `]` are glob characters. Running `uv add datagrove[polars]` unquoted gives `zsh: no matches found: datagrove[polars]`. Always wrap the extras in quotes (`'datagrove[polars]'` or `"datagrove[polars]"`), or run `setopt no_nomatch` once per session to disable the check. bash users don't hit this.
+
 ## Where to go next
 
 <div class="grid cards" markdown>

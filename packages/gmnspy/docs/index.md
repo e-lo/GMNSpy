@@ -141,6 +141,9 @@ uv add 'gmnspy[clean,server]'       # combine with commas
 uv add 'gmnspy[all]'                # everything
 ```
 
+!!! tip "zsh users: quote the brackets"
+    On **zsh** (the default shell on macOS), `[` and `]` are glob characters. Running `uv add gmnspy[all]` unquoted gives `zsh: no matches found: gmnspy[all]`. Always wrap the extras in quotes (`'gmnspy[all]'` or `"gmnspy[all]"`), or run `setopt no_nomatch` once per session to disable the check. bash users don't hit this.
+
 ## Where to go next
 
 <div class="grid cards" markdown>

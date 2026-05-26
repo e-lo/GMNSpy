@@ -2,9 +2,39 @@
 
 ## Basic Setup
 
+This is a **uv workspace** with two packages — `datagrove` (generic Frictionless engine) and `gmnspy` (GMNS toolkit on top). Install both packages with **all extras**, editable, in a single command from the repo root:
+
+```bash
+uv sync --all-packages --all-extras
+```
+
+That's what CI runs. It creates `.venv/` at the workspace root with both packages installed editable, plus every optional extra (`polars`, `pandas`, `s3`, `gcs`, `azure`, `keyring`, `mcp`, `clean`, `server`, `notebook`) so the full test suite + `--doctest-modules` sweep can collect every file.
+
+Run things via `uv run`:
+
+```bash
+uv run gmnspy --help
+uv run datagrove --help
+uv run pytest packages
+```
+
+> **zsh users:** `[` and `]` are glob characters on zsh (the default shell on macOS). If you want to install **just one** extra ad-hoc, quote the brackets: `uv add 'gmnspy[clean]'` (not `uv add gmnspy[clean]`, which gives `zsh: no matches found`). The workspace-level `uv sync --all-packages --all-extras` doesn't hit this — no brackets in the command.
+
+### One package at a time (rare)
+
+If you want to install only one of the two packages (e.g. to mimic what a downstream user sees):
+
+```bash
+uv pip install -e 'packages/datagrove[polars,s3]'    # quoted for zsh
+uv pip install -e 'packages/gmnspy[clean,server]'    # transitively gets datagrove
+```
+
+### Older / non-uv setup (not recommended)
+
 ```bash
 pip install -r dev-requirements.txt
-pip install -e .
+pip install -e packages/datagrove
+pip install -e packages/gmnspy
 ```
 
 ## General Process
