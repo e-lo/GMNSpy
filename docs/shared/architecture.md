@@ -113,10 +113,23 @@ gmnspy/
 ### 6.1 Engine + I/O
 
 - **Default engine: ibis (duckdb backend).** Lazy expressions throughout. `.to_pandas()` / `.to_polars()` are cheap converters. Per-call override: `gmnspy.read(..., engine="polars")`.
-- **No raw SQL strings** anywhere except inside `datagrove.engines.ibis_engine`. Lint-enforced.
+
+    *Why ibis vs alternatives?* Writing SQL directly couples query intent to one dialect and makes lint-based composition checks brittle; agents would have to parse SQL strings to reason about intent. SQLModel is ORM-shaped — fine for transactional row work, wrong shape for analytic column work over millions of rows. Pandas-only forces eager materialisation, which kills the regional-scale story (Bay-Area links don't fit RAM-comfortably on a laptop). Polars-only gives lazy evaluation but locks us into one backend and one expression language. Ibis is the only option that gives lazy expressions, multi-backend pushdown (DuckDB today, Snowflake/BigQuery/Spark tomorrow without code changes), and a clean escape valve via `.to_pandas()` / `.to_polars()` when the consumer wants a familiar frame.
+
+    *Why DuckDB as the default ibis backend?* SQLite is single-table-write-locked and has no spatial pushdown — fine for a config store, wrong for a network. A PostgreSQL backend would force every user to stand up a server, which kills the laptop-friendly story. In-memory pandas misses the whole point of lazy evaluation. DuckDB is single-file, embeddable, has native Parquet reads (with predicate pushdown), a working spatial extension, no server to run, and is RAM-resident at regional scale — exactly the laptop-to-server gradient the toolkit targets.
+
+- **No raw SQL strings** anywhere except inside `datagrove.engines.ibis_engine`. Lint-enforced by `scripts/lint_no_sql.py`.
+
+    *Why this rule?* Once a SQL string leaks into business logic, the composition contract breaks — a future backend swap (DuckDB → Spark) suddenly requires a dialect audit across the whole codebase. Keeping SQL inside one module future-proofs the engine layer and lets AI agents reason about query intent through ibis expressions rather than string-parsing SQL. The lint script is cheap; the long-term churn it prevents is not.
+
 - **I/O front door:** `datagrove.read(source, *, format=None, credentials=None, engine=None, scope=None, spec=None)`. `gmnspy.read(...)` wraps with `spec=GMNS_DEFAULT`.
 - **Format detection:** explicit `format=` overrides; else extension sniff (`.parquet`, `.csv`, `.csv.zip`, `.zip`, `.duckdb`); else `FormatAdapter.probe()` chain.
 - **Defaults:** API/URL downloads default to **DuckDB**; persistent local writes default to **partitioned Parquet** (partition by H3 cell or zone_id, configurable).
+
+    *Why partitioned Parquet for persistent writes?* A single Parquet file works until the network grows past laptop-memory scale, at which point you want partition pruning on bbox / zone scope ops — the dispatcher pushes the predicate down and only reads the relevant partitions. CSV loses dtypes, has no predicate pushdown, isn't splittable, and balloons disk footprint. A single `.duckdb` file is great for downloads but not for modelling tool interop: every GIS tool reads Parquet natively, very few read DuckDB. Partitioned Parquet is the only format that is columnar, splittable, predicate-pushdown-friendly, and readable by every downstream tool a modeller might use.
+
+    *Why DuckDB for URL / API downloads?* A single `.duckdb` file round-trips multi-table packages with zero schema loss (Parquet would need a sidecar manifest; CSV would need a zip), and the consumer can query it in-place without unpacking. For an API response where the consumer is most likely going to load → query → discard, this is strictly better than handing them a directory tree.
+
 - **Credentials cascade (datagrove-owned):** kwarg → `DATAGROVE_CRED_<host>_TOKEN` env → `keyring` (service `"datagrove"`) → `.netrc`. fsspec underneath. The env prefix lives in `datagrove` because credential resolution is a generic concern; `gmnspy` consumes it as-is.
 - **Recommended persistent layout:**
   ```
@@ -174,6 +187,8 @@ no future contributor can re-grow the per-format if/elif inside it.
 - **Network-aware scopes (in `gmnspy.scope`):** `from_nodes(ids, path_between=True)` (BFS / shortest-path induced subgraph), `from_node(id, network_buffer="0.5mi")` (Dijkstra), `from_link(id, spatial_buffer_m | network_buffer)`, `from_point(xy, spatial_buffer_m)` (snaps + buffers), `connected_component(seed)`, `from_zone(zone_ids)`.
 - **Composite + chainable:** `net.scope.from_nodes([1,2,3]).buffer_network("0.5mi").buffer_spatial(30)`.
 - **Eager-index opt-in (memory-for-compute):** `net.build_indexes(spatial=True, graph=True)` builds STRtree + igraph adjacency once; subsequent scopes use them. Indexes cached as sidecar parquet keyed on content hash (auto-invalidated on edit). Auto-build heuristic: trigger when network exceeds N nodes (configurable; default 50k) AND user calls a network-aware scope op.
+
+    *Why ~50k nodes as the auto-build threshold?* Empirically calibrated against the Leavenworth (75 nodes) and synthetic regional (~500k nodes) fixtures: below ~50k, the first scope op runs faster than the index build, so building eagerly is a net loss. Above ~50k, the second scope op pays back the build cost, and by the third the user is clearly going to repeat-query. Setting the threshold low (e.g. 1k) burns CPU on networks that don't need it; setting it high (e.g. 1M) makes regional networks feel slow on the second scope op. The number is empirical, not load-bearing — configurable via `GMNSPY_AUTO_INDEX_THRESHOLD` env var for users with atypical workloads.
 - **Predicate pushdown** to all other tables by FK chain (links → TOD tables, nodes → zone references, etc.). For partitioned parquet, bbox scope becomes true partition prune via duckdb pushdown — verified via `EXPLAIN` snapshot tests.
 - **Partial loads:** `net.tables(["link", "node"])`. FK validation degrades gracefully with warnings on unverifiable FKs.
 
@@ -216,6 +231,8 @@ Edits inside `with net.session() as s:` produce a chronological log; `net.rollba
 
 CLI `--yes`, env `GMNSPY_AUTO_APPROVE=1`, programmatic `approve=True` skip prompts. CLI surfaces actual time after each gated op so the model self-improves over time. Documented as heuristic — not authoritative.
 
+*Why 30s estimate / 180s approval thresholds?* 30 seconds is the high end of what feels interactive — past that, the user starts wondering whether something broke, so we owe them an estimate and a progress bar. 180 seconds (three minutes) is the low end of "I've gone to get coffee" — by then a silent op risks the user closing the laptop and coming back to a half-finished session, so we require an explicit approval. Both numbers are calibrated to typical interactive vs batch UX expectations rather than load on the machine. The cost model itself is heuristic and self-improving; the thresholds are stable UX contracts.
+
 ### 6.6 CLI
 
 `typer` + `rich`. Two entry points:
@@ -241,6 +258,10 @@ CLI `--yes`, env `GMNSPY_AUTO_APPROVE=1`, programmatic `approve=True` skip promp
 
 Pluggable auth: none / bearer-token / OAuth2 (config-driven). Default download format = DuckDB. Config-file driven; backend points at any `datagrove.read()`-compatible source. Ships `Dockerfile` + `docker-compose.yml` example. **We don't host.**
 
+*Why bearer-token default + warn-on-unsafe over hard-block?* The deployment shape is intentionally mixed: a researcher running `gmnspy serve` on `localhost` for a notebook session shouldn't be forced through OAuth, but the same binary running behind a reverse proxy on a campus network needs auth. Hard-blocking unauthenticated mode would push users to roll their own server; silently allowing it would leak networks. Warn-on-unsafe + bearer-token default puts the security decision in the operator's config file where it's auditable and version-controlled. The right paranoia level is "loud about the risk, not paternalistic about the choice."
+
+*Why no rate limiting or token rotation in v1?* Both are real concerns at hosted-multi-tenant scale, but the v1 target is self-hosted single-team deployments. Building rate-limit middleware in v1 would either ship a token-bucket implementation that's worse than `nginx`/`caddy`/`traefik`, or pull in a Redis dependency that doubles the deployment surface. The recommended pattern is a reverse proxy in front, which gives rate limits, TLS, token rotation, and audit logs for free — features the project would otherwise have to reimplement badly.
+
 ### 6.9 AI accessibility
 
 - **`docs/llms.txt`** + **`docs/llms-full.txt`** at site root (auto-generated from mkdocs nav).
@@ -250,6 +271,10 @@ Pluggable auth: none / bearer-token / OAuth2 (config-driven). Default download f
 - **Claude Code Skills** in `skills/` directory: `datagrove-validate`, `gmns-author`, `gmns-validate`, `gmns-convert`, `gmns-clean`. Installable via `claude code skill add <git-url>#path=skills/<name>`.
 - **MCP server** — `gmnspy[mcp]` ships `gmnspy mcp serve` (and `datagrove mcp serve` for the generic case). Tools: `read_network`, `describe_network`, `query_table` (ibis predicate, not SQL), `scope`, `validate`, `quality_check`, `convert`, `edit_session` (with rollback).
 
+*Why stateless MCP tools?* MCP tool dispatch is a single request/response round-trip; the protocol does not currently have a first-class session abstraction the way SSE-based RPCs do. Trying to hide session state inside individual tool calls would either smuggle global mutable state across MCP clients (a footgun) or force the user to thread an opaque handle through every call (worse ergonomics than just reloading). The right seam is to keep v1 tools stateless and add session affinity later as an explicit protocol feature; the `state=` kwarg added in PR-A is the placeholder for that later seam without committing to its shape today.
+
+*Why ship Skills in-repo + MCP via extra rather than hosting?* Hosting either would commit the project to an availability SLA, an auth story, and an upgrade cadence — three full-time jobs the project doesn't have. Shipping Skills as files in the git repo means installation is `git clone` + a one-line Claude Code config; shipping MCP behind a `[mcp]` extra means users run it under their own MCP client (Claude Desktop, Cursor, etc.) with their own auth model. Zero hosting commitment, full local control, no rug-pull risk if the project's funding changes.
+
 ## 7. Spec sync strategy
 
 - Each supported GMNS spec version vendored under `packages/gmnspy/gmnspy/spec/<version>/` (e.g., `0.97/datapackage.json`, `0.97/link.schema.json`, `0.97/shared_categories.json`).
@@ -257,6 +282,8 @@ Pluggable auth: none / bearer-token / OAuth2 (config-driven). Default download f
 - User override: `gmnspy.read(..., spec_version="0.96")`.
 - `.github/workflows/spec-sync.yml` runs daily, checks upstream releases at zephyr-data-specs/GMNS, opens a PR labeled `spec-sync` against `develop` with the new version added side-by-side. Maintainer reviews; default-version bump goes in a minor release.
 - Validation reports always include `spec_version` in the header.
+
+*Why bundle 0.95 / 0.96 / 0.97 side-by-side rather than auto-upgrade?* GMNS isn't a frozen spec — field renames and category enumerations shift between minor versions. An old fixture written against 0.95 should still validate against 0.95 without the user being forced to migrate; a silent auto-upgrade would either fabricate fields that didn't exist or fail with confusing errors about fields the user never wrote. Bundling versions side-by-side and letting the user select explicitly (or letting `_gmnspy_meta.json` record what the file was written against) keeps old data loadable forever and makes spec drift a visible, version-controlled decision rather than a hidden one.
 
 ## 8. Quality bar
 
