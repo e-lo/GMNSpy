@@ -36,13 +36,39 @@ Generic, Frictionless-aligned tabular-data-package engine. Powers [GMNSpy](https
 
 ## Install
 
+Pick the tool you already use — these are equivalent:
+
 ```bash
+# uv (recommended — fastest, handles workspace projects + lockfiles)
+uv add datagrove
+
+# uv pip (drop-in pip replacement, no project file needed)
+uv pip install datagrove
+
+# pip (classic)
 pip install datagrove
-# with polars conversion
-pip install 'datagrove[polars,pandas]'
-# with cloud storage backends
-pip install 'datagrove[s3,gcs,azure]'
+
+# pipx (CLI-only, isolated env; gives you the `datagrove` command without
+#       polluting your project env)
+pipx install datagrove
 ```
+
+### Optional extras
+
+```bash
+# Engines (pick the one your downstream code already uses)
+uv add 'datagrove[polars]'      # lazy polars frames
+uv add 'datagrove[pandas]'      # eager pandas DataFrames
+
+# Cloud storage backends (read from s3://, gs://, azure://)
+uv add 'datagrove[s3]'          # add 'gcs' or 'azure' as needed
+
+# Credential helpers + AI surface
+uv add 'datagrove[keyring]'     # resolve creds from system keychain
+uv add 'datagrove[mcp]'         # `datagrove mcp serve` for Claude Desktop / Code
+```
+
+Combine extras with commas: `uv add 'datagrove[polars,s3,keyring]'`.
 
 ## Repo
 

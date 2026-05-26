@@ -42,11 +42,33 @@ You just loaded a Frictionless data package through the default ibis + DuckDB en
 
 ### 1. Install
 
-`datagrove` has no optional extras — every dependency is core, and one pip install is enough.
+The default install ships everything for the four-pass validator below. Pick your tool:
 
-```bash
-pip install datagrove
-```
+=== "uv (recommended)"
+
+    ```bash
+    uv add datagrove
+    ```
+
+=== "uv pip"
+
+    ```bash
+    uv pip install datagrove
+    ```
+
+=== "pip"
+
+    ```bash
+    pip install datagrove
+    ```
+
+=== "pipx"
+
+    ```bash
+    pipx install datagrove
+    ```
+
+Optional extras (`polars` / `pandas` / `s3` / `gcs` / `azure` / `keyring` / `mcp`) opt in to alternative engines, cloud backends, and the AI surface — see the [install guide](index.md#optional-extras) for the full list.
 
 ### 2. Load a Frictionless package
 

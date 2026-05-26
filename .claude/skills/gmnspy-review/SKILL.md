@@ -13,9 +13,11 @@ Project-specific extension of `superpowers:requesting-code-review`. Defines the 
 - **Synthesizing** — when consolidating multiple reviewers' reports into a single triage digest for the human reviewer.
 - **Fix dispatch** — when briefing a coding agent on accepted findings (pair with `superpowers:receiving-code-review`).
 
-## The three lenses
+## The four lenses
 
 Each batch gets exactly **one agent per lens** dispatched in parallel. Each agent gets the same git diff + same architecture doc — but a different brief that focuses them on one dimension.
+
+> **Why four, not three?** The original three lenses (architecture / code-quality / legibility) review code *in isolation*. They missed a real bug on 2026-05-26: `gmnspy.read()` and `gmnspy.validate()` were documented in the README + quickstart + migration guide + llms-full.txt for months but never implemented — every reviewer saw the code, none simulated being a new user trying to follow the docs. **Lens D — first-touch experience** closes that gap.
 
 ### Lens A — Architecture & API design
 
@@ -63,6 +65,41 @@ Focus areas:
 - **No "abstract base classes for the sake of it"** — `Protocol` over `ABC` when a protocol suffices; no inheritance hierarchy when a function suffices.
 
 When a tradeoff exists between A/B and C, flag it. The human reviewer decides.
+
+### Lens D — First-touch experience & documented surface  ★ added 2026-05-26
+
+**Question:** Can a new user follow our documentation from a cold start without hitting `AttributeError` / `ImportError` / "method not found"?
+
+This lens treats the docs as a contract. The reviewer **does not look at the source first** — they open the README, the quickstart, the cookbook, the architecture doc, and try to follow every example as a brand-new user would. Anything that breaks (typo, missing implementation, stale name, broken link) is a finding.
+
+Mandatory steps for the lens-D reviewer:
+
+1. **Run the README quickstart verbatim.** If it imports `gmnspy.X`, type `import gmnspy; gmnspy.X` in a REPL. If it fails, file as **Critical** (doc-vs-code drift).
+2. **Run every Python code block in `quickstart.md` + at least three cookbook pages.** Cookbook pages are the second-most-likely place a user lands.
+3. **Run the `--help` of every CLI command mentioned in docs.** Confirm the command + options exist.
+4. **Click every internal link in the index pages.** A 404 in the install guide is a critical UX failure.
+5. **Cross-check the architecture doc against `__init__.py`.** Every public symbol the architecture promises (`datagrove.read`, `gmnspy.scope.from_bbox`, etc.) must exist OR the architecture must be updated.
+6. **Survey docstring examples.** Every `Examples:` block in a public function's docstring should actually run — pytest `--doctest-modules` proves it.
+7. **Audit the AI surface.** `llms.txt`, `llms-full.txt`, `ai/api-index.json` should reference only real symbols. Have the reviewer pick three symbols from `api-index.json` and verify they import.
+
+Focus areas — what to flag:
+
+- **Doc-vs-code drift.** Documented symbol that doesn't exist → **Critical**. (`gmnspy.read` was missing for months — that was a Critical we should have caught.)
+- **Stale install commands.** `pip install` snippet that fails on a fresh venv → **Critical**.
+- **Broken internal links.** Cross-page links that 404 in `mkdocs build --strict` → **Important**.
+- **Examples that exec-fail.** Any code block under a `.. code-block:: python` / `.. doctest::` / triple-backtick `python` that raises → **Important**.
+- **Inconsistent install names.** README says `gmnspy[all]`, docs say `gmnspy[clean,server,mcp,notebook]` — pick one → **Suggestion**.
+- **Missing first-touch escape hatches.** "If this fails, run `gmnspy doctor`" / "if you don't have zsh, ..." callouts where users will predictably stumble → **Suggestion**.
+
+Automated belts that catch many lens-D issues *before* the human reviewer:
+
+- `packages/gmnspy/tests/test_documented_api_contract.py` — scans every `.md` for `gmnspy.X` / `datagrove.X` references and asserts each one resolves. **Adds an enforced cost** to landing aspirational API names in docs without implementation.
+- `--doctest-modules` in CI — every `Examples:` block in a docstring runs as a test.
+- `mkdocs build` with `htmlproofer` plugin — catches broken internal links.
+
+If a CI belt could catch it, the reviewer's job is to confirm it does. If not, the reviewer is the last line of defense.
+
+Does **NOT** focus on: line-by-line code style, abstraction debates (those are lenses B + C).
 
 ## Severity model
 

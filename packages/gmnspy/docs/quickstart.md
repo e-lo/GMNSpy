@@ -41,13 +41,33 @@ You just loaded the bundled Leavenworth network through the default ibis + DuckD
 
 ### 1. Install
 
-Pick the extras you need. The `[clean]` extra brings in `shapely` and `igraph` so the geometry and connectivity ops work; a plain `pip install gmnspy` is enough for read-only validation work.
+The bare `gmnspy` install is enough for read-only validation. Add `[clean]` to unlock the geometry + connectivity ops the rest of this guide uses (brings in `shapely` + `igraph` + `pyproj`).
 
-```bash
-pip install 'gmnspy[clean]'
-```
+=== "uv (recommended)"
 
-`datagrove` comes along as a transitive dependency — you don't install both packages.
+    ```bash
+    uv add 'gmnspy[clean]'
+    ```
+
+=== "uv pip"
+
+    ```bash
+    uv pip install 'gmnspy[clean]'
+    ```
+
+=== "pip"
+
+    ```bash
+    pip install 'gmnspy[clean]'
+    ```
+
+=== "pipx"
+
+    ```bash
+    pipx install 'gmnspy[clean]'
+    ```
+
+`datagrove` comes along as a transitive dependency — you don't install both packages. For the full list of extras (`server`, `mcp`, `notebook`, `all`) see the [install guide](index.md#optional-extras).
 
 ### 2. Load the bundled fixture
 
