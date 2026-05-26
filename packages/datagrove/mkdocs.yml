@@ -1,0 +1,163 @@
+site_name: "datagrove documentation"
+site_description: "Generic Frictionless data-package engine — lazy ibis with DuckDB, pandas + polars on demand. Validation, scope, editing, HTTP + MCP primitives."
+site_url: https://e-lo.github.io/GMNSpy/datagrove/
+repo_url: https://github.com/e-lo/GMNSpy
+edit_uri: edit/main/packages/datagrove/docs/
+
+docs_dir: docs
+
+# Contributor-facing pages (anything starting with `_`) are excluded
+# from the public site but live under docs/ so contributors find them
+# alongside the published pages.
+exclude_docs: |
+  _*.md
+
+theme:
+  name: material
+  features:
+    # Navigation
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.sections
+    - navigation.indexes
+    - navigation.top
+    - navigation.tracking
+    - toc.follow
+    # Code
+    - content.code.copy
+    - content.code.annotate
+    # Content
+    - content.tabs.link
+    - content.tooltips
+    - content.action.edit
+    - content.action.view
+    # Search
+    - search.suggest
+    - search.highlight
+    - search.share
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: blue                     # datagrove = blue branding
+      accent: blue
+      toggle:
+        icon: material/toggle-switch-off-outline
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: blue
+      accent: blue
+      toggle:
+        icon: material/toggle-switch
+        name: Switch to light mode
+  icon:
+    repo: fontawesome/brands/github
+    edit: material/pencil
+    view: material/eye
+
+plugins:
+  - search:
+      separator: '[\s​\-_,:!=\[\]()"`/]+|\.(?!\d)|&[lg]t;|(?!\b)(?=[A-Z][a-z])'
+  - autorefs
+  - awesome-pages
+  - section-index
+  - glightbox:
+      touchNavigation: true
+      loop: false
+      effect: zoom
+      zoomable: true
+      draggable: true
+  - git-revision-date-localized:
+      enable_creation_date: true
+      type: date
+      fallback_to_build_date: true
+      enable_git_follow: false
+  - mkdocstrings:
+      handlers:
+        python:
+          options:
+            show_source: false
+            show_root_heading: true
+            heading_level: 3
+            members_order: source
+            docstring_style: google
+            merge_init_into_class: true
+  - macros                              # for AI artifact emission + include_file
+  - mermaid2:
+      arguments:
+        theme: |
+            ^(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light'
+        securityLevel: 'loose'
+  - htmlproofer:
+      raise_error_excludes:
+        404: ['*']
+
+extra_javascript:
+  - https://unpkg.com/mermaid@9.4.3/dist/mermaid.min.js
+
+extra_css:
+  - assets/stylesheets/extra.css
+
+markdown_extensions:
+  - abbr
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - meta
+  - tables
+  - toc:
+      permalink: " ¶"
+      toc_depth: 3
+  - pymdownx.betterem
+  - pymdownx.caret
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.keys
+  - pymdownx.mark
+  - pymdownx.smartsymbols
+  - pymdownx.snippets:
+      auto_append:
+        - docs/_abbreviations.md
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.tilde
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:mermaid2.fence_mermaid
+  - smarty
+
+
+nav:
+  - Home: index.md
+  - Quickstart: quickstart.md
+  - Cookbook:
+      - cookbook/index.md
+      - Read from S3: cookbook/read-from-s3.md
+      - Convert formats: cookbook/convert-formats.md
+      - Spatial scope (bbox / polygon): cookbook/scope-bbox.md
+  - Reference:
+      - API: reference/api.md
+  - Concepts:
+      - Frictionless data packages: concepts/frictionless.md
+      - When to use ibis vs pandas vs polars: concepts/engines.md
+  - AI surface:
+      - ai/index.md
+      - Drive the CLI from an agent: ai/json-cli.md
+  - Project:
+      - Architecture: architecture.md
+      - Development: development.md
+  - "« GMNSpy umbrella": https://e-lo.github.io/GMNSpy/
+  - "gmnspy site »": https://e-lo.github.io/GMNSpy/gmnspy/

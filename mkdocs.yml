@@ -1,38 +1,23 @@
-site_name: "GMNSpy + datagrove documentation"
-site_description: "Python toolkit for the General Modeling Network Specification (GMNS) and the generic datagrove engine underneath."
+site_name: "GMNSpy + datagrove"
+site_description: "Umbrella landing — pick datagrove or gmnspy."
 site_url: https://e-lo.github.io/GMNSpy
 repo_url: https://github.com/e-lo/GMNSpy
 edit_uri: edit/main/docs
 
-# Contributor-facing pages (anything starting with `_`) are excluded
-# from the public site but live under docs/ so contributors find them
-# alongside the published pages.
-exclude_docs: |
-  _*.md
+# Tiny umbrella site — one page that routes to each package's own
+# documentation site. The substantive docs live in each package:
+#
+#   packages/datagrove/docs/  → built independently → deployed at /datagrove/
+#   packages/gmnspy/docs/     → built independently → deployed at /gmnspy/
+#
+# See packages/datagrove/mkdocs.yml + packages/gmnspy/mkdocs.yml for
+# the actual content sites.
 
 theme:
   name: material
   features:
-    # Navigation
-    - navigation.tabs
-    - navigation.tabs.sticky
-    - navigation.sections          # render top-level sections as headers
-    - navigation.indexes           # section landing pages double as section nodes
-    - navigation.top               # back-to-top button
-    - navigation.tracking          # update URL with anchor as user scrolls
-    - toc.follow                   # sticky TOC follows scroll
-    # Code
-    - content.code.copy            # copy button on every code block
-    - content.code.annotate        # numbered code annotations
-    # Content
-    - content.tabs.link            # synced tabs across pages
-    - content.tooltips             # tooltips on abbr + autorefs
-    - content.action.edit          # "edit this page" button
-    - content.action.view          # "view source" button
-    # Search
-    - search.suggest
-    - search.highlight
-    - search.share
+    - navigation.top
+    - content.code.copy
   palette:
     - media: "(prefers-color-scheme: light)"
       scheme: default
@@ -50,155 +35,17 @@ theme:
         name: Switch to light mode
   icon:
     repo: fontawesome/brands/github
-    edit: material/pencil
-    view: material/eye
 
 plugins:
-  - search:
-      separator: '[\s​\-_,:!=\[\]()"`/]+|\.(?!\d)|&[lg]t;|(?!\b)(?=[A-Z][a-z])'
-  - autorefs
-  - awesome-pages
-  - section-index                  # section landing pages as section nodes
-  - glightbox:                     # click-to-zoom on screenshots
-      touchNavigation: true
-      loop: false
-      effect: zoom
-      slide_effect: slide
-      width: 100%
-      height: auto
-      zoomable: true
-      draggable: true
-  - git-revision-date-localized:   # "last updated" on every page
-      enable_creation_date: true
-      type: date
-      fallback_to_build_date: true
-      enable_git_follow: false      # avoid spurious warnings after git mv (Wave D-1 restructure)
-  - mkdocstrings:
-      handlers:
-        python:
-          options:
-            show_source: false
-            show_root_heading: true
-            heading_level: 3
-            members_order: source
-            docstring_style: google
-            merge_init_into_class: true
-  - macros
-  - mermaid2:
-      arguments:
-        theme: |
-            ^(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light'
-        securityLevel: 'loose'
-  - htmlproofer:                   # broken-link CI gate
-      raise_error_excludes:
-        # Pages still being filled in Wave D-2 — allow dangling cross-links during
-        # the foundation merge. Tighten back to raise_error: true after Wave D-2.
-        404: ['*']
-
-watch:
-  - CONTRIBUTING.md
-  - CODE_OF_CONDUCT.md
-  - CONTRIBUTORS.md
-  - README.md
-
-extra_javascript:
-  - https://unpkg.com/mermaid@9.4.3/dist/mermaid.min.js
-
-extra_css:
-  - https://use.fontawesome.com/releases/v5.13.0/css/all.css
-  - assets/stylesheets/extra.css   # project-specific tweaks (cards, badges)
+  - search
 
 markdown_extensions:
-  # Core formatting
-  - abbr                           # acronym → tooltip on hover
+  - attr_list
+  - md_in_html
   - admonition
-  - attr_list                      # card grids, image attrs, button class
-  - def_list                       # definition lists (glossary)
-  - footnotes
-  - md_in_html                     # required by card grids
-  - meta
-  - tables
-  - toc:
-      permalink: " ¶"
-      toc_depth: 3                 # was 2; lifted so deep concept pages get a nav
-
-  # PyMdown extensions
-  - pymdownx.betterem
-  - pymdownx.caret                 # superscript / inline marks
-  - pymdownx.details               # collapsible admonitions (accordions)
-  - pymdownx.highlight:            # replaces codehilite — better defaults
-      anchor_linenums: true
-      line_spans: __span
-      pygments_lang_class: true
-  - pymdownx.inlinehilite
-  - pymdownx.keys                  # render ⌨ keyboard keys
-  - pymdownx.mark
-  - pymdownx.smartsymbols
-  - pymdownx.snippets:             # auto-append abbreviations across every page
-      auto_append:
-        - docs/_abbreviations.md
-  - pymdownx.tabbed:
-      alternate_style: true
-      slugify: !!python/object/apply:pymdownx.slugs.slugify
-        kwds:
-          case: lower
-  - pymdownx.tasklist:
-      custom_checkbox: true
-  - pymdownx.tilde                 # ~~strikethrough~~ + subscript
-  - pymdownx.emoji:                # Material icons in cards (e.g., :material-rocket:)
+  - pymdownx.emoji:
       emoji_index: !!python/name:material.extensions.emoji.twemoji
       emoji_generator: !!python/name:material.extensions.emoji.to_svg
-  - pymdownx.superfences:
-      custom_fences:
-        - name: mermaid
-          class: mermaid
-          format: !!python/name:mermaid2.fence_mermaid
-  - smarty
-
 
 nav:
   - Home: index.md
-
-  - datagrove:
-      - datagrove/index.md
-      - Quickstart: datagrove/quickstart.md
-      - Cookbook:
-          - datagrove/cookbook/index.md
-          - Read from S3: datagrove/cookbook/read-from-s3.md
-          - Convert formats: datagrove/cookbook/convert-formats.md
-          - Spatial scope (bbox / polygon): datagrove/cookbook/scope-bbox.md
-      - API reference: datagrove/reference/api.md
-
-  - gmnspy:
-      - gmnspy/index.md
-      - Quickstart: gmnspy/quickstart.md
-      - What is GMNS?: gmnspy/what-is-gmns.md
-      - Visual tour: gmnspy/visual-tour.md
-      - Cookbook:
-          - gmnspy/cookbook/index.md
-          - Validate a network: gmnspy/cookbook/validate-network.md
-          - Customise quality rules: gmnspy/cookbook/customise-quality.md
-          - Scope from seed nodes: gmnspy/cookbook/scope-from-nodes.md
-          - Edit with rollback: gmnspy/cookbook/edit-with-rollback.md
-          - Run the bench: gmnspy/cookbook/run-bench.md
-          - Self-host the HTTP server: gmnspy/cookbook/serve-http.md
-          - Wire up the MCP server: gmnspy/cookbook/serve-mcp.md
-      - Reference:
-          - API: gmnspy/reference/api.md
-          - Schema: gmnspy/reference/spec.md
-          - Table of tables: gmnspy/reference/table-of-tables.md
-          - Glossary: gmnspy/reference/glossary.md
-      - Migration v0.3 → v1.0: gmnspy/migration/v0.3-to-v1.0.md
-      - MCP tools reference: gmnspy/ai/mcp-tools.md
-
-  - AI surface:
-      - shared/ai/index.md
-      - Drive the CLI from an agent: shared/ai/json-cli.md
-
-  - Concepts:
-      - Frictionless data packages: shared/concepts/frictionless.md
-
-  - Project:
-      - Architecture: shared/architecture.md
-      - Migration map: shared/migration.md
-      - Development: shared/development.md
