@@ -1,79 +1,98 @@
 ---
 title: GMNSpy + datagrove
 audience: both
-summary: Python toolkit for the General Modeling Network Specification — fast I/O at regional scale, validation with sync-state awareness, network-aware scoping, data-quality checks, editing with atomic rollback, CLI + notebook + HTTP + MCP surfaces.
+hide:
+  - navigation
+summary: Two PyPI packages that solve different problems — datagrove is the generic Frictionless data-package engine, gmnspy is the GMNS-specific toolkit built on top. Pick the one that matches your work.
 ---
 
-# GMNSpy + datagrove
+# GMNSpy + datagrove documentation
 
-Two PyPI packages, one repo:
+Two related Python packages, one repo, two distinct audiences.
 
-* **`datagrove`** — generic engine for Frictionless tabular data packages. Lazy ibis (DuckDB) by default; pandas / polars as opt-in. Reads CSV / Parquet / DuckDB / zip-CSV from local paths + URLs with credentials cascade.
-* **`gmnspy`** — GMNS-specific bindings on top of `datagrove`. Adds the network class, vendored GMNS spec (0.95 / 0.96 / 0.97), connectivity + scope ops, data-quality rule pack, optional editing tools, optional HTTP + MCP servers.
+<div class="grid cards" markdown>
 
-Install the GMNS package; datagrove comes along:
+-   :material-database-outline:{ .lg .middle } &nbsp;**datagrove**
 
-```text
-$ pip install gmnspy           # core
-$ pip install 'gmnspy[clean]'   # + shapely + igraph + editing
-$ pip install 'gmnspy[server]'  # + FastAPI HTTP server
-$ pip install 'gmnspy[mcp]'     # + MCP server for AI agents
-```
+    ---
 
-## Where to go next
+    Generic engine for **Frictionless tabular data packages** — any spec, any backend. Lazy ibis (DuckDB) by default, pandas or polars on demand. Reads CSV / Parquet / DuckDB / zip-CSV from local paths and URLs with a credentials cascade. Validation, scope, editing, HTTP and MCP primitives.
 
-| If you want to... | Start here |
-|---|---|
-| Get a result in 5 minutes | [Quickstart](intro/quickstart.md) |
-| Understand what GMNS is and why this exists | [What is GMNS?](intro/what-is-gmns.md) |
-| See the bundled Leavenworth fixture in action | [Visual tour](intro/visual-tour.md) |
-| Solve a specific task (read S3, scope, edit, …) | [Cookbook](cookbook/index.md) |
-| Look up an API symbol | [API reference](reference/api.md) |
-| Look up a GMNS table or field | [Schema reference](reference/spec.md) |
-| Understand the architecture | [Architecture](architecture.md) |
-| Upgrade from v0.3 | [Migration guide](migration/v0.3-to-v1.0.md) |
-| Use this with Claude Code / Claude Desktop | [AI surface](ai/index.md) |
+    Pick datagrove if you're working with **any Frictionless data package** — GTFS, OGD, custom internal spec, or building your own toolkit.
 
-## The three usage modes
+    [:octicons-arrow-right-24: Explore datagrove](datagrove/index.md){ .md-button .md-button--primary }
 
-All three target the same data + the same validation + the same scope ops — choose by ergonomics, not capability.
+-   :material-map-marker-path:{ .lg .middle } &nbsp;**gmnspy**
 
-=== "CLI"
+    ---
 
-    ```text
-    $ gmnspy validate --json packages/gmnspy/gmnspy/fixtures/leavenworth/csv
-    $ gmnspy info packages/gmnspy/gmnspy/fixtures/leavenworth/csv
-    $ gmnspy quality --json packages/gmnspy/gmnspy/fixtures/leavenworth/csv
+    GMNS-specific toolkit on top of datagrove. Adds the `Network` class, the vendored GMNS spec (0.95 / 0.96 / 0.97), network-aware scope operations, the data-quality rule pack, optional editing tools with rollback, and an optional self-hosted HTTP server + MCP server.
+
+    Pick gmnspy if you're working with **transportation networks** — DOT planning, MPO models, GTFS-GMNS interop, OSM-derived routing graphs.
+
+    [:octicons-arrow-right-24: Explore gmnspy](gmnspy/index.md){ .md-button .md-button--primary }
+
+</div>
+
+## Which package do I install?
+
+Installing `gmnspy` brings `datagrove` along automatically — you only pick separately if you're building on `datagrove` for a non-GMNS use case.
+
+=== "I work with GMNS transportation networks"
+
+    Install `gmnspy`. `datagrove` comes along as a dependency, and every datagrove API is reachable from your code if you need it.
+
+    ```bash
+    pip install gmnspy                # core: read, validate, scope
+    pip install 'gmnspy[clean]'       # + shapely + igraph + editing ops
+    pip install 'gmnspy[server]'      # + self-hostable HTTP server
+    pip install 'gmnspy[mcp]'         # + MCP server for AI agents
+    pip install 'gmnspy[notebook]'    # + Jupyter rendering helpers
+    pip install 'gmnspy[clean,server,mcp,notebook]'  # everything
     ```
 
-=== "Notebook"
+=== "I work with non-GMNS Frictionless packages"
 
-    ```python
-    from gmnspy import Network
-    from gmnspy.fixtures import leavenworth
+    Install `datagrove` directly.
 
-    net = Network.from_source(leavenworth.csv_dir())
-    net                                # renders a card with spec_version + link/node counts
-    net.validate()                     # renders a severity-grouped issue table
+    ```bash
+    pip install datagrove
     ```
 
-=== "Programmatic"
+    Then jump to the [datagrove quickstart](datagrove/quickstart.md).
 
-    ```python
-    from gmnspy import Network
-    from gmnspy.scope import from_nodes
+## Shared resources
 
-    net = Network.from_source("s3://bucket/network/")
-    scoped = from_nodes(net, [101, 202, 303], path_between=True).apply()
-    scoped.write("./output.parquet")
-    ```
+Some concepts apply to both packages — read them once and they apply everywhere.
 
-=== "AI agent (MCP)"
+<div class="grid cards" markdown>
 
-    ```text
-    $ gmnspy mcp serve                 # stdio MCP server for Claude Desktop / Claude Code
-    ```
+-   :material-book-open:{ .lg .middle } &nbsp;**Concepts**
+
+    ---
+
+    [Frictionless data packages](shared/concepts/frictionless.md) — the spec both packages build on.
+
+-   :material-robot-outline:{ .lg .middle } &nbsp;**AI surface**
+
+    ---
+
+    [Drive both packages from an AI agent](shared/ai/index.md) — llms.txt, api-index.json, Claude Code Skills, MCP server.
+
+-   :material-architecture:{ .lg .middle } &nbsp;**Architecture**
+
+    ---
+
+    [Single source of truth](shared/architecture.md) for the design — defaults, rationales, extension points.
+
+-   :material-account-multiple-plus:{ .lg .middle } &nbsp;**Contribute**
+
+    ---
+
+    [Development guide](shared/development.md) — how to set up the monorepo, run tests, file PRs.
+
+</div>
 
 ## Status
 
-v1.0 is a clean-break rewrite of GMNSpy v0.3.x — see the [migration guide](migration/v0.3-to-v1.0.md) for the side-by-side API mapping. **Currently in beta**; tag `gmnspy-v1.0.0` ships when the [Phase 5 acceptance criteria](https://github.com/e-lo/GMNSpy/issues?q=label%3Ablocks-ga) are green.
+This is the **v1.0 documentation**. v1.0 is a clean-break rewrite of GMNSpy v0.3.x — see the [migration guide](gmnspy/migration/v0.3-to-v1.0.md) for the side-by-side API mapping. The project is **currently in beta**; `gmnspy-v1.0.0` ships when the [Phase 5 acceptance criteria](https://github.com/e-lo/GMNSpy/issues?q=label%3Ablocks-ga) are green.

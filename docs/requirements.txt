@@ -2,10 +2,16 @@ mike
 mkdocs
 mkdocs-autorefs
 mkdocs-awesome-pages-plugin
+mkdocs-git-revision-date-localized-plugin
+mkdocs-glightbox
+mkdocs-htmlproofer-plugin
+mkdocs-include-markdown-plugin
 mkdocs-jupyter
 mkdocs-macros-plugin
 mkdocs-material
 mkdocs-mermaid2-plugin
 mkdocs-redirects
+mkdocs-section-index
+mkdocstrings[python]
 pandas
 tabulate
