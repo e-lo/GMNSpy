@@ -1,0 +1,158 @@
+"""``gmnspy doctor`` — environment + spec smoke checks (issue #87)."""
+
+from __future__ import annotations
+
+import importlib
+import os
+import sys
+
+import typer
+from datagrove.cli.render import render_table
+
+from gmnspy import Network
+from gmnspy.spec import SUPPORTED_SPECS, load_gmns_spec
+
+__all__ = ["register"]
+
+
+#: Minimum supported Python — kept in lockstep with pyproject ``requires-python``.
+#: Lifted to a constant so ``_check_python_version`` can format both the
+#: comparison and the message from one source of truth.
+_MIN_PYTHON: tuple[int, int] = (3, 11)
+
+
+def register(app: typer.Typer) -> None:
+    """Register the ``doctor`` command on ``app``."""
+
+    @app.command(name="doctor")
+    def doctor(
+        json_out: bool = typer.Option(False, "--json", help="Emit checks as a JSON array."),
+    ) -> None:
+        """Run environment + spec smoke checks. Exits non-zero on any failure."""
+        checks: list[dict[str, object]] = [
+            _check_python_version(),
+            *_check_optional_extras(),
+            *_check_spec_versions(),
+            _check_leavenworth_loads(),
+            _check_auto_approve_env(),
+        ]
+        render_table(checks, json_out=json_out, title="gmnspy doctor")
+        if any(not c["ok"] for c in checks):
+            raise typer.Exit(code=1)
+
+
+# ---------------------------------------------------------------------------
+# doctor check helpers
+# ---------------------------------------------------------------------------
+
+
+def _check_python_version() -> dict[str, object]:
+    """Verify Python is at or above :data:`_MIN_PYTHON` — matches pyproject ``requires-python``."""
+    ver = sys.version_info
+    min_str = ".".join(str(p) for p in _MIN_PYTHON)
+    ok = (ver.major, ver.minor) >= _MIN_PYTHON
+    return {
+        "name": "python_version",
+        "ok": ok,
+        "detail": f"{ver.major}.{ver.minor}.{ver.micro} ({'>=' + min_str if ok else 'requires >=' + min_str})",
+    }
+
+
+# Optional-extra → import probe. Each entry is (extra-name, module-to-import).
+# The extra is informational; the import is what actually decides ok/!ok.
+_EXTRA_PROBES: tuple[tuple[str, str], ...] = (
+    ("clean", "shapely"),
+    ("clean", "igraph"),
+    ("server", "fastapi"),
+    ("mcp", "mcp"),
+    ("notebook", "ipywidgets"),
+)
+
+
+def _check_optional_extras() -> list[dict[str, object]]:
+    """Probe each optional [extra] for importability. Adds ``installed: bool`` to each check.
+
+    Schema (per check)::
+
+        {
+            "name": "extra:<extra-name>[<module>]",
+            "ok": bool,         # True = check passed (importable OR allowed-absent)
+            "installed": bool,  # True = the module was importable; False = absent
+            "detail": str,      # human-readable status
+        }
+
+    All optional extras have ``ok=True`` regardless of installed state — being
+    absent is not a failure for an OPTIONAL extra. But agents reading ``--json``
+    can now branch on ``installed`` to find what's actually present (the literal
+    presence/absence signal previously hidden inside the ``detail`` string).
+    """
+    out: list[dict[str, object]] = []
+    for extra, module in _EXTRA_PROBES:
+        try:
+            importlib.import_module(module)
+            out.append(
+                {
+                    "name": f"extra:{extra}[{module}]",
+                    "ok": True,
+                    "installed": True,
+                    "detail": "importable",
+                }
+            )
+        except ImportError as exc:
+            out.append(
+                {
+                    "name": f"extra:{extra}[{module}]",
+                    "ok": True,  # optional — absence is not a failure
+                    "installed": False,
+                    "detail": f"not installed ({exc.__class__.__name__}); install with `uv sync --extra {extra}`",
+                }
+            )
+    return out
+
+
+def _check_spec_versions() -> list[dict[str, object]]:
+    """Each vendored spec version must parse without error."""
+    out: list[dict[str, object]] = []
+    for version in SUPPORTED_SPECS:
+        try:
+            pkg = load_gmns_spec(version)
+            out.append(
+                {
+                    "name": f"spec:{version}",
+                    "ok": True,
+                    "detail": f"{len(pkg.resources)} resources",
+                }
+            )
+        except Exception as exc:  # pragma: no cover - vendored data is checked in
+            out.append({"name": f"spec:{version}", "ok": False, "detail": f"{exc.__class__.__name__}: {exc}"})
+    return out
+
+
+def _check_leavenworth_loads() -> dict[str, object]:
+    """Smoke test: the Leavenworth fixture should load + report a link table."""
+    try:
+        from gmnspy.fixtures import leavenworth
+
+        net = Network.from_source(leavenworth.csv_dir())
+        link_count = net.safe_count("link")
+        return {
+            "name": "fixture:leavenworth",
+            "ok": link_count is not None and link_count > 0,
+            "detail": f"loaded {link_count} links from csv fixture",
+        }
+    except Exception as exc:
+        return {
+            "name": "fixture:leavenworth",
+            "ok": False,
+            "detail": f"{exc.__class__.__name__}: {exc}",
+        }
+
+
+def _check_auto_approve_env() -> dict[str, object]:
+    """Informational: report whether DATAGROVE_AUTO_APPROVE is set."""
+    value = os.environ.get("DATAGROVE_AUTO_APPROVE")
+    return {
+        "name": "env:DATAGROVE_AUTO_APPROVE",
+        "ok": True,  # informational only
+        "detail": f"set to {value!r}" if value is not None else "unset (interactive consent required)",
+    }
