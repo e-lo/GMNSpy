@@ -3,6 +3,12 @@ site_url: https://e-lo.github.io/GMNSpy
 repo_url: https://github.com/e-lo/GMNSpy
 edit_uri: edit/main/docs
 
+# Contributor-facing pages (anything starting with `_`) are excluded
+# from the public site but live under docs/ so contributors find them
+# alongside the published pages.
+exclude_docs: |
+  _*.md
+
 theme:
   name: material
   features:
@@ -74,7 +80,18 @@ markdown_extensions:
 
 nav:
   - Home: index.md
+  - Get started:
+      - Quickstart: intro/quickstart.md
+      - What is GMNS?: intro/what-is-gmns.md
+      - Visual tour: intro/visual-tour.md
+  - Cookbook:
+      - Overview: cookbook/index.md
+  - Reference:
+      - API: reference/api.md
+      - Schema: reference/spec.md
+      - Table of tables: reference/table-of-tables.md
+      - Glossary: reference/glossary.md
+  - Migration: migration/v0.3-to-v1.0.md
+  - AI surface: ai/index.md
   - Architecture: architecture.md
-  - Usage: api.md
-  - Schemas: spec.md
   - Development: development.md
