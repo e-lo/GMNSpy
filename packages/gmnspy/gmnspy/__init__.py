@@ -6,8 +6,9 @@ surfaces (CLI / notebook / API / MCP).
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Iterable
+from typing import TYPE_CHECKING
 
 from gmnspy.network import Network, NetworkError
 from gmnspy.spec import DEFAULT_SPEC, SUPPORTED_SPECS, get_spec_path, load_gmns_spec

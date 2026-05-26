@@ -53,14 +53,14 @@ if TYPE_CHECKING:
     from gmnspy.network import Network
 
 __all__ = [
-    "ROOT",
     "DATAPACKAGE",
+    "ROOT",
     "csv_dir",
-    "parquet_dir",
     "duckdb_path",
-    "zip_path",
     "load",
+    "parquet_dir",
     "summary",
+    "zip_path",
 ]
 
 ROOT = Path(__file__).parent
@@ -142,9 +142,7 @@ def load(format: str = "csv") -> Network:
         "zip": zip_path(),
     }
     if format not in sources:
-        raise ValueError(
-            f"unknown format {format!r}; expected one of {sorted(sources)}"
-        )
+        raise ValueError(f"unknown format {format!r}; expected one of {sorted(sources)}")
     if format == "zip":
         # TODO(gh-issue-pending): Package.from_source() mis-dispatches
         # .csv.zip to the CSV adapter (the per-table sub-refs lose the
