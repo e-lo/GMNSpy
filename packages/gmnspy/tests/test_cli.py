@@ -40,6 +40,27 @@ def test_gmns_info_respects_spec_override():
     assert payload["spec_version"] == "0.96"
 
 
+def test_gmns_info_tables_is_jq_friendly_list_of_objects():
+    """tables[] entries must be objects with name+rows, not bare name strings.
+
+    Regression for the v1.0 CLI walk-through finding: the original
+    shape was ``tables: ["link", "node", ...]`` which broke the
+    documented jq pipeline ``info --json | jq '.tables[] | {name, rows}'``
+    with ``Cannot index string with string "name"``. The fix makes
+    ``tables`` a list of objects.
+    """
+    result = runner.invoke(app, ["info", "--json", str(leavenworth.csv_dir())])
+    assert result.exit_code == 0, result.stderr
+    payload = json.loads(result.stdout)
+    tables = payload["tables"]
+    assert isinstance(tables, list) and tables
+    for entry in tables:
+        assert isinstance(entry, dict), f"expected dict, got {type(entry).__name__}: {entry!r}"
+        assert "name" in entry and "rows" in entry
+        assert isinstance(entry["name"], str)
+        assert isinstance(entry["rows"], int)
+
+
 def test_gmns_info_rich_runs():
     """Rich-mode info exits 0 and writes to stderr."""
     result = runner.invoke(app, ["info", str(leavenworth.csv_dir())])

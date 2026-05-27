@@ -207,7 +207,7 @@ no future contributor can re-grow the per-format if/elif inside it.
 - `Rule` base class with `apply(net) → list[Issue]`.
 - Threshold/config via Pydantic settings.
 - Entry-point plugin discovery — packages register their rule packs under `datagrove.quality.rules` group.
-- Run via `datagrove.quality.run(net, rules=None)` (None = all registered).
+- Run via `datagrove.quality.run_quality(net, rules=None)` (None = all registered).
 - gmnspy ships the GMNS rule pack: high-speed-residential, disconnected components, lane-count mismatch, near-duplicate nodes, sharp-angle bends, implausible v/c, missing critical-but-optional fields. Configurable thresholds; warnings not errors by default.
 
 ### 6.4 Editing + rollback

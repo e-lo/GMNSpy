@@ -136,9 +136,20 @@ def load_gmns_spec(version: str = DEFAULT_SPEC) -> DataPackage:
         >>> pkg = load_gmns_spec()
         >>> pkg.name
         'gmns'
+        >>> pkg.version                       # we trust the dir name
+        '0.97'
         >>> {r.name for r in pkg.resources} >= {"link", "node"}
         True
     """
     _check_version(version)
     descriptor = get_spec_path(version) / _DESCRIPTOR_FILENAME[version]
-    return load_package(descriptor)
+    pkg = load_package(descriptor)
+    # Stamp the version from the directory name rather than trusting
+    # the `version` field inside the descriptor. Upstream GMNS 0.97's
+    # datapackage.json literally contains `"version": "0.96"` (the
+    # release didn't bump the metadata) — without this override every
+    # consumer of `pkg.version` (validation report headers, doctor
+    # output, `--json` payloads) misreports the spec.
+    if pkg.version != version:
+        pkg.version = version
+    return pkg

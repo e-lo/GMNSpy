@@ -100,26 +100,11 @@ _KNOWN_FICTIONAL = {
 # Open a tracking issue for any gap that won't be fixed in the same
 # PR as the doc change. Each entry below SHOULD have a corresponding
 # tracker.
-_KNOWN_DOC_GAPS = {
-    # Doc-side fixes (point at wrong / nonexistent names):
-    "datagrove.quality.run",
-    # — architecture.md §6.x says `datagrove.quality.run(net)` but
-    #   reality is `datagrove.quality.run_quality`. Rename one side.
-    "datagrove.validation.codes",
-    # — cookbook/validate-network.md says "the full list lives in
-    #   datagrove.validation.codes". The codes enum is actually at
-    #   datagrove.validation.types or datagrove.reports.<X>. Fix doc.
-    "gmnspy.bench.run_bench",
-    # — cookbook/run-bench.md promises a programmatic API at
-    #   gmnspy.bench.run_bench, but bench is CLI-only. Either
-    #   promote the CLI's bench function or fix the doc.
-    "gmnspy.scope.from_bbox",
-    "gmnspy.scope.from_polygon",
-    # — concepts/engines.md says these live in gmnspy.scope but
-    #   they're actually in datagrove.dataset.view (from_bbox exists,
-    #   from_polygon may not). Either add re-exports in gmnspy.scope
-    #   or fix the doc reference.
-}
+_KNOWN_DOC_GAPS: set[str] = set()
+# All 5 initially-tracked gaps were closed in the walk-through
+# follow-up PR on 2026-05-26 (see git log around that date). Keep
+# this empty set as the placeholder — when a future gap surfaces it
+# can be tracked here with an inline TODO and removed when fixed.
 
 
 def _collect_references() -> dict[str, list[Path]]:

@@ -140,7 +140,7 @@ arterials.to_pandas()
 * **CRS mismatch is silent.** `from_bbox` compares numbers — degrees-vs-metres mismatches produce empty results, not errors. Check `net.spec.crs` first.
 * **`distance_m` only works if CRS is known.** If the source declares no CRS, `from_geometry_buffer` raises. Set `crs=` on the source, or pre-buffer in the geometry's native units and pass via `from_polygon`.
 * **Shapely needed for polygon input** (not bbox). `pip install gmnspy[clean]` brings it in.
-* **Single-table scope is *not* FK-aware.** If you bbox-filter `link` and want only the dependent `lane` rows too, use `gmnspy.scope.from_polygon(net, poly)` instead — that walks the FK graph.
+* **Single-table scope is *not* FK-aware.** If you bbox-filter `link` and want only the dependent `lane` rows too, use the network-aware scope helpers in `gmnspy.scope` (`from_nodes`, `from_link`, `connected_component`) instead — those walk the FK graph.
 
 ## See also
 

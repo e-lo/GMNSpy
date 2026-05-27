@@ -148,4 +148,4 @@ The shape is stable inside a major version. Each phase is one logical operation:
 ## See also
 
 * [Convert CSV ↔ Parquet ↔ DuckDB](https://e-lo.github.io/GMNSpy/datagrove/cookbook/convert-formats/) — the format you load from dominates `load` time.
-* [API reference](../reference/api.md) — `gmnspy.bench.run_bench` for programmatic use.
+* [API reference](../reference/api.md) — `Network.from_source()` + `.validate()` for programmatic equivalents (the bench command itself is CLI-only at v1.0; a programmatic API is tracked for v1.1).

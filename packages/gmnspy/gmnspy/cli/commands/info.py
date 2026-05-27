@@ -33,6 +33,19 @@ def register(app: typer.Typer) -> None:
     ) -> None:
         """Print GMNS-aware metadata about ``source`` — spec version + table summary."""
         net = Network.from_source(source, spec_version=spec_version)
+        # Build tables as a LIST OF OBJECTS (not a list of names or a
+        # name-keyed dict) so the --json output is naturally jq-able:
+        #     gmnspy info --json $LV | jq '.tables[] | {name, rows}'
+        # Each entry carries fields that an agent or shell pipeline
+        # is likely to want without a second pass.
+        tables = []
+        for name in sorted(net.tables.keys()):
+            tables.append(
+                {
+                    "name": name,
+                    "rows": net.safe_count(name),
+                }
+            )
         data = {
             "name": net.spec.name,
             "source": str(source),
@@ -41,6 +54,6 @@ def register(app: typer.Typer) -> None:
             "links": net.safe_count("link"),
             "nodes": net.safe_count("node"),
             "table_count": len(net.tables),
-            "tables": sorted(net.tables.keys()),
+            "tables": tables,
         }
         render_dict(data, json_out=json_out, title=f"gmnspy info: {source}")

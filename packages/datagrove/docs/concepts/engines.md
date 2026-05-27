@@ -173,7 +173,7 @@ For low-row-count tables (under ~1k rows: `time_set_definitions`, `use_definitio
 
 ### Scope operations
 
-`gmnspy.scope.from_bbox` / `from_polygon` / `from_geometry_buffer` are built on top of the spatial-pushdown pattern shown above — see `datagrove.dataset.view` for the implementation. Same model: predicate compiles to DuckDB SQL; partitioned parquet sources prune partitions at scan time; full materialisation is the exception, not the rule.
+`datagrove.dataset.view.from_bbox` / `from_polygon` / `from_geometry_buffer` are built on top of the spatial-pushdown pattern shown above. Same model: predicate compiles to DuckDB SQL; partitioned parquet sources prune partitions at scan time; full materialisation is the exception, not the rule. (`gmnspy.scope` adds *network-aware* scopes — `from_nodes`, `from_link`, `from_point`, `connected_component`, `from_zone` — on top, see [the scope cookbook](https://e-lo.github.io/GMNSpy/gmnspy/cookbook/scope-from-nodes/).)
 
 ### Engine switching at the call site
 

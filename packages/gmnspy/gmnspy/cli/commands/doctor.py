@@ -1,4 +1,10 @@
-"""``gmnspy doctor`` — environment + spec smoke checks (issue #87)."""
+"""``gmnspy doctor`` — environment + install smoke checks (issue #87).
+
+NB: this is an **install doctor**, not a network doctor — it checks
+your Python install + vendored specs + optional extras. To diagnose
+a specific GMNS network, use ``gmnspy validate <path>`` (spec /
+schema / FK checks) or ``gmnspy quality <path>`` (data-quality rules).
+"""
 
 from __future__ import annotations
 
@@ -28,7 +34,18 @@ def register(app: typer.Typer) -> None:
     def doctor(
         json_out: bool = typer.Option(False, "--json", help="Emit checks as a JSON array."),
     ) -> None:
-        """Run environment + spec smoke checks. Exits non-zero on any failure."""
+        r"""Check your gmnspy install — Python version, extras, vendored specs.
+
+        \b
+        This is an INSTALL doctor, not a network doctor. To diagnose a
+        specific GMNS network, use:
+
+          gmnspy validate <path>    spec / schema / FK / sync-state checks
+          gmnspy quality  <path>    data-quality rules (high speed on residential, etc.)
+          gmnspy info     <path>    table list + row counts
+
+        Exits non-zero on any install failure.
+        """
         checks: list[dict[str, object]] = [
             _check_python_version(),
             *_check_optional_extras(),
