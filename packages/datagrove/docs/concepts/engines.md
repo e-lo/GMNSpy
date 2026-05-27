@@ -108,6 +108,7 @@ Full list: [DuckDB spatial extension docs](https://duckdb.org/docs/extensions/sp
 
 The pattern when shapely is needed: **push the coarse filter through ibis first**, then materialise only the surviving rows, then parse shapely.
 
+<!-- doctest: skip -->
 ```python
 # Right: push the coarse filter, then shapely the survivors.
 links = pkg.tables["link"].expr.filter(
@@ -121,6 +122,7 @@ for row in arrow.to_pylist():
     # ... shapely logic per row
 ```
 
+<!-- doctest: skip -->
 ```python
 # Wrong: materialise everything, filter in Python.
 links_df = pkg.tables["link"].to_pandas()  # whole table in RAM
@@ -139,6 +141,7 @@ The data-quality rule pack in `gmnspy.quality` runs against every link, node, la
 
 The right shape for a SQL-expressible rule:
 
+<!-- doctest: skip -->
 ```python
 def applies_to(self, package):
     link = package.tables.get("link")
@@ -162,6 +165,7 @@ def run(self, package, report, config=None):
 
 vs the wrong shape (full materialise + Python loop), which is what some of the current GMNS rule pack does and what [#181](https://github.com/e-lo/GMNSpy/issues/181) tracks the refactor for:
 
+<!-- doctest: skip -->
 ```python
 # Wrong:
 links = net.tables["link"].to_pandas()         # whole table to RAM
@@ -179,6 +183,7 @@ For low-row-count tables (under ~1k rows: `time_set_definitions`, `use_definitio
 
 Per-call override on every public entry point that accepts an engine:
 
+<!-- doctest: skip -->
 ```python
 from datagrove.engines.pandas_engine import PandasEngine
 from datagrove.engines.polars_engine import PolarsEngine

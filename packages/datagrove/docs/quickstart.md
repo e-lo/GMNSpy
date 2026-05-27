@@ -86,9 +86,10 @@ pkg = Package.from_source(
 
 You should see something like:
 
+<!-- doctest: skip -->
 ```python
 >>> pkg
-<Package: 25 tables, source=.../leavenworth/csv>
+<Package: 9 tables, source=.../leavenworth/csv>
 ```
 
 Substitute any other Frictionless package — your own spec, a GTFS feed converted to a Frictionless package, or a cloud-hosted parquet partition — and the rest of the steps below are identical.
@@ -108,24 +109,21 @@ for issue in report.issues[:5]:
 In a Jupyter notebook, evaluating `report` on its own renders an HTML card grouped by severity. In a script, you can also serialise to JSON for CI:
 
 ```python
-report.to_json("validation.json")
+import tempfile, pathlib
+with tempfile.TemporaryDirectory() as d:
+    report.to_json(pathlib.Path(d) / "validation.json")
 ```
 
 ### 4. Scope to a spatial subset
 
-If your package has a geometry column (any WKT or WKB), `datagrove.dataset.view.from_bbox` returns a lazy view filtered to features inside a bounding box. The example below scopes the Leavenworth `link` table to a small bbox around the historic core.
+If your package has a geometry column (any WKT or WKB), `datagrove.dataset.view.from_bbox` returns a lazy view filtered to features inside a bounding box. The example below scopes the Leavenworth `geometry` table (which carries the inline WKT) to a small bbox around the historic core.
 
 ```python
 from datagrove.dataset.view import from_bbox
 
-links = pkg.tables["link"]
-scoped_links = from_bbox(
-    links,
-    bbox=(-120.665, 47.594, -120.655, 47.600),  # (minx, miny, maxx, maxy)
-    geometry_table=pkg.tables["geometry"],
-    geometry_fk="geometry_id",
-)
-print(f"scoped: {scoped_links.count()} links")
+geometry = pkg.tables["geometry"]
+scoped_geom = from_bbox(geometry, -120.665, 47.594, -120.655, 47.600)
+print(f"scoped: {scoped_geom.count()} geometries in bbox")
 ```
 
 The filter pushes down to DuckDB — only the matching rows are read.
@@ -135,7 +133,9 @@ The filter pushes down to DuckDB — only the matching rows are read.
 `pkg.write(dest)` round-trips the package to a new location. The output format is inferred from the extension: `.parquet` for a Parquet directory, `.duckdb` for a single-file DuckDB, or a directory for CSV.
 
 ```python
-pkg.write("./out.parquet")
+import tempfile, pathlib
+with tempfile.TemporaryDirectory() as d:
+    pkg.write(pathlib.Path(d) / "out.parquet")
 ```
 
 The `datapackage.json` manifest is regenerated alongside the data, so the written-out package is itself a valid Frictionless package.

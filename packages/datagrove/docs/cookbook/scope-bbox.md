@@ -80,6 +80,7 @@ view = from_geometry_buffer(net.links, corridor, distance_m=100)
 
 When the underlying source is partitioned Parquet, the spatial predicate compiles to a single DuckDB `WHERE` clause. Partitions whose statistics fall entirely outside the bbox are pruned before reading. Typical speed-up on a regional network is 10–50× vs full scan:
 
+<!-- doctest: skip -->
 ```python
 net = Network.from_source("s3://my-bucket/regional/links.parquet")
 # Only the parquet partitions overlapping the bbox are read off S3.
@@ -92,6 +93,7 @@ Inspect the compiled predicate via `view.explain()` — useful when debugging "w
 
 Spatial views compose with the rest of the `View` API. The bbox + facility-type predicate fuse into a single SQL pass — no intermediate materialisation:
 
+<!-- doctest: skip -->
 ```python
 inside = from_bbox(net.links, -120.67, 47.58, -120.65, 47.60)
 arterials = inside.filter(net.links.facility_type == "arterial")

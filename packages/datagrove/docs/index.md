@@ -12,6 +12,7 @@ A generic engine for tabular data packages in the [Frictionless](concepts/fricti
 
 **Reading any Frictionless data package**, regardless of physical format, with one API surface:
 
+<!-- doctest: skip -->
 ```python
 from datagrove import Package
 

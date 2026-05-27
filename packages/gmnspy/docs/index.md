@@ -12,6 +12,7 @@ A Python toolkit for the [General Modeling Network Specification (GMNS)](https:/
 
 **Reading any GMNS network without writing import code.** Local CSV directory, S3 parquet partition, single-file DuckDB, zipped CSV bundle — same `Network.from_source(...)` call, same lazy-evaluation behaviour:
 
+<!-- doctest: skip -->
 ```python
 from gmnspy import Network
 
