@@ -1,0 +1,112 @@
+# release-drafter config for the GMNSpy + datagrove monorepo.
+#
+# Auto-drafts GitHub release notes from merged PR titles + labels using the
+# conventional-commits style we already write ("feat:", "fix:", "docs:", ...).
+# The human releaser just edits and publishes.
+#
+# v1.0 decision: ONE combined draft for the whole monorepo. release-drafter
+# can filter PRs with `include-paths:`, but it produces a single draft per
+# config file — splitting datagrove vs gmnspy into two distinct drafts would
+# need two config files + two workflows + `tag-prefix` filtering per side.
+# Defer that until the package release cadences actually diverge. When we do
+# split, the per-package configs would add e.g.:
+#   include-paths:
+#     - packages/datagrove/**
+# and the matching workflow would key off `datagrove-v*` tags.
+
+name-template: "$RESOLVED_VERSION"
+tag-template: "$RESOLVED_VERSION"
+
+# Semver bump from PR labels (set by autolabeler below or by humans).
+version-resolver:
+  major:
+    labels:
+      - breaking
+  minor:
+    labels:
+      - feat
+      - type:feature
+      - ":rocket: feature"
+  patch:
+    labels:
+      - fix
+      - type:bug
+      - ":bug: bug"
+  default: patch
+
+categories:
+  - title: "🚨 Breaking changes"
+    labels:
+      - breaking
+  - title: "✨ Features"
+    labels:
+      - feat
+      - type:feature
+      - ":rocket: feature"
+  - title: "🐛 Bug fixes"
+    labels:
+      - fix
+      - type:bug
+      - ":bug: bug"
+  - title: "📚 Documentation"
+    labels:
+      - docs
+      - type:docs
+      - ":blue_book:docs"
+  - title: "🔧 CI / Build"
+    labels:
+      - ci
+      - chore
+      - type:ci
+      - ":broom: chore"
+  - title: "🧪 Tests"
+    labels:
+      - test
+      - type:test
+  - title: "🏗️ Refactor"
+    labels:
+      - refactor
+      - type:refactor
+      - ":building_construction: refactor"
+
+# Auto-label PRs by conventional-commit title prefix so humans don't have to.
+# Matches both `feat:` and `feat(scope):` forms (case-insensitive).
+autolabeler:
+  - label: breaking
+    title:
+      - "/^[a-z]+(\\([^)]+\\))?!:/i"
+      - "/breaking[ -]change/i"
+  - label: feat
+    title:
+      - "/^feat(\\([^)]+\\))?:/i"
+  - label: fix
+    title:
+      - "/^fix(\\([^)]+\\))?:/i"
+  - label: docs
+    title:
+      - "/^docs(\\([^)]+\\))?:/i"
+  - label: ci
+    title:
+      - "/^ci(\\([^)]+\\))?:/i"
+  - label: chore
+    title:
+      - "/^chore(\\([^)]+\\))?:/i"
+  - label: test
+    title:
+      - "/^test(\\([^)]+\\))?:/i"
+  - label: refactor
+    title:
+      - "/^refactor(\\([^)]+\\))?:/i"
+
+change-template: "- $TITLE (#$NUMBER) @$AUTHOR"
+change-title-escapes: '\<*_&'
+
+exclude-labels:
+  - skip-changelog
+
+template: |
+  ## What's changed
+
+  $CHANGES
+
+  **Full Changelog**: https://github.com/$OWNER/$REPOSITORY/compare/$PREVIOUS_TAG...$RESOLVED_VERSION

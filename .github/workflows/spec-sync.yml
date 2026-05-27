@@ -1,0 +1,131 @@
+name: Spec sync
+
+# Daily check for new upstream GMNS spec releases
+# (https://github.com/zephyr-data-specs/GMNS). When a tag exists upstream
+# that we have not yet vendored under packages/gmnspy/gmnspy/spec/, this
+# workflow opens a PR vendoring it side-by-side. The reviewer is then
+# responsible for updating SUPPORTED_SPECS / DEFAULT_SPEC in
+# packages/gmnspy/gmnspy/spec/__init__.py. We do NOT auto-merge.
+
+on:
+  schedule:
+    - cron: "0 12 * * *"  # 12:00 UTC daily
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      UPSTREAM: zephyr-data-specs/GMNS
+      BASE_BRANCH: refactor/v1.0
+      SPEC_DIR: packages/gmnspy/gmnspy/spec
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: refactor/v1.0
+
+      - name: Find first un-vendored upstream release
+        id: pick
+        run: |
+          set -euo pipefail
+          # Upstream tags look like "v0.97". Strip the leading "v" so they
+          # line up with our on-disk version directories (e.g. "0.97").
+          upstream=$(gh api "repos/${UPSTREAM}/releases" --paginate \
+            --jq '.[].tag_name' | sed 's/^v//' | sort -V)
+          vendored=$(ls "${SPEC_DIR}" | grep -E '^[0-9]+\.[0-9]+$' || true)
+          # One new version per run — keeps each PR scoped and reviewable.
+          new=$(comm -23 <(echo "$upstream" | sort -u) <(echo "$vendored" | sort -u) \
+            | sort -V | head -n1)
+          if [ -z "$new" ]; then
+            echo "No new upstream releases. Exiting cleanly."
+            echo "found=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "New version detected: v${new}"
+            echo "found=true" >> "$GITHUB_OUTPUT"
+            echo "version=${new}" >> "$GITHUB_OUTPUT"
+            echo "tag=v${new}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Vendor spec files
+        if: steps.pick.outputs.found == 'true'
+        env:
+          VERSION: ${{ steps.pick.outputs.version }}
+          TAG: ${{ steps.pick.outputs.tag }}
+        run: |
+          set -euo pipefail
+          dest="${SPEC_DIR}/${VERSION}"
+          mkdir -p "$dest"
+          # Fetch the listing of upstream Specification/ at this tag, then
+          # download every file (not subdirs) into the vendored dir. We
+          # don't filter by extension — upstream sometimes ships
+          # shared_categories.json, README.md, etc. alongside the schemas.
+          gh api "repos/${UPSTREAM}/contents/Specification?ref=${TAG}" \
+            --jq '.[] | select(.type=="file") | [.name, .download_url] | @tsv' \
+            > /tmp/files.tsv
+          while IFS=$'\t' read -r name url; do
+            echo "  fetching ${name}"
+            curl -fsSL "$url" -o "${dest}/${name}"
+          done < /tmp/files.tsv
+          # VERSION file is our convention, not upstream's — write the
+          # bare version string with a trailing newline (see 0.95/VERSION).
+          echo "${VERSION}" > "${dest}/VERSION"
+          ls "$dest"
+
+      - name: Commit, push, and open PR
+        if: steps.pick.outputs.found == 'true'
+        env:
+          VERSION: ${{ steps.pick.outputs.version }}
+          TAG: ${{ steps.pick.outputs.tag }}
+        run: |
+          set -euo pipefail
+          branch="spec-sync/${TAG}"
+          # Bail out gracefully if a sync PR for this version is already
+          # open or merged — avoids re-pushing on top of a maintainer's
+          # in-flight review.
+          if gh api "repos/${GITHUB_REPOSITORY}/branches/${branch}" >/dev/null 2>&1; then
+            echo "Branch ${branch} already exists upstream. Nothing to do."
+            exit 0
+          fi
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$branch"
+          git add "${SPEC_DIR}/${VERSION}"
+          git commit -m "$(cat <<EOF
+          chore(spec): vendor GMNS spec ${TAG}
+
+          Vendored from ${UPSTREAM}@${TAG} by the spec-sync workflow.
+
+          Co-Authored-By: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>
+          EOF
+          )"
+          git push -u origin "$branch"
+
+          body=$(cat <<EOF
+          Automated vendor of [GMNS ${TAG}](https://github.com/${UPSTREAM}/releases/tag/${TAG}).
+
+          ## What this PR does
+          - Adds \`${SPEC_DIR}/${VERSION}/\` with the upstream \`Specification/\` files plus a \`VERSION\` marker.
+
+          ## Reviewer checklist
+          - [ ] Add \`"${VERSION}"\` to \`SUPPORTED_SPECS\` in \`packages/gmnspy/gmnspy/spec/__init__.py\`.
+          - [ ] If 0.95 (\`gmns.spec.json\`) vs 0.96+ (\`datapackage.json\`) convention differs, update \`_DESCRIPTOR_FILENAME\` in the same file.
+          - [ ] Consider bumping \`DEFAULT_SPEC\` to \`"${VERSION}"\` if this release is stable.
+          - [ ] Spot-check the schema diff against the previous vendored version.
+          - [ ] Run the test suite locally — multi-version fixtures may need updating.
+
+          Upstream release: https://github.com/${UPSTREAM}/releases/tag/${TAG}
+          EOF
+          )
+          gh pr create \
+            --base "${BASE_BRANCH}" \
+            --head "${branch}" \
+            --title "chore(spec): vendor GMNS spec ${TAG}" \
+            --body "$body"
+          # Label is optional — create-or-skip so first-run on a fresh
+          # repo doesn't fail the job.
+          gh pr edit "${branch}" --add-label spec-sync || true

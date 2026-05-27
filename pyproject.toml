@@ -193,4 +193,10 @@ exclude_lines = [
     "if TYPE_CHECKING:",
     "@overload",
 ]
-fail_under = 0  # raised to 85 (datagrove) / 75 (gmnspy) at Phase 5 closeout
+# Workspace-wide gate. Per-package gates are enforced separately in
+# the Tests workflow (datagrove ≥86%, gmnspy ≥84%) so a regression
+# in one package can't be masked by overshoot in the other. Baseline
+# measured 2026-05-26: combined 86%, datagrove 87%, gmnspy 85% —
+# gates set one point below current to flag regressions immediately
+# without flaking on stat-noise.
+fail_under = 85
