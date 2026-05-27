@@ -8,7 +8,14 @@ version = "0.1.0.dev0"
 description = "Generic Frictionless-aligned tabular-data-package engine. Code-agnostic schemas, lazy ibis/duckdb pipelines, foreign-key + sync-state validation, geographic scoping, and edit/rollback primitives."
 readme = "README.md"
 license = "Apache-2.0"
-license-files = ["../../LICENSE"]
+# NB: this file is a copy of the workspace-root LICENSE so that the
+# published wheel actually contains it. Hatchling silently skips
+# license-files entries that go outside the package directory
+# (`../../LICENSE` produced wheels with no License-File: metadata and
+# no licenses/ directory). The dev workflow keeps the workspace
+# LICENSE authoritative; the per-package copies are duplicated for
+# wheel-build only.
+license-files = ["LICENSE"]
 requires-python = ">=3.11"
 authors = [{ name = "Elizabeth Sall" }]
 classifiers = [
