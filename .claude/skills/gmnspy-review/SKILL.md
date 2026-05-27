@@ -94,6 +94,7 @@ Focus areas — what to flag:
 Automated belts that catch many lens-D issues *before* the human reviewer:
 
 - `packages/gmnspy/tests/test_documented_api_contract.py` — scans every `.md` for `gmnspy.X` / `datagrove.X` references and asserts each one resolves. **Adds an enforced cost** to landing aspirational API names in docs without implementation.
+- `packages/gmnspy/tests/test_documented_cli_contract.py` — scans every `.md` for `gmnspy <cmd> --flag` / `datagrove <cmd> --flag` invocations in bash/zsh/console fenced blocks (and inline backticks), and asserts every documented `--flag` exists on the resolved command via click introspection. Catches the CLI-side version of the same doc/code drift class.
 - `--doctest-modules` in CI — every `Examples:` block in a docstring runs as a test.
 - `mkdocs build` with `htmlproofer` plugin — catches broken internal links.
 
