@@ -1,0 +1,73 @@
+{
+  "$schema": "https://datapackage.org/profiles/2.0/datapackage.json",
+  "name": "datagrove-sample-books",
+  "title": "Books, Authors, and Venues — datagrove sample",
+  "description": "A small, deliberately-non-transportation Frictionless data package used by datagrove's own doctests. Three tables (author, book, venue) with two foreign-key relationships and one WKT geometry column — enough to exercise the generic Package / Table / view / FK-validation surface without pulling in any GMNS-specific semantics.",
+  "version": "0.1.0",
+  "licenses": [
+    {
+      "name": "CC0-1.0",
+      "path": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "title": "Creative Commons Zero v1.0 Universal"
+    }
+  ],
+  "resources": [
+    {
+      "name": "author",
+      "path": "csv/author.csv",
+      "format": "csv",
+      "mediatype": "text/csv",
+      "encoding": "utf-8",
+      "schema": {
+        "primaryKey": "id",
+        "fields": [
+          {"name": "id", "type": "integer", "constraints": {"required": true, "unique": true}},
+          {"name": "name", "type": "string", "constraints": {"required": true}},
+          {"name": "country", "type": "string"}
+        ]
+      }
+    },
+    {
+      "name": "venue",
+      "path": "csv/venue.csv",
+      "format": "csv",
+      "mediatype": "text/csv",
+      "encoding": "utf-8",
+      "schema": {
+        "primaryKey": "id",
+        "fields": [
+          {"name": "id", "type": "integer", "constraints": {"required": true, "unique": true}},
+          {"name": "name", "type": "string", "constraints": {"required": true}},
+          {"name": "geometry", "type": "string", "description": "WKT POINT geometry (EPSG:4326)"}
+        ]
+      }
+    },
+    {
+      "name": "book",
+      "path": "csv/book.csv",
+      "format": "csv",
+      "mediatype": "text/csv",
+      "encoding": "utf-8",
+      "schema": {
+        "primaryKey": "id",
+        "fields": [
+          {"name": "id", "type": "integer", "constraints": {"required": true, "unique": true}},
+          {"name": "title", "type": "string", "constraints": {"required": true}},
+          {"name": "author_id", "type": "integer", "constraints": {"required": true}},
+          {"name": "published_year", "type": "integer"},
+          {"name": "venue_id", "type": "integer"}
+        ],
+        "foreignKeys": [
+          {
+            "fields": "author_id",
+            "reference": {"resource": "author", "fields": "id"}
+          },
+          {
+            "fields": "venue_id",
+            "reference": {"resource": "venue", "fields": "id"}
+          }
+        ]
+      }
+    }
+  ]
+}

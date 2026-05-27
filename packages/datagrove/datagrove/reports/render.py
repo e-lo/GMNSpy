@@ -15,10 +15,12 @@ This module contains the three renderers shipped in Phase 2:
   view for geo-located issues. (Task 2.2 / issue #61.)
 
 Severity ordering in every renderer is part of the contract:
-``ERROR -> WARNING -> INFO -> DATA_QUALITY``. Within each severity
-group, issues are further grouped by table (with ``None``-table /
-cross-cutting issues rendered first, since they tend to be the
-structural problems that explain everything else).
+``ERROR -> WARNING -> INFO``. Within each severity group, issues are
+further grouped by table (with ``None``-table / cross-cutting issues
+rendered first, since they tend to be the structural problems that
+explain everything else). Quality findings are not a fourth bucket —
+they live in whichever severity their rule chose, with
+``Category.DATA_QUALITY`` distinguishing them from spec violations.
 """
 
 from __future__ import annotations
@@ -55,14 +57,12 @@ _SEVERITY_STYLE: dict[Severity, str] = {
     Severity.ERROR: "bold red",
     Severity.WARNING: "yellow",
     Severity.INFO: "blue",
-    Severity.DATA_QUALITY: "magenta",
 }
 
 _SEVERITY_LABEL: dict[Severity, str] = {
     Severity.ERROR: "ERROR",
     Severity.WARNING: "WARNING",
     Severity.INFO: "INFO",
-    Severity.DATA_QUALITY: "DATA_QUALITY",
 }
 
 
@@ -77,8 +77,8 @@ def render_rich(report: ValidationReport) -> str:
     Layout:
 
     - Header panel: ``source`` + ``spec_version`` + per-severity counts.
-    - One section per severity in canonical order (ERROR, WARNING, INFO,
-      DATA_QUALITY). Within each section, issues are grouped by table.
+    - One section per severity in canonical order (ERROR, WARNING, INFO).
+      Within each section, issues are grouped by table.
       Each issue is one row: ``[code] message`` with the severity colour;
       a second indented line shows ``table:column[row]`` plus the
       ``fix_hint`` when present.
@@ -145,8 +145,7 @@ def _render_header(console: Console, report: ValidationReport) -> None:
     body.append("counts: ", style="dim")
     body.append(
         ", ".join(
-            f"{_SEVERITY_LABEL[s].lower()}={report.count(s)}"
-            for s in (Severity.ERROR, Severity.WARNING, Severity.INFO, Severity.DATA_QUALITY)
+            f"{_SEVERITY_LABEL[s].lower()}={report.count(s)}" for s in (Severity.ERROR, Severity.WARNING, Severity.INFO)
         )
     )
 
@@ -162,7 +161,7 @@ def _render_body(console: Console, report: ValidationReport) -> None:
     # Stable sort by (severity_rank, "" if table is None else table) keeps
     # the canonical severity order AND groups by table within each section.
     # Sort is stable, so original insertion order survives within a group.
-    for severity in (Severity.ERROR, Severity.WARNING, Severity.INFO, Severity.DATA_QUALITY):
+    for severity in (Severity.ERROR, Severity.WARNING, Severity.INFO):
         group = report.by_severity(severity)
         if not group:
             continue
@@ -337,7 +336,7 @@ def render_html(
 
     - Header with ``spec_version``, ``source``, ``created_at``, and
       per-severity badge counts plus a clean/unclean verdict chip.
-    - Severity-ordered issue tables (ERROR → WARNING → INFO → DATA_QUALITY)
+    - Severity-ordered issue tables (ERROR → WARNING → INFO)
       with filter controls (severity, category, table, code substring).
     - Click any row to expand a detail panel showing ``fix_hint`` and the
       raw ``extra`` payload.
@@ -389,7 +388,6 @@ def render_html(
         Severity.ERROR,
         Severity.WARNING,
         Severity.INFO,
-        Severity.DATA_QUALITY,
     )
 
     # Group issues by severity for the per-section tables. Each section
@@ -540,9 +538,8 @@ def _build_map_spec_json(issues: Iterable[dict[str, Any]]) -> str:
                         Severity.ERROR.value,
                         Severity.WARNING.value,
                         Severity.INFO.value,
-                        Severity.DATA_QUALITY.value,
                     ],
-                    "range": ["#d1242f", "#9a6700", "#0969da", "#8250df"],
+                    "range": ["#d1242f", "#9a6700", "#0969da"],
                 },
             },
             "tooltip": [

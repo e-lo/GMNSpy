@@ -147,10 +147,10 @@ class DuckdbAdapter:
         Enumerate tables in a duckdb file::
 
             >>> from datagrove.io.duckdb_adapter import DuckdbAdapter
-            >>> from gmnspy.fixtures import leavenworth
+            >>> from datagrove.fixtures import sample
             >>> a = DuckdbAdapter()
-            >>> listing = a.scan(leavenworth.duckdb_path(), engine=None)
-            >>> "node" in {ref.name for ref in listing}
+            >>> listing = a.scan(sample.duckdb_path(), engine=None)
+            >>> "book" in {ref.name for ref in listing}
             True
 
         Read a specific table via any engine (here pandas)::
@@ -159,9 +159,9 @@ class DuckdbAdapter:
             >>> a = DuckdbAdapter()
             >>> engine = PandasEngine()
             >>> df = engine.to_pandas(
-            ...     a.read(leavenworth.duckdb_path(), engine=engine, table="node")
+            ...     a.read(sample.duckdb_path(), engine=engine, table="book")
             ... )
-            >>> "node_id" in df.columns
+            >>> "title" in df.columns
             True
     """
 
@@ -224,13 +224,13 @@ class DuckdbAdapter:
 
         Examples:
             >>> from datagrove.io.duckdb_adapter import DuckdbAdapter
-            >>> from gmnspy.fixtures import leavenworth
+            >>> from datagrove.fixtures import sample
             >>> sorted(
             ...     r.name for r in DuckdbAdapter().scan(
-            ...         leavenworth.duckdb_path(), engine=None
+            ...         sample.duckdb_path(), engine=None
             ...     )
-            ... )[:3]
-            ['geometry', 'lane', 'link']
+            ... )
+            ['author', 'book', 'venue']
         """
         # ``engine`` is kept in the signature for FormatAdapter protocol
         # conformance and so a future ATTACH-based fast path can pull
@@ -284,10 +284,10 @@ class DuckdbAdapter:
         Examples:
             >>> from datagrove.engines.pandas_engine import PandasEngine
             >>> from datagrove.io.duckdb_adapter import DuckdbAdapter
-            >>> from gmnspy.fixtures import leavenworth
+            >>> from datagrove.fixtures import sample
             >>> e = PandasEngine()
             >>> df = DuckdbAdapter().read(
-            ...     leavenworth.duckdb_path(), engine=e, table="node"
+            ...     sample.duckdb_path(), engine=e, table="book"
             ... )
             >>> len(df) > 0
             True

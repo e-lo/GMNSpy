@@ -14,6 +14,7 @@ Your data lives on cloud storage and you want the same lazy-load surface you get
 ## Quick example
 
 Open a package directly from S3 by URL. The default AWS credential chain (env vars, `~/.aws/credentials`, IAM role) is tried automatically — you only pass `credential=` when you need to override it.
+<!-- doctest: skip -->
 
 ```python
 from gmnspy import Network
@@ -52,6 +53,7 @@ Credentials cascade in a fixed order. The first one resolved wins:
 For AWS specifically, the default boto credential chain runs *inside* step 1 — IAM role, `~/.aws/credentials`, `AWS_*` env vars. You only need a `DATAGROVE_CRED_*` variable when the bucket needs a non-default credential (e.g. a different AWS account, a custom MinIO instance with HTTP Basic).
 
 To store a credential in the keyring on a dev machine — once, interactively — call the keyring API directly:
+<!-- doctest: skip -->
 
 ```python
 import keyring
@@ -63,6 +65,7 @@ The same call from `python -c` works for CI bootstrapping if you'd rather not pu
 ### 3. Load the package
 
 Discovery via the cascade is the common path. An explicit kwarg overrides discovery, which is handy in notebooks where you'd rather not depend on shell environment:
+<!-- doctest: skip -->
 
 ```python
 from gmnspy import Network
@@ -82,6 +85,7 @@ The result is the same `Network` you'd get from a local path. Every table (`net.
 ### 4. Verify the load is lazy
 
 Inspect the underlying expression and confirm it's an ibis `Table`. Then push a filter down — only matching rows transit:
+<!-- doctest: skip -->
 
 ```python
 expr = net.links.expr  # underlying ibis Table
@@ -95,6 +99,7 @@ Filters and column projections push down to the parquet readers, so a 10 GB pack
 ### 5. Cache for repeat reads
 
 If the same script will hit the package many times — a notebook, a debugging loop, a CI matrix — convert it once and load locally afterwards:
+<!-- doctest: skip -->
 
 ```python
 from gmnspy import Network
@@ -112,6 +117,7 @@ Parquet is faster to re-read than CSV-over-S3 by an order of magnitude on cold c
 
 ???+ note "S3 (default) — AWS chain or `DATAGROVE_CRED_*_TOKEN`"
     Requires `pip install 'gmnspy[server]'` (brings in `s3fs`). The boto chain handles standard AWS auth automatically. Custom endpoints (MinIO, R2, Wasabi) need an `endpoint_url` kwarg.
+<!-- doctest: skip -->
 
     ```python
     net = Network.from_source(
@@ -122,6 +128,7 @@ Parquet is faster to re-read than CSV-over-S3 by an order of magnitude on cold c
 
 ??? note "HTTPS with bearer token or HTTP Basic"
     Bearer is detected when the token has no `:`; pass `user:pass` for HTTP Basic.
+<!-- doctest: skip -->
 
     ```python
     net = Network.from_source(
@@ -132,6 +139,7 @@ Parquet is faster to re-read than CSV-over-S3 by an order of magnitude on cold c
 
 ??? note "Azure Blob Storage (`az://`)"
     Requires `adlfs` from the `[server]` extra. Credential can be an account key, SAS token, or default Azure credential chain.
+<!-- doctest: skip -->
 
     ```python
     net = Network.from_source("az://container@account/networks/leavenworth/")
@@ -139,6 +147,7 @@ Parquet is faster to re-read than CSV-over-S3 by an order of magnitude on cold c
 
 ??? note "Google Cloud Storage (`gs://`)"
     Requires `gcsfs` from the `[server]` extra. Set `GOOGLE_APPLICATION_CREDENTIALS` to the path of your service-account JSON file.
+<!-- doctest: skip -->
 
     ```python
     net = Network.from_source("gs://my-bucket/networks/leavenworth/")
@@ -146,6 +155,7 @@ Parquet is faster to re-read than CSV-over-S3 by an order of magnitude on cold c
 
 ??? note "DuckDB over HTTP"
     Single-file DuckDB databases read directly over HTTPS via the native `httpfs` reader — one round-trip per table.
+<!-- doctest: skip -->
 
     ```python
     net = Network.from_source("duckdb://https://data.example.org/leavenworth.duckdb")
@@ -153,6 +163,7 @@ Parquet is faster to re-read than CSV-over-S3 by an order of magnitude on cold c
 
 ??? note "Force anonymous reads on a public bucket"
     The AWS chain still attempts to sign requests if any credential is present in the environment. Force unsigned access:
+<!-- doctest: skip -->
 
     ```python
     net = Network.from_source(

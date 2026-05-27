@@ -56,10 +56,16 @@ def test_get_spec_path_default_is_default_spec():
 
 
 def test_get_spec_path_rejects_unsupported_version():
-    """Versions not in ``SUPPORTED_SPECS`` raise ``ValueError``."""
+    """Versions not in ``SUPPORTED_SPECS`` raise ``InvalidSpecVersionError``.
+
+    Was ``ValueError`` pre-beta; tightened to the spec-loading-specific
+    subclass per the pre-beta review (Lens B C-2) so catch-all callers
+    can distinguish 'bad spec arg' from other engine ValueErrors.
+    """
+    from datagrove.spec.errors import InvalidSpecVersionError
     from gmnspy.spec import get_spec_path
 
-    with pytest.raises(ValueError, match=r"0\.42"):
+    with pytest.raises(InvalidSpecVersionError, match=r"0\.42"):
         get_spec_path("0.42")
 
 
@@ -109,10 +115,11 @@ def test_load_gmns_spec_version_matches_directory_name():
 
 
 def test_load_gmns_spec_rejects_unsupported_version():
-    """Unsupported versions raise ``ValueError``."""
+    """Unsupported versions raise ``InvalidSpecVersionError``."""
+    from datagrove.spec.errors import InvalidSpecVersionError
     from gmnspy.spec import load_gmns_spec
 
-    with pytest.raises(ValueError):
+    with pytest.raises(InvalidSpecVersionError):
         load_gmns_spec("0.42")
 
 

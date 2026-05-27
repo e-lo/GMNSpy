@@ -280,6 +280,13 @@ class IbisEngine:
         # pyarrow has two distinct constructors for the two inline shapes
         # the cross-engine contract accepts.
         arrow = pa.table(records) if isinstance(records, dict) else pa.Table.from_pylist(list(records))
+        # DuckDB refuses to CREATE TABLE with NULL-typed columns even
+        # though pyarrow / pandas happily produce them when every value
+        # in a column is None (a real shape we hit on the bundled
+        # Leavenworth fixture where ``link.name`` is entirely null).
+        # Cast any such columns to ``string`` — the safe default for an
+        # unknown all-null column — before handing the table to duckdb.
+        arrow = _coerce_all_null_columns_to_string(arrow)
         name = _temp_table_name("inline")
         self.con.create_table(name, obj=arrow, temp=True)
         expr = self.con.table(name)
@@ -291,8 +298,11 @@ class IbisEngine:
         Type-preserving counterpart to :meth:`from_records` — the Arrow
         buffer is handed straight to duckdb, so binary / decimal /
         timestamp columns survive (the ``to_pylist`` round-trip used to
-        coerce them).
+        coerce them). All-null (``pa.null()``-typed) columns are coerced
+        to ``string`` first — see :func:`_coerce_all_null_columns_to_string`
+        for why duckdb refuses to ``CREATE TABLE`` with them otherwise.
         """
+        arrow_table = _coerce_all_null_columns_to_string(arrow_table)
         name = _temp_table_name("inline_arrow")
         self.con.create_table(name, obj=arrow_table, temp=True)
         return self.con.table(name)
@@ -573,6 +583,29 @@ class IbisEngine:
             ) from exc
 
     # ------------------------------------------------------------------
+    # Lazy introspection — routed via ibis' native expression API.
+    # Single-line wrappers; promoted to the Engine protocol so the
+    # :class:`datagrove.dataset.Table` wrapper can delegate cleanly
+    # instead of duck-typing across engines.
+    # ------------------------------------------------------------------
+
+    def columns(self, expr: ir.Table) -> list[str]:
+        """Return ``expr``'s column names via ``expr.schema().names``."""
+        return list(expr.schema().names)
+
+    def count(self, expr: ir.Table) -> int:
+        """Push a ``SELECT COUNT(*)`` to duckdb and return the int."""
+        return int(expr.count().to_pyarrow().as_py())
+
+    def head(self, expr: ir.Table, n: int) -> ir.Table:
+        """Return ``expr.head(n)`` — ibis builds a lazy LIMIT expression."""
+        return expr.head(n)
+
+    def select(self, expr: ir.Table, columns: list[str]) -> ir.Table:
+        """Return ``expr.select(*columns)`` — lazy projection."""
+        return expr.select(*columns)
+
+    # ------------------------------------------------------------------
     # lifecycle
     # ------------------------------------------------------------------
 
@@ -658,6 +691,42 @@ def _scan_dict(
         "Supported shapes: {'data': [...]} for inline data, or "
         "{'format': 'duckdb', 'path': '...', 'table': '...'} for a duckdb handle."
     )
+
+
+def _coerce_all_null_columns_to_string(arrow_table: Any) -> Any:
+    """Cast every all-null column in ``arrow_table`` to pyarrow ``string``.
+
+    DuckDB raises :class:`ibis.common.exceptions.IbisTypeError` with
+    "DuckDB does not support creating tables with NULL typed columns"
+    when ``CREATE TABLE`` is handed a pyarrow column whose type is
+    ``pa.null()`` — which is what pyarrow infers for a column where
+    every value is ``None`` (e.g. an entirely-empty optional ``name``
+    column on the Leavenworth fixture). pandas + pyarrow are happy to
+    *materialise* such columns; only the duckdb write-path objects.
+
+    String is the safe default for an unknown all-null column: it
+    survives schema-cast later if the caller does know the real type,
+    and round-trips cleanly through CSV / parquet otherwise. We don't
+    try to be clever (no infer-from-name) because there's nothing to
+    infer from — the column is genuinely typeless on the wire.
+
+    Args:
+        arrow_table: The :class:`pyarrow.Table` to scan.
+
+    Returns:
+        Either ``arrow_table`` unchanged (no all-null columns) or a
+        new table with the offending columns cast to ``string``.
+    """
+    import pyarrow as pa
+
+    fields_to_cast = [field.name for field in arrow_table.schema if pa.types.is_null(field.type)]
+    if not fields_to_cast:
+        return arrow_table
+    new_schema = arrow_table.schema
+    for name in fields_to_cast:
+        idx = new_schema.get_field_index(name)
+        new_schema = new_schema.set(idx, pa.field(name, pa.string()))
+    return arrow_table.cast(new_schema)
 
 
 _TEMP_COUNTER = count()

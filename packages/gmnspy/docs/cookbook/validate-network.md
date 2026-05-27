@@ -19,10 +19,10 @@ Validate the bundled Leavenworth fixture from the shell. Add `--json` to any `gm
 gmnspy validate --json packages/gmnspy/gmnspy/fixtures/leavenworth/csv
 ```
 
-Expected (Leavenworth is clean, so the issue list is empty):
+Expected — Leavenworth is clean of ERRORs and WARNINGs, so the issue list contains only INFO entries (optional tables not present):
 
 ```json
-{"spec_version": "0.97", "passed": true, "issues": [], ...}
+{"header": "validation report: ...", "issues": [{"severity": "info", ...}]}
 ```
 
 The same call from Python returns a `ValidationReport` dataclass:
@@ -33,7 +33,7 @@ from gmnspy.fixtures import leavenworth
 
 net = Network.from_source(leavenworth.csv_dir())
 report = net.validate()
-print(f"passed={report.passed}  issues={len(report.issues)}")
+print(f"is_clean={report.is_clean}  issues={len(report.issues)}")
 ```
 
 The CLI exits non-zero if any ERROR-severity finding fires, so it drops straight into a CI gate.
@@ -45,11 +45,11 @@ The CLI exits non-zero if any ERROR-severity finding fires, so it drops straight
 
 ### 1. Run validation
 
-`net.validate()` runs all four passes — structural, schema, FK, sync-state — and returns a `ValidationReport`. Restrict to a subset with `passes=`:
+`net.validate()` runs all four passes — structural, schema, FK, sync-state — and returns a `ValidationReport`. Toggle individual passes with boolean kwargs:
 
 ```python
-report = net.validate()                              # all four passes
-report = net.validate(passes=["schema", "fk"])       # only two of them
+report = net.validate()                                                  # all four passes
+report = net.validate(structural=False, sync_state=False)                # schema + FK only
 ```
 
 The same operation is available from the shell, with three output formats:
@@ -64,9 +64,11 @@ gmnspy validate <source> --html report.html    # standalone HTML report
 
 `ValidationReport` is a dataclass with three fields you'll touch:
 
-| Field | Type | Description |
+| Field / property | Type | Description |
 |---|---|---|
-| `report.passed` | `bool` | `True` iff no ERROR-severity issue fired. WARNINGs and INFOs do not flip this. |
+| `report.is_clean` | `bool` | `True` iff zero issues of any severity fired. |
+| `report.has_errors` | `bool` | `True` iff ≥1 ERROR-severity issue fired. CI gates usually want `if report.has_errors:`. |
+| `report.has_warnings` | `bool` | `True` iff ≥1 WARNING-severity issue fired. |
 | `report.spec_version` | `str` | The GMNS spec version the validator ran against. |
 | `report.issues` | `list[Issue]` | One entry per finding. |
 
@@ -162,7 +164,8 @@ Stable identifier strings let you script around specific findings without parsin
     Useful for triaging which datasets need attention first.
 
     ```python
-    failing = {i.table for i in report.issues if i.is_error()}
+    from datagrove.reports import Severity
+    failing = {i.table for i in report.issues if i.severity is Severity.ERROR}
     ```
 
 ??? note "Embed in a CI step"

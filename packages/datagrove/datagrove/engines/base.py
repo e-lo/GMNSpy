@@ -431,6 +431,72 @@ class Engine(Protocol):
         """
         ...
 
+    # ------------------------------------------------------------------
+    # Lazy introspection — promoted from per-engine duck-typed helpers
+    # so the dataset/table.py wrapper can delegate without the getattr/
+    # try-except ladder that lived in ``_engine_columns`` /
+    # ``_engine_count`` / ``_engine_head`` / ``_engine_select``.
+    # ------------------------------------------------------------------
+
+    def columns(self, expr: TableExpr) -> list[str]:
+        """Return the column names of ``expr`` without materialising rows.
+
+        Each engine has a cheap lazy schema path (ibis ``expr.schema().names``,
+        polars ``expr.collect_schema().names()``, pandas
+        ``list(expr.columns)``). Implementations route to that path so
+        the wrapper in :class:`datagrove.dataset.Table` is one line.
+
+        Args:
+            expr: Engine-native expression.
+
+        Returns:
+            A new list of column names in declaration order.
+        """
+        ...
+
+    def count(self, expr: TableExpr) -> int:
+        """Return the row count of ``expr``, pushing the aggregate to the engine.
+
+        ibis pushes a ``SELECT COUNT(*)`` to duckdb; polars selects
+        ``pl.len()`` inside the lazy plan; pandas calls ``len(expr)``.
+        Implementations must not full-materialise the table to count it.
+
+        Args:
+            expr: Engine-native expression.
+
+        Returns:
+            Number of rows in ``expr``.
+        """
+        ...
+
+    def head(self, expr: TableExpr, n: int) -> TableExpr:
+        """Return a new lazy expression with only the first ``n`` rows.
+
+        Lazy — the engine builds a head expression but does not execute
+        it. The pandas engine is the only one where this materialises
+        (pandas has no lazy mode).
+
+        Args:
+            expr: Engine-native expression.
+            n: Row count to keep.
+
+        Returns:
+            A new engine-native expression of the same type as ``expr``.
+        """
+        ...
+
+    def select(self, expr: TableExpr, columns: list[str]) -> TableExpr:
+        """Return a new lazy expression projected to ``columns``.
+
+        Args:
+            expr: Engine-native expression.
+            columns: Column names to keep. Must all exist on ``expr``.
+
+        Returns:
+            A new engine-native expression carrying only ``columns``.
+        """
+        ...
+
     def to_pandas(self, expr: TableExpr) -> pd.DataFrame:
         """Materialize ``expr`` and return it as a ``pandas.DataFrame``.
 

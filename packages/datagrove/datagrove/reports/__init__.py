@@ -8,7 +8,7 @@ single-file HTML. Validators in :mod:`datagrove.validation` produce
 Public surface
 --------------
 
-- :class:`Severity` — ``ERROR``, ``WARNING``, ``INFO``, ``DATA_QUALITY``.
+- :class:`Severity` — ``ERROR``, ``WARNING``, ``INFO``.
 - :class:`Category` — ``SCHEMA``, ``STRUCTURAL``, ``FOREIGN_KEY``,
   ``SYNC_STATE``, ``DATA_QUALITY``.
 - :class:`Issue` — one frozen, hashable finding.

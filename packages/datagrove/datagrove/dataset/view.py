@@ -234,22 +234,21 @@ def from_bbox(
             be loaded.
 
     Examples:
-        Scope the Leavenworth ``geometry`` table to a small bbox::
+        Scope the bundled sample ``venue`` table to a small bbox around
+        Portland (picks out one of the four bookstore POINTs)::
 
             >>> from datagrove.dataset import Package
             >>> from datagrove.dataset.view import from_bbox
             >>> from datagrove.engines.ibis_engine import IbisEngine
-            >>> from gmnspy.fixtures import leavenworth
-            >>> import gmnspy, pathlib
-            >>> spec = pathlib.Path(gmnspy.__file__).parent / "spec" / "0.97" / "datapackage.json"
+            >>> from datagrove.fixtures import sample
             >>> pkg = Package.from_source(
-            ...     leavenworth.csv_dir(),
+            ...     sample.csv_dir(),
             ...     engine=IbisEngine(),
-            ...     spec=spec,
-            ...     tables=["geometry"],
+            ...     spec=sample.DATAPACKAGE,
+            ...     tables=["venue"],
             ... )
-            >>> scoped = from_bbox(pkg["geometry"], -120.67, 47.59, -120.66, 47.60)
-            >>> scoped.count() < pkg["geometry"].count()
+            >>> scoped = from_bbox(pkg["venue"], -123.0, 45.0, -122.0, 46.0)
+            >>> scoped.count() < pkg["venue"].count()
             True
     """
 
@@ -294,21 +293,19 @@ def from_polygon(
             >>> from datagrove.dataset import Package
             >>> from datagrove.dataset.view import from_polygon
             >>> from datagrove.engines.ibis_engine import IbisEngine
-            >>> from gmnspy.fixtures import leavenworth
-            >>> import gmnspy, pathlib
-            >>> spec = pathlib.Path(gmnspy.__file__).parent / "spec" / "0.97" / "datapackage.json"
+            >>> from datagrove.fixtures import sample
             >>> pkg = Package.from_source(
-            ...     leavenworth.csv_dir(),
+            ...     sample.csv_dir(),
             ...     engine=IbisEngine(),
-            ...     spec=spec,
-            ...     tables=["geometry"],
+            ...     spec=sample.DATAPACKAGE,
+            ...     tables=["venue"],
             ... )
             >>> wkt = (
-            ...     "POLYGON ((-120.67 47.59, -120.66 47.59, "
-            ...     "-120.66 47.60, -120.67 47.60, -120.67 47.59))"
+            ...     "POLYGON ((-123.0 45.0, -122.0 45.0, "
+            ...     "-122.0 46.0, -123.0 46.0, -123.0 45.0))"
             ... )
-            >>> scoped = from_polygon(pkg["geometry"], wkt)
-            >>> scoped.count() < pkg["geometry"].count()
+            >>> scoped = from_polygon(pkg["venue"], wkt)
+            >>> scoped.count() < pkg["venue"].count()
             True
     """
     # Bare WKT strings skip the shapely gate; everything else requires
@@ -356,26 +353,25 @@ def from_geometry_buffer(
             inputs only) or the duckdb spatial extension cannot be loaded.
 
     Examples:
-        Buffer around a point (small radius in degrees)::
+        Buffer around a point (small radius in degrees) — picks one of
+        the four bookstore venues out of the bundled sample::
 
             >>> from datagrove.dataset import Package
             >>> from datagrove.dataset.view import from_geometry_buffer
             >>> from datagrove.engines.ibis_engine import IbisEngine
-            >>> from gmnspy.fixtures import leavenworth
-            >>> import gmnspy, pathlib
-            >>> spec = pathlib.Path(gmnspy.__file__).parent / "spec" / "0.97" / "datapackage.json"
+            >>> from datagrove.fixtures import sample
             >>> pkg = Package.from_source(
-            ...     leavenworth.csv_dir(),
+            ...     sample.csv_dir(),
             ...     engine=IbisEngine(),
-            ...     spec=spec,
-            ...     tables=["geometry"],
+            ...     spec=sample.DATAPACKAGE,
+            ...     tables=["venue"],
             ... )
             >>> scoped = from_geometry_buffer(
-            ...     pkg["geometry"],
-            ...     "POINT (-120.6660 47.5960)",
-            ...     0.005,
+            ...     pkg["venue"],
+            ...     "POINT (-122.6810 45.5230)",
+            ...     0.5,
             ... )
-            >>> scoped.count() < pkg["geometry"].count()
+            >>> scoped.count() < pkg["venue"].count()
             True
     """
     if not isinstance(geometry, str):

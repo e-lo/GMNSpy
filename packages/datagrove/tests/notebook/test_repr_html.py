@@ -126,7 +126,9 @@ def test_validation_report_repr_html_groups_by_severity() -> None:
     assert "ERROR" in html
     assert "WARNING" in html
     assert "INFO" in html
-    assert "DATA_QUALITY" in html
+    # DATA_QUALITY was removed from Severity in Phase 5 hardening;
+    # quality findings now carry Category.DATA_QUALITY with a real
+    # severity, so the per-severity card surfaces only three buckets.
 
 
 def test_validation_report_repr_html_truncates_long_issue_list() -> None:

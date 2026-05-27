@@ -48,9 +48,12 @@ def mixed_report() -> ValidationReport:
     report = ValidationReport(spec_version="0.97", source="leavenworth.gmns")
     # Add deliberately OUT OF ORDER — the renderer must re-sort.
     report.add_issue(_issue(Severity.INFO, Category.STRUCTURAL, "structural.optional", "info-msg"))
+    # Data-quality findings use Category.DATA_QUALITY with a real severity.
+    # Here it's INFO (awareness-only) so it sorts to the bottom alongside
+    # the structural info above.
     report.add_issue(
         _issue(
-            Severity.DATA_QUALITY,
+            Severity.INFO,
             Category.DATA_QUALITY,
             "quality.high_speed",
             "quality-msg",
@@ -97,14 +100,20 @@ class TestRenderRich:
         assert "0.97" in render_rich(mixed_report)
 
     def test_severity_ordering(self, mixed_report):
-        """Renderer MUST group ERROR -> WARNING -> INFO -> DATA_QUALITY."""
+        """Renderer MUST group ERROR -> WARNING -> INFO.
+
+        Both ``info-msg`` (structural) and ``quality-msg`` (data-quality)
+        are ``Severity.INFO`` and therefore appear in the same trailing
+        section.
+        """
         out = render_rich(mixed_report)
         # Locate each severity's distinguishing message text
         idx_error = out.index("error-msg")
         idx_warning = out.index("warning-msg")
         idx_info = out.index("info-msg")
         idx_quality = out.index("quality-msg")
-        assert idx_error < idx_warning < idx_info < idx_quality
+        assert idx_error < idx_warning < idx_info
+        assert idx_error < idx_warning < idx_quality
 
     def test_fix_hint_rendered_when_present(self, mixed_report):
         assert "Provide a value for from_node_id." in render_rich(mixed_report)
@@ -146,7 +155,11 @@ class TestRenderJson:
         d = json.loads(render_json(mixed_report))
         assert d["summary"]["error"] == 1
         assert d["summary"]["warning"] == 1
-        assert d["summary"]["info"] == 1
+        # Two INFO: the structural one and the data-quality one (which is
+        # now Severity.INFO + Category.DATA_QUALITY rather than the
+        # removed Severity.DATA_QUALITY).
+        assert d["summary"]["info"] == 2
+        # Category-based count survives — see ValidationReport.to_dict.
         assert d["summary"]["data_quality"] == 1
         assert len(d["issues"]) == 4
 

@@ -173,7 +173,7 @@ class Table:
             ['a']
         """
         cols = list(columns)
-        return self._derived(_engine_select(self.engine, self.expr, cols))
+        return self._derived(self.engine.select(self.expr, cols))
 
     def head(self, n: int = 5) -> Table:
         """Return a new :class:`Table` containing only the first ``n`` rows.
@@ -195,7 +195,7 @@ class Table:
             >>> Table(name="t", expr=expr, engine=e).head(3).count()
             3
         """
-        return self._derived(_engine_head(self.engine, self.expr, n))
+        return self._derived(self.engine.head(self.expr, n))
 
     # ------------------------------------------------------------------
     # Materialisation
@@ -204,19 +204,11 @@ class Table:
     def count(self) -> int:
         """Return the row count, pushing down to the engine where possible.
 
-        Tries the engine-native count path before falling back to a
-        full materialisation:
-
-        * ibis ``Table`` exprs use
-          ``expr.count().to_pyarrow().as_py()`` so the aggregate is
-          pushed to duckdb (or whichever ibis backend) as a single SQL
-          scalar.
-        * polars ``LazyFrame`` exprs use
-          ``expr.select(polars.len()).collect().item()`` so the count
-          stays inside the lazy plan.
-        * pandas ``DataFrame`` exprs use ``len(expr)`` directly —
-          pandas is already eager so there's nothing to push.
-        * Anything else falls back to ``len(engine.to_pandas(expr))``.
+        Delegates to :meth:`Engine.count`, which routes through each
+        backend's native cheap-count path (``ibis`` pushes a
+        ``SELECT COUNT(*)`` to duckdb; ``polars`` selects ``pl.len()``
+        inside the lazy plan; ``pandas`` calls ``len`` on the already-
+        materialised frame). No table is materialised just to count it.
 
         Examples:
             >>> from datagrove.engines.pandas_engine import PandasEngine
@@ -225,7 +217,7 @@ class Table:
             >>> Table(name="t", expr=e.from_records([{"a": 1}]), engine=e).count()
             1
         """
-        return _engine_count(self.engine, self.expr)
+        return self.engine.count(self.expr)
 
     def to_pandas(self) -> pd.DataFrame:
         """Materialise as a ``pandas.DataFrame`` using the engine's converter.
@@ -314,10 +306,10 @@ class Table:
     def columns(self) -> list[str]:
         """Return the column names of the underlying expression.
 
-        Uses the engine's lazy schema introspection where possible —
-        for ibis this is ``expr.schema().names``; for polars
-        ``expr.collect_schema().names()``; for pandas
-        ``list(expr.columns)``. No row materialisation runs.
+        Delegates to :meth:`Engine.columns`, which uses the engine's
+        lazy schema introspection (ibis ``expr.schema().names``, polars
+        ``expr.collect_schema().names()``, pandas ``list(expr.columns)``).
+        No row materialisation runs.
 
         Examples:
             >>> from datagrove.engines.pandas_engine import PandasEngine
@@ -326,7 +318,7 @@ class Table:
             >>> Table(name="t", expr=e.from_records([{"a": 1, "b": 2}]), engine=e).columns()
             ['a', 'b']
         """
-        return _engine_columns(self.engine, self.expr)
+        return self.engine.columns(self.expr)
 
     def __repr__(self) -> str:
         """One-line summary: name, format if known, row count if cheap, dirty flag."""
@@ -387,155 +379,6 @@ class Table:
             dirty=False,
             metadata=dict(self.metadata),
         )
-
-
-# ---------------------------------------------------------------------------
-# Engine-shape helpers — kept module-level so adding a fourth engine doesn't
-# require changing :class:`Table`.
-# ---------------------------------------------------------------------------
-
-
-def _engine_columns(engine: Engine, expr: TableExpr) -> list[str]:
-    """Best-effort lazy column list across the stock engines.
-
-    Tries the cheapest known surface per engine — duck-typed to the
-    engine's TableExpr — and falls back to a one-row materialisation if
-    none of them are present. The fallback ensures :class:`Table` works
-    with downstream engines that follow the protocol structurally but
-    have a different schema-introspection API.
-    """
-    # polars LazyFrame: collect_schema().names() (Polars >= 1.0).
-    # Check this BEFORE `expr.schema` — on polars LazyFrame `.schema` is a
-    # property whose access emits a PerformanceWarning steering users to
-    # collect_schema(). We don't want to trip that warning.
-    collect_schema = getattr(expr, "collect_schema", None)
-    if callable(collect_schema):
-        try:
-            sch = collect_schema()
-            names_fn = getattr(sch, "names", None)
-            if callable(names_fn):
-                return list(names_fn())
-        except Exception:
-            pass
-    # ibis: expr.schema() returns an ibis.Schema whose .names is a list[str].
-    schema_fn = getattr(expr, "schema", None)
-    if callable(schema_fn):
-        try:
-            sch = schema_fn()
-            names = getattr(sch, "names", None)
-            if isinstance(names, list):
-                return list(names)
-        except Exception:
-            pass
-    # pandas / polars DataFrame: .columns
-    cols = getattr(expr, "columns", None)
-    if cols is not None:
-        return list(cols)
-    # Fallback: cheap-ish materialisation.
-    return list(engine.to_pandas(expr).columns)
-
-
-def _engine_select(engine: Engine, expr: TableExpr, columns: list[str]) -> TableExpr:
-    """Engine-native ``select(columns)`` — preserves the expression's laziness.
-
-    Each engine exposes a slightly different selection surface; we
-    duck-type to the cheapest lazy one and fall through to pandas only
-    when nothing else matches. The fallback path is eager but the test
-    parametrisation excludes it for the engines we ship today.
-    """
-    # ibis: expr.select("a", "b")
-    select_fn = getattr(expr, "select", None)
-    if callable(select_fn):
-        # ibis + polars LazyFrame + polars DataFrame all expose this surface.
-        try:
-            return select_fn(*columns)
-        except TypeError:
-            # polars wants a list, ibis takes varargs — try the list form.
-            return select_fn(columns)
-    # pandas DataFrame: column-list indexing.
-    try:
-        return expr[columns]  # type: ignore[index]
-    except Exception:  # pragma: no cover - defensive fallback
-        df = engine.to_pandas(expr)
-        return df[columns]
-
-
-def _engine_count(engine: Engine, expr: TableExpr) -> int:
-    """Engine-native row count — avoids the full materialisation hop.
-
-    Probes the cheapest known count surface per engine in order. The
-    duck-typed checks intentionally don't require an ``isinstance``
-    against ibis / polars / pandas at this layer so a fourth engine
-    that follows the same structural surface keeps working without
-    edits here.
-
-    Order:
-        1. ``expr.count()`` returning an ibis scalar — call
-           ``.to_pyarrow().as_py()`` for the int.
-        2. ``expr.select(pl.len()).collect().item()`` for polars
-           ``LazyFrame``.
-        3. ``len(expr)`` for pandas / polars eager ``DataFrame``.
-        4. Last-resort fallback: ``len(engine.to_pandas(expr))``.
-    """
-    # ibis: `expr.count()` returns an ibis scalar expression whose
-    # `to_pyarrow().as_py()` produces the int via the configured
-    # backend. The whole computation pushes down as a SQL
-    # `SELECT COUNT(*)`. Mirrors the convention in
-    # :func:`datagrove.validation.schema_check._count`.
-    count_fn = getattr(expr, "count", None)
-    if callable(count_fn):
-        try:
-            result = count_fn()
-        except TypeError:
-            result = None
-        if result is not None:
-            to_pyarrow = getattr(result, "to_pyarrow", None)
-            if callable(to_pyarrow):
-                try:
-                    return int(to_pyarrow().as_py())
-                except Exception:  # pragma: no cover - defensive
-                    pass
-            # pandas Series exposes a `.count()` int directly — fall
-            # through to len() below.
-    # polars LazyFrame: select(pl.len()).collect().item() keeps the
-    # count inside the lazy plan. We only import polars when the
-    # expression actually has the `collect` + `select` shape so we
-    # don't pay an import cost for the ibis / pandas paths.
-    if hasattr(expr, "collect") and hasattr(expr, "select"):
-        try:
-            import polars as pl  # local import — polars is optional
-        except ImportError:  # pragma: no cover - polars not installed
-            pl = None  # type: ignore[assignment]
-        if pl is not None:
-            try:
-                return int(expr.select(pl.len()).collect().item())  # type: ignore[arg-type]
-            except Exception:  # pragma: no cover - defensive
-                pass
-    # pandas DataFrame / polars eager DataFrame: len() is cheap.
-    try:
-        return len(expr)  # type: ignore[arg-type]
-    except TypeError:
-        pass
-    # Last resort — materialise via the engine. Keeps the public
-    # contract intact for exotic engines.
-    return len(engine.to_pandas(expr))
-
-
-def _engine_head(engine: Engine, expr: TableExpr, n: int) -> TableExpr:
-    """Engine-native ``head(n)`` — preserves the expression's laziness.
-
-    Tries ``expr.head(n)`` (works for ibis, pandas, polars DataFrame),
-    then ``expr.limit(n)`` (polars LazyFrame), then falls through to a
-    pandas materialise-and-slice as the universal floor.
-    """
-    head_fn = getattr(expr, "head", None)
-    if callable(head_fn):
-        return head_fn(n)
-    limit_fn = getattr(expr, "limit", None)
-    if callable(limit_fn):
-        return limit_fn(n)
-    df = engine.to_pandas(expr)
-    return df.head(n)
 
 
 def _html_escape(value: str) -> str:

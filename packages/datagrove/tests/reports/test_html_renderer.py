@@ -7,7 +7,7 @@ CSS + JS + data embedded — that can be opened in a browser as-is.
 These tests assert the contract documented in
 ``docs/architecture.md`` §6.3:
 
-- severity ordering (ERROR → WARNING → INFO → DATA_QUALITY)
+- severity ordering (ERROR → WARNING → INFO)
 - filter controls (table, severity, category, code)
 - click-to-expand row context
 - embedded JSON payload for "Export JSON"
@@ -76,9 +76,12 @@ def mixed_report() -> ValidationReport:
             table="segment",
         )
     )
+    # Data-quality findings carry a real severity now. Use INFO so this
+    # one demonstrates the "low-urgency quality finding" case (e.g.
+    # missing optional field) and sorts to the INFO bucket in the HTML.
     report.add_issue(
         _issue(
-            Severity.DATA_QUALITY,
+            Severity.INFO,
             Category.DATA_QUALITY,
             "quality.high_speed",
             "quality-msg-marker",
@@ -166,14 +169,13 @@ class TestRenderHtmlShape:
         """Severity section headings appear in canonical order."""
         out = render_html(mixed_report)
         # Section heading text — uppercased per the template convention.
-        for label in ("ERROR", "WARNING", "INFO", "DATA_QUALITY"):
+        for label in ("ERROR", "WARNING", "INFO"):
             assert label in out, f"missing severity heading: {label}"
         # Ordering check.
         idx_error = out.index("ERROR")
         idx_warning = out.index("WARNING")
         idx_info = out.index("INFO")
-        idx_quality = out.index("DATA_QUALITY")
-        assert idx_error < idx_warning < idx_info < idx_quality
+        assert idx_error < idx_warning < idx_info
 
     def test_render_html_includes_issue_messages(self, mixed_report):
         out = render_html(mixed_report)
@@ -186,14 +188,15 @@ class TestRenderHtmlShape:
             assert msg in out, f"missing message text: {msg}"
 
     def test_render_html_includes_summary_counts(self, mixed_report):
-        """Header shows the per-severity numeric badges."""
+        """Header shows the per-severity numeric badges (plus category quality count)."""
         out = render_html(mixed_report)
-        # 1 of each severity in the mixed fixture.
+        # Counts in the mixed fixture: 1 error, 1 warning, 2 info (one
+        # structural + one data-quality), 1 data-quality category.
         # Look for the digits within the badge spans — pattern, not exact match
         # of surrounding whitespace, so the template can format badges freely.
         assert re.search(r'class="badge error"[^>]*>\s*1\b', out)
         assert re.search(r'class="badge warning"[^>]*>\s*1\b', out)
-        assert re.search(r'class="badge info"[^>]*>\s*1\b', out)
+        assert re.search(r'class="badge info"[^>]*>\s*2\b', out)
         assert re.search(r'class="badge data_quality"[^>]*>\s*1\b', out)
 
     def test_render_html_is_self_contained_no_external_css_js_except_map(self, mixed_report):

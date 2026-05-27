@@ -59,10 +59,15 @@ def test_from_source_records_explicit_spec_version(engine):
 
 
 def test_from_source_rejects_unsupported_spec_version():
-    """Unknown spec_version raises ValueError before any I/O happens."""
+    """Unknown spec_version raises InvalidSpecVersionError before any I/O."""
+    from datagrove.spec.errors import InvalidSpecVersionError, SpecLoadError
     from gmnspy import Network
 
-    with pytest.raises(ValueError, match=r"0\.42"):
+    with pytest.raises(InvalidSpecVersionError, match=r"0\.42"):
+        Network.from_source(leavenworth.csv_dir(), spec_version="0.42")
+    # Catchable via the parent class too — important for catch-all
+    # handlers that don't want to import the specific subclass.
+    with pytest.raises(SpecLoadError):
         Network.from_source(leavenworth.csv_dir(), spec_version="0.42")
 
 

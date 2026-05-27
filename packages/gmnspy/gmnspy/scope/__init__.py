@@ -13,6 +13,10 @@ Public surface:
 * Constructors: :func:`from_nodes`, :func:`from_node`,
   :func:`from_link`, :func:`from_point`, :func:`connected_component`,
   :func:`from_zone`.
+* :class:`NetworkScopeAccessor` — partial-applied accessor returned by
+  :attr:`gmnspy.Network.scope` so the architecture-documented chain
+  ``net.scope.from_nodes([1,2,3]).buffer_network("0.5mi")`` reads
+  naturally.
 * :class:`ScopeError` — typed exception (subclass of
   :class:`gmnspy.NetworkError`).
 * :data:`AUTO_INDEX_THRESHOLD_DEFAULT` — node-count threshold above
@@ -20,6 +24,7 @@ Public surface:
   ``GMNSPY_AUTO_INDEX_THRESHOLD``.
 """
 
+from .accessor import NetworkScopeAccessor
 from .errors import ScopeError
 from .scope import (
     AUTO_INDEX_THRESHOLD_DEFAULT,
@@ -35,6 +40,7 @@ from .scope import (
 __all__ = [
     "AUTO_INDEX_THRESHOLD_DEFAULT",
     "NetworkScope",
+    "NetworkScopeAccessor",
     "ScopeError",
     "connected_component",
     "from_link",

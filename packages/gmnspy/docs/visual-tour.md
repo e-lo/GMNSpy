@@ -41,6 +41,7 @@ The steps below show both paths.
 ### 1. Load the fixture
 
 Start by loading the bundled Leavenworth network. `Network.from_source` returns a lazy `Network` — no rows have been read from disk yet; `net.links` is still an ibis expression.
+<!-- doctest: skip -->
 
 ```python
 from gmnspy import Network
@@ -64,6 +65,7 @@ In a notebook, evaluating `net` on its own renders an HTML summary card with the
 ### 2. Render the network as a map
 
 The `link` table is keyed to `geometry` by `geometry_id`; the `geometry.geometry` column carries the WKT LineString per link. Materialise both with `.to_pandas()` and join them before plotting.
+<!-- doctest: skip -->
 
 ```python
 import pandas as pd
@@ -76,6 +78,7 @@ links["shape"] = links["geometry"].map(wkt.loads)
 ```
 
 For an interactive Leaflet map, use folium. Compute the centroid from the node table, then add one PolyLine per link.
+<!-- doctest: skip -->
 
 ```python
 import folium
@@ -97,6 +100,7 @@ You should see the downtown Leavenworth grid — a compact, walkable core wrappe
 *Folium map of the full Leavenworth fixture. The compact downtown grid is visible around Highway 2, with tertiary residential streets fanning out.*
 
 If `folium` isn't available, the static matplotlib fallback gives an equivalent view (without basemap tiles):
+<!-- doctest: skip -->
 
 ```python
 import matplotlib.pyplot as plt
@@ -115,6 +119,7 @@ Either way: a recognisable Bavarian-themed downtown core in roughly 600 m of OSM
 ### 3. Validate and display the report
 
 `net.validate()` runs the four-pass validator (structural / schema / FK / sync-state) and returns a `ValidationReport`. In a notebook, evaluating the report on its own renders a styled HTML card.
+<!-- doctest: skip -->
 
 ```python
 report = net.validate()
@@ -127,6 +132,7 @@ You should see a green header ("0 errors") with a per-pass summary. The Leavenwo
 *Validation report card. Zero ERRORs, with the four passes (structural / schema / FK / sync-state) summarised across 25 tables.*
 
 In a non-notebook context, drop down to the text representation:
+<!-- doctest: skip -->
 
 ```python
 print(f"{report.spec_version}: {len(report.issues)} issues")
@@ -137,6 +143,7 @@ for issue in report.issues[:5]:
 ### 4. Run quality and display
 
 The data-quality pack flags things the spec is silent on but every real network has — disconnected components, lane-count mismatches, high speeds on residential facilities, near-duplicate nodes. Run it the same way as validation; the result has its own `_repr_html_`.
+<!-- doctest: skip -->
 
 ```python
 from datagrove.quality import run_quality
@@ -151,6 +158,7 @@ You should see a card with WARNING / INFO findings (no ERRORs). Leavenworth's te
 *Quality report card. Severity-grouped findings; the residential-speed rule fires on a handful of tertiary streets.*
 
 To see the top findings in detail, iterate over `qreport.issues`:
+<!-- doctest: skip -->
 
 ```python
 for issue in qreport.issues[:3]:
@@ -160,6 +168,7 @@ for issue in qreport.issues[:3]:
 ### 5. Simplify geometry and render before/after
 
 The `simplify_geometry` op in `gmnspy.clean` removes redundant vertices from link geometries. Wrap it in a `Session` so the edit can be rolled back atomically.
+<!-- doctest: skip -->
 
 ```python
 from datagrove.editing import Session
@@ -176,6 +185,7 @@ You should see an `EditResult` diff card listing the number of vertices removed 
 *EditResult diff card. Per-link vertex counts before / after, with a summary of links touched and vertices removed.*
 
 To visualise before-and-after on one map, snapshot the geometry before opening the session, then overlay both:
+<!-- doctest: skip -->
 
 ```python
 links_before = links[["link_id", "shape"]].copy()
@@ -199,6 +209,7 @@ m
 Grey underneath = before; red on top = after. On Leavenworth most links don't change (the OSM source is already minimal), but a handful of curved tertiary links visibly simplify.
 
 To restore the original state, roll the session back:
+<!-- doctest: skip -->
 
 ```python
 s.rollback()
@@ -209,6 +220,7 @@ The session's chronological log reverses every edit atomically — the network r
 ### 6. Build a scope from a single node and render
 
 `from_node` builds a network-distance-bounded subgraph around a seed node. The 200 m buffer below is Dijkstra-bounded along the routable graph — links that are spatially close but only reachable via long detours fall outside.
+<!-- doctest: skip -->
 
 ```python
 from gmnspy.scope import from_node
@@ -220,6 +232,7 @@ print(f"scoped: {scoped.links.count()} links, {scoped.nodes.count()} nodes")
 Every related table (`lane`, `link_tod`, `movement`, signal tables) is pre-filtered by FK chain, so the result is a self-consistent GMNS network you can write back out.
 
 Render the scope side-by-side with the original to see the contrast — full network as grey context, scoped subgraph highlighted.
+<!-- doctest: skip -->
 
 ```python
 scoped_links = scoped.links.to_pandas().join(geoms[["geometry"]], on="geometry_id")
@@ -248,6 +261,7 @@ Each accordion below is a one-line tweak that shows off a different facet of the
 
 ???+ note "Try a different fixture or your own network"
     The bundled fixture is Leavenworth. Point `Network.from_source` at any GMNS package on disk or in cloud storage to repeat the tour with your own data — every step above is fixture-agnostic.
+<!-- doctest: skip -->
 
     ```python
     net = Network.from_source("./my-network/")
@@ -256,6 +270,7 @@ Each accordion below is a one-line tweak that shows off a different facet of the
 
 ??? note "Switch to the pandas engine for eager evaluation"
     The default ibis + DuckDB engine is lazy. Switch to pandas if you'd rather have every table materialised up-front (handy for small fixtures where you'll touch every row).
+<!-- doctest: skip -->
 
     ```python
     from datagrove.engines.pandas_engine import PandasEngine
@@ -265,6 +280,7 @@ Each accordion below is a one-line tweak that shows off a different facet of the
 
 ??? note "Configure a custom quality threshold"
     Override the `quality.high_speed_residential` threshold (default is conservative). Tightening it surfaces more findings on a network with mixed posted speeds.
+<!-- doctest: skip -->
 
     ```python
     from datagrove.quality import RuleConfig, run_quality

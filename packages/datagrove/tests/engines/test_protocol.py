@@ -72,6 +72,19 @@ class FakeEngine:
     def to_polars(self, expr):
         return None
 
+    # Lazy introspection — promoted to the protocol in Phase 5 hardening.
+    def columns(self, expr):
+        return []
+
+    def count(self, expr):
+        return 0
+
+    def head(self, expr, n):
+        return expr
+
+    def select(self, expr, columns):
+        return expr
+
 
 class IncompleteEngine:
     """Missing the read primitives — should NOT be recognised as an Engine."""

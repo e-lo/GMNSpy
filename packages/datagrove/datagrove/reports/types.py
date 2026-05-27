@@ -26,6 +26,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from enum import StrEnum
+from pathlib import Path
 from typing import Any
 
 __all__ = ["Category", "Issue", "Severity", "ValidationReport"]
@@ -35,23 +36,30 @@ class Severity(StrEnum):
     """Severity of a single validation finding.
 
     The order matters: renderers display issues grouped
-    ``ERROR -> WARNING -> INFO -> DATA_QUALITY``. The ``str`` base
-    (rather than ``int``) was chosen for JSON-serialisability — a
-    validation report dumped to JSON is the same on Python 3.11 and
-    Python 3.13 with no custom encoder, and ``severity == "error"``
-    works for users who read the JSON without re-importing the enum.
+    ``ERROR -> WARNING -> INFO``. The ``str`` base (rather than ``int``)
+    was chosen for JSON-serialisability — a validation report dumped to
+    JSON is the same on Python 3.11 and Python 3.13 with no custom
+    encoder, and ``severity == "error"`` works for users who read the
+    JSON without re-importing the enum.
 
     For ordering, use :func:`severity_rank`.
+
+    Severity is *orthogonal* to :class:`Category`. A data-quality
+    finding carries ``Category.DATA_QUALITY`` AND one of the three
+    severity values — a missing speed limit is typically ``INFO``,
+    while a 70mph residential street is ``WARNING``. The pre-1.0
+    ``Severity.DATA_QUALITY`` value conflated the two dimensions and
+    was removed; quality rules now pick the real severity that matches
+    how urgently the finding wants attention.
 
     Attributes:
         ERROR: Spec or contract violation. The data is wrong; downstream
             consumers should not trust it.
         WARNING: Likely problem that does not break correctness. The
-            ``OutOfSyncWarning`` family lives here.
-        INFO: Informational only. No action required.
-        DATA_QUALITY: A configurable quality rule (registered via
-            ``datagrove.quality``) flagged the data. Not part of the
-            spec — the threshold is a project choice.
+            ``OutOfSyncWarning`` family lives here. Also the default
+            severity for a suspicious data-quality finding.
+        INFO: Informational only. No action required. Also the default
+            severity for an awareness-only data-quality finding.
 
     Examples:
         >>> Severity("error") is Severity.ERROR
@@ -63,7 +71,6 @@ class Severity(StrEnum):
     ERROR = "error"
     WARNING = "warning"
     INFO = "info"
-    DATA_QUALITY = "data_quality"
 
 
 # Display + sort order for renderers and any caller that needs to surface
@@ -72,7 +79,6 @@ _SEVERITY_ORDER: tuple[Severity, ...] = (
     Severity.ERROR,
     Severity.WARNING,
     Severity.INFO,
-    Severity.DATA_QUALITY,
 )
 
 #: How many issues to enumerate in :meth:`ValidationReport._repr_html_`
@@ -92,13 +98,13 @@ def severity_rank(severity: Severity) -> int:
 
     Returns:
         Integer index in the canonical display order
-        (ERROR=0, WARNING=1, INFO=2, DATA_QUALITY=3).
+        (ERROR=0, WARNING=1, INFO=2).
 
     Examples:
         >>> severity_rank(Severity.ERROR)
         0
-        >>> severity_rank(Severity.DATA_QUALITY)
-        3
+        >>> severity_rank(Severity.INFO)
+        2
     """
     return _SEVERITY_ORDER.index(severity)
 
@@ -452,8 +458,11 @@ class ValidationReport:
     def is_clean(self) -> bool:
         """``True`` when no errors AND no warnings are present.
 
-        ``INFO`` and ``DATA_QUALITY`` issues do *not* break ``is_clean``
-        — they're informational, and surfaced for awareness.
+        ``INFO`` issues do *not* break ``is_clean`` — they're
+        informational, and surfaced for awareness. Data-quality findings
+        (``Category.DATA_QUALITY``) carry whichever severity the rule
+        chose; ``WARNING`` ones flip ``is_clean`` to ``False``, ``INFO``
+        ones don't.
 
         Examples:
             >>> r = ValidationReport()
@@ -514,7 +523,10 @@ class ValidationReport:
                 "error": self.count(Severity.ERROR),
                 "warning": self.count(Severity.WARNING),
                 "info": self.count(Severity.INFO),
-                "data_quality": self.count(Severity.DATA_QUALITY),
+                # Category-based count — kept in the summary now that
+                # DATA_QUALITY is a category, not a severity. Preserves
+                # the JSON shape pre-1.0 report consumers grew up on.
+                "data_quality": len(self.by_category(Category.DATA_QUALITY)),
                 "is_clean": self.is_clean,
             },
             "issues": [_issue_to_dict(i) for i in self.issues],
@@ -558,7 +570,13 @@ class ValidationReport:
 
         return render_rich(self)
 
-    def to_html(self, *, title: str | None = None, include_map: bool = True) -> str:
+    def to_html(
+        self,
+        path: str | Path | None = None,
+        *,
+        title: str | None = None,
+        include_map: bool = True,
+    ) -> str:
         """Return the interactive single-file HTML rendering of this report.
 
         Shortcut for :func:`datagrove.reports.render_html`. See its
@@ -566,6 +584,10 @@ class ValidationReport:
         Vega-Lite map section.
 
         Args:
+            path: Optional file path. When given, the rendered HTML is
+                also written to ``path`` (parent directories created if
+                needed). The string is still returned so chained
+                ``report.to_html("r.html").splitlines()`` works.
             title: Optional override for the ``<title>`` and ``<h1>``.
             include_map: If ``False``, skip the map section even when
                 geo-located issues are present.
@@ -575,15 +597,26 @@ class ValidationReport:
 
         Examples:
             >>> r = ValidationReport(source="empty.gmns")
-            >>> html = r.to_html()
+            >>> html = r.to_html()                              # in-memory
             >>> html.lstrip().startswith("<!DOCTYPE html>")
+            True
+            >>> import tempfile, pathlib
+            >>> with tempfile.TemporaryDirectory() as d:        # write-to-file
+            ...     out = pathlib.Path(d) / "r.html"
+            ...     _ = r.to_html(out)
+            ...     out.is_file()
             True
         """
         # Local import for the same reason as ``to_rich`` — keep this
         # module free of jinja2 / render-module imports at module load.
         from .render import render_html
 
-        return render_html(self, title=title, include_map=include_map)
+        html = render_html(self, title=title, include_map=include_map)
+        if path is not None:
+            target = Path(path)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(html, encoding="utf-8")
+        return html
 
     def __str__(self) -> str:
         """Alias for :meth:`to_rich` — usable from ``print(report)``."""
@@ -618,7 +651,7 @@ class ValidationReport:
         counts: list[tuple[str, object]] = []
         for sev in _SEVERITY_ORDER:
             n = self.count(sev)
-            label = sev.name  # ERROR / WARNING / INFO / DATA_QUALITY
+            label = sev.name  # ERROR / WARNING / INFO
             counts.append((label, n))
         if self.spec_version:
             counts.append(("spec", self.spec_version))

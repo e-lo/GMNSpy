@@ -193,6 +193,54 @@ def test_merge_close_nodes_roundtrip_rollback():
     assert after == before
 
 
+@pytest.mark.perf
+def test_merge_close_nodes_scales_to_1k_nodes_in_under_2s():
+    """Regression bound: 1000 spatially-distributed nodes complete in <2s.
+
+    The pre-fix nested-loop ran ~0.5s on 1k random nodes and degraded
+    quadratically beyond that. After the grid pre-filter we're well
+    under 100ms on this size; the 2s ceiling is a generous regression
+    fence in case CI is loaded. Excluded from the default run with
+    ``-m "not perf"`` so test latency stays low for everyone else.
+    """
+    import random
+    import time
+
+    from gmnspy.clean import merge_close_nodes
+
+    rng = random.Random(0)
+    n = 1000
+    # Spread points across a 1000x1000 grid so most pairs are far apart
+    # (the realistic "very few merges" case). A few intentional duplicates
+    # exercise the merge path itself.
+    nodes_data = [{"node_id": i, "x_coord": rng.uniform(0, 1000), "y_coord": rng.uniform(0, 1000)} for i in range(n)]
+    # Drop ten near-duplicates so the merge logic actually runs.
+    for i in range(10):
+        nodes_data.append(
+            {
+                "node_id": 10_000 + i,
+                "x_coord": nodes_data[i]["x_coord"] + 0.01,
+                "y_coord": nodes_data[i]["y_coord"],
+            }
+        )
+
+    engine = _engine()
+    nodes = _node(engine, nodes_data)
+    # Single link — the timed path is the node clustering pass; we keep
+    # one link row so the rewrite-and-replace plumbing actually executes
+    # too (and the resulting table satisfies "at least one column").
+    links = _link(engine, [{"link_id": 1, "from_node_id": 0, "to_node_id": 1}])
+    net = _network({"link": links, "node": nodes})
+
+    t0 = time.perf_counter()
+    with Session(net) as s:
+        merge_close_nodes(net, s, threshold_m=1.0)
+    elapsed = time.perf_counter() - t0
+    # Print for visibility under ``-s``; assert against a generous bound.
+    print(f"\n[perf] merge_close_nodes({len(nodes_data)} nodes) -> {elapsed * 1000:.1f} ms")
+    assert elapsed < 2.0, f"merge_close_nodes regressed to {elapsed:.2f}s on {len(nodes_data)} nodes"
+
+
 # ---------------------------------------------------------------------------
 # remove_orphans
 # ---------------------------------------------------------------------------

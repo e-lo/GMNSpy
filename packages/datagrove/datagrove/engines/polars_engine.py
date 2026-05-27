@@ -419,6 +419,36 @@ class PolarsEngine:
         """
         return expr.collect()
 
+    # ------------------------------------------------------------------
+    # Lazy introspection — routed via polars' native LazyFrame API.
+    # ------------------------------------------------------------------
+
+    def columns(self, expr: pl.LazyFrame) -> list[str]:
+        """Return column names via ``collect_schema().names()``.
+
+        ``.schema`` on a LazyFrame emits a PerformanceWarning in
+        polars >= 1.0 steering callers at ``collect_schema()``; we use
+        the recommended path here to keep the warning-as-error policy
+        happy.
+        """
+        return list(expr.collect_schema().names())
+
+    def count(self, expr: pl.LazyFrame) -> int:
+        """Return row count via ``expr.select(pl.len()).collect().item()``.
+
+        Keeps the count inside polars' lazy plan rather than collecting
+        every row just to call ``len()``.
+        """
+        return int(expr.select(pl.len()).collect().item())
+
+    def head(self, expr: pl.LazyFrame, n: int) -> pl.LazyFrame:
+        """Return ``expr.head(n)`` — polars builds a lazy LIMIT."""
+        return expr.head(n)
+
+    def select(self, expr: pl.LazyFrame, columns: list[str]) -> pl.LazyFrame:
+        """Return ``expr.select(columns)`` — lazy projection."""
+        return expr.select(columns)
+
 
 # ---------------------------------------------------------------------------
 # Helpers (module-level — symmetric with ibis_engine + pandas_engine)
