@@ -28,6 +28,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: release-drafter/release-drafter@v6
+        # Bootstrap caveat: release-drafter reads its config from the
+        # default branch only. Until this workflow + config land on
+        # the default branch (currently `develop`), runs will fail
+        # with "Configuration file ... is not found". Treat as
+        # non-blocking until the bootstrap merge propagates. After
+        # that, REMOVE this continue-on-error and let real config
+        # errors fail loudly.
+        continue-on-error: true
         with:
           config-name: release-drafter.yml
         env:
