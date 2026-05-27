@@ -180,8 +180,7 @@ _BLOCKS = _blocks_for_parametrize()
 # over and prevents regression. Net-zero entries by GA.
 #
 # Format: {(relative_path_str, fence_line_no): "reason"}
-_KNOWN_BROKEN: dict[tuple[str, int], str] = {
-}
+_KNOWN_BROKEN: dict[tuple[str, int], str] = {}
 
 
 @pytest.fixture
