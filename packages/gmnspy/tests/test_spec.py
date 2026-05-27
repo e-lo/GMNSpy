@@ -87,6 +87,27 @@ def test_load_gmns_spec_default_loads_0_97():
     assert {r.name for r in pkg.resources} == {r.name for r in pkg_default.resources}
 
 
+def test_load_gmns_spec_version_matches_directory_name():
+    """``pkg.version`` reflects the directory name, not the descriptor metadata.
+
+    Regression for the bug found during the v1.0 CLI walk-through on
+    2026-05-26: upstream GMNS 0.97's ``datapackage.json`` literally
+    contains ``"version": "0.96"`` (the release didn't bump the
+    metadata field). Without the directory-name override in
+    :func:`load_gmns_spec`, every consumer of ``pkg.version``
+    (validation report headers, ``--json`` payloads, the ``info``
+    command) misreports the spec as 0.96 when it's actually 0.97.
+    """
+    from gmnspy.spec import SUPPORTED_SPECS, load_gmns_spec
+
+    for version in SUPPORTED_SPECS:
+        pkg = load_gmns_spec(version)
+        assert pkg.version == version, (
+            f"load_gmns_spec({version!r}).version reports {pkg.version!r}; "
+            "the loader should stamp the directory name onto the package."
+        )
+
+
 def test_load_gmns_spec_rejects_unsupported_version():
     """Unsupported versions raise ``ValueError``."""
     from gmnspy.spec import load_gmns_spec

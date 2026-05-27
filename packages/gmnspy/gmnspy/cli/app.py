@@ -20,7 +20,19 @@ from __future__ import annotations
 import typer
 from datagrove.cli.app import build_app
 
-from .commands import bench, clean, doctor, index, info, mcp, quality, scope, server, spec
+from .commands import (
+    bench,
+    clean,
+    doctor,
+    index,
+    info,
+    mcp,
+    quality,
+    scope,
+    server,
+    spec,
+    validate,
+)
 
 __all__ = ["app"]
 
@@ -40,9 +52,11 @@ def _build_gmnspy_app() -> typer.Typer:
         "rule pack. Add --json to any command for machine-readable output."
     )
 
-    # Order: info / quality / spec / doctor / bench come first (the original
-    # set), then the optional-extra commands (server / mcp / clean / scope /
-    # index) so ``--help`` reads the same way it always has.
+    # Order: GMNS-aware OVERRIDES of generic commands first (validate /
+    # info), then the GMNS-specific commands (quality / spec / doctor /
+    # bench), then the optional-extra commands (server / mcp / clean /
+    # scope / index) so ``--help`` reads the same way it always has.
+    validate.register(gmnspy_app)
     info.register(gmnspy_app)
     quality.register(gmnspy_app)
     spec.register(gmnspy_app)

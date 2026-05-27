@@ -55,9 +55,9 @@ report = net.validate(passes=["schema", "fk"])       # only two of them
 The same operation is available from the shell, with three output formats:
 
 ```bash
-gmnspy validate <source>                  # human-readable summary
-gmnspy validate <source> --json           # machine-readable
-gmnspy validate <source> --format html    # standalone HTML report
+gmnspy validate <source>                       # human-readable summary
+gmnspy validate <source> --json                # machine-readable
+gmnspy validate <source> --html report.html    # standalone HTML report
 ```
 
 ### 2. Read the report shape
@@ -115,7 +115,7 @@ fk_problems = [i for i in report.issues if i.category is Category.FOREIGN_KEY]
 
 ### 5. Common codes you'll see
 
-Stable identifier strings let you script around specific findings without parsing free-text messages. The full list lives in `datagrove.validation.codes`:
+Stable identifier strings let you script around specific findings without parsing free-text messages. Codes live inline at the top of each validator module (see [`datagrove.validation.structural`](https://github.com/e-lo/GMNSpy/blob/main/packages/datagrove/datagrove/validation/structural.py), [`schema_check`](https://github.com/e-lo/GMNSpy/blob/main/packages/datagrove/datagrove/validation/schema_check.py), [`foreign_keys`](https://github.com/e-lo/GMNSpy/blob/main/packages/datagrove/datagrove/validation/foreign_keys.py), [`sync_state`](https://github.com/e-lo/GMNSpy/blob/main/packages/datagrove/datagrove/validation/sync_state.py)). The most common ones:
 
 | Code | Category | Severity | What it means |
 |---|---|---|---|
@@ -149,7 +149,7 @@ Stable identifier strings let you script around specific findings without parsin
     Self-contained file you can email or upload to a docs site.
 
     ```bash
-    gmnspy validate <source> --format html > report.html
+    gmnspy validate <source> --html report.html
     ```
 
     Or programmatically:

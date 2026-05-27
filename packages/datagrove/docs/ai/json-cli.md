@@ -45,8 +45,8 @@ Add `--json` to any `gmnspy` (or `datagrove`) CLI command and the output becomes
 gmnspy info     --json <source>
 gmnspy validate --json <source>
 gmnspy quality  --json <source>
-gmnspy scope from-nodes --json <source> 1 25 50
-gmnspy clean    --json <source>
+gmnspy scope from-nodes      --json <source> 1 25 50
+gmnspy clean simplify-geometry --json <source>
 gmnspy bench    --json <source>
 ```
 
