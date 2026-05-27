@@ -1,159 +1,81 @@
-# GMNSpy
+# GMNSpy monorepo
 
- Python tool for [General Modeling Network Specification (GMNS)](https://github.com/zephyr-data-specs/GMNS) developed
- by [Zephyr  Foundation](http://zephyrtransport.org) for Travel Analysis.
+Two Python packages for the [General Modeling Network Specification (GMNS)](https://github.com/zephyr-data-specs/GMNS), developed under the [Zephyr Foundation](http://zephyrtransport.org).
 
-## Installation
+| Package | What it is | PyPI | Docs |
+|---|---|---|---|
+| [`gmnspy`](packages/gmnspy/) | GMNS toolkit — load, validate, scope, edit GMNS networks | [`gmnspy`](https://pypi.org/project/gmnspy/) | [e-lo.github.io/GMNSpy/gmnspy/](https://e-lo.github.io/GMNSpy/gmnspy/) |
+| [`datagrove`](packages/datagrove/) | Generic Frictionless Data Package engine that `gmnspy` builds on | [`datagrove`](https://pypi.org/project/datagrove/) | [e-lo.github.io/GMNSpy/datagrove/](https://e-lo.github.io/GMNSpy/datagrove/) |
 
- ```sh
- git clone https://github.com/e-lo/GMNSpy.git
- cd GMNSpy
- pip install .
- ```
+Most users only install `gmnspy`. `datagrove` comes as a transitive dependency.
 
-## Usage
+---
 
-### Read a single file
+## 🧪 v1.0 beta is open
 
- Returns a dataframe that conforms to the specified schema and have been
- validated.
+We're shipping the v1.0 rewrite as a public beta. **If you can spare half an hour to try it on a real network, your feedback shapes GA.**
 
- ```python
- df = gmnspy.in_out.read_gmns_csv(data_filename, schema_file=schemafilename)
- ```
+```bash
+uv add 'gmnspy[all]==1.0.0b1'        # or: pip install 'gmnspy[all]==1.0.0b1'
+gmnspy doctor                        # confirm install
+```
 
-### Read a network
+- 📖 [Beta program details — what's in scope, how to report](BETA.md)
+- 🐛 [File a beta-feedback issue](https://github.com/e-lo/GMNSpy/issues/new?template=beta-feedback.md)
+- 📝 [Migration from v0.3.x](packages/gmnspy/docs/migration/v0.3-to-v1.0.md)
 
- Returns a dictionary of dataframes that conform to the specified schema
- and have been validated.
+---
 
- Checks foreign keys between files.
+## Quick start
 
- ```python
- net = gmnspy.in_out.read_gmns_network(data_directory, config: "gmns.spec.json")
- ```
+```python
+import gmnspy
+from gmnspy.fixtures import leavenworth      # bundled example network
 
-## GMNS specification
+net = gmnspy.read(leavenworth.csv_dir())     # auto-detect format
+report = gmnspy.validate(net)                # structural + schema + FK + sync
+print(f"{net.links.count()} links, {len(report.issues)} validation issues")
 
-A copy of the GMNS specification is kept in the `/spec` sub-directory as a
- series of JSON tables.
+report.to_html("report.html")                # interactive single-file HTML
+```
 
-### Data Table schemas
+More: the [5-minute quickstart](https://e-lo.github.io/GMNSpy/gmnspy/quickstart/).
 
- Data table schemas are specified in JSON and are compatible with the
- [frictionless data](https://specs.frictionlessdata.io/table-schema/) table
- schema standards.
+## Why a monorepo
 
- Example:
- ```JSON
- {
-     "primaryKey": "segment_id",
-     "missingValues": ["NaN",""],
-     "fields": [
-         {
-             "name": "segment_id",
-             "type": "any",
-             "description": "Primary key.",
-             "constraints": {
-               "required": true,
-               "unique": true
-               }
-         },
-         {
-             "name": "road_link_id",
-             "type": "any",
-             "description": "Required. Foreign key to road_links. The link that the segment is located on.",
-             "foreign_key": "link.link_id",
-             "constraints": {
-               "required": true
-               }
-         },
-         {
-             "name": "ref_node_id",
-             "type": "any",
-             "description": "Required. Foreign key to node.",
-             "foreign_key": "node.node_id",
-             "constraints": {
-               "required": true
-               }
-         },
-         {
-             "name": "start_lr",
-             "type": "number",
-             "description": "Required. Distance from ref_node_id.",
-             "constraints": {
-               "required": true,
-               "minimum": 0
-               }
-         },
-         {
-             "name": "end_lr",
-             "type": "number",
-             "description": "Required. Distance from ref_node_id.",
-             "constraints": {
-               "required": true,
-               "minimum": 0
-               }
-           }
-     ]
- }
+`gmnspy` builds on a generic Frictionless engine (`datagrove`) extracted up front. The intent: future spec toolkits (GTFSpy, etc.) reuse the engine instead of reimplementing it. Both packages release independently; CI tests them together.
 
- ```
+```
+GMNSpy/
+├── packages/
+│   ├── datagrove/   # generic engine — PyPI package
+│   └── gmnspy/      # GMNS toolkit on top — PyPI package
+├── skills/          # Claude Code Skills (installable via path/git URL)
+├── docs/            # umbrella landing page only — real docs are per-package
+└── .github/         # CI/CD, issue templates, release-drafter
+```
 
-### Network Data Config
+## Development
 
- Network data schemas are specified in JSON and are compatible with the
- [frictionless data](https://specs.frictionlessdata.io/tabular-data-package/) data package standards.
+Workspace managed via [`uv`](https://docs.astral.sh/uv/). One command installs both packages with all extras editable:
 
- Example:
- ```JSON
- {
-   "profile": "gmns-data-package",
-   "profile_version":0.0,
-   "name": "my-dataset",
-   "resources": [
-    {
-      "name":"link",
-      "path": "link.csv",
-      "schema": "link.schema.json",
-      "required": true
-    },
-    {
-      "name":"node",
-      "path": "node.csv",
-      "schema": "node.schema.json",
-      "required": true
-    }
-  ]
- }
- ```
+```bash
+git clone https://github.com/e-lo/GMNSpy.git
+cd GMNSpy
+uv sync --all-packages --all-extras
 
-## Issues
+uv run gmnspy --help              # CLI
+uv run pytest packages            # tests
+```
 
-Please add issues, bugs, and feature requests [to Github](https://github.com/e-lo/GMNSpy).
+Full contributor workflow: [CONTRIBUTING.md](CONTRIBUTING.md).
 
-## Roadmap
+## License
 
-Current feature roadmap includes:
+[Apache 2.0](LICENSE).
 
-- conversion tools from open street map
-- network connectivity checks
-- auto documentation of schema to markdown files
-- tests tests tests
+## Acknowledgements
 
-Feel free to submit pull requests for consideration. See `CONTRIBUTING` for more detailed instructions.
-
-## Credits
-
-Primary Author: Elizabeth Sall, UrbanLabs LLC
-
-Contributing authors and code maintainers:
-
-- Pedro Carmago, OuterLoop Consulting
-- Ian Berg, Volpe Center
-
-See all in `CONTRIBUTORS.md`
-
-## License to Use
-
-The code herein is licensed under the Apache License 2.0 as defined in <LICENSE> file.
+- [`zephyr-data-specs/GMNS`](https://github.com/zephyr-data-specs/GMNS) — upstream spec.
+- [Zephyr Foundation](http://zephyrtransport.org) — project home.
+- See [CONTRIBUTORS.md](CONTRIBUTORS.md).
