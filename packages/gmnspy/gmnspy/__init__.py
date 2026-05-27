@@ -23,7 +23,11 @@ def validate(
     *,
     engine: Engine | None = None,
     spec_version: str | None = None,
-    **kwargs: object,
+    schema: bool = True,
+    structural: bool = True,
+    foreign_keys: bool = True,
+    sync_state: bool = True,
+    strict: bool = False,
 ) -> ValidationReport:
     """Validate a GMNS network. Accepts a path/URL or an already-loaded Network.
 
@@ -41,7 +45,17 @@ def validate(
             ``source`` is a path — ignored when it's already a Network.
         spec_version: GMNS spec version to validate against. Only
             consulted when ``source`` is a path.
-        **kwargs: Forwarded to :meth:`Network.validate`.
+        schema: Run the per-field schema check pass (types, enums,
+            constraints). Default ``True``.
+        structural: Run the package-structure pass (required tables,
+            file presence). Default ``True``.
+        foreign_keys: Run the FK referential-integrity pass. Default
+            ``True``.
+        sync_state: Stamp + check FK staleness against the
+            :class:`~datagrove.validation.sync_state.DirtyTracker`.
+            Default ``True``.
+        strict: Treat warnings as errors — caller can ``raise`` on
+            any non-clean report. Default ``False``.
 
     Returns:
         A :class:`~datagrove.reports.ValidationReport` whose
@@ -55,10 +69,17 @@ def validate(
         >>> report.spec_version
         '0.97'
     """
+    pass_kwargs = dict(
+        schema=schema,
+        structural=structural,
+        foreign_keys=foreign_keys,
+        sync_state=sync_state,
+        strict=strict,
+    )
     if isinstance(source, Network):
-        return source.validate(**kwargs)
+        return source.validate(**pass_kwargs)
     net = read(source, engine=engine, spec_version=spec_version)
-    return net.validate(**kwargs)
+    return net.validate(**pass_kwargs)
 
 
 def read(

@@ -180,6 +180,49 @@ def test_explicit_unsupported_format_raises(engine: IbisEngine):
 
 
 # ---------------------------------------------------------------------------
+# from_records / from_arrow — all-null column regression
+# ---------------------------------------------------------------------------
+
+
+def test_from_records_with_all_null_column_does_not_raise(engine: IbisEngine):
+    """Regression: duckdb rejects ``CREATE TABLE`` with NULL-typed columns.
+
+    Repro of the issue surfacing via ``gmnspy.scope.from_node(...).apply()``
+    on the bundled Leavenworth fixture where ``link.name`` is entirely
+    null. pyarrow infers ``pa.null()`` for such columns; duckdb raises
+    ``IbisTypeError: DuckDB does not support creating tables with NULL
+    typed columns``. ``IbisEngine.from_records`` now coerces all-null
+    columns to ``string`` before the duckdb write — see
+    ``_coerce_all_null_columns_to_string``.
+    """
+    expr = engine.from_records(
+        [
+            {"id": 1, "name": None},
+            {"id": 2, "name": None},
+        ]
+    )
+    df = engine.to_pandas(expr)
+    assert len(df) == 2
+    assert set(df.columns) == {"id", "name"}
+    # The ``name`` column is castable to string after coercion — every
+    # value still reads back as None / NA, just with a usable dtype.
+    assert df["name"].isna().all()
+
+
+def test_from_arrow_with_all_null_column_does_not_raise(engine: IbisEngine):
+    """``from_arrow`` shares the same coercion — verify in parity with from_records."""
+    import pyarrow as pa
+
+    arrow = pa.Table.from_pylist([{"id": 1, "name": None}, {"id": 2, "name": None}])
+    # Sanity-check the precondition the coercion fixes.
+    assert pa.types.is_null(arrow.schema.field("name").type)
+    expr = engine.from_arrow(arrow)
+    df = engine.to_pandas(expr)
+    assert len(df) == 2
+    assert df["name"].isna().all()
+
+
+# ---------------------------------------------------------------------------
 # materialize / converters
 # ---------------------------------------------------------------------------
 

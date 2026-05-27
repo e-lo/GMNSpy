@@ -38,7 +38,7 @@ from typing import TYPE_CHECKING
 from datagrove.dataset import Package, PackageError, Table
 from datagrove.reports import ValidationReport
 
-from .spec import DEFAULT_SPEC, SUPPORTED_SPECS, load_gmns_spec
+from .spec import DEFAULT_SPEC, load_gmns_spec
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from datagrove.engines.base import Engine
@@ -152,7 +152,11 @@ class Network(Package):
             True
     """
 
-    spec_version: str = field(default="")
+    # Optional because a Network can be constructed bare (e.g. test
+    # fixtures, `from_tables`); `from_source` populates it. Using
+    # ``None`` rather than ``""`` so error messages render as
+    # ``"unknown"`` rather than the awkward ``"''"``.
+    spec_version: str | None = field(default=None)
 
     # ------------------------------------------------------------------
     # Constructor
@@ -196,8 +200,9 @@ class Network(Package):
             :attr:`spec_version` stamped.
 
         Raises:
-            ValueError: If ``spec_version`` is not in
-                :data:`gmnspy.spec.SUPPORTED_SPECS`.
+            InvalidSpecVersionError: If ``spec_version`` is not in
+                :data:`gmnspy.spec.SUPPORTED_SPECS` (subclass of
+                :class:`~datagrove.spec.errors.SpecLoadError`).
 
         Examples:
             >>> from gmnspy import Network
@@ -209,11 +214,10 @@ class Network(Package):
             >>> net.spec_version
             '0.97'
         """
+        # ``load_gmns_spec`` runs the same _check_version that would
+        # have raised here; delegating avoids two copies of the
+        # validation logic. The InvalidSpecVersionError bubbles up.
         resolved_version = spec_version if spec_version is not None else DEFAULT_SPEC
-        if resolved_version not in SUPPORTED_SPECS:
-            raise ValueError(
-                f"Unsupported GMNS spec version: {resolved_version!r}. Supported versions: {', '.join(SUPPORTED_SPECS)}"
-            )
         gmns_spec = load_gmns_spec(resolved_version)
         # Delegate to Package.from_source — composition over copy-paste.
         # Package returns a `Package` instance; we re-pack into `cls`
@@ -228,6 +232,112 @@ class Network(Package):
             metadata=dict(base.metadata),
             spec_version=resolved_version,
         )
+
+    # ------------------------------------------------------------------
+    # Indexes + scope accessor — architecture §6.2 chainable surface
+    # ------------------------------------------------------------------
+
+    def build_indexes(self, *, spatial: bool = True, graph: bool = True) -> Network:
+        """Pre-build the indexes the network-aware scope ops need.
+
+        Wraps :func:`gmnspy.indexes.build_indexes` so the documented
+        form ``net.build_indexes(spatial=True, graph=True)`` from
+        ``docs/architecture.md`` §6.2 works as a method instead of a
+        free function. Built indexes are cached on :attr:`metadata`
+        under the same keys :mod:`gmnspy.scope` consults, so the
+        next scope op finds them without rebuilding.
+
+        Returns ``self`` so callers can chain
+        (``net.build_indexes(...).scope.from_nodes([...])``).
+
+        Args:
+            spatial: Build the :class:`~gmnspy.indexes.SpatialIndex`
+                from ``link.geometry``. No-op when ``link`` has no
+                ``geometry`` column.
+            graph: Build the :class:`~gmnspy.indexes.GraphIndex` from
+                ``link.from_node_id`` + ``link.to_node_id``.
+
+        Returns:
+            ``self`` (for chaining).
+
+        Examples:
+            >>> import pytest
+            >>> _ = pytest.importorskip("igraph")
+            >>> from gmnspy import Network
+            >>> from gmnspy.fixtures import leavenworth
+            >>> from datagrove.engines.pandas_engine import PandasEngine
+            >>> net = Network.from_source(leavenworth.csv_dir(), engine=PandasEngine())
+            >>> net.build_indexes(spatial=True, graph=True) is net
+            True
+        """
+        # Local imports keep gmnspy → gmnspy.indexes / gmnspy.scope
+        # edges lazy — both pull in optional deps (igraph, shapely)
+        # that callers may not have installed.
+        from gmnspy.indexes import build_indexes as _build
+        from gmnspy.scope.scope import _GRAPH_INDEX_KEY, _SPATIAL_INDEX_KEY
+
+        links = self.tables.get("link")
+        nodes = self.tables.get("node")
+        # Skip graph build when nodes are missing rather than letting
+        # build_indexes raise — partial loads (e.g. links-only) should
+        # still build the spatial index they CAN.
+        wants_graph = graph and nodes is not None
+        wants_spatial = spatial and links is not None and "geometry" in links.columns()
+
+        if not (wants_graph or wants_spatial):
+            return self
+
+        spatial_idx, graph_idx = _build(
+            links=links,
+            nodes=nodes,
+            spatial=wants_spatial,
+            graph=wants_graph,
+        )
+        if spatial_idx is not None:
+            self.metadata[_SPATIAL_INDEX_KEY] = spatial_idx
+        if graph_idx is not None:
+            self.metadata[_GRAPH_INDEX_KEY] = graph_idx
+        return self
+
+    @property
+    def scope(self):  # type: ignore[override]
+        """Chainable scope-builder accessor — see :class:`gmnspy.scope.NetworkScopeAccessor`.
+
+        Returns an accessor partially-bound to ``self`` so the
+        architecture-documented form
+        ``net.scope.from_nodes([1, 2, 3]).buffer_network("0.5mi")``
+        works as a method chain (per ``docs/architecture.md`` §6.2).
+
+        The accessor is also callable, so the inherited
+        :meth:`datagrove.dataset.Package.scope` form
+        ``net.scope(tables=[...], bbox=...)`` keeps working — see
+        :meth:`NetworkScopeAccessor.__call__`.
+
+        Returns:
+            A fresh :class:`~gmnspy.scope.NetworkScopeAccessor` —
+            cheap to construct, no state to share between callers.
+
+        Examples:
+            >>> import pytest
+            >>> _ = pytest.importorskip("igraph")
+            >>> from gmnspy import Network
+            >>> from gmnspy.fixtures import leavenworth
+            >>> from datagrove.engines.pandas_engine import PandasEngine
+            >>> net = Network.from_source(leavenworth.csv_dir(), engine=PandasEngine())
+            >>> scoped = net.scope.from_nodes([1, 2, 3], path_between=False)
+            >>> 1 in scoped.node_ids
+            True
+
+            Backward-compat — the callable form still routes to the
+            inherited Package.scope::
+
+                >>> only_links = net.scope(tables=["link"])
+                >>> only_links.keys()
+                ['link']
+        """
+        from gmnspy.scope import NetworkScopeAccessor
+
+        return NetworkScopeAccessor(self)
 
     # ------------------------------------------------------------------
     # Validation
@@ -337,9 +447,10 @@ class Network(Package):
         if table is not None:
             return table
         if resource_name in _REQUIRED:
+            spec_label = self.spec_version or "unknown"
             raise NetworkError(
                 f"Required GMNS table {resource_name!r} is missing from this network "
-                f"— required by GMNS spec {self.spec_version!r}."
+                f"— required by GMNS spec {spec_label!r}."
             )
         return None
 

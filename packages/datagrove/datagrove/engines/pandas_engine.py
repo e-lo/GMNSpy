@@ -460,6 +460,26 @@ class PandasEngine:
             ) from exc
         return pl.from_pandas(expr)
 
+    # ------------------------------------------------------------------
+    # Lazy introspection — pandas is eager, so these are direct frame ops.
+    # ------------------------------------------------------------------
+
+    def columns(self, expr: pd.DataFrame) -> list[str]:
+        """Return ``list(expr.columns)``."""
+        return list(expr.columns)
+
+    def count(self, expr: pd.DataFrame) -> int:
+        """Return ``len(expr)`` — pandas is already materialised."""
+        return len(expr)
+
+    def head(self, expr: pd.DataFrame, n: int) -> pd.DataFrame:
+        """Return ``expr.head(n)``."""
+        return expr.head(n)
+
+    def select(self, expr: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
+        """Return ``expr[columns]`` — pandas column-list indexing."""
+        return expr[columns]
+
 
 # ---------------------------------------------------------------------------
 # Helpers (module-level — small, single-consumer, but worth a name)

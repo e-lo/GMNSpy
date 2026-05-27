@@ -59,6 +59,7 @@ __all__ = [
     "duckdb_path",
     "load",
     "parquet_dir",
+    "spec_path",
     "summary",
     "zip_path",
 ]
@@ -106,6 +107,22 @@ def duckdb_path() -> Path:
 def zip_path() -> Path:
     """Path to the zipped-CSV form of the fixture."""
     return ROOT / "leavenworth.csv.zip"
+
+
+def spec_path() -> Path:
+    """Path to the fixture's ``datapackage.json`` (the resolved Frictionless spec).
+
+    Convenience alias for :data:`DATAPACKAGE` — exists so the
+    documented form ``leavenworth.spec_path()`` works without
+    callers having to know whether to use the function or the
+    constant. Both return the same path.
+
+    Examples:
+        >>> from gmnspy.fixtures import leavenworth
+        >>> leavenworth.spec_path() == leavenworth.DATAPACKAGE
+        True
+    """
+    return DATAPACKAGE
 
 
 def load(format: str = "csv") -> Network:

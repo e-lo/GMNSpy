@@ -35,13 +35,13 @@ Geographic scope lands in task 2.8 (issue #67). The :mod:`datagrove.dataset.view
 stub documents the planned signatures so 2.8 has a clean target.
 
 Examples:
-    Load the bundled Leavenworth GMNS fixture via the default engine
+    Load the bundled generic sample fixture via the default engine
     and run a full validation pass::
 
-        >>> from gmnspy.fixtures import leavenworth
+        >>> from datagrove.fixtures import sample
         >>> from datagrove.dataset import Package
-        >>> pkg = Package.from_source(leavenworth.csv_dir())
-        >>> "link" in pkg
+        >>> pkg = Package.from_source(sample.csv_dir(), spec=sample.DATAPACKAGE)
+        >>> "book" in pkg
         True
         >>> report = pkg.validate()
         >>> report.has_errors

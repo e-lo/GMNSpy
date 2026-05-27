@@ -33,6 +33,7 @@ from importlib import resources
 from pathlib import Path
 
 from datagrove.spec import DataPackage, load_package
+from datagrove.spec.errors import InvalidSpecVersionError
 
 __all__ = [
     "DEFAULT_SPEC",
@@ -60,10 +61,19 @@ _DESCRIPTOR_FILENAME: dict[str, str] = {
 
 
 def _check_version(version: str) -> None:
-    """Raise :class:`ValueError` when ``version`` is not vendored."""
+    """Raise :class:`InvalidSpecVersionError` when ``version`` is not vendored.
+
+    Uses the dedicated spec-loading exception (subclass of
+    :class:`~datagrove.spec.errors.SpecLoadError`) instead of bare
+    ``ValueError`` so callers can catch the specific case without
+    swallowing every other ValueError that might bubble up through
+    the engine / pandas / pyarrow stacks. Per architecture §9.
+    """
     if version not in SUPPORTED_SPECS:
-        raise ValueError(
-            f"Unsupported GMNS spec version: {version!r}. Supported versions: {', '.join(SUPPORTED_SPECS)}"
+        raise InvalidSpecVersionError(
+            f"Unsupported GMNS spec version {version!r}. "
+            f"Supported: {', '.join(SUPPORTED_SPECS)}. "
+            f"Pass spec_version= explicitly or omit it for {DEFAULT_SPEC!r}."
         )
 
 

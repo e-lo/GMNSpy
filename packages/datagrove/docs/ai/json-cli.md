@@ -14,6 +14,7 @@ You're building an agent loop (Claude Code, a LangChain tool, a one-off shell ha
 ## Quick example
 
 Wrap `gmnspy validate --json` as a Python tool the LLM can invoke. The function parses stdout, summarises the report, and caps the issue list to keep agent context cost predictable:
+<!-- doctest: skip -->
 
 ```python
 import json, subprocess
@@ -55,6 +56,7 @@ The `--json` contract: exactly one parseable JSON document on stdout, no log pre
 ### 2. Stderr stays separate
 
 Rich output (panels, tables, progress, approval prompts) goes to stderr. With `--json` on stdout the parser stays clean even when an approval prompt fires on stderr — the agent loop can either suppress stderr or surface it as side-channel feedback:
+<!-- doctest: skip -->
 
 ```python
 result = subprocess.run(
@@ -68,6 +70,7 @@ diagnostics = result.stderr             # human-readable, optional to display
 ### 3. Pre-approve gated operations
 
 Mutating commands (`clean`, edit sessions) prompt for confirmation by default. In an agent loop, set the env var once instead of repeating `--yes` per call. The env var is preferable for agents because it scopes to the process tree and survives `subprocess` calls from inside the loop:
+<!-- doctest: skip -->
 
 ```python
 import os, subprocess
@@ -104,6 +107,7 @@ Check `returncode` *and* parse the JSON in agent loops — `returncode != 0` plu
 
 ???+ note "Default — `subprocess.run` + `json.loads`"
     The simplest pattern: one shell out, one JSON parse, hand the dict back to the model.
+<!-- doctest: skip -->
 
     ```python
     import json, subprocess

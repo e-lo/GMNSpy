@@ -120,6 +120,7 @@ Four page kinds. Each has a fixed section order so an agent that learned the tem
 * **Runnable**: every Python block in `cookbook/`, `howto/`, `tutorial/`, and `reference/` examples must run as-is against the bundled Leavenworth fixture or a clearly-marked synthetic. A doctest pass over the docs catches drift.
 * **Copy button** is automatic via Material's `content.code.copy` feature. Don't worry about it — just write clean code.
 * **Annotations** (numbered markers expanding to inline notes) are great for "why is this line written this way" without breaking the prose flow:
+<!-- doctest: skip -->
 
   ```python
   net = Network.from_source(path, engine=PandasEngine())  # (1)!
@@ -133,16 +134,19 @@ The previous version of this guide said "use a table". That was wrong — reader
 
 ```markdown
 ???+ note "Default — load from a local CSV directory"
+<!-- doctest: skip -->
     ```python
     net = Network.from_source("./my-network/")
     ```
 
 ??? note "Read from S3 with credentials"
+<!-- doctest: skip -->
     ```python
     net = Network.from_source("s3://bucket/network/")
     ```
 
 ??? note "Override the engine to pandas"
+<!-- doctest: skip -->
     ```python
     from datagrove.engines.pandas_engine import PandasEngine
     net = Network.from_source(path, engine=PandasEngine())

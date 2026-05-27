@@ -62,13 +62,29 @@ Issues = "https://github.com/e-lo/GMNSpy/issues"
 datagrove = "datagrove.cli.app:app"
 
 [tool.hatch.build.targets.wheel]
+# Explicit include — we list every non-Python data file the package
+# ships (bundled HTML-renderer template assets + the sample fixture
+# CSV/Parquet/DuckDB/datapackage.json) so that a future gitignore tweak
+# can't silently drop them from the wheel. Hatchling defaults pick up
+# .py files but not resource siblings; without this, render_html() and
+# the bundled sample fixture would both import-error on installed
+# wheels.
 packages = ["datagrove"]
+include = [
+    "datagrove/**/*.py",
+    # HTML-report renderer templates.
+    "datagrove/reports/templates/report.html.j2",
+    "datagrove/reports/templates/report.css",
+    "datagrove/reports/templates/report.js",
+    # Bundled sample fixture (see datagrove/fixtures/sample/README.md
+    # for provenance + why it lives here separately from
+    # gmnspy.fixtures.leavenworth).
+    "datagrove/fixtures/**/*.csv",
+    "datagrove/fixtures/**/*.parquet",
+    "datagrove/fixtures/**/*.duckdb",
+    "datagrove/fixtures/**/datapackage.json",
+    "datagrove/fixtures/**/README.md",
+]
 
-[tool.hatch.build.targets.wheel.force-include]
-# Ensure the bundled HTML-renderer template assets (Jinja2, CSS, JS)
-# ship in the wheel — hatchling defaults pick up .py files but not
-# resource siblings. Without this, render_html() would import-error
-# on installed wheels even though it works from a source checkout.
-"datagrove/reports/templates/report.html.j2" = "datagrove/reports/templates/report.html.j2"
-"datagrove/reports/templates/report.css" = "datagrove/reports/templates/report.css"
-"datagrove/reports/templates/report.js" = "datagrove/reports/templates/report.js"
+[tool.hatch.build.targets.sdist]
+include = ["datagrove", "README.md"]

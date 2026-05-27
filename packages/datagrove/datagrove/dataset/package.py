@@ -133,22 +133,20 @@ class Package:
             timestamp, etc.); echoed into the JSON validation report.
 
     Examples:
-        Load the bundled Leavenworth GMNS fixture, validate, then
+        Load the bundled generic sample fixture, validate, then
         write to a fresh parquet directory::
 
             >>> import tempfile, pathlib
-            >>> from gmnspy.fixtures import leavenworth
+            >>> from datagrove.fixtures import sample
             >>> from datagrove.dataset import Package
             >>> from datagrove.engines.pandas_engine import PandasEngine
-            >>> import gmnspy
-            >>> spec = pathlib.Path(gmnspy.__file__).parent / "spec" / "0.97" / "datapackage.json"
             >>> pkg = Package.from_source(
-            ...     leavenworth.csv_dir(),
+            ...     sample.csv_dir(),
             ...     engine=PandasEngine(),
-            ...     spec=spec,
-            ...     tables=["link", "node"],
+            ...     spec=sample.DATAPACKAGE,
+            ...     tables=["book", "author"],
             ... )
-            >>> "link" in pkg
+            >>> "book" in pkg
             True
             >>> report = pkg.validate()
             >>> isinstance(report.issues, list)
@@ -174,6 +172,8 @@ class Package:
         engine: Engine | None = None,
         spec: DataPackage | str | Path | None = None,
         tables: Iterable[str] | None = None,
+        format: str | None = None,
+        credentials: dict[str, str] | None = None,
     ) -> Package:
         """Build a :class:`Package` from a source path/URL.
 
@@ -192,8 +192,8 @@ class Package:
                 c. file extension (``.csv``, ``.parquet``, ``.duckdb``,
                    ``.csv.zip``);
                 d. directory-of-known-formats walk (``csv/``,
-                   ``parquet/``) — Leavenworth shapes have no extension
-                   to dispatch on, so we walk children and ask each
+                   ``parquet/``) — directories have no extension to
+                   dispatch on, so we walk children and ask each
                    matching adapter to scan one. Mirrors
                    :func:`datagrove.validation.structural._scan_directory_of_known_formats`
                    so the structural validator and the package loader
@@ -224,6 +224,18 @@ class Package:
                 auto-discover.
             tables: Optional subset of resource names to load. Useful
                 for memory-efficient partial loads.
+            format: Optional adapter-name override for the top-level
+                source. Used when the source has no extension to sniff
+                on (e.g. an API endpoint that returns CSV but has no
+                ``.csv`` suffix). For ``s3://`` / ``https://`` URLs
+                this becomes the inner-format hint passed through
+                :class:`~datagrove.io.remote.RemoteAdapter`.
+            credentials: Optional explicit credentials dict forwarded
+                to :class:`~datagrove.io.remote.RemoteAdapter`. Only
+                the remote adapter consumes it; local-fs reads ignore
+                the kwarg. Caller-provided keys win over env / keyring /
+                netrc — see
+                :func:`datagrove.io.credentials.resolve_credentials`.
 
         Returns:
             A populated :class:`Package` with lazy :class:`Table`
@@ -234,27 +246,27 @@ class Package:
                 directory walk could resolve ``source``.
 
         Examples:
-            >>> from gmnspy.fixtures import leavenworth
+            >>> from datagrove.fixtures import sample
             >>> from datagrove.dataset import Package
             >>> from datagrove.engines.pandas_engine import PandasEngine
-            >>> import gmnspy, pathlib
-            >>> spec = pathlib.Path(gmnspy.__file__).parent / "spec" / "0.97" / "datapackage.json"
             >>> pkg = Package.from_source(
-            ...     leavenworth.csv_dir(),
+            ...     sample.csv_dir(),
             ...     engine=PandasEngine(),
-            ...     spec=spec,
-            ...     tables=["link"],
+            ...     spec=sample.DATAPACKAGE,
+            ...     tables=["book"],
             ... )
             >>> list(pkg.keys())
-            ['link']
+            ['book']
         """
         eng = engine if engine is not None else get_engine()
         source_str = str(source)
         # 1. Resolve spec.
         resolved_spec = _resolve_spec(spec, source_str)
 
-        # 2. Discover resources.
-        listing = _scan_source(source_str)
+        # 2. Discover resources. ``format=`` narrows the top-level
+        #    dispatch; the directory-of-known-formats walk still uses
+        #    per-child extension dispatch (no per-child override surface).
+        listing = _scan_source(source_str, format=format)
 
         # 3. Filter by requested subset (if any).
         wanted: set[str] | None = set(tables) if tables is not None else None
@@ -267,8 +279,21 @@ class Package:
         tables_out: dict[str, Table] = {}
         for ref in listing:
             schema = _schema_for(resolved_spec, ref.name)
-            adapter = get_adapter(ref.format)
+            # Remote refs route through RemoteAdapter so the credentials
+            # cascade (kwarg → env → keyring → netrc) and fsspec
+            # storage_options wiring stay in one place. The remote adapter
+            # then delegates to the inner format adapter using the URL's
+            # extension (or explicit ``format=``). Without this branch a
+            # ResourceRef like ("foo", "s3://b/foo.csv", "csv") would land
+            # on CsvAdapter directly and lose the credentials path.
+            adapter = get_adapter("remote") if _looks_remote(ref.path) else get_adapter(ref.format)
             read_kwargs: dict[str, Any] = {}
+            # Pass credentials through only when (a) caller set them and
+            # (b) we routed to the remote adapter — local adapters
+            # forward unknown kwargs to engine.read_csv / read_parquet,
+            # where they'd raise TypeError.
+            if credentials is not None and adapter.name == "remote":
+                read_kwargs["credentials"] = credentials
             # The duckdb adapter requires a ``table=`` kwarg per its
             # multi-table contract; the ResourceRef.path encodes the
             # ``"file::table"`` sub-locator that scan() produced.
@@ -459,16 +484,14 @@ class Package:
             with one :class:`~datagrove.validation.Issue` per finding.
 
         Examples:
-            >>> from gmnspy.fixtures import leavenworth
+            >>> from datagrove.fixtures import sample
             >>> from datagrove.dataset import Package
             >>> from datagrove.engines.pandas_engine import PandasEngine
-            >>> import gmnspy, pathlib
-            >>> spec = pathlib.Path(gmnspy.__file__).parent / "spec" / "0.97" / "datapackage.json"
             >>> pkg = Package.from_source(
-            ...     leavenworth.csv_dir(),
+            ...     sample.csv_dir(),
             ...     engine=PandasEngine(),
-            ...     spec=spec,
-            ...     tables=["link", "node"],
+            ...     spec=sample.DATAPACKAGE,
+            ...     tables=["book", "author"],
             ... )
             >>> r = pkg.validate()
             >>> isinstance(r.issues, list)
@@ -581,19 +604,17 @@ class Package:
         Examples:
             Table subset (the original surface)::
 
-                >>> from gmnspy.fixtures import leavenworth
+                >>> from datagrove.fixtures import sample
                 >>> from datagrove.dataset import Package
                 >>> from datagrove.engines.pandas_engine import PandasEngine
-                >>> import gmnspy, pathlib
-                >>> spec = pathlib.Path(gmnspy.__file__).parent / "spec" / "0.97" / "datapackage.json"
                 >>> pkg = Package.from_source(
-                ...     leavenworth.csv_dir(),
+                ...     sample.csv_dir(),
                 ...     engine=PandasEngine(),
-                ...     spec=spec,
-                ...     tables=["link", "node"],
+                ...     spec=sample.DATAPACKAGE,
+                ...     tables=["book", "author"],
                 ... )
-                >>> pkg.scope(tables=["link"]).keys()
-                ['link']
+                >>> pkg.scope(tables=["book"]).keys()
+                ['book']
         """
         from .view import from_bbox, from_geometry_buffer, from_polygon
 
@@ -701,22 +722,20 @@ class Package:
                 ``format=`` explicitly to disambiguate.
 
         Examples:
-            Roundtrip the Leavenworth fixture through parquet::
+            Roundtrip the bundled sample fixture through parquet::
 
                 >>> import tempfile, pathlib
-                >>> from gmnspy.fixtures import leavenworth
+                >>> from datagrove.fixtures import sample
                 >>> from datagrove.dataset import Package
                 >>> from datagrove.engines.pandas_engine import PandasEngine
-                >>> import gmnspy
-                >>> spec = pathlib.Path(gmnspy.__file__).parent / "spec" / "0.97" / "datapackage.json"
                 >>> with tempfile.TemporaryDirectory() as tmp:
                 ...     pkg = Package.from_source(
-                ...         leavenworth.csv_dir(),
+                ...         sample.csv_dir(),
                 ...         engine=PandasEngine(),
-                ...         spec=spec,
-                ...         tables=["link"],
+                ...         spec=sample.DATAPACKAGE,
+                ...         tables=["book"],
                 ...     )
-                ...     out = pathlib.Path(tmp) / "out.gmns"
+                ...     out = pathlib.Path(tmp) / "out.pkg"
                 ...     pkg.write(out, format="parquet")
                 ...     out.exists()
                 True
@@ -1110,21 +1129,47 @@ def _resolve_spec(
     return DataPackage(name="auto", resources=[])
 
 
-def _scan_source(source_str: str) -> ResourceListing:
+def _looks_remote(path: str) -> bool:
+    """True if ``path`` starts with a URL scheme that :class:`RemoteAdapter` claims.
+
+    Used by :meth:`Package.from_source` to route remote ResourceRefs
+    through the remote adapter (so the credentials cascade fires)
+    rather than handing the URL straight to the inner format adapter.
+
+    Source-of-truth for the scheme list is
+    :data:`datagrove.io.remote._REMOTE_SCHEMES`; we import lazily to
+    avoid a top-level cycle.
+    """
+    # Local import keeps the dataset → io edge load-order-friendly
+    # (io self-registers RemoteAdapter at module import, which is
+    # what populates _REMOTE_SCHEMES — we want the import to fire
+    # the first time _looks_remote runs, not at package.py load).
+    from datagrove.io.remote import _REMOTE_SCHEMES
+
+    head, sep, _ = path.partition("://")
+    if not sep:
+        return False
+    return head.lower() in _REMOTE_SCHEMES
+
+
+def _scan_source(source_str: str, *, format: str | None = None) -> ResourceListing:
     """Resolve ``source_str`` to a :class:`ResourceListing`.
 
     Two branches, in order of preference:
         1. The source is a local directory of known-format files
            (``csv/``, ``parquet/``). Walk children and ask each
-           matching adapter to scan one.
+           matching adapter to scan one. ``format=`` is not consulted
+           here — per-child extension dispatch already routes each
+           file to the right adapter.
         2. Otherwise let :func:`datagrove.io.dispatch` resolve the
-           source and call the adapter's ``scan`` method.
+           source (honouring ``format=`` when given) and call the
+           adapter's ``scan`` method.
     """
     source_path = Path(source_str)
     if source_path.exists() and source_path.is_dir() and not _is_partitioned_parquet_dir(source_path):
         return _scan_directory_of_known_formats(source_path)
     try:
-        adapter = dispatch(source_str)
+        adapter = dispatch(source_str, format=format)
     except FormatNotDetected:
         return []
     return adapter.scan(source_str)

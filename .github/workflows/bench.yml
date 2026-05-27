@@ -77,9 +77,17 @@ jobs:
 
       - name: Run benchmarks
         if: steps.discover.outputs.found == 'true'
-        # --benchmark-compare-fail=mean:200% trips if mean is >2x baseline.
-        # When no baseline file is present pytest-benchmark just saves the
-        # new run as the first baseline (no compare, no fail).
+        # Two perf-test conventions are supported:
+        #   1. Tests using the pytest-benchmark `benchmark` fixture
+        #      (microbenchmarks; pytest-benchmark collects + saves JSON).
+        #   2. Tests marked `@pytest.mark.perf` that do their own
+        #      wall-clock assertion (regression bounds — e.g.
+        #      test_merge_close_nodes_scales_to_1k_nodes_in_under_2s).
+        #
+        # For (1) `--benchmark-compare-fail=mean:200%` trips if mean
+        # is >2x baseline. For (2) the test's own assert is the guard.
+        # `PytestBenchmarkWarning: no benchmarks have been run` fires
+        # when only (2)-style tests collected — expected, not a failure.
         run: |
           mkdir -p .benchmarks
           BASELINE=""
@@ -93,7 +101,7 @@ jobs:
             glob)   TARGET="-k bench_" ;;
           esac
           uv run pytest $TARGET \
-            --benchmark-only \
+            -W ignore::pytest_benchmark.logger.PytestBenchmarkWarning \
             --benchmark-json=.benchmarks/bench-${{ github.sha }}.json \
             $BASELINE
 

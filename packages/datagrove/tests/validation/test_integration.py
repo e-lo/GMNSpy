@@ -78,9 +78,10 @@ def _build_full_report() -> ValidationReport:
         message="optional table 'segment' is not present — skipping segment checks",
     )
 
-    # 1 data quality
+    # 1 data quality — Category.DATA_QUALITY with Severity.WARNING
+    # because a 65 mph residential is loud enough to matter.
     report.add(
-        severity=Severity.DATA_QUALITY,
+        severity=Severity.WARNING,
         category=Category.DATA_QUALITY,
         code="quality.high_speed_residential",
         message="link row 27: 65 mph speed limit on a residential facility",
@@ -96,9 +97,11 @@ def test_report_contains_all_seven_issues():
     report = _build_full_report()
     assert report.count() == 7
     assert report.count(Severity.ERROR) == 3
-    assert report.count(Severity.WARNING) == 2
+    # 3 WARNING: the two original + the data-quality high-speed finding
+    # (was Severity.DATA_QUALITY pre-1.0; now WARNING + Category.DATA_QUALITY).
+    assert report.count(Severity.WARNING) == 3
     assert report.count(Severity.INFO) == 1
-    assert report.count(Severity.DATA_QUALITY) == 1
+    assert len(report.by_category(Category.DATA_QUALITY)) == 1
 
 
 def test_rich_output_contains_all_seven_codes():
@@ -122,8 +125,11 @@ def test_json_output_contains_all_seven_issues_and_correct_counts():
     assert len(data["issues"]) == 7
     assert data["summary"] == {
         "error": 3,
-        "warning": 2,
+        # WARNING now includes the high-speed-residential finding
+        # (Category.DATA_QUALITY + Severity.WARNING).
+        "warning": 3,
         "info": 1,
+        # summary["data_quality"] is a category count, kept for back-compat.
         "data_quality": 1,
         "is_clean": False,
     }

@@ -394,8 +394,6 @@ class SharpAngleBendsRule:
 
     def run(self, package: Package, report: ValidationReport, rc: RuleConfig | None = None) -> None:
         """Parse each link's WKT, compute interior turn angles, flag those below threshold."""
-        import math
-
         from shapely import from_wkt
 
         min_angle = _threshold(rc, "min_angle_degrees", 30.0)
@@ -432,8 +430,6 @@ class SharpAngleBendsRule:
                     extra={"angle_degrees": sharpest},
                 )
             )
-
-        del math  # keep the local import scoped — math is only used in the helper.
 
 
 def _min_interior_angle_deg(coords: list[tuple[float, float] | tuple[float, float, float]]) -> float | None:

@@ -40,11 +40,14 @@ class TestSeverityEnum:
         assert Severity("error") is Severity.ERROR
         assert Severity("warning") is Severity.WARNING
         assert Severity("info") is Severity.INFO
-        assert Severity("data_quality") is Severity.DATA_QUALITY
 
-    def test_all_four_levels_present(self):
-        """The four-level model (Error/Warning/Info/DataQuality) is the contract."""
-        assert {s.value for s in Severity} == {"error", "warning", "info", "data_quality"}
+    def test_three_levels_present(self):
+        """The three-level model (Error/Warning/Info) is the contract.
+
+        Data quality is a :class:`Category`, not a Severity — a
+        quality finding picks Warning or Info based on its urgency.
+        """
+        assert {s.value for s in Severity} == {"error", "warning", "info"}
 
 
 class TestCategoryEnum:
@@ -193,13 +196,14 @@ class TestValidationReportMutation:
 
 @pytest.fixture
 def mixed_report() -> ValidationReport:
-    """Tiny report with one of each severity across two tables."""
+    """Tiny report with each severity across two tables, plus a data-quality finding."""
     report = ValidationReport(spec_version="0.97", source="leavenworth.gmns")
     report.add_issue(_issue(Severity.ERROR, Category.SCHEMA, "schema.required", "e1", "link"))
     report.add_issue(_issue(Severity.ERROR, Category.FOREIGN_KEY, "fk.missing_target", "e2", "link"))
     report.add_issue(_issue(Severity.WARNING, Category.SYNC_STATE, "sync.fk_stale", "w1", "node"))
     report.add_issue(_issue(Severity.INFO, Category.STRUCTURAL, "structural.optional_missing", "i1"))
-    report.add_issue(_issue(Severity.DATA_QUALITY, Category.DATA_QUALITY, "quality.high_speed", "q1", "link"))
+    # Quality finding: severity carries urgency, category=DATA_QUALITY carries the source.
+    report.add_issue(_issue(Severity.WARNING, Category.DATA_QUALITY, "quality.high_speed", "q1", "link"))
     return report
 
 
@@ -230,10 +234,14 @@ class TestValidationReportQuery:
         assert mixed_report.count() == 5
 
     def test_count_by_severity(self, mixed_report):
+        # Two WARNING: one sync-state plus the data-quality finding.
         assert mixed_report.count(Severity.ERROR) == 2
-        assert mixed_report.count(Severity.WARNING) == 1
+        assert mixed_report.count(Severity.WARNING) == 2
         assert mixed_report.count(Severity.INFO) == 1
-        assert mixed_report.count(Severity.DATA_QUALITY) == 1
+
+    def test_count_by_category_data_quality(self, mixed_report):
+        """Category.DATA_QUALITY is the dimension that survived the dedupe."""
+        assert len(mixed_report.by_category(Category.DATA_QUALITY)) == 1
 
 
 # ---------------------------------------------------------------------------
@@ -249,10 +257,10 @@ class TestValidationReportVerdict:
         assert report.is_clean is True
 
     def test_info_only_is_clean(self):
-        """Info + DataQuality alone do NOT break is_clean — they're informational."""
+        """Info alone — including INFO data-quality findings — does NOT break is_clean."""
         report = ValidationReport()
         report.add_issue(_issue(Severity.INFO, Category.STRUCTURAL, "structural.optional", "i"))
-        report.add_issue(_issue(Severity.DATA_QUALITY, Category.DATA_QUALITY, "quality.high_speed", "q"))
+        report.add_issue(_issue(Severity.INFO, Category.DATA_QUALITY, "quality.missing_optional", "q"))
         assert report.has_errors is False
         assert report.has_warnings is False
         assert report.is_clean is True

@@ -393,17 +393,14 @@ def check_structural_from_source(
         emitted (Severity.ERROR) and no per-resource checks run.
 
     Examples:
-        Validate the bundled Leavenworth csv directory against the
-        GMNS 0.97 spec:
+        Validate the bundled sample csv directory against its
+        Frictionless datapackage.json:
 
-        >>> from pathlib import Path
-        >>> import gmnspy
-        >>> from gmnspy.fixtures import leavenworth
+        >>> from datagrove.fixtures import sample
         >>> from datagrove.spec.loader import load_package
         >>> from datagrove.validation import check_structural_from_source
-        >>> spec_path = Path(gmnspy.__file__).parent / "spec" / "0.97" / "datapackage.json"
-        >>> pkg = load_package(spec_path)
-        >>> report = check_structural_from_source(leavenworth.csv_dir(), spec=pkg)
+        >>> pkg = load_package(sample.DATAPACKAGE)
+        >>> report = check_structural_from_source(sample.csv_dir(), spec=pkg)
         >>> report.has_errors
         False
     """

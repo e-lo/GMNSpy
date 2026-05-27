@@ -83,6 +83,10 @@ def register_engine(engine: Engine, *, default: bool = False) -> None:
         ...     def materialize(self, expr): return None
         ...     def to_pandas(self, expr): return None
         ...     def to_polars(self, expr): return None
+        ...     def columns(self, expr): return []
+        ...     def count(self, expr): return 0
+        ...     def head(self, expr, n): return expr
+        ...     def select(self, expr, columns): return expr
         >>> fake = _DoctestEngine()
         >>> try:
         ...     register_engine(fake)
@@ -99,7 +103,8 @@ def register_engine(engine: Engine, *, default: bool = False) -> None:
             "(needs a 'name' attribute plus per-format primitives "
             "read_csv/read_parquet/read_duckdb_table/from_records/from_arrow and "
             "write_csv/write_parquet/write_duckdb_table, plus cast_schema, "
-            "scan, write, materialize, to_pandas, to_polars methods)"
+            "scan, write, materialize, to_pandas, to_polars, "
+            "and the lazy-introspection methods columns/count/head/select)"
         )
     if not getattr(engine, "name", None):
         raise ValueError("Engine.name must be a non-empty string")
@@ -191,6 +196,10 @@ def set_default_engine(name: str) -> None:
         ...     def materialize(self, expr): return None
         ...     def to_pandas(self, expr): return None
         ...     def to_polars(self, expr): return None
+        ...     def columns(self, expr): return []
+        ...     def count(self, expr): return 0
+        ...     def head(self, expr, n): return expr
+        ...     def select(self, expr, columns): return expr
         >>> previous = _eng._DEFAULT
         >>> try:
         ...     register_engine(_DoctestEngine())
