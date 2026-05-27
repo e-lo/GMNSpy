@@ -84,9 +84,63 @@ def test_app_help_lists_gmns_and_generic_commands():
     assert "quality" in result.stdout
 
 
-def test_generic_validate_still_works_under_gmnspy():
-    """The inherited datagrove `validate` command still works on a GMNS network."""
+def test_gmns_validate_loads_spec_for_csv_directory():
+    """`gmnspy validate <csv-dir>` must auto-load the GMNS spec.
+
+    Regression for the bug found during the v1.0 CLI walk-through on
+    2026-05-26: ``gmnspy validate`` was inheriting the generic
+    ``datagrove validate`` (no spec passed to ``Package.from_source``),
+    so a CSV directory without a ``datapackage.json`` produced a
+    vacuous "every real table is unexpected" report. The fix added a
+    GMNS-aware override in :mod:`gmnspy.cli.commands.validate` that
+    routes through :meth:`Network.from_source` so the spec actually
+    loads.
+
+    This test guards against re-introducing the bug: it runs the CLI
+    against the bundled Leavenworth CSV fixture and asserts that none
+    of the known GMNS core tables (``link``, ``node``, ``geometry``,
+    ``lane``) are flagged as ``structural.unexpected_resource``.
+    """
     result = runner.invoke(app, ["validate", "--json", str(leavenworth.csv_dir())])
     assert result.exit_code == 0, result.stderr
     payload = json.loads(result.stdout)
     assert "issues" in payload
+
+    unexpected = [
+        i
+        for i in payload["issues"]
+        if i.get("code") == "structural.unexpected_resource" and i.get("table") in {"link", "node", "geometry", "lane"}
+    ]
+    assert not unexpected, (
+        "GMNS spec was not loaded — core tables flagged as unexpected. "
+        f"Got: {[i.get('table') for i in unexpected]}. "
+        "Did gmnspy.cli.commands.validate.register get removed?"
+    )
+
+
+def test_gmns_validate_writes_html_report(tmp_path):
+    """`gmnspy validate --html <path>` writes a self-contained HTML report.
+
+    Regression for the v1.0 CLI walk-through finding that the
+    docs / cookbook claimed a ``--report=html -o ...`` flag existed
+    but the CLI had only ``--json``. The override added an ``--html
+    <path>`` flag that wires :meth:`ValidationReport.to_html`.
+    """
+    out = tmp_path / "report.html"
+    result = runner.invoke(app, ["validate", "--html", str(out), str(leavenworth.csv_dir())])
+    assert result.exit_code == 0, result.stderr
+    assert out.is_file()
+    html = out.read_text(encoding="utf-8")
+    # Self-contained: should be a full HTML document with embedded
+    # styling, not a fragment.
+    assert html.startswith("<!DOCTYPE html") or "<html" in html[:200]
+    assert "validation report" in html.lower() or "validation" in html.lower()
+
+
+def test_gmns_validate_respects_spec_override():
+    """`gmnspy validate --spec 0.96` should load the 0.96 spec, not the default."""
+    result = runner.invoke(app, ["validate", "--json", "--spec", "0.96", str(leavenworth.csv_dir())])
+    assert result.exit_code == 0, result.stderr
+    # spec_version isn't always in the payload header, but the
+    # important thing is the run succeeds against 0.96 (a different
+    # spec from the 0.97 default).
