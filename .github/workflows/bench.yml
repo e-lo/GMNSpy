@@ -1,0 +1,106 @@
+name: Bench
+
+# Performance regression guard.
+#
+# Runs pytest-benchmark on PRs that touch performance-critical paths,
+# stores the JSON output as a workflow artifact, and compares against
+# the most recent main-branch baseline (fetched from prior runs of
+# this workflow). Fails if any benchmark regresses >2x vs baseline.
+#
+# Task 5.2 future-proofs this workflow: as of 2026-05-27 the repo has
+# no benchmark tests yet (no `@pytest.mark.benchmark` fixtures and no
+# `tests/bench/`). The bench-run step is a no-op until they appear,
+# which is reported clearly in the job log.
+#
+# TODO(v1.1): post comparison as a PR comment via actions/github-script.
+
+on:
+  pull_request:
+    paths:
+      - 'packages/datagrove/datagrove/engines/**'
+      - 'packages/datagrove/datagrove/io/**'
+      - 'packages/datagrove/datagrove/validation/**'
+      - 'packages/datagrove/datagrove/dataset/**'
+      - 'packages/gmnspy/gmnspy/network.py'
+      - 'packages/gmnspy/gmnspy/quality/**'
+      - 'packages/gmnspy/gmnspy/scope/**'
+      - 'packages/gmnspy/gmnspy/indexes/**'
+      - '.github/workflows/bench.yml'
+
+jobs:
+  bench:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+          python-version: '3.13'
+      - name: Install workspace
+        # --all-extras matches tests.yml so doctest-modules collection
+        # works the same and optional-dep bench paths are importable.
+        # pytest-benchmark is already in [dependency-groups].dev.
+        run: uv sync --all-packages --all-extras
+
+      - name: Discover bench tests
+        id: discover
+        # Look for explicit perf marker first, then tests/bench/ dirs,
+        # then test_bench_*.py files. Sets `found=true` and a `paths`
+        # output for the run step to consume.
+        run: |
+          set -e
+          if uv run pytest --collect-only -q -m perf 2>/dev/null | grep -q '::'; then
+            echo "mode=marker" >> "$GITHUB_OUTPUT"
+            echo "found=true"  >> "$GITHUB_OUTPUT"
+          elif find packages -type d -path '*/tests/bench' | grep -q .; then
+            echo "mode=dir"    >> "$GITHUB_OUTPUT"
+            echo "found=true"  >> "$GITHUB_OUTPUT"
+          elif find packages -name 'test_bench_*.py' | grep -q .; then
+            echo "mode=glob"   >> "$GITHUB_OUTPUT"
+            echo "found=true"  >> "$GITHUB_OUTPUT"
+          else
+            echo "found=false" >> "$GITHUB_OUTPUT"
+            echo "no bench tests found — task 5.2 future-proofs the workflow"
+          fi
+
+      - name: Download baseline (most recent main-branch run)
+        if: steps.discover.outputs.found == 'true'
+        uses: dawidd6/action-download-artifact@v6
+        continue-on-error: true
+        with:
+          workflow: bench.yml
+          branch: main
+          name_is_regexp: true
+          name: '^bench-.*\.json$'
+          path: .benchmarks/baseline
+          if_no_artifact_found: warn
+
+      - name: Run benchmarks
+        if: steps.discover.outputs.found == 'true'
+        # --benchmark-compare-fail=mean:200% trips if mean is >2x baseline.
+        # When no baseline file is present pytest-benchmark just saves the
+        # new run as the first baseline (no compare, no fail).
+        run: |
+          mkdir -p .benchmarks
+          BASELINE=""
+          if compgen -G ".benchmarks/baseline/*.json" > /dev/null; then
+            cp .benchmarks/baseline/*.json .benchmarks/
+            BASELINE="--benchmark-compare --benchmark-compare-fail=mean:200%"
+          fi
+          case "${{ steps.discover.outputs.mode }}" in
+            marker) TARGET="-m perf" ;;
+            dir)    TARGET="packages/*/tests/bench" ;;
+            glob)   TARGET="-k bench_" ;;
+          esac
+          uv run pytest $TARGET \
+            --benchmark-only \
+            --benchmark-json=.benchmarks/bench-${{ github.sha }}.json \
+            $BASELINE
+
+      - name: Upload bench results
+        if: steps.discover.outputs.found == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-${{ github.sha }}.json
+          path: .benchmarks/bench-${{ github.sha }}.json
+          retention-days: 90

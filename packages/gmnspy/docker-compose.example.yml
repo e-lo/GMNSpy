@@ -1,0 +1,56 @@
+# Example docker-compose for self-hosting the gmnspy HTTP server.
+#
+# Copy this file to docker-compose.yml in your deployment directory,
+# adjust the volume paths + config + secrets, and `docker compose up -d`.
+#
+# This is an EXAMPLE — we don't ship a "blessed" compose config.
+# You're expected to put gmnspy behind your own reverse proxy
+# (Caddy / nginx / Traefik / ALB) for TLS termination and request
+# rate-limiting. The container only speaks plain HTTP on 0.0.0.0.
+
+services:
+  gmnspy-server:
+    image: ghcr.io/e-lo/gmnspy:latest
+    # If you build locally instead of pulling from ghcr.io:
+    #
+    # build:
+    #   context: ../..               # repo root — Dockerfile needs both packages/
+    #   dockerfile: packages/gmnspy/Dockerfile
+    container_name: gmnspy-server
+    restart: unless-stopped
+
+    # Bind to localhost only — your reverse proxy connects on the
+    # docker network or via the host loopback. Change to "8000:8000"
+    # for direct exposure (not recommended without TLS at the proxy).
+    ports:
+      - "127.0.0.1:8000:8000"
+
+    volumes:
+      # Server config. See `gmnspy server run --help` and
+      # `datagrove.api.ServerSettings` for the schema.
+      - ./config.yml:/etc/gmnspy/config.yml:ro
+      # Your network data. The config above should reference paths
+      # under /data (matches whatever you mount here).
+      - ./data:/data:ro
+
+    environment:
+      # Bearer token for the default auth backend. Use a strong value
+      # and rotate periodically. Read from a .env file (see below)
+      # rather than checking secrets into compose YAML.
+      DATAGROVE_API_BEARER_TOKEN: ${DATAGROVE_API_BEARER_TOKEN}
+
+      # Auto-approve any cost-model-gated operations. Required for
+      # the server: human-in-the-loop approval prompts don't make
+      # sense over HTTP. The HTTP routes that touch gated ops
+      # already pass approve=True; this is belt-and-suspenders for
+      # any code path that doesn't.
+      DATAGROVE_AUTO_APPROVE: "1"
+
+    # Healthcheck pokes /networks; expects a 200 + JSON. Adjust the
+    # path if your config exposes a different root route.
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/networks"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s

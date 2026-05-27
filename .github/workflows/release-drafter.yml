@@ -1,0 +1,42 @@
+# Drafts GitHub release notes from merged PR titles + labels.
+#
+# Per-package-tag aware: triggered by every push to refactor/v1.0 / main.
+# When the next `datagrove-vX.Y.Z` or `gmnspy-vX.Y.Z` tag is cut, the resulting
+# draft release notes pull from PRs merged since the previous matching tag.
+#
+# For v1.0 this is one combined draft across the monorepo (see
+# .github/release-drafter.yml for the rationale and the future split shape).
+
+name: Release Drafter
+
+on:
+  push:
+    branches:
+      - refactor/v1.0
+      - main
+  pull_request:
+    types: [opened, reopened, synchronize]
+
+permissions:
+  contents: read
+
+jobs:
+  update_release_draft:
+    permissions:
+      contents: write       # create / update the draft release
+      pull-requests: write  # autolabeler writes labels back to PRs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: release-drafter/release-drafter@v6
+        # Bootstrap caveat: release-drafter reads its config from the
+        # default branch only. Until this workflow + config land on
+        # the default branch (currently `develop`), runs will fail
+        # with "Configuration file ... is not found". Treat as
+        # non-blocking until the bootstrap merge propagates. After
+        # that, REMOVE this continue-on-error and let real config
+        # errors fail loudly.
+        continue-on-error: true
+        with:
+          config-name: release-drafter.yml
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
