@@ -136,6 +136,7 @@ for issue in qreport.issues[:5]:
 
 The scope module lets you carve a smaller network out of a larger one without writing FK-pushdown SQL by hand. `from_node` builds a network-distance-bounded subgraph around a seed node; every related table (`lane`, `link_tod`, `movement`, signal control) is pre-filtered so the result is still a self-consistent GMNS network.
 
+<!-- doctest: skip -->
 ```python
 from gmnspy.scope import from_node
 

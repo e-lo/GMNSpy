@@ -68,9 +68,13 @@ _DOC_GLOBS = [
 # Fenced ```python blocks. Capture the leading line for line-number
 # reporting, and the body. The directive form `.. code-block:: python`
 # (RST inside markdown) is rare in our docs but we handle it too.
+#
+# Anchor the opening fence to start-of-line so blockquote-wrapped
+# examples (`> `​``python ... `​``) — the page-style-guide pattern —
+# are ignored entirely. Their inner content isn't meant to exec.
 _FENCE_RE = re.compile(
-    r"```python\n(?P<body>.*?)\n```",
-    flags=re.DOTALL,
+    r"^```python\n(?P<body>.*?)\n```",
+    flags=re.DOTALL | re.MULTILINE,
 )
 _RST_BLOCK_RE = re.compile(
     r"\.\.\s+code-block::\s+python\s*\n((?:[ \t]+:[\w-]+:.*\n)*)\n((?:[ \t]+.*\n?)+)",
@@ -127,16 +131,26 @@ def _is_obviously_pseudocode(body: str) -> bool:
     We don't want to false-positive on snippets like ``net.foo(...)``
     where the ``...`` is a literal placeholder. These usually appear
     inside admonitions explaining shape, not executable recipes. The
-    heuristic: a block that ONLY contains ``...`` placeholders (no
-    real statements) or that's a single signature-like line is
-    pseudocode.
+    heuristic catches:
+
+    * Empty blocks.
+    * Blocks that ONLY contain ``...`` placeholders or comments.
+    * Blockquote-wrapped blocks (every line starts with ``> ``). Common
+      in the page-style guide where blocks demonstrate "what good code
+      should look like" inside a blockquote — they're not meant to exec.
     """
     stripped = body.strip()
     if not stripped:
         return True
     # All-ellipsis or all-comment bodies.
     lines = [ln.strip() for ln in stripped.splitlines() if ln.strip()]
-    return all(ln in ("...", "# ...") or ln.startswith("# ") for ln in lines)
+    if all(ln in ("...", "# ...") or ln.startswith("# ") for ln in lines):
+        return True
+    # Blockquote-wrapped blocks — every non-blank source line starts
+    # with `> ` (markdown blockquote marker). exec would choke on the
+    # `>` characters; the block is illustrative, not runnable.
+    source_lines = [ln for ln in body.splitlines() if ln.strip()]
+    return bool(source_lines) and all(ln.lstrip().startswith("> ") for ln in source_lines)
 
 
 # Per-file namespace cache so subsequent blocks see earlier imports.
@@ -167,71 +181,6 @@ _BLOCKS = _blocks_for_parametrize()
 #
 # Format: {(relative_path_str, fence_line_no): "reason"}
 _KNOWN_BROKEN: dict[tuple[str, int], str] = {
-    # quickstart cascade — uses `report.passed` / .to_html("path") style
-    ("packages/datagrove/docs/quickstart.md", 89): "uses old fixture API patterns",
-    ("packages/datagrove/docs/quickstart.md", 110): "uses old fixture API patterns",
-    ("packages/datagrove/docs/quickstart.md", 118): "uses old fixture API patterns",
-    ("packages/datagrove/docs/quickstart.md", 137): "uses old fixture API patterns",
-    (
-        "packages/gmnspy/docs/quickstart.md",
-        139,
-    ): "uses gmnspy.scope.from_node().apply() — IbisType NULL bug (fixed) but doc needs update",
-    # Style guide pseudocode (extracted before <!-- doctest: skip --> markers reached them)
-    ("packages/datagrove/docs/_page-style-guide.md", 96): "page-style-guide template pseudocode",
-    ("packages/gmnspy/docs/_page-style-guide.md", 96): "page-style-guide template pseudocode",
-    # index.md install snippet that looks like Python but is shape-only
-    ("packages/datagrove/docs/index.md", 15): "install banner snippet, not exec",
-    ("packages/gmnspy/docs/index.md", 15): "install banner snippet, not exec",
-    # scope-bbox.md — uses gmnspy.scope.from_polygon which doesn't exist
-    ("packages/datagrove/docs/cookbook/scope-bbox.md", 83): "references missing gmnspy.scope.from_polygon",
-    ("packages/datagrove/docs/cookbook/scope-bbox.md", 95): "references missing gmnspy.scope.from_polygon",
-    # convert-formats — needs report.is_clean / Severity.ERROR sweep
-    ("packages/datagrove/docs/cookbook/convert-formats.md", 60): "doc API drift (report.passed → has_errors)",
-    ("packages/datagrove/docs/cookbook/convert-formats.md", 80): "doc API drift (report.passed → has_errors)",
-    # engines.md concepts — needs ibis spatial + shapely fixtures
-    ("packages/datagrove/docs/concepts/engines.md", 111): "ibis spatial setup example needs work",
-    ("packages/datagrove/docs/concepts/engines.md", 124): "ibis spatial setup example needs work",
-    ("packages/datagrove/docs/concepts/engines.md", 165): "shapely example needs sample fixture",
-    ("packages/datagrove/docs/concepts/engines.md", 182): "shapely example needs sample fixture",
-    # gmnspy README quickstart
-    (
-        "packages/gmnspy/README.md",
-        56,
-    ): "README example calls report.to_html(path) — now works but cookbook still drifts",
-    # scope-from-nodes — wrong from_point kwargs + missing .provenance.reason
-    ("packages/gmnspy/docs/cookbook/scope-from-nodes.md", 18): "from_point signature drift",
-    ("packages/gmnspy/docs/cookbook/scope-from-nodes.md", 50): "scope.provenance is a str, not an object",
-    ("packages/gmnspy/docs/cookbook/scope-from-nodes.md", 62): "from_point signature drift",
-    ("packages/gmnspy/docs/cookbook/scope-from-nodes.md", 77): "from_point signature drift",
-    # edit-with-rollback — simplify_geometry needs assemble_link_geometry first
-    ("packages/gmnspy/docs/cookbook/edit-with-rollback.md", 18): "simplify_geometry on fixture missing inline geometry",
-    ("packages/gmnspy/docs/cookbook/edit-with-rollback.md", 52): "simplify_geometry on fixture missing inline geometry",
-    ("packages/gmnspy/docs/cookbook/edit-with-rollback.md", 63): "simplify_geometry on fixture missing inline geometry",
-    ("packages/gmnspy/docs/cookbook/edit-with-rollback.md", 84): "simplify_geometry on fixture missing inline geometry",
-    (
-        "packages/gmnspy/docs/cookbook/edit-with-rollback.md",
-        109,
-    ): "simplify_geometry on fixture missing inline geometry",
-    (
-        "packages/gmnspy/docs/cookbook/edit-with-rollback.md",
-        117,
-    ): "simplify_geometry on fixture missing inline geometry",
-    (
-        "packages/gmnspy/docs/cookbook/edit-with-rollback.md",
-        130,
-    ): "simplify_geometry on fixture missing inline geometry",
-    (
-        "packages/gmnspy/docs/cookbook/edit-with-rollback.md",
-        136,
-    ): "simplify_geometry on fixture missing inline geometry",
-    # customise-quality — list_rules() returns list[str], doc treats as objects
-    ("packages/gmnspy/docs/cookbook/customise-quality.md", 44): "list_rules() returns list[str], not Rule objects",
-    ("packages/gmnspy/docs/cookbook/customise-quality.md", 90): "custom rule shape diverged from current API",
-    # validate-network — one remaining example after my edits
-    (
-        "packages/gmnspy/docs/cookbook/validate-network.md",
-        77,
-    ): "Issue dataclass shape example uses old Severity.DATA_QUALITY",
 }
 
 

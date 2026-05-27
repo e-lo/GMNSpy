@@ -74,6 +74,7 @@ gmnspy validate <source> --html report.html    # standalone HTML report
 
 Each `Issue` is a small dataclass carrying severity, category, a stable code, a human-readable message, and the offending row coordinates when known:
 
+<!-- doctest: skip -->
 ```python
 @dataclass
 class Issue:

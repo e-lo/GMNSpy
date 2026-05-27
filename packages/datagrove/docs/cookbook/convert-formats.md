@@ -58,11 +58,13 @@ gmnspy convert ./csv_dir ./out          --format parquet
 The same dispatch is available from Python — `Network.write` and `Package.write` accept the same destination + optional `format=` kwarg as the CLI:
 
 ```python
+import tempfile, pathlib
 from gmnspy import Network
 from gmnspy.fixtures import leavenworth
 
 net = Network.from_source(leavenworth.csv_dir())
-net.write("./leavenworth.duckdb")
+with tempfile.TemporaryDirectory() as d:
+    net.write(pathlib.Path(d) / "leavenworth.duckdb")
 ```
 
 ### 3. (Optional) Pick an engine
@@ -78,12 +80,19 @@ gmnspy convert ./csv_dir ./out.parquet --engine pandas
 Load the destination back and validate against the spec. This catches any schema drift introduced by the conversion (e.g. a string column that came back as int because every value happened to parse):
 
 ```python
+import tempfile, pathlib
+from datagrove.reports import Severity
 from gmnspy import Network
+from gmnspy.fixtures import leavenworth
 
-net = Network.from_source("./leavenworth.parquet")
-report = net.validate()
-assert report.passed, [i.code for i in report.issues if i.is_error()]
-print(f"{net.spec_version}: {net.links.count()} links — round-trip clean")
+# Round-trip CSV → parquet → re-load → validate.
+with tempfile.TemporaryDirectory() as d:
+    out = pathlib.Path(d) / "leavenworth.parquet"
+    Network.from_source(leavenworth.csv_dir()).write(out)
+    net = Network.from_source(out)
+    report = net.validate()
+    assert not report.has_errors, [i.code for i in report.issues if i.severity is Severity.ERROR]
+    print(f"{net.spec_version}: {net.links.count()} links — round-trip clean")
 ```
 
 See [validate-network](https://e-lo.github.io/GMNSpy/gmnspy/cookbook/validate-network/) for what's in the report.

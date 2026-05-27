@@ -14,6 +14,7 @@ You're applying a destructive operation to a network — simplify geometry, merg
 ## Quick example
 
 Open a session, run a geometry simplification, and exit cleanly so the edit commits. Then write the result out:
+<!-- doctest: skip -->
 
 ```python
 from gmnspy import Network
@@ -48,6 +49,7 @@ pip install 'gmnspy[clean]'
 ### 2. Open a Session
 
 A `Session` wraps the network in an editable view. Inside the `with` block you pass *both* `net` and `s` into each editing op — the op uses `net` to read state and `s` to record the change so the session can undo it later:
+<!-- doctest: skip -->
 
 ```python
 from datagrove.editing import Session
@@ -59,6 +61,7 @@ with Session(net) as s:
 ### 3. Apply one or more ops
 
 Multiple ops in the same `with` block share a single transactional boundary — rollback undoes all of them:
+<!-- doctest: skip -->
 
 ```python
 from gmnspy.clean import simplify_geometry, merge_close_nodes, remove_orphans
@@ -80,6 +83,7 @@ Each call returns an `EditResult` with three fields:
 ### 4. Commit or rollback
 
 Clean exit from the `with` block commits all ops. An exception or an explicit `s.rollback()` undoes them in LIFO order:
+<!-- doctest: skip -->
 
 ```python
 # Commit:
@@ -105,6 +109,7 @@ with Session(net) as s:
 ### 5. Persist the edit log (optional)
 
 Pass `log_path=` to write a chronological record of each op (name, params, diff, rollback blob) to a sidecar parquet. The log is the only way to undo edits across process boundaries:
+<!-- doctest: skip -->
 
 ```python
 with Session(net, log_path="history.parquet") as s:
@@ -113,6 +118,7 @@ with Session(net, log_path="history.parquet") as s:
 ```
 
 Later, in a fresh process, replay the log in LIFO to undo:
+<!-- doctest: skip -->
 
 ```python
 from datagrove.editing import rollback
@@ -126,12 +132,14 @@ This is the same mechanism the CLI's `--dry-run` uses.
 ### 6. Write the result
 
 Persist the edited network. If you see an `OutOfSyncWarning` when running outside the CLI, that's [#164](https://github.com/e-lo/GMNSpy/issues/164) — an FK index didn't refresh after the edit:
+<!-- doctest: skip -->
 
 ```python
 net.write("./leavenworth-edited.parquet")
 ```
 
 Workaround until the fix lands — call `recompute_fks` explicitly before the write:
+<!-- doctest: skip -->
 
 ```python
 net.recompute_fks()
@@ -142,6 +150,7 @@ net.write("./leavenworth-edited.parquet")
 
 ???+ note "Default — transactional block with a single op"
     Most common pattern: open session, run one op, exit cleanly to commit.
+<!-- doctest: skip -->
 
     ```python
     with Session(net) as s:
@@ -150,6 +159,7 @@ net.write("./leavenworth-edited.parquet")
 
 ??? note "Chain multiple ops in one atomic block"
     All-or-nothing: rollback undoes the whole batch.
+<!-- doctest: skip -->
 
     ```python
     with Session(net) as s:
@@ -174,6 +184,7 @@ net.write("./leavenworth-edited.parquet")
 
 ??? note "Capture the diff for a PR description"
     `Diff` ships a `_repr_html_` for notebooks and a clean `__str__` for plain text.
+<!-- doctest: skip -->
 
     ```python
     print(result.diff)
@@ -181,6 +192,7 @@ net.write("./leavenworth-edited.parquet")
 
 ??? note "Replay an edit log to undo across processes"
     The log is a parquet sidecar; pass the path and `rollback` replays in LIFO.
+<!-- doctest: skip -->
 
     ```python
     from datagrove.editing import rollback

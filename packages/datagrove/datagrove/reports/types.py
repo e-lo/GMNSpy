@@ -532,24 +532,39 @@ class ValidationReport:
             "issues": [_issue_to_dict(i) for i in self.issues],
         }
 
-    def to_json(self, *, indent: int = 2) -> str:
-        """Return the report as a JSON string.
+    def to_json(self, path: str | Path | None = None, *, indent: int = 2) -> str:
+        """Return the report as a JSON string. Optionally write to ``path``.
 
         Thin wrapper around :func:`json.dumps` on :meth:`to_dict`.
 
         Args:
+            path: Optional file path. When given, the rendered JSON is
+                also written to ``path`` (parent dirs created if needed).
+                The string is still returned so chained
+                ``report.to_json("r.json")`` works.
             indent: ``json.dumps`` indent setting. Default 2.
 
         Examples:
             >>> import json
             >>> r = ValidationReport()
-            >>> data = json.loads(r.to_json())
+            >>> data = json.loads(r.to_json())              # in-memory
             >>> data["summary"]["is_clean"]
+            True
+            >>> import tempfile, pathlib
+            >>> with tempfile.TemporaryDirectory() as d:    # write-to-file
+            ...     out = pathlib.Path(d) / "r.json"
+            ...     _ = r.to_json(out)
+            ...     out.is_file()
             True
         """
         import json
 
-        return json.dumps(self.to_dict(), indent=indent)
+        rendered = json.dumps(self.to_dict(), indent=indent)
+        if path is not None:
+            target = Path(path)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(rendered, encoding="utf-8")
+        return rendered
 
     def to_rich(self) -> str:
         """Return the rich-console rendering of this report.

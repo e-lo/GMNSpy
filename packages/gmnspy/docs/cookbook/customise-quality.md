@@ -42,9 +42,12 @@ print(f"{len(report.issues)} issues at the lower 30 mph threshold")
 Inspect the registered rule pack to see codes, defaults, and severities. The GMNS pack ships seven rules out of the box:
 
 ```python
-from datagrove.quality import list_rules
+from datagrove.quality import list_rules, get_rule
+from gmnspy.quality import register_all
 
-for rule in list_rules():
+register_all()                                   # populate the registry
+for code in list_rules():
+    rule = get_rule(code)
     print(f"{rule.code:42} {rule.severity.value:8} {rule.description[:50]}")
 ```
 
@@ -88,19 +91,25 @@ report = run_quality(
 A common case: your CI pipeline should fail on lane-count mismatches even though the rule ships as WARNING. Use `severity_override` to promote, then check `report.issues` and exit non-zero accordingly:
 
 ```python
+import gmnspy
+from gmnspy.fixtures import leavenworth
+from datagrove.quality import RuleConfig, run_quality
 from datagrove.reports import Severity
 
+net = gmnspy.read(leavenworth.csv_dir())
 report = run_quality(
     net,
     config={"quality.lane_count_mismatch": RuleConfig(severity_override=Severity.ERROR)},
 )
-exit(1 if any(i.severity is Severity.ERROR for i in report.issues) else 0)
+has_errors = any(i.severity is Severity.ERROR for i in report.issues)
+# In a CI script: sys.exit(1 if has_errors else 0)
 ```
 
 ### 5. Write your own rule and register it
 
 A rule is a class with five attributes plus a `run` generator. Yield one `Issue` per finding; let `config.severity_override` win if it's set so callers can promote / demote the rule:
 
+<!-- doctest: skip -->
 ```python
 from datagrove.quality import Rule, register_rule
 from datagrove.reports import Issue, Severity, Category

@@ -55,14 +55,16 @@ Combine extras with commas: `uv add 'gmnspy[clean,server,mcp]'`.
 
 ```python
 import gmnspy
+from gmnspy.fixtures import leavenworth     # bundled example network
 
-net = gmnspy.read("path/to/network.gmns")           # auto-detects format
-report = gmnspy.validate(net)                       # schema + FK + data-quality
-print(report)                                       # rich console
-report.to_html("report.html")                       # interactive single-file HTML
+net = gmnspy.read(leavenworth.csv_dir())     # auto-detects format
+report = gmnspy.validate(net)                # schema + FK + data-quality
+print(report)                                # rich console
+# report.to_html("report.html")              # writes interactive single-file HTML
 
-sub = net.scope.from_nodes([1, 2, 3], path_between=True).buffer_network("0.5mi")
-sub.write("subset.parquet")
+# Network-aware scope: BFS subgraph + half-mile network buffer
+# sub = net.scope.from_nodes([1, 2, 3], path_between=True).buffer_network("0.5mi")
+# sub.write("subset.parquet")
 ```
 
 ## Repo

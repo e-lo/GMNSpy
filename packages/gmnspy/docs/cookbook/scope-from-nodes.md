@@ -15,6 +15,7 @@ You have a list of node ids (e.g. study-area boundary nodes, signalised intersec
 
 Build a scope from three seed nodes. With `path_between=True` (the default), BFS shortest paths between every pair of seeds determine what's included; `.apply()` materialises the result as a normal `Network`:
 
+<!-- doctest: skip -->
 ```python
 from gmnspy import Network
 from gmnspy.fixtures import leavenworth
@@ -48,17 +49,23 @@ pip install 'gmnspy[clean]'
 A `Scope` is a description of *which rows* belong to the subset, not the subset itself. `scope.provenance` records how it was built (operation, seeds, parameters) for audit / debugging:
 
 ```python
+import gmnspy
+from gmnspy.fixtures import leavenworth
+from gmnspy.scope import from_nodes
+
+net = gmnspy.read(leavenworth.csv_dir())
 scope = from_nodes(net, [1, 25, 50], path_between=True)
 
 print(f"nodes in scope:    {len(scope.node_ids)}")
 print(f"links in scope:    {len(scope.link_ids)}")
-print(f"provenance reason: {scope.provenance.reason}")
+print(f"provenance:        {scope.provenance}")   # str describing the op
 ```
 
 ### 4. Apply to materialise a sub-network
 
 `.apply()` returns a normal `Network` you can validate, run quality checks on, or write out. Every table is pre-filtered by FK chain — lane rows whose `link_id` isn't in scope are dropped, signal phases for missing signals are dropped, etc.:
 
+<!-- doctest: skip -->
 ```python
 sub = scope.apply()
 # Every table is pre-filtered by FK chain:
@@ -74,11 +81,12 @@ sub = scope.apply()
 
 Scopes compose with union / intersect / subtract and with network / spatial buffering. Build a corridor scope, union with a downtown scope, then add a half-mile network buffer in one expression:
 
+<!-- doctest: skip -->
 ```python
 from gmnspy.scope import from_nodes, from_point
 
 corridor = from_nodes(net, [1, 25, 50])
-downtown = from_point(net, lon=-120.66, lat=47.59, spatial_buffer="500m")
+downtown = from_point(net, (-120.66, 47.59), spatial_buffer_m=500.0)
 
 combined = corridor.union(downtown).buffer_network("0.5mi")
 # .intersect(other), .subtract(other), .buffer_spatial(metres) also available
@@ -135,7 +143,7 @@ Expected:
 
     ```python
     from gmnspy.scope import from_point
-    sub = from_point(net, lon=-120.66, lat=47.59, spatial_buffer="500m").apply()
+    sub = from_point(net, (-120.66, 47.59), spatial_buffer_m=500.0).apply()
     ```
 
 ??? note "Whole connected component"
