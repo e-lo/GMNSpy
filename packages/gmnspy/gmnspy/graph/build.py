@@ -76,6 +76,7 @@ class GMNSGraph:
         self.meta = meta
         self._source = None  # retained for lazy geometry access in viz
         self._reverse_csr = None
+        self._undirected = None  # cached symmetric adjacency for neighbors()
         self._kdtree = None
         self._kdtree_index = None  # graph indices that the kdtree covers
 
@@ -211,6 +212,23 @@ class GMNSGraph:
         graph._source = src
         return graph
 
+    @classmethod
+    def from_network(cls, net, *, cost: str = "length", **kwargs) -> GMNSGraph:
+        """Build a graph from a :class:`gmnspy.network.Network` (datagrove package).
+
+        Materialises the ``node`` and ``link`` tables to pandas and delegates to
+        :meth:`build`. ``cost`` defaults to ``"length"`` so distance-based ops
+        (:meth:`network_buffer`) and connectivity work without extra arguments.
+
+        Args:
+            net: A :class:`~gmnspy.network.Network`.
+            cost: Build-time cost expression / column (default ``"length"``).
+            **kwargs: Forwarded to :meth:`build` (``barrier``, ``directed``, …).
+        """
+        nodes_df = net.nodes.to_pandas()
+        links_df = net.links.to_pandas()
+        return cls.build({"node": nodes_df, "link": links_df}, cost=cost, **kwargs)
+
     @staticmethod
     def _resolve_directed(link: pd.DataFrame, directed) -> np.ndarray:
         n = len(link)
@@ -296,6 +314,59 @@ class GMNSGraph:
             return None
         best = hits[np.argmin(self.csr.data[start:end][hits])]
         return self.edge_link_id[start + best]
+
+    def _index_or_none(self, node_id) -> int | None:
+        i = self.node_index.get_indexer([node_id])[0]
+        return int(i) if i >= 0 else None
+
+    def _undirected_adjacency(self):
+        if self._undirected is None:
+            self._undirected = (self.csr + self.csr.T).tocsr()
+        return self._undirected
+
+    # -- network analysis (GraphIndex-parity surface) ------------------------
+
+    def neighbors(self, node_id, *, hops: int = 1) -> set:
+        """Return node_ids within ``hops`` graph-distance of ``node_id`` (undirected, excludes seed)."""
+        start = self._index_or_none(node_id)
+        if start is None:
+            return set()
+        adj = self._undirected_adjacency()
+        visited = {start}
+        frontier = {start}
+        for _ in range(hops):
+            nxt: set[int] = set()
+            for u in frontier:
+                lo, hi = int(adj.indptr[u]), int(adj.indptr[u + 1])
+                nxt.update(int(v) for v in adj.indices[lo:hi])
+            nxt -= visited
+            if not nxt:
+                break
+            visited |= nxt
+            frontier = nxt
+        visited.discard(start)
+        return {self.node_ids[p] for p in visited}
+
+    def network_buffer(self, seed_node_ids, distance: float) -> set:
+        """Return node_ids reachable within ``distance`` (cost units) of any seed (directed; includes seeds)."""
+        from scipy.sparse.csgraph import dijkstra
+
+        seeds = [p for n in seed_node_ids if (p := self._index_or_none(n)) is not None]
+        if not seeds:
+            return set()
+        dist = np.atleast_2d(dijkstra(self.csr, directed=True, indices=seeds, limit=distance))
+        reachable = np.where(np.isfinite(dist).any(axis=0))[0]
+        return {self.node_ids[j] for j in reachable}
+
+    def connected_component(self, seed_node_id) -> set:
+        """Return node_ids in the same weakly-connected component as ``seed_node_id``."""
+        from scipy.sparse.csgraph import connected_components
+
+        pos = self._index_or_none(seed_node_id)
+        if pos is None:
+            return set()
+        _, labels = connected_components(self.csr, directed=True, connection="weak", return_labels=True)
+        return {self.node_ids[j] for j in np.nonzero(labels == labels[pos])[0]}
 
     # -- queries (delegated to sibling modules) ------------------------------
 
