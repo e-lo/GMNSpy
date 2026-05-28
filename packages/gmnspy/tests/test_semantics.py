@@ -24,9 +24,9 @@ from datagrove.spec import DataPackage, Resource
 from gmnspy import Network
 from gmnspy.fixtures import leavenworth
 
-# Local import of igraph + shapely guard happens inside the connectivity
-# helpers; the tests skip if igraph isn't installed (clean extra).
-pytest.importorskip("igraph")
+# connectivity now builds a gmnspy.graph.GMNSGraph (scipy); geometry uses
+# shapely. Skip the module if the graph backend isn't installed.
+pytest.importorskip("scipy")
 
 
 # ---------------------------------------------------------------------------
@@ -118,17 +118,17 @@ def test_disconnected_network_has_two_components():
     assert largest_component(net) == {3, 4, 5}
 
 
-def test_connectivity_caches_graph_index_on_network():
-    """First call builds + caches; second call reuses the cached index."""
-    from gmnspy.semantics.connectivity import _GRAPH_INDEX_KEY, connected_components
+def test_connectivity_caches_graph_on_network():
+    """First call builds + caches; second call reuses the cached graph."""
+    from gmnspy.semantics.connectivity import _GRAPH_CACHE_KEY, connected_components
 
     net = Network.from_source(leavenworth.csv_dir(), engine=_engine())
-    assert _GRAPH_INDEX_KEY not in net.metadata
+    assert _GRAPH_CACHE_KEY not in net.metadata
     connected_components(net)
-    assert _GRAPH_INDEX_KEY in net.metadata
-    cached_first = net.metadata[_GRAPH_INDEX_KEY]
+    assert _GRAPH_CACHE_KEY in net.metadata
+    cached_first = net.metadata[_GRAPH_CACHE_KEY]
     connected_components(net)
-    assert net.metadata[_GRAPH_INDEX_KEY] is cached_first
+    assert net.metadata[_GRAPH_CACHE_KEY] is cached_first
 
 
 def test_unreachable_from_raises_on_unknown_seed():

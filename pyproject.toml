@@ -144,7 +144,10 @@ forbidden_modules = [
     "gmnspy.server",
     "gmnspy.mcp",
     "gmnspy.osm",
-    "gmnspy.graph",
+    # NB: gmnspy.graph is intentionally NOT forbidden — it is the graph/routing
+    # *backend* (like gmnspy.indexes), which gmnspy.semantics (and, as the
+    # unification proceeds, gmnspy.scope) import. Its scipy dep is lazily
+    # imported and shipped via the [graph] extra.
 ]
 
 # ---------------------------------------------------------------------------

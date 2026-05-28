@@ -100,6 +100,33 @@ class TestConnectedComponent:
         assert g.connected_component(999) == set()
 
 
+class TestReachableFrom:
+    def test_directed_reachability_includes_seed(self):
+        g = GMNSGraph.build(_path_dict(4), cost="length", directed=True)
+        assert g.reachable_from(1) == {1, 2, 3, 4}
+        assert g.reachable_from(3) == {3, 4}
+
+    def test_unknown_seed_empty(self):
+        g = GMNSGraph.build(_path_dict(3), cost="length", directed=True)
+        assert g.reachable_from(999) == set()
+
+
+class TestKeepMissingCost:
+    def _null_length_pair(self):
+        nodes = pd.DataFrame({"node_id": [1, 2], "x_coord": [0.0, 1.0], "y_coord": [0.0, 0.0]})
+        links = pd.DataFrame({"link_id": ["a"], "from_node_id": [1], "to_node_id": [2], "length": [None]})
+        return {"node": nodes, "link": links}
+
+    def test_null_cost_edge_dropped_by_default(self):
+        g = GMNSGraph.build(self._null_length_pair(), cost="length")
+        assert g.meta["n_edges"] == 0  # routing default: can't route on unknown cost
+
+    def test_keep_missing_cost_preserves_topology(self):
+        g = GMNSGraph.build(self._null_length_pair(), cost="length", keep_missing_cost=True)
+        assert g.meta["n_edges"] == 1
+        assert g.connected_component(1) == {1, 2}
+
+
 class TestGraphIndexParity:
     """GMNSGraph.from_network must match the igraph GraphIndex it will replace.
 

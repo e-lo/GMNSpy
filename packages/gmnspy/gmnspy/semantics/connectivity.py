@@ -1,10 +1,15 @@
-"""Network connectivity helpers built on :class:`gmnspy.indexes.GraphIndex`.
+"""Network connectivity helpers built on :class:`gmnspy.graph.GMNSGraph`.
 
-All entry points take a :class:`gmnspy.Network`, build (or reuse) a
-graph index, and answer a connectivity question. The index is cached
-on the network's ``metadata`` dict under ``_cached_graph_index`` so
-repeat calls inside a session do not rebuild — see
-:func:`_get_or_build_graph_index`.
+All entry points take a :class:`gmnspy.Network`, build (or reuse) a routing
+graph, and answer a connectivity question. The graph is cached on the network's
+``metadata`` dict under ``_cached_gmnsgraph`` so repeat calls inside a session
+do not rebuild — see :func:`_get_or_build_graph`.
+
+This module is part of unifying graph operations onto :mod:`gmnspy.graph`
+(scipy CSR), replacing the previous :class:`gmnspy.indexes.GraphIndex` (igraph)
+backend. The graph is built with ``keep_missing_cost=True`` so a link with a
+missing ``length`` is still a topological connection (matching the old
+null-length → unit-weight behaviour) rather than being dropped.
 
 Examples:
     >>> from gmnspy import Network
@@ -21,7 +26,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
-    from gmnspy.indexes import GraphIndex
+    from gmnspy.graph import GMNSGraph
     from gmnspy.network import Network
 
 __all__ = [
@@ -31,29 +36,29 @@ __all__ = [
     "unreachable_from",
 ]
 
-# The key under which we stash the built GraphIndex on Network.metadata.
-# Lives at module scope so the scope module (task 3.10) can reuse it
-# instead of building a parallel cache.
-_GRAPH_INDEX_KEY = "_cached_graph_index"
+# The key under which we stash the built GMNSGraph on Network.metadata. Distinct
+# from scope's ``_cached_graph_index`` (still an igraph GraphIndex until scope
+# migrates too), so the two backends can coexist during the transition.
+_GRAPH_CACHE_KEY = "_cached_gmnsgraph"
 
 
-def _get_or_build_graph_index(net: Network) -> GraphIndex:
-    """Return a cached :class:`GraphIndex` or build + cache one.
+def _get_or_build_graph(net: Network) -> GMNSGraph:
+    """Return a cached :class:`GMNSGraph` or build + cache one.
 
     Building requires both the ``link`` and ``node`` tables; we let
-    :class:`Network` raise :class:`gmnspy.NetworkError` on its own if
-    either is missing.
+    :class:`Network` raise :class:`gmnspy.NetworkError` on its own if either is
+    missing.
     """
-    cached = net.metadata.get(_GRAPH_INDEX_KEY)
+    cached = net.metadata.get(_GRAPH_CACHE_KEY)
     if cached is not None:
         return cached
-    # Local import to keep the cold-import cost of `semantics` low —
-    # callers who never touch connectivity don't pay for igraph.
-    from gmnspy.indexes import GraphIndex
+    # Local import to keep the cold-import cost of `semantics` low — callers who
+    # never touch connectivity don't pay for scipy.
+    from gmnspy.graph import GMNSGraph
 
-    index = GraphIndex.build(net.links, net.nodes)
-    net.metadata[_GRAPH_INDEX_KEY] = index
-    return index
+    graph = GMNSGraph.from_network(net, cost="length", keep_missing_cost=True)
+    net.metadata[_GRAPH_CACHE_KEY] = graph
+    return graph
 
 
 def is_connected(net: Network) -> bool:
@@ -91,12 +96,11 @@ def connected_components(net: Network) -> list[set[int]]:
         >>> all(len(comps[i]) >= len(comps[i + 1]) for i in range(len(comps) - 1))
         True
     """
-    index = _get_or_build_graph_index(net)
-    if len(index) == 0:
+    graph = _get_or_build_graph(net)
+    if len(graph.node_ids) == 0:
         return []
-    # igraph returns positional indices; map back to node ids and sort.
-    raw = index.graph.connected_components(mode="weak")
-    comps = [{index.node_ids[p] for p in comp} for comp in raw]
+    table = graph.connectivity(connection="weak").table
+    comps = [set(group["node_id"].tolist()) for _, group in table.groupby("component", sort=False)]
     comps.sort(key=len, reverse=True)
     return comps
 
@@ -134,14 +138,10 @@ def unreachable_from(net: Network, source_node_id: int) -> set[int]:
     """
     from gmnspy.semantics.errors import SemanticsError
 
-    index = _get_or_build_graph_index(net)
-    pos = index._pos.get(int(source_node_id))
-    if pos is None:
+    graph = _get_or_build_graph(net)
+    if graph._index_or_none(int(source_node_id)) is None:
         raise SemanticsError(
-            f"source_node_id={source_node_id!r} not present in network.nodes (network has {len(index)} nodes)."
+            f"source_node_id={source_node_id!r} not present in network.nodes (network has {len(graph.node_ids)} nodes)."
         )
-    # igraph's `subcomponent` with mode="out" walks directed edges.
-    reachable_positions = set(index.graph.subcomponent(pos, mode="out"))
-    all_positions = set(range(len(index)))
-    unreachable_positions = all_positions - reachable_positions
-    return {index.node_ids[p] for p in unreachable_positions}
+    reachable = {int(n) for n in graph.reachable_from(int(source_node_id))}
+    return {int(n) for n in graph.node_ids} - reachable

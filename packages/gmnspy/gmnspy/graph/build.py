@@ -97,6 +97,7 @@ class GMNSGraph:
         link_id_col: str = "link_id",
         x_col: str = "x_coord",
         y_col: str = "y_coord",
+        keep_missing_cost: bool = False,
     ) -> GMNSGraph:
         """Build a routing graph.
 
@@ -156,6 +157,13 @@ class GMNSGraph:
             except Exception as exc:
                 raise ValueError(f"Could not evaluate barrier expression {barrier!r}: {exc}") from exc
             keep &= ~barrier_mask
+
+        if keep_missing_cost:
+            # Topology use (connectivity/scope): keep edges whose cost is
+            # missing by giving them unit cost, rather than dropping them
+            # (which would fragment the network). Mirrors GraphIndex's
+            # null-length -> 1.0 behaviour. Routing callers leave this False.
+            weight = np.where(np.isfinite(weight), weight, 1.0)
 
         keep &= np.isfinite(weight)
 
@@ -367,6 +375,16 @@ class GMNSGraph:
             return set()
         _, labels = connected_components(self.csr, directed=True, connection="weak", return_labels=True)
         return {self.node_ids[j] for j in np.nonzero(labels == labels[pos])[0]}
+
+    def reachable_from(self, node_id) -> set:
+        """Return node_ids reachable from ``node_id`` by directed traversal (includes the seed)."""
+        from scipy.sparse.csgraph import breadth_first_order
+
+        pos = self._index_or_none(node_id)
+        if pos is None:
+            return set()
+        order, _ = breadth_first_order(self.csr, pos, directed=True, return_predecessors=True)
+        return {self.node_ids[p] for p in order}
 
     # -- queries (delegated to sibling modules) ------------------------------
 
