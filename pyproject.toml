@@ -84,6 +84,11 @@ convention = "google"
 # in argument defaults — that's the idiomatic typer API. B008 (function call
 # in default) is a false positive for this pattern, scoped to cli/ paths only.
 "**/cli/**" = ["B008"]
+# gmnspy.graph was ported from the graph agent's branch (functional + tested,
+# 16 tests). Its public free functions + module/class summaries are documented;
+# the trivial __init__/__repr__/property + interface-override method docstrings
+# are deferred. TODO(gmnspy.graph): full Google-docstring pass on methods.
+"packages/gmnspy/gmnspy/graph/**" = ["D102", "D105", "D107", "D417"]
 
 # ---------------------------------------------------------------------------
 # Pyright (strict on datagrove; standard on gmnspy)
@@ -139,6 +144,7 @@ forbidden_modules = [
     "gmnspy.server",
     "gmnspy.mcp",
     "gmnspy.osm",
+    "gmnspy.graph",
 ]
 
 # ---------------------------------------------------------------------------

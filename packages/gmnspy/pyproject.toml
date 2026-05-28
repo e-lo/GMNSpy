@@ -46,6 +46,14 @@ clean = [
     "igraph>=0.11",
     "pyproj>=3.6",
 ]
+graph = [
+    # Routing/analysis engine (gmnspy.graph): CSR graph, connectivity,
+    # isochrones, shortest paths. scipy.sparse is the core; numpy/pandas
+    # for assembly. geopandas (for to_geodataframe) rides on [clean].
+    "scipy>=1.11",
+    "numpy>=1.24",
+    "pandas>=2.0",
+]
 server = [
     "fastapi>=0.110",
     "uvicorn[standard]>=0.29",
@@ -60,7 +68,7 @@ notebook = [
     "anywidget>=0.9",
 ]
 all = [
-    "gmnspy[clean,server,mcp,notebook,osm]",
+    "gmnspy[clean,server,mcp,notebook,osm,graph]",
 ]
 dev-fixtures = [
     # Only required to *rebuild* bundled example fixtures (e.g. Leavenworth).
