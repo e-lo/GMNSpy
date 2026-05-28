@@ -202,7 +202,12 @@ class PolarsEngine:
         Returns:
             A :class:`polars.LazyFrame`.
         """
-        lf = pl.LazyFrame(records)
+        # infer_schema_length=None scans every row to infer dtypes. The default
+        # (100) infers from a prefix, so a column that is null for the first 100
+        # rows then carries a value (common with optional fields) infers as Null
+        # and raises ComputeError on append. Scanning all rows is correct for an
+        # in-memory record list; cast_schema then pins the declared types.
+        lf = pl.LazyFrame(records, infer_schema_length=None)
         return self.cast_schema(lf, schema) if schema is not None else lf
 
     def from_arrow(self, arrow_table: Any) -> pl.LazyFrame:

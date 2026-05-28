@@ -45,6 +45,20 @@ def test_creates_polars_engine():
     assert engine.name == "polars"
 
 
+def test_from_records_handles_null_prefix_then_value():
+    """from_records must not infer a Null column from an all-null prefix.
+
+    Regression: a column null for the first >100 rows then carrying a value
+    (common for optional fields) used to infer as Null and raise ComputeError
+    on append. from_records now scans all rows for inference.
+    """
+    records = [{"a": i, "b": None} for i in range(120)] + [{"a": 120, "b": 30.0}]
+    lf = PolarsEngine().from_records(records)
+    df = lf.collect()
+    assert df.height == 121
+    assert df["b"].sum() == 30.0
+
+
 def test_protocol_conformance():
     assert isinstance(PolarsEngine(), Engine)
 
