@@ -694,6 +694,19 @@ def _link_geometries(net: Network, link_ids: set[int]):
     return geoms
 
 
+def _expr_from_kept_rows(engine, source_arrow, kept: list[dict]):
+    """Rebuild a table expression from ``kept`` rows, preserving schema when empty.
+
+    ``from_records([])`` builds a columnless table that the ibis/duckdb
+    backend rejects ("must have at least one column"). When a scope filters
+    out every row of a table, slice the source arrow to zero rows instead so
+    the empty table keeps its columns and the package's table contract holds.
+    """
+    if kept:
+        return engine.from_records(kept)
+    return engine.from_arrow(source_arrow.slice(0, 0))
+
+
 def _filter_table_by_id_columns(
     table: Table,
     mapping: list[tuple[str, str]],
@@ -720,9 +733,7 @@ def _filter_table_by_id_columns(
                 keep_mask[i] = True
     rows = arrow.to_pylist()
     kept = [r for r, m in zip(rows, keep_mask, strict=True) if m]
-    # Engines accept an empty list and reconstruct an empty table preserving column hints
-    # — we rely on that so a fully-filtered-out scope keeps the package's table contract.
-    new_expr = table.engine.from_records(kept)
+    new_expr = _expr_from_kept_rows(table.engine, arrow, kept)
     return Table(name=table.name, expr=new_expr, engine=table.engine, schema=table.schema, source=table.source)
 
 
@@ -737,7 +748,7 @@ def _filter_geometry_by_links(geometry_table: Table, link_table: Table | None) -
     geom_arrow = _to_arrow(geometry_table)
     rows = geom_arrow.to_pylist()
     kept = [r for r in rows if r.get("geometry_id") is not None and int(r["geometry_id"]) in referenced]
-    new_expr = geometry_table.engine.from_records(kept)
+    new_expr = _expr_from_kept_rows(geometry_table.engine, geom_arrow, kept)
     return Table(
         name=geometry_table.name,
         expr=new_expr,

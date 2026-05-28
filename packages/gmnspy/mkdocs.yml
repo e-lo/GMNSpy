@@ -141,6 +141,7 @@ nav:
   - Cookbook:
       - cookbook/index.md
       - Validate a network: cookbook/validate-network.md
+      - Query and update linked tables: cookbook/query-and-update.md
       - Customise quality rules: cookbook/customise-quality.md
       - Scope from seed nodes: cookbook/scope-from-nodes.md
       - Edit with rollback: cookbook/edit-with-rollback.md

@@ -15,7 +15,6 @@ You have a list of node ids (e.g. study-area boundary nodes, signalised intersec
 
 Build a scope from three seed nodes. With `path_between=True` (the default), BFS shortest paths between every pair of seeds determine what's included; `.apply()` materialises the result as a normal `Network`:
 
-<!-- doctest: skip -->
 ```python
 from gmnspy import Network
 from gmnspy.fixtures import leavenworth
@@ -63,34 +62,42 @@ print(f"provenance:        {scope.provenance}")   # str describing the op
 
 ### 4. Apply to materialise a sub-network
 
-`.apply()` returns a normal `Network` you can validate, run quality checks on, or write out. Every table is pre-filtered by FK chain — lane rows whose `link_id` isn't in scope are dropped, signal phases for missing signals are dropped, etc.:
+`.apply()` returns a normal `Network` you can validate, run quality checks on, or write out. Every table is pre-filtered by FK chain — lane rows whose `link_id` isn't in scope are dropped, signal rows for missing controllers are dropped, etc. A table the scope empties entirely (e.g. `signal_controller` when no signals fall in the subgraph) survives as a zero-row table with its schema intact:
 
-<!-- doctest: skip -->
 ```python
+import gmnspy
+from gmnspy.fixtures import leavenworth
+from gmnspy.scope import from_nodes
+
+net = gmnspy.read(leavenworth.csv_dir())
+scope = from_nodes(net, [1, 25, 50], path_between=True)
+
+# Every table is FK-filtered to the scope:
+#   link / node    — only ids in scope.link_ids / scope.node_ids
+#   lane, link_tod — only rows whose link_id is in scope
+#   geometry       — only ids referenced by surviving links
 sub = scope.apply()
-# Every table is pre-filtered by FK chain:
-#   link             — only links in scope.link_ids
-#   node             — only nodes in scope.node_ids
-#   lane             — only lanes whose link_id ∈ scope.link_ids
-#   link_tod         — same FK pushdown
-#   signal_phase     — only phases for surviving signals
-#   ...
+print(f"{sub.links.count()} links, {sub.nodes.count()} nodes")
 ```
 
 ### 5. Chain with set ops + buffers
 
-Scopes compose with union / intersect / subtract and with network / spatial buffering. Build a corridor scope, union with a downtown scope, then add a half-mile network buffer in one expression:
+Scopes compose with union / intersect / subtract and with network / spatial buffering. Build a corridor scope, union it with a second scope, then add a 100 m network buffer — all in one expression:
 
-<!-- doctest: skip -->
 ```python
-from gmnspy.scope import from_nodes, from_point
+import gmnspy
+from gmnspy.fixtures import leavenworth
+from gmnspy.scope import from_nodes
 
+net = gmnspy.read(leavenworth.csv_dir())
 corridor = from_nodes(net, [1, 25, 50])
-downtown = from_point(net, (-120.66, 47.59), spatial_buffer_m=500.0)
+downtown = from_nodes(net, [10, 11, 12])
 
-combined = corridor.union(downtown).buffer_network("0.5mi")
-# .intersect(other), .subtract(other), .buffer_spatial(metres) also available
+combined = corridor.union(downtown).buffer_network("100m")
+# .intersect(other) and .subtract(other) compose the same way;
+# .buffer_spatial(metres) buffers by straight-line distance instead.
 sub = combined.apply()
+print(f"combined scope: {sub.links.count()} links, {sub.nodes.count()} nodes")
 ```
 
 ### 6. CLI equivalent
@@ -135,7 +142,7 @@ Expected:
 
     ```python
     from gmnspy.scope import from_link
-    sub = from_link(net, 42, spatial_buffer="100m").apply()
+    sub = from_link(net, 42, spatial_buffer_m=100.0).apply()
     ```
 
 ??? note "Lat/lon point with auto-snapping"
@@ -167,6 +174,7 @@ Expected:
 * **Auto-build threshold.** On networks > 50k nodes the first scope call silently builds the igraph adjacency, which can take a few seconds. Pre-build with `net.build_indexes(graph=True)` to control timing, or raise the bar with `GMNSPY_AUTO_INDEX_THRESHOLD=200000`.
 * **`igraph` is in `[clean]`.** A pure `pip install gmnspy` won't import — you'll see `ImportError: gmnspy.scope requires the [clean] extra`.
 * **`path_between=True` is O(seeds²)** in BFS calls. For 100s of seeds, prefer a region scope (`from_zone`, `from_polygon`) or build the graph index first.
+* **Spatial scope (`from_point`, `from_link(spatial_buffer_m=…)`) needs an inline `geometry` column on links.** Leavenworth carries geometry in a separate `geometry` table via `link.geometry_id`, so spatial buffers raise `ScopeError` until you assemble it (`gmnspy.semantics.assemble_link_geometry`). Network buffers (`buffer_network`, `from_link(network_buffer=…)`) work straight off the FK graph — no geometry needed.
 
 ## See also
 

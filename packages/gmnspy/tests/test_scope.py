@@ -445,6 +445,33 @@ def test_apply_filters_link_tod():
     assert link_tod_ids == {100}
 
 
+def test_apply_succeeds_when_a_table_filters_to_empty():
+    """Regression: a scope that empties a whole table must still apply.
+
+    On the ibis/duckdb engine, ``from_records([])`` builds a columnless
+    table duckdb refuses to register ("must have at least one column").
+    A scope that fully filters out a table — Leavenworth's
+    ``signal_controller`` when no signals fall in the seed subgraph — used
+    to crash ``apply()``; the empty table must survive with its schema.
+
+    Uses the default (ibis) engine on purpose: the synthetic ``apply``
+    tests run on the pandas engine, which tolerates the columnless table,
+    so the bug only surfaces on the default read path.
+    """
+    from gmnspy.scope import from_nodes
+
+    net = Network.from_source(leavenworth.csv_dir())  # default ibis engine
+    assert net.tables["signal_controller"].count() > 0  # non-empty before scoping
+
+    sub = from_nodes(net, [1, 25, 50], path_between=True).apply()
+
+    emptied = sub.tables["signal_controller"]
+    assert emptied.count() == 0
+    assert emptied.columns()  # schema preserved — not a columnless table
+    assert sub.links.count() > 0
+    assert sub.nodes.count() > 0
+
+
 # ---------------------------------------------------------------------------
 # Index caching (perf-relevant)
 # ---------------------------------------------------------------------------
