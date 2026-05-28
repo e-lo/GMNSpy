@@ -184,25 +184,40 @@ _KNOWN_BROKEN: dict[tuple[str, int], str] = {}
 
 
 @pytest.fixture
-def _isolate_quality_registry():
-    """Snapshot + restore the datagrove quality rule registry per block.
+def _isolate_global_state():
+    """Snapshot + restore process-global state mutated by doc blocks.
 
-    Doc blocks that exec ``register_rule(...)`` (e.g. the customise-
-    quality cookbook) would otherwise leak into subsequent tests in
-    the broader suite that depend on a clean registry. Snapshot the
-    state before exec, restore after — same dance as
-    ``tests/io/conftest.py``'s adapter-registry fixture.
+    Two kinds of global state leak across doc blocks (each runs as a
+    separate parametrized test, but globals persist for the whole
+    pytest session):
+
+    1. **Quality rule registry** — doc blocks that exec
+       ``register_rule(...)`` (the customise-quality cookbook) would
+       pollute later tests that expect a clean registry.
+    2. **ibis interactive mode** — the query-and-update cookbook shows
+       the natural notebook pattern ``ibis.options.interactive = True``
+       (set once, leave on). Left on, *every* later block renders
+       eagerly, and a join expression under interactive repr trips
+       ``TypeError: unhashable type: 'list'`` in ibis. Snapshot +
+       restore so each block starts from the real default.
+
+    Same snapshot/restore dance as ``tests/io/conftest.py``'s
+    adapter-registry fixture.
     """
+    import ibis
+
     from datagrove.quality import registry as _qreg
 
-    snapshot = dict(_qreg._registry)
-    discovered = _qreg._discovered
+    qsnapshot = dict(_qreg._registry)
+    qdiscovered = _qreg._discovered
+    interactive = ibis.options.interactive
     try:
         yield
     finally:
         _qreg._registry.clear()
-        _qreg._registry.update(snapshot)
-        _qreg._discovered = discovered
+        _qreg._registry.update(qsnapshot)
+        _qreg._discovered = qdiscovered
+        ibis.options.interactive = interactive
 
 
 @pytest.mark.parametrize(
@@ -210,7 +225,7 @@ def _isolate_quality_registry():
     _BLOCKS,
     ids=[f"{p}:{ln}" for p, ln, _ in _BLOCKS],
 )
-def test_documented_python_block_runs(path: Path, line_no: int, body: str, _isolate_quality_registry: None) -> None:
+def test_documented_python_block_runs(path: Path, line_no: int, body: str, _isolate_global_state: None) -> None:
     """Every ```python fenced block in our docs must exec without raising.
 
     Closes the doc-vs-code drift class the symbol + flag contract
