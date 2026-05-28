@@ -109,7 +109,6 @@ has_errors = any(i.severity is Severity.ERROR for i in report.issues)
 
 A rule is a class with five attributes plus a `run` generator. Yield one `Issue` per finding; let `config.severity_override` win if it's set so callers can promote / demote the rule:
 
-<!-- doctest: skip -->
 ```python
 from datagrove.quality import Rule, register_rule
 from datagrove.reports import Issue, Severity, Category
