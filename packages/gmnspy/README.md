@@ -38,6 +38,7 @@ pipx install gmnspy
 ### Optional extras
 
 ```bash
+uv add 'gmnspy[osm]'          # build a GMNS network from OpenStreetMap (requests + pyyaml)
 uv add 'gmnspy[clean]'        # network editing + cleanup (shapely + igraph + pyproj)
 uv add 'gmnspy[server]'       # self-hostable HTTP server (FastAPI + uvicorn)
 uv add 'gmnspy[mcp]'          # MCP server for Claude Desktop / Code

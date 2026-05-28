@@ -34,6 +34,12 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+osm = [
+    # Build a GMNS network from OpenStreetMap (gmnspy.osm). requests = Overpass
+    # / Nominatim access; pyyaml = the maintained tag-mapping data loader.
+    "requests>=2",
+    "pyyaml>=6",
+]
 clean = [
     "shapely>=2.0",
     "geopandas>=1.0",
@@ -54,7 +60,7 @@ notebook = [
     "anywidget>=0.9",
 ]
 all = [
-    "gmnspy[clean,server,mcp,notebook]",
+    "gmnspy[clean,server,mcp,notebook,osm]",
 ]
 dev-fixtures = [
     # Only required to *rebuild* bundled example fixtures (e.g. Leavenworth).
@@ -96,6 +102,8 @@ include = [
     "gmnspy/spec/**/*.json",
     "gmnspy/spec/**/VERSION",
     "gmnspy/spec/**/README.md",
+    # Maintained OSM->GMNS tag-mapping + network-filter data (gmnspy.osm).
+    "gmnspy/osm/mappings/*.yaml",
     # Bundled example networks (Leavenworth, WA; see
     # gmnspy/fixtures/leavenworth/README.md for provenance).
     "gmnspy/fixtures/**/*.csv",

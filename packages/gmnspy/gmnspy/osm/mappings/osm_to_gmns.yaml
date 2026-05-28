@@ -1,0 +1,15 @@
+# OSM way tag -> GMNS link field mapping (maintained data; edit here, not in code).
+#
+# Each entry: <gmns_field>: { osm_tag: <source OSM key>, transform: <name in tags.TRANSFORMS> }
+# Transforms that aren't pure data live in gmnspy/osm/tags.py (TRANSFORMS registry).
+#
+# NOTE on direction: every emitted GMNS link is directed=True and a two-way
+# street becomes two directed links, so `directed` is NOT mapped here — it is
+# set by the converter. The OSM `oneway` tag is interpreted by
+# tags.oneway_direction() to decide how many links to emit, not mapped to a
+# field value.
+
+name:          { osm_tag: name,     transform: direct }      # street name, verbatim
+lanes:         { osm_tag: lanes,    transform: parse_int }    # motor-vehicle lane count
+free_speed:    { osm_tag: maxspeed, transform: parse_speed }  # speed limit -> mph (OSM default km/h)
+facility_type: { osm_tag: highway,  transform: direct }       # OSM road class (residential, primary, ...)

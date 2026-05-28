@@ -1093,6 +1093,8 @@ all = [
     { name = "mcp" },
     { name = "pydantic-settings" },
     { name = "pyproj" },
+    { name = "pyyaml" },
+    { name = "requests" },
     { name = "shapely" },
     { name = "uvicorn", extra = ["standard"] },
 ]
@@ -1116,6 +1118,10 @@ notebook = [
     { name = "anywidget" },
     { name = "ipywidgets" },
 ]
+osm = [
+    { name = "pyyaml" },
+    { name = "requests" },
+]
 server = [
     { name = "fastapi" },
     { name = "httpx" },
@@ -1130,7 +1136,7 @@ requires-dist = [
     { name = "duckdb", marker = "extra == 'dev-fixtures'", specifier = ">=1.0" },
     { name = "fastapi", marker = "extra == 'server'", specifier = ">=0.110" },
     { name = "geopandas", marker = "extra == 'clean'", specifier = ">=1.0" },
-    { name = "gmnspy", extras = ["clean", "server", "mcp", "notebook"], marker = "extra == 'all'" },
+    { name = "gmnspy", extras = ["clean", "server", "mcp", "notebook", "osm"], marker = "extra == 'all'" },
     { name = "httpx", marker = "extra == 'server'", specifier = ">=0.27" },
     { name = "igraph", marker = "extra == 'clean'", specifier = ">=0.11" },
     { name = "ipywidgets", marker = "extra == 'notebook'", specifier = ">=8.1" },
@@ -1140,11 +1146,13 @@ requires-dist = [
     { name = "pyarrow", marker = "extra == 'dev-fixtures'", specifier = ">=16" },
     { name = "pydantic-settings", marker = "extra == 'server'", specifier = ">=2.2" },
     { name = "pyproj", marker = "extra == 'clean'", specifier = ">=3.6" },
+    { name = "pyyaml", marker = "extra == 'osm'", specifier = ">=6" },
+    { name = "requests", marker = "extra == 'osm'", specifier = ">=2" },
     { name = "shapely", marker = "extra == 'clean'", specifier = ">=2.0" },
     { name = "shapely", marker = "extra == 'dev-fixtures'", specifier = ">=2.0" },
     { name = "uvicorn", extras = ["standard"], marker = "extra == 'server'", specifier = ">=0.29" },
 ]
-provides-extras = ["clean", "server", "mcp", "notebook", "all", "dev-fixtures"]
+provides-extras = ["osm", "clean", "server", "mcp", "notebook", "all", "dev-fixtures"]
 
 [[package]]
 name = "google-api-core"

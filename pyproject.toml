@@ -138,6 +138,7 @@ forbidden_modules = [
     "gmnspy.clean",
     "gmnspy.server",
     "gmnspy.mcp",
+    "gmnspy.osm",
 ]
 
 # ---------------------------------------------------------------------------

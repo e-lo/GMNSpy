@@ -22,6 +22,7 @@ from datagrove.cli.app import build_app
 
 from .commands import (
     bench,
+    build,
     clean,
     doctor,
     index,
@@ -67,6 +68,7 @@ def _build_gmnspy_app() -> typer.Typer:
     clean.register(gmnspy_app)
     scope.register(gmnspy_app)
     index.register(gmnspy_app)
+    build.register(gmnspy_app)
     return gmnspy_app
 
 

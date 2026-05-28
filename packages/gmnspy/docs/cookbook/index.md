@@ -16,6 +16,10 @@ For generic Frictionless data-package recipes (S3 reads, format conversion, gene
 * [Run validation and read the report](validate-network.md) — interpret severity / category / code.
 * [Customise the data-quality rule pack](customise-quality.md) — threshold overrides, disable rules, plug in your own.
 
+## Creating networks
+
+* [Build a GMNS network from OpenStreetMap](build-from-osm.md) — `gmnspy build` from a place / bbox / point+buffer (needs the `[osm]` extra).
+
 ## Scope + geographic subsetting
 
 * [Build a scope from seed nodes](scope-from-nodes.md) — BFS shortest-path, network buffers, FK pushdown.

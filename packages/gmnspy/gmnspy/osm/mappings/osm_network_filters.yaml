@@ -1,0 +1,59 @@
+# Allowed OSM `highway` tag values per network_type (maintained data).
+#
+# The Overpass query keeps only ways whose `highway` value is in the list for
+# the requested network_type. `all` is special-cased: an empty list means "no
+# restriction — accept any value of the highway tag" (see tags.accepts_highway).
+#
+# These are intentionally simple allow-lists (more legible than OSM exclusion
+# filters) and cover the common cases; extend them here as needs grow.
+
+drive:
+  - motorway
+  - trunk
+  - primary
+  - secondary
+  - tertiary
+  - unclassified
+  - residential
+  - living_street
+  - service
+  - road
+  - motorway_link
+  - trunk_link
+  - primary_link
+  - secondary_link
+  - tertiary_link
+
+walk:
+  - footway
+  - path
+  - pedestrian
+  - steps
+  - track
+  - living_street
+  - residential
+  - unclassified
+  - tertiary
+  - secondary
+  - primary
+  - service
+  - road
+
+bike:
+  - cycleway
+  - path
+  - track
+  - living_street
+  - residential
+  - unclassified
+  - tertiary
+  - secondary
+  - primary
+  - service
+  - road
+  - tertiary_link
+  - secondary_link
+  - primary_link
+
+# Empty list => accept any highway value (no server-side class filter).
+all: []

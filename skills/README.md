@@ -30,6 +30,7 @@ Replace `gmns-validate` with any subdirectory listed below.
 | -------------------------------------------------- | ------------------------------------------------------------------------- |
 | [`datagrove-validate`](datagrove-validate/SKILL.md) | Validating any Frictionless data package — generic, not GMNS-specific.    |
 | [`gmns-author`](gmns-author/SKILL.md)               | Authoring or editing a GMNS network from scratch.                         |
+| [`gmns-build`](gmns-build/SKILL.md)                 | Building a GMNS network from OpenStreetMap (place / bbox / point+buffer).  |
 | [`gmns-validate`](gmns-validate/SKILL.md)           | Interpreting `gmnspy validate` and `gmnspy quality` reports.              |
 | [`gmns-convert`](gmns-convert/SKILL.md)             | Converting GMNS data between CSV, Parquet, DuckDB, and zip-CSV formats.   |
 | [`gmns-clean`](gmns-clean/SKILL.md)                 | Simplifying geometries, merging nodes, dropping orphans — with rollback.  |
