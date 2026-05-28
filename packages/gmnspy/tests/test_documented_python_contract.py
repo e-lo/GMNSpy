@@ -205,7 +205,6 @@ def _isolate_global_state():
     adapter-registry fixture.
     """
     import ibis
-
     from datagrove.quality import registry as _qreg
 
     qsnapshot = dict(_qreg._registry)
