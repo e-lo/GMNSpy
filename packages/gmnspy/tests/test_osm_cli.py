@@ -92,3 +92,16 @@ def test_build_rejects_bad_bbox(monkeypatch):
     monkeypatch.setattr("gmnspy.osm.build_network_from_osm", _fake_network)
     result = runner.invoke(app, ["build", "out", "--bbox", "0,0,1"])  # only 3 values
     assert result.exit_code != 0
+
+
+def test_build_reports_network_error_cleanly(monkeypatch):
+    import requests
+
+    def _boom(*_a, **_k):
+        raise requests.exceptions.ConnectionError("overpass unreachable")
+
+    monkeypatch.setattr("gmnspy.osm.build_network_from_osm", _boom)
+    result = runner.invoke(app, ["build", "out", "--bbox", "0,0,1,1"])
+    assert result.exit_code == 1
+    # Handled (clean Exit), not a leaked ConnectionError traceback.
+    assert isinstance(result.exception, SystemExit)

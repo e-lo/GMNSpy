@@ -84,6 +84,8 @@ def register(app: typer.Typer) -> None:
         tags = [t.strip() for t in extra_tags.split(",")] if extra_tags else None
 
         osm = require_extra("gmnspy.osm", "osm")
+        import requests  # available via the [osm] extra (resolved by require_extra above)
+
         build_kwargs = {"spec_version": spec_version} if spec_version else {}
         try:
             net = osm.build_network_from_osm(
@@ -94,7 +96,9 @@ def register(app: typer.Typer) -> None:
                 engine=resolve_engine(engine),
                 **build_kwargs,
             )
-        except (ValueError, LookupError) as exc:
+        except (ValueError, LookupError, requests.exceptions.RequestException) as exc:
+            # ValueError/LookupError: bad area, unknown network_type, empty result,
+            # geocode miss. RequestException: Overpass/Nominatim network failures.
             typer.secho(str(exc), fg="red", err=True)
             raise typer.Exit(code=1) from None
 

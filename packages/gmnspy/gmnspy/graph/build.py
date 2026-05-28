@@ -248,11 +248,22 @@ class GMNSGraph:
     def _assemble_csr(U, V, W, LID, n):
         from scipy.sparse import csr_array
 
-        order = np.argsort(U, kind="stable")
+        # Sort by (row, col, cost), then drop parallel duplicates keeping the
+        # minimum-cost edge (and its link_id) per (u, v). Without this, scipy
+        # SUMS duplicate weights — so parallel links (e.g. dual carriageways
+        # collapsed to one node pair) would be mis-costed — and edge_link_id
+        # could misalign with csr.data if the matrix is later canonicalized.
+        order = np.lexsort((W, V, U))
         U = U[order]
         V = V[order].astype(np.int32, copy=False)
         W = W[order].astype("float64", copy=False)
         LID = LID[order]
+        if len(U) > 1:
+            dup = np.zeros(len(U), dtype=bool)
+            dup[1:] = (U[1:] == U[:-1]) & (V[1:] == V[:-1])  # min-cost is first in each (u,v) run
+            if dup.any():
+                keep = ~dup
+                U, V, W, LID = U[keep], V[keep], W[keep], LID[keep]
         counts = np.bincount(U, minlength=n)
         indptr = np.zeros(n + 1, dtype=np.int64)
         np.cumsum(counts, out=indptr[1:])
@@ -309,8 +320,13 @@ class GMNSGraph:
         return snap(self, x, y)
 
     def to_geodataframe(self, **kwargs):
-        from .viz import to_geodataframe
-
+        try:
+            from .viz import to_geodataframe
+        except ImportError as e:  # pragma: no cover - exercised only without geopandas
+            raise ImportError(
+                "GMNSGraph.to_geodataframe requires geopandas + shapely; install them with "
+                "pip install 'gmnspy[clean]' (or `pip install geopandas shapely`)."
+            ) from e
         return to_geodataframe(self, **kwargs)
 
     @property

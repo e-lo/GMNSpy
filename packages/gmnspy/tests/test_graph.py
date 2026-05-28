@@ -173,6 +173,28 @@ def test_negative_cost_rejected():
         GMNSGraph.build(net, cost="weight")
 
 
+# -- parallel edges ---------------------------------------------------------
+
+
+def test_parallel_edges_use_min_cost_not_summed():
+    # Two links between the same node pair (costs 5 and 7). The graph must use
+    # the cheaper edge (5), not the scipy default of summing duplicates (12).
+    nodes = pd.DataFrame({"node_id": [1, 2], "x_coord": [0.0, 1.0], "y_coord": [0.0, 0.0]})
+    links = pd.DataFrame(
+        {
+            "link_id": ["cheap", "dear"],
+            "from_node_id": [1, 1],
+            "to_node_id": [2, 2],
+            "weight": [5.0, 7.0],
+        }
+    )
+    g = GMNSGraph.build({"node": nodes, "link": links}, cost="weight", directed=True)
+    assert g.meta["n_edges"] == 1  # parallel pair deduped to one edge
+    path = g.shortest_path(1, 2)
+    assert path.cost == 5.0  # min, not 12.0
+    assert path.links == ["cheap"]  # the cheaper link's id, correctly aligned
+
+
 # -- viz --------------------------------------------------------------------
 
 
