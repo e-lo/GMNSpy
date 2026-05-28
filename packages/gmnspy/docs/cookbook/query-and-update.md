@@ -61,7 +61,7 @@ lane = net.tables["lane"].expr
 
 q = (
     lane.join(link.filter(link.free_speed > 45), lane.link_id == link.link_id)
-        .select("lane_id", "link_id", "width", "free_speed", "facility_type")
+        .select("lane_id", "link_id", "lane_num", "width", "free_speed", "facility_type")
         .order_by("link_id", "lane_num")
 )
 # `q` is still just a plan — no data has been read yet.

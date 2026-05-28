@@ -22,8 +22,9 @@ For generic Frictionless data-package recipes (S3 reads, format conversion, gene
 
 For bbox / polygon (non-GMNS-specific) spatial scope, see [datagrove cookbook: spatial scope](https://e-lo.github.io/GMNSpy/datagrove/cookbook/scope-bbox/).
 
-## Editing with rollback
+## Querying + editing linked tables
 
+* [Query and update linked tables](query-and-update.md) — join across foreign keys, inspect lazily (no pandas), edit rows Network-Wrangler-style with rollback.
 * [Edit a network with atomic rollback](edit-with-rollback.md) — `Session` lifecycle, dry-run preview, persisted history.
 
 ## Surfaces
