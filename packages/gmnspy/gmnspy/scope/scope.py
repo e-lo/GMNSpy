@@ -9,12 +9,14 @@ scope's id sets via the GMNS FK chain.
 
 Cross-references for the reader:
 
-* :mod:`gmnspy.indexes` — the underlying :class:`GraphIndex` (igraph)
-  and :class:`SpatialIndex` (STRtree) primitives. We build (or reuse
-  via :data:`gmnspy.semantics.connectivity._GRAPH_INDEX_KEY` cache)
-  these on first use.
+* :mod:`gmnspy.graph` — the underlying :class:`GMNSGraph` (scipy CSR)
+  routing engine. The graph is built (or reused via the
+  :data:`gmnspy.semantics.connectivity._GRAPH_CACHE_KEY` cache) on first
+  use and shared with :mod:`gmnspy.semantics.connectivity`.
+* :mod:`gmnspy.indexes` — the :class:`SpatialIndex` (STRtree) primitive
+  for geometric scope ops; built/cached independently.
 * :mod:`gmnspy.semantics.connectivity` — connected-component logic.
-  :func:`connected_component` here reuses ``GraphIndex.connected_component``
+  :func:`connected_component` here reuses ``GMNSGraph.connected_component``
   directly rather than going through ``semantics.connected_components``,
   because we only need one component, not the full partition.
 * :mod:`datagrove.dataset.view` — the generic spatial scopes (bbox,
@@ -49,7 +51,8 @@ from datagrove.dataset import Table
 from .errors import ScopeError
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
-    from gmnspy.indexes import GraphIndex, SpatialIndex
+    from gmnspy.graph import GMNSGraph
+    from gmnspy.indexes import SpatialIndex
     from gmnspy.network import Network
 
 __all__ = [
@@ -66,17 +69,22 @@ __all__ = [
 logger = logging.getLogger(__name__)
 
 # Default node-count threshold above which network-aware scope ops
-# emit an info-level "building graph index" warning the first time they
-# build an index. Callers who don't want the surprise can either
-# pre-build (``net.metadata[_GRAPH_INDEX_KEY] = GraphIndex.build(...)``)
-# or raise the threshold via ``GMNSPY_AUTO_INDEX_THRESHOLD`` env var.
+# emit an info-level "building graph" warning the first time they
+# build the routing graph. Callers who don't want the surprise can
+# either pre-build (``net.build_indexes(graph=True)``) or raise the
+# threshold via ``GMNSPY_AUTO_INDEX_THRESHOLD`` env var.
 AUTO_INDEX_THRESHOLD_DEFAULT: int = 50_000
 
-# Same cache keys as gmnspy.semantics so the two modules share a build.
-# Duplicated rather than imported so semantics imports don't pull the
-# scope module into memory just for the constants.
-_GRAPH_INDEX_KEY = "_cached_graph_index"
+# Same cache key as gmnspy.semantics.connectivity so the two modules share a
+# single GMNSGraph build per network. Duplicated rather than imported so
+# semantics imports don't pull the scope module into memory just for the
+# constants. The spatial index is independent and lives under its own key.
+_GRAPH_CACHE_KEY = "_cached_gmnsgraph"
 _SPATIAL_INDEX_KEY = "_cached_spatial_index"
+
+# Back-compat alias for callers / network.py that still reference the old name
+# during the graph-unification transition. New code should use _GRAPH_CACHE_KEY.
+_GRAPH_INDEX_KEY = _GRAPH_CACHE_KEY
 
 
 # ---------------------------------------------------------------------------
@@ -194,7 +202,7 @@ class NetworkScope:
 
     Examples:
         >>> import pytest
-        >>> _ = pytest.importorskip("igraph")
+        >>> _ = pytest.importorskip("scipy")
         >>> from gmnspy import Network
         >>> from gmnspy.fixtures import leavenworth
         >>> from datagrove.engines.pandas_engine import PandasEngine
@@ -260,7 +268,7 @@ class NetworkScope:
         the expanded node set) so the result remains a proper subgraph.
         """
         meters = _parse_distance(distance)
-        graph = _get_or_build_graph_index(self.network)
+        graph = _get_or_build_graph(self.network)
         expanded_nodes = graph.network_buffer(list(self.node_ids), meters)
         new_nodes = self.node_ids | expanded_nodes
         new_links = self.link_ids | _induced_link_ids(self.network, new_nodes)
@@ -388,7 +396,7 @@ def from_nodes(
 
     Examples:
         >>> import pytest
-        >>> _ = pytest.importorskip("igraph")
+        >>> _ = pytest.importorskip("scipy")
         >>> from gmnspy import Network
         >>> from gmnspy.fixtures import leavenworth
         >>> from datagrove.engines.pandas_engine import PandasEngine
@@ -398,16 +406,17 @@ def from_nodes(
         True
     """
     _maybe_warn_auto_index(net, "from_nodes")
-    graph = _get_or_build_graph_index(net)
-    seeds = {int(n) for n in node_ids if int(n) in graph._pos}
+    graph = _get_or_build_graph(net)
+    seeds = {int(n) for n in node_ids if graph._index_or_none(int(n)) is not None}
     nodes: set[int] = set(seeds)
 
     if path_between and len(seeds) > 1:
         seed_list = sorted(seeds)
         for i, src in enumerate(seed_list):
             for dst in seed_list[i + 1 :]:
-                path = graph.shortest_path(src, dst)
-                nodes.update(path)
+                # GMNSGraph.shortest_path returns a ShortestPathResult; .nodes is
+                # the ordered node-id list (empty when unreachable).
+                nodes.update(graph.shortest_path(src, dst).nodes)
 
     link_ids = _induced_link_ids(net, nodes)
     return NetworkScope(
@@ -426,13 +435,13 @@ def from_node(
 ) -> NetworkScope:
     """Scope = all nodes within ``network_buffer`` network-distance of ``node_id``.
 
-    Dijkstra-bounded on the underlying :class:`GraphIndex`; the result
+    Dijkstra-bounded on the underlying :class:`GMNSGraph`; the result
     includes the seed node, all reachable nodes within distance, and
     every link whose endpoints are both in the resulting node set.
 
     Examples:
         >>> import pytest
-        >>> _ = pytest.importorskip("igraph")
+        >>> _ = pytest.importorskip("scipy")
         >>> from gmnspy import Network
         >>> from gmnspy.fixtures import leavenworth
         >>> from datagrove.engines.pandas_engine import PandasEngine
@@ -443,8 +452,8 @@ def from_node(
     """
     _maybe_warn_auto_index(net, "from_node")
     meters = _parse_distance(network_buffer)
-    graph = _get_or_build_graph_index(net)
-    if int(node_id) not in graph._pos:
+    graph = _get_or_build_graph(net)
+    if graph._index_or_none(int(node_id)) is None:
         raise ScopeError(f"node_id={node_id!r} not present in network.nodes.")
     nodes = graph.network_buffer([int(node_id)], meters) | {int(node_id)}
     link_ids = _induced_link_ids(net, nodes)
@@ -490,7 +499,7 @@ def from_link(
         endpoints = _link_endpoint_nodes(net, {int(link_id)})
         if not endpoints:
             raise ScopeError(f"link_id={link_id!r} not found in network.links.")
-        graph = _get_or_build_graph_index(net)
+        graph = _get_or_build_graph(net)
         meters = _parse_distance(network_buffer)
         nodes = graph.network_buffer(list(endpoints), meters) | endpoints
         new_link_ids = _induced_link_ids(net, nodes) | {int(link_id)}
@@ -534,7 +543,7 @@ def from_point(
 def connected_component(net: Network, seed_node_id: int) -> NetworkScope:
     """Scope = the entire weakly-connected component containing ``seed_node_id``."""
     _maybe_warn_auto_index(net, "connected_component")
-    graph = _get_or_build_graph_index(net)
+    graph = _get_or_build_graph(net)
     nodes = graph.connected_component(int(seed_node_id))
     if not nodes:
         raise ScopeError(f"seed_node_id={seed_node_id!r} not present in network.nodes.")
@@ -574,20 +583,22 @@ def from_zone(net: Network, zone_ids: Iterable[int]) -> NetworkScope:
 # ---------------------------------------------------------------------------
 
 
-def _get_or_build_graph_index(net: Network) -> GraphIndex:
-    """Return the cached :class:`GraphIndex`, or build + cache one.
+def _get_or_build_graph(net: Network) -> GMNSGraph:
+    """Return the cached :class:`GMNSGraph`, or build + cache one.
 
     Same cache key as :mod:`gmnspy.semantics.connectivity` — the two
-    modules deliberately share the build.
+    modules deliberately share a single GMNSGraph (scipy CSR) build per
+    network. Built with ``keep_missing_cost=True`` so links with a null
+    ``length`` remain topological connections.
     """
-    cached = net.metadata.get(_GRAPH_INDEX_KEY)
+    cached = net.metadata.get(_GRAPH_CACHE_KEY)
     if cached is not None:
         return cached
-    from gmnspy.indexes import GraphIndex
+    from gmnspy.graph import GMNSGraph
 
-    index = GraphIndex.build(net.links, net.nodes)
-    net.metadata[_GRAPH_INDEX_KEY] = index
-    return index
+    graph = GMNSGraph.from_network(net, cost="length", keep_missing_cost=True)
+    net.metadata[_GRAPH_CACHE_KEY] = graph
+    return graph
 
 
 def _get_or_build_spatial_index(net: Network) -> SpatialIndex | None:

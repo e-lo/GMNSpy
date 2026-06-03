@@ -212,6 +212,8 @@ def test_cache_load_missing_returns_none() -> None:
 
 
 def test_build_indexes_returns_both(links_with_geom: Table, nodes_table: Table) -> None:
+    from gmnspy.graph import GMNSGraph
+
     spatial, graph = build_indexes(
         links=links_with_geom,
         nodes=nodes_table,
@@ -219,7 +221,10 @@ def test_build_indexes_returns_both(links_with_geom: Table, nodes_table: Table) 
         graph=True,
     )
     assert isinstance(spatial, SpatialIndex)
-    assert isinstance(graph, GraphIndex)
+    # Graph slot now returns a GMNSGraph (scipy CSR), the unified routing
+    # backend for scope + semantics; the older GraphIndex (igraph) wrapper
+    # still lives in gmnspy.indexes.graph for direct callers.
+    assert isinstance(graph, GMNSGraph)
 
 
 def test_build_indexes_can_skip(links_with_geom: Table, nodes_table: Table) -> None:

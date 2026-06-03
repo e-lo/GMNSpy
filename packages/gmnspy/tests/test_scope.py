@@ -490,15 +490,12 @@ def test_graph_index_is_cached_on_network():
     assert net.metadata[_GRAPH_INDEX_KEY] is cached
 
 
-def test_scope_and_semantics_use_separate_caches_during_unification():
-    """Transition state: semantics has migrated to the scipy GMNSGraph cache
-    while scope still uses the igraph GraphIndex cache, so the two keys differ.
-    They reunify once scope also moves onto gmnspy.graph.
-    """
-    from gmnspy.scope.scope import _GRAPH_INDEX_KEY as scope_key
+def test_scope_shares_graph_cache_with_semantics():
+    """scope + semantics share a single GMNSGraph build via _cached_gmnsgraph."""
+    from gmnspy.scope.scope import _GRAPH_CACHE_KEY as scope_key
     from gmnspy.semantics.connectivity import _GRAPH_CACHE_KEY as semantics_key
 
-    assert scope_key != semantics_key
+    assert scope_key == semantics_key
 
 
 def test_leavenworth_smoke():

@@ -70,6 +70,10 @@ class GMNSGraph:
     def __init__(self, *, node_index, coords, csr, edge_link_id, meta):
         self.node_index = node_index  # pd.Index, position == graph node index
         self.node_ids = node_index.to_numpy()
+        # Python-native mirror used by set-returning methods so callers receive
+        # `int`/`str` ids (matching GraphIndex / GMNS schema), not numpy scalars
+        # which JSON serialisers stringify and == int comparisons trip on.
+        self._py_node_ids = node_index.tolist()
         self.coords = coords  # (n, 2) float array, NaN where unknown
         self.csr = csr
         self.edge_link_id = edge_link_id  # aligned with csr.data slots
@@ -353,7 +357,7 @@ class GMNSGraph:
             visited |= nxt
             frontier = nxt
         visited.discard(start)
-        return {self.node_ids[p] for p in visited}
+        return {self._py_node_ids[p] for p in visited}
 
     def network_buffer(self, seed_node_ids, distance: float) -> set:
         """Return node_ids reachable within ``distance`` (cost units) of any seed (directed; includes seeds)."""
@@ -364,7 +368,7 @@ class GMNSGraph:
             return set()
         dist = np.atleast_2d(dijkstra(self.csr, directed=True, indices=seeds, limit=distance))
         reachable = np.where(np.isfinite(dist).any(axis=0))[0]
-        return {self.node_ids[j] for j in reachable}
+        return {self._py_node_ids[j] for j in reachable}
 
     def connected_component(self, seed_node_id) -> set:
         """Return node_ids in the same weakly-connected component as ``seed_node_id``."""
@@ -374,7 +378,7 @@ class GMNSGraph:
         if pos is None:
             return set()
         _, labels = connected_components(self.csr, directed=True, connection="weak", return_labels=True)
-        return {self.node_ids[j] for j in np.nonzero(labels == labels[pos])[0]}
+        return {self._py_node_ids[j] for j in np.nonzero(labels == labels[pos])[0]}
 
     def reachable_from(self, node_id) -> set:
         """Return node_ids reachable from ``node_id`` by directed traversal (includes the seed)."""
@@ -384,7 +388,7 @@ class GMNSGraph:
         if pos is None:
             return set()
         order, _ = breadth_first_order(self.csr, pos, directed=True, return_predecessors=True)
-        return {self.node_ids[p] for p in order}
+        return {self._py_node_ids[p] for p in order}
 
     # -- queries (delegated to sibling modules) ------------------------------
 
