@@ -88,11 +88,13 @@ The 7 rule classes:
 
 ## Indexes (optional `[clean]` extra)
 
-::: gmnspy.indexes.GraphIndex
-
 ::: gmnspy.indexes.SpatialIndex
 
 ::: gmnspy.indexes.build_indexes
+
+## Graph / routing (optional `[graph]` extra)
+
+::: gmnspy.graph.GMNSGraph
 
 ## Clean (optional `[clean]` extra)
 

@@ -43,7 +43,6 @@ osm = [
 clean = [
     "shapely>=2.0",
     "geopandas>=1.0",
-    "igraph>=0.11",
     "pyproj>=3.6",
 ]
 graph = [

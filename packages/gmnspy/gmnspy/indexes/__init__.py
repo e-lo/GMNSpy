@@ -7,8 +7,7 @@ auto-build heuristic (threshold-based) lives in :mod:`gmnspy.scope`
 
 The graph slot returns a :class:`gmnspy.graph.GMNSGraph` (scipy CSR routing
 engine), which both :mod:`gmnspy.scope` and :mod:`gmnspy.semantics.connectivity`
-consume. The older :class:`GraphIndex` (igraph) wrapper still lives in
-:mod:`gmnspy.indexes.graph` for direct callers but is being retired.
+consume.
 
 Examples:
     >>> import pytest
@@ -24,14 +23,12 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from .cache import cache_path, load_cached, save_cached
-from .graph import GraphIndex
 from .spatial import SpatialIndex
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from datagrove.dataset import Table
 
 __all__ = [
-    "GraphIndex",
     "SpatialIndex",
     "build_indexes",
     "cache_path",

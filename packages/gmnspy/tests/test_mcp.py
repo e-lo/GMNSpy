@@ -12,7 +12,7 @@ import asyncio
 import pytest
 
 pytest.importorskip("mcp")
-pytest.importorskip("igraph")  # connected_components tool
+pytest.importorskip("scipy")  # connected_components tool
 
 from gmnspy.fixtures import leavenworth
 from gmnspy.mcp import build_server

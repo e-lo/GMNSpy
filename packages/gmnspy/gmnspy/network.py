@@ -254,15 +254,15 @@ class Network(Package):
             spatial: Build the :class:`~gmnspy.indexes.SpatialIndex`
                 from ``link.geometry``. No-op when ``link`` has no
                 ``geometry`` column.
-            graph: Build the :class:`~gmnspy.indexes.GraphIndex` from
-                ``link.from_node_id`` + ``link.to_node_id``.
+            graph: Build the :class:`~gmnspy.graph.GMNSGraph` (scipy CSR
+                routing engine) from ``link.from_node_id`` + ``link.to_node_id``.
 
         Returns:
             ``self`` (for chaining).
 
         Examples:
             >>> import pytest
-            >>> _ = pytest.importorskip("igraph")
+            >>> _ = pytest.importorskip("scipy")
             >>> from gmnspy import Network
             >>> from gmnspy.fixtures import leavenworth
             >>> from datagrove.engines.pandas_engine import PandasEngine
@@ -271,7 +271,7 @@ class Network(Package):
             True
         """
         # Local imports keep gmnspy → gmnspy.indexes / gmnspy.scope
-        # edges lazy — both pull in optional deps (igraph, shapely)
+        # edges lazy — both pull in optional deps (scipy, shapely)
         # that callers may not have installed.
         from gmnspy.indexes import build_indexes as _build
         from gmnspy.scope.scope import _GRAPH_INDEX_KEY, _SPATIAL_INDEX_KEY
@@ -319,7 +319,7 @@ class Network(Package):
 
         Examples:
             >>> import pytest
-            >>> _ = pytest.importorskip("igraph")
+            >>> _ = pytest.importorskip("scipy")
             >>> from gmnspy import Network
             >>> from gmnspy.fixtures import leavenworth
             >>> from datagrove.engines.pandas_engine import PandasEngine

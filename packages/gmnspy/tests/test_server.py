@@ -10,7 +10,7 @@ from __future__ import annotations
 import pytest
 
 pytest.importorskip("fastapi")
-pytest.importorskip("igraph")  # quality endpoint pulls in connectivity check via rule pack
+pytest.importorskip("scipy")  # quality endpoint pulls in connectivity check via rule pack
 
 from datagrove.api import AuthSettings, PackageRef, ServerSettings
 from fastapi.testclient import TestClient

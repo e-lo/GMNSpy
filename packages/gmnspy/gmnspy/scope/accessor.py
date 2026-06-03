@@ -52,7 +52,7 @@ class NetworkScopeAccessor:
     working::
 
         >>> import pytest
-        >>> _ = pytest.importorskip("igraph")
+        >>> _ = pytest.importorskip("scipy")
         >>> from gmnspy import Network
         >>> from gmnspy.fixtures import leavenworth
         >>> from datagrove.engines.pandas_engine import PandasEngine

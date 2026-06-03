@@ -4,9 +4,9 @@ Three loosely-coupled submodules, one concern each:
 
 * :mod:`gmnspy.semantics.connectivity` — :func:`is_connected`,
   :func:`connected_components`, :func:`largest_component`,
-  :func:`unreachable_from`. Built on :class:`gmnspy.indexes.GraphIndex`;
-  the index is cached on ``Network.metadata`` so repeat calls don't
-  rebuild.
+  :func:`unreachable_from`. Built on :class:`gmnspy.graph.GMNSGraph`
+  (scipy CSR); the graph is cached on ``Network.metadata`` so repeat
+  calls don't rebuild.
 * :mod:`gmnspy.semantics.geometry` — :func:`assemble_link_geometry`
   resolves ``link.geometry`` / ``link.geometry_id`` / node-endpoint
   fallback and stamps each row with its source.

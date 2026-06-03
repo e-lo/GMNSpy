@@ -5,11 +5,10 @@ graph, and answer a connectivity question. The graph is cached on the network's
 ``metadata`` dict under ``_cached_gmnsgraph`` so repeat calls inside a session
 do not rebuild — see :func:`_get_or_build_graph`.
 
-This module is part of unifying graph operations onto :mod:`gmnspy.graph`
-(scipy CSR), replacing the previous :class:`gmnspy.indexes.GraphIndex` (igraph)
-backend. The graph is built with ``keep_missing_cost=True`` so a link with a
-missing ``length`` is still a topological connection (matching the old
-null-length → unit-weight behaviour) rather than being dropped.
+Built on :mod:`gmnspy.graph` (scipy CSR), shared with :mod:`gmnspy.scope` via a
+single cached :class:`~gmnspy.graph.GMNSGraph` per network. The graph is built
+with ``keep_missing_cost=True`` so a link with a missing ``length`` is still a
+topological connection rather than being dropped.
 
 Examples:
     >>> from gmnspy import Network
@@ -36,9 +35,8 @@ __all__ = [
     "unreachable_from",
 ]
 
-# The key under which we stash the built GMNSGraph on Network.metadata. Distinct
-# from scope's ``_cached_graph_index`` (still an igraph GraphIndex until scope
-# migrates too), so the two backends can coexist during the transition.
+# The key under which we stash the built GMNSGraph on Network.metadata.
+# Shared with :mod:`gmnspy.scope` so the two modules reuse a single build.
 _GRAPH_CACHE_KEY = "_cached_gmnsgraph"
 
 

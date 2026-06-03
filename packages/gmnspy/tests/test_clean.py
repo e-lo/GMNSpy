@@ -15,7 +15,7 @@ from datagrove.spec import DataPackage, Resource
 from gmnspy import Network
 
 pytest.importorskip("shapely")
-pytest.importorskip("igraph")
+pytest.importorskip("shapely")
 
 
 # ---------------------------------------------------------------------------

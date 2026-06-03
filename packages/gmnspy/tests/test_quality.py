@@ -24,7 +24,7 @@ from datagrove.spec import DataPackage, Resource
 from gmnspy import Network
 from gmnspy.fixtures import leavenworth
 
-pytest.importorskip("igraph")
+pytest.importorskip("scipy")
 pytest.importorskip("shapely")
 
 

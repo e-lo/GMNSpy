@@ -18,7 +18,7 @@ from datagrove.engines.pandas_engine import PandasEngine
 from gmnspy import Network
 from gmnspy.fixtures import leavenworth
 
-pytest.importorskip("igraph")
+pytest.importorskip("scipy")
 pytest.importorskip("shapely")
 
 

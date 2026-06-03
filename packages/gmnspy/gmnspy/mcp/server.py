@@ -10,7 +10,7 @@ describe/validate/list tools:
   :meth:`~datagrove.reports.ValidationReport.to_dict`.
 * ``connected_components(source)`` — returns the component count +
   sizes (uses :mod:`gmnspy.semantics.connectivity`; requires the
-  ``[clean]`` extra for igraph).
+  ``[graph]`` extra for scipy).
 * ``scope_from_nodes(source, node_ids, path_between)`` — applies a
   network-aware scope and returns the resulting (node_ids, link_ids)
   sets as lists.
@@ -142,7 +142,7 @@ _COMPONENTS_DOC = """\
 Return the count + sizes of weakly-connected components in the GMNS
 network at ``source``. ``component_count == 1`` means the network is
 fully connected; ``sizes`` is the descending list of node-counts per
-component. Requires the ``[clean]`` extra (igraph).
+component. Requires the ``[graph]`` extra (scipy).
 """
 
 _SCOPE_DOC = """\

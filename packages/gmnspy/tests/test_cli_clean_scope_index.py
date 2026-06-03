@@ -30,7 +30,7 @@ from typer.testing import CliRunner
 # Scope's graph-aware ops need igraph too. Skip wholesale if missing — the
 # extras are part of the dev environment but a slim install will skip.
 pytest.importorskip("shapely")
-pytest.importorskip("igraph")
+pytest.importorskip("scipy")
 
 runner = CliRunner()
 

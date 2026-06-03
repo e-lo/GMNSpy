@@ -53,13 +53,13 @@ def register(app: typer.Typer) -> None:
         _time("validate", lambda: net.validate(foreign_keys=False, sync_state=False))
         _time("links_count", lambda: net.links.count())
         _time("nodes_count", lambda: net.nodes.count())
-        # Connectivity needs the [clean] extra (igraph). Skip silently if not available.
+        # Connectivity needs the [graph] extra (scipy). Skip silently if not available.
         try:
             from gmnspy.semantics import is_connected
 
             _time("is_connected", lambda: is_connected(net))
         except ImportError:
-            timings.append({"phase": "is_connected", "seconds": None, "skipped": "igraph not installed"})
+            timings.append({"phase": "is_connected", "seconds": None, "skipped": "scipy not installed"})
 
         total = round(sum(t["seconds"] for t in timings if t.get("seconds") is not None), 4)
         data = {

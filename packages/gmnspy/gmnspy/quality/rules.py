@@ -160,8 +160,8 @@ class DisconnectedComponentsRule:
 
     Emits a single ``Severity.INFO`` issue (not per-component) listing
     the component count + sizes. ``connected_components`` is delegated
-    to :mod:`gmnspy.semantics.connectivity` so the same igraph build is
-    shared with any other connectivity caller in the session.
+    to :mod:`gmnspy.semantics.connectivity` so the same GMNSGraph (scipy)
+    build is shared with any other connectivity caller in the session.
     """
 
     code = "quality.disconnected_components"
@@ -169,11 +169,12 @@ class DisconnectedComponentsRule:
     severity = Severity.INFO
 
     def applies_to(self, package: Package) -> bool:
-        """We need link + node tables AND the columns GraphIndex.build needs.
+        """We need link + node tables AND the columns GMNSGraph.build needs.
 
         Skips silently on non-Network packages (no GMNS accessors) and on
         networks missing ``length`` on the link table — the upstream
-        GraphIndex requires it and we'd rather no-op than blow up.
+        :class:`~gmnspy.graph.GMNSGraph` (built with ``cost="length"``)
+        needs it and we'd rather no-op than blow up.
         """
         if not (hasattr(package, "links") and hasattr(package, "nodes")):
             return False
@@ -185,8 +186,8 @@ class DisconnectedComponentsRule:
         return required_link_cols <= set(link.columns()) and "node_id" in node.columns()
 
     def run(self, package: Package, report: ValidationReport, rc: RuleConfig | None = None) -> None:
-        """Build (or reuse) the GraphIndex, count components."""
-        # Local import: connectivity pulls in igraph which is a clean-extra.
+        """Build (or reuse) the GMNSGraph, count components."""
+        # Local import: connectivity pulls in scipy (the [graph] extra).
         from gmnspy.semantics import connected_components
 
         comps = connected_components(package)

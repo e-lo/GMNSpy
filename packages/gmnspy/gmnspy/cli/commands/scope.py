@@ -2,9 +2,9 @@
 
 Each subcommand builds a :class:`NetworkScope` from a seed and prints
 ``{node_count, link_count, node_ids, link_ids}``. ``gmnspy.scope`` is
-part of core (no extra needed) but the underlying :class:`GraphIndex`
-requires igraph (the ``[clean]`` extra) — surface a typed error if
-igraph is absent.
+part of core (no extra needed) but the underlying :class:`~gmnspy.graph.GMNSGraph`
+requires scipy (the ``[graph]`` extra) — surface a typed error if scipy
+is absent.
 
 Domain errors raised by ``gmnspy.scope`` (subclasses of ``ScopeError``)
 are converted to clean CLI exits with a red message; non-domain

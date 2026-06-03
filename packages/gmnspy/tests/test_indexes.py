@@ -1,8 +1,10 @@
-"""Tests for ``gmnspy.indexes`` — spatial (STRtree) + graph (igraph) builders.
+"""Tests for ``gmnspy.indexes`` — spatial (STRtree) builder + the build_indexes helper.
 
 Cross-engine where the engine actually changes behavior; otherwise pandas
-is fine because the indexes themselves are engine-agnostic
-(materialize-to-arrow once, then operate on shapely / igraph objects).
+is fine because the indexes themselves are engine-agnostic (materialize-to-arrow
+once, then operate on shapely / scipy objects). The graph slot of
+:func:`build_indexes` returns a :class:`gmnspy.graph.GMNSGraph` whose own tests
+live in ``test_graph.py`` + ``test_graph_network_api.py``.
 """
 
 from __future__ import annotations
@@ -13,14 +15,13 @@ from pathlib import Path
 import pytest
 
 shapely = pytest.importorskip("shapely")
-igraph = pytest.importorskip("igraph")
+pytest.importorskip("scipy")  # build_indexes' graph slot returns a GMNSGraph
 pyarrow = pytest.importorskip("pyarrow")
 
 from datagrove.dataset import Table  # noqa: E402
 from datagrove.engines.pandas_engine import PandasEngine  # noqa: E402
 from gmnspy.fixtures import leavenworth  # noqa: E402
 from gmnspy.indexes import (  # noqa: E402
-    GraphIndex,
     SpatialIndex,
     build_indexes,
     cache_path,
@@ -110,57 +111,10 @@ def test_spatial_index_geometry_query(links_with_geom: Table) -> None:
 
 
 # ---------------------------------------------------------------------------
-# GraphIndex
+# Graph (GMNSGraph) — direct tests live in test_graph.py + test_graph_network_api.py.
+# This module covers the build_indexes helper that returns a GMNSGraph in the
+# graph slot (see test_build_indexes_returns_both below).
 # ---------------------------------------------------------------------------
-
-
-def test_graph_index_builds_from_link_node(links_with_geom: Table, nodes_table: Table) -> None:
-    g = GraphIndex.build(links_with_geom, nodes_table)
-    assert isinstance(g, GraphIndex)
-    assert len(g) == len(_read_csv_table("node", PandasEngine()).to_pandas())
-
-
-def test_graph_index_neighbors_one_hop(links_with_geom: Table, nodes_table: Table) -> None:
-    """Node 1's one-hop neighbors must include node 2 (link.csv row 1)."""
-    g = GraphIndex.build(links_with_geom, nodes_table)
-    n = g.neighbors(1, hops=1)
-    assert 2 in n
-    assert 1 not in n  # neighbors don't include seed itself
-
-
-def test_graph_index_neighbors_two_hops_strictly_grows(links_with_geom: Table, nodes_table: Table) -> None:
-    g = GraphIndex.build(links_with_geom, nodes_table)
-    one = g.neighbors(1, hops=1)
-    two = g.neighbors(1, hops=2)
-    assert one.issubset(two)
-    assert len(two) >= len(one)
-
-
-def test_graph_index_shortest_path(links_with_geom: Table, nodes_table: Table) -> None:
-    """Shortest path from a node to itself is a single-element list."""
-    g = GraphIndex.build(links_with_geom, nodes_table)
-    path = g.shortest_path(1, 1)
-    assert path == [1]
-    # path from 1 to a known neighbor: starts at 1, ends at target
-    path_12 = g.shortest_path(1, 2)
-    assert path_12[0] == 1
-    assert path_12[-1] == 2
-
-
-def test_graph_index_network_buffer(links_with_geom: Table, nodes_table: Table) -> None:
-    """A 200m network buffer around node 1 includes node 1 + at least one neighbor."""
-    g = GraphIndex.build(links_with_geom, nodes_table)
-    reachable = g.network_buffer([1], distance_m=200.0)
-    assert 1 in reachable
-    assert len(reachable) >= 2  # at least seed + one neighbor (link 1 is 232m, link 2 is 99m)
-
-
-def test_graph_index_connected_component(links_with_geom: Table, nodes_table: Table) -> None:
-    g = GraphIndex.build(links_with_geom, nodes_table)
-    cc = g.connected_component(1)
-    assert 1 in cc
-    # the Leavenworth fixture is largely one component; expect a sizable cc
-    assert len(cc) > 1
 
 
 # ---------------------------------------------------------------------------
@@ -188,17 +142,6 @@ def test_cache_round_trip_spatial(links_with_geom: Table) -> None:
         assert sorted(loaded.query_bbox(-120.70, 47.58, -120.65, 47.62)) == sorted(
             idx.query_bbox(-120.70, 47.58, -120.65, 47.62)
         )
-
-
-def test_cache_round_trip_graph(links_with_geom: Table, nodes_table: Table) -> None:
-    g = GraphIndex.build(links_with_geom, nodes_table)
-    with tempfile.TemporaryDirectory() as td:
-        p = Path(td) / "graph.parquet"
-        save_cached(p, g)
-        loaded = load_cached(p)
-        assert loaded is not None
-        assert loaded.shortest_path(1, 2) == g.shortest_path(1, 2)
-        assert loaded.connected_component(1) == g.connected_component(1)
 
 
 def test_cache_load_missing_returns_none() -> None:
@@ -281,7 +224,10 @@ def test_indexes_build_under_ibis_engine() -> None:
         pandas_spatial.query_bbox(-120.70, 47.58, -120.65, 47.62)
     )
 
-    ibis_graph = GraphIndex.build(ibis_links, ibis_nodes)
-    pandas_graph = GraphIndex.build(pandas_links, pandas_nodes)
-    assert len(ibis_graph) == len(pandas_graph)
-    assert ibis_graph.shortest_path(1, 2) == pandas_graph.shortest_path(1, 2)
+    # Graph slot is a GMNSGraph (scipy); its full engine-parity is covered by
+    # tests/test_osm_bench.test_build_is_engine_agnostic. Here we just confirm
+    # the build_indexes plumbing produces equivalent shapes from either engine.
+    _, ibis_graph = build_indexes(links=ibis_links, nodes=ibis_nodes, spatial=False, graph=True)
+    _, pandas_graph = build_indexes(links=pandas_links, nodes=pandas_nodes, spatial=False, graph=True)
+    assert ibis_graph.meta["n_nodes"] == pandas_graph.meta["n_nodes"]
+    assert ibis_graph.shortest_path(1, 2).nodes == pandas_graph.shortest_path(1, 2).nodes

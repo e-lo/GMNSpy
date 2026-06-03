@@ -1,6 +1,6 @@
 """OPTIONAL EXTRA — network editing with atomic rollback + audit log.
 
-Install via ``pip install gmnspy[clean]`` to pick up shapely + igraph.
+Install via ``pip install gmnspy[clean]`` to pick up shapely (+ geopandas + pyproj).
 
 Each op composes with :class:`datagrove.editing.Session`:
 

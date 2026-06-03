@@ -1,15 +1,13 @@
-"""Unification step 1: GMNSGraph.from_network + GraphIndex-parity primitives.
+"""GMNSGraph.from_network + the scope/semantics-facing primitives.
 
-These back the eventual migration of gmnspy.semantics + gmnspy.scope onto
-gmnspy.graph, so the method semantics mirror gmnspy.indexes.GraphIndex:
-neighbors (undirected, excludes seed), network_buffer (directed-out, multi-seed,
-includes seeds), connected_component (weak).
+These back :mod:`gmnspy.semantics.connectivity` and :mod:`gmnspy.scope`: neighbors
+(undirected, excludes seed), network_buffer (directed-out, multi-seed, includes
+seeds), connected_component (weak).
 """
 
 from __future__ import annotations
 
 import pandas as pd
-import pytest
 from gmnspy.graph import GMNSGraph
 from gmnspy.osm import network_from_records
 
@@ -127,26 +125,8 @@ class TestKeepMissingCost:
         assert g.connected_component(1) == {1, 2}
 
 
-class TestGraphIndexParity:
-    """GMNSGraph.from_network must match the igraph GraphIndex it will replace.
-
-    Validated on the bundled Leavenworth fixture (no null link lengths). NOTE for
-    the migration: GraphIndex keeps a null-length edge with weight 1.0, whereas
-    GMNSGraph.build drops non-finite-cost edges — so a network with missing
-    lengths needs a coalescing policy before scope/semantics migrate.
-    """
-
-    def test_parity_on_leavenworth(self):
-        pytest.importorskip("igraph")
-        from gmnspy import Network
-        from gmnspy.fixtures import leavenworth
-        from gmnspy.indexes import GraphIndex
-
-        net = Network.from_source(leavenworth.csv_dir())
-        gi = GraphIndex.build(net.links, net.nodes)
-        gg = GMNSGraph.from_network(net, cost="length")
-
-        seed = int(net.nodes.to_pandas()["node_id"].iloc[0])
-        assert gg.neighbors(seed, hops=2) == gi.neighbors(seed, hops=2)
-        assert gg.connected_component(seed) == gi.connected_component(seed)
-        assert gg.network_buffer([seed], 500.0) == gi.network_buffer([seed], 500.0)
+# GraphIndex parity test removed: gmnspy.indexes.graph (igraph) has been
+# retired now that scope + semantics share the GMNSGraph backend. The
+# behaviour it locked in is now covered by the corresponding GMNSGraph tests
+# above and the scope + semantics integration tests against the Leavenworth
+# fixture.

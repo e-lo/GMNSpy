@@ -104,7 +104,7 @@ def register(app: typer.Typer) -> None:
 
 
 def _import_indexes():
-    """Resolve :mod:`gmnspy.indexes` — core module but build needs igraph + shapely at call time.
+    """Resolve :mod:`gmnspy.indexes` — core module but build needs scipy + shapely at call time.
 
     Routed through :func:`require_extra` so any future packaging change
     (e.g. moving the index ops behind ``[clean]``) lands with one tweak.
