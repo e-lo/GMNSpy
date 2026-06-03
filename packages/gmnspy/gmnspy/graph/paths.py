@@ -14,6 +14,14 @@ class IsochroneResult:
     """Nodes (and links) reachable from a source within a generalized-cost budget."""
 
     def __init__(self, source, cutoff, nodes: pd.DataFrame, reachable_link_ids):
+        """Store the nodes + links reachable from ``source`` within ``cutoff`` cost.
+
+        Args:
+            source: The seed node id (in source units, not graph index).
+            cutoff: Generalized-cost budget used to build the isochrone.
+            nodes: Per-node frame with columns ``node_id`` and ``cost``.
+            reachable_link_ids: Link ids whose endpoints both lie within the isochrone.
+        """
         self.source = source
         self.cutoff = cutoff
         self.nodes = nodes  # columns: node_id, cost
@@ -21,9 +29,11 @@ class IsochroneResult:
 
     @property
     def reachable_node_ids(self):
+        """Numpy array of node ids inside the isochrone (same order as :attr:`nodes`)."""
         return self.nodes["node_id"].to_numpy()
 
     def __repr__(self) -> str:
+        """Return a compact representation for shell + log output."""
         return (
             f"IsochroneResult(source={self.source!r}, cutoff={self.cutoff}, "
             f"n_nodes={len(self.nodes)}, n_links={len(self.reachable_link_ids)})"

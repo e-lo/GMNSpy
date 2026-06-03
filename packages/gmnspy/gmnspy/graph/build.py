@@ -47,6 +47,15 @@ class ShortestPathResult:
     """Result of a one-to-one shortest path query."""
 
     def __init__(self, source, target, cost, nodes, links):
+        """Store the result of a one-to-one shortest-path query.
+
+        Args:
+            source: Source node id (in source units, not graph index).
+            target: Target node id.
+            cost: Total path cost (``inf`` when unreachable).
+            nodes: Ordered list of node ids on the path (empty when unreachable).
+            links: Ordered list of link ids on the path (empty when unreachable).
+        """
         self.source = source
         self.target = target
         self.cost = cost
@@ -55,9 +64,11 @@ class ShortestPathResult:
 
     @property
     def reachable(self) -> bool:
+        """``True`` when the target was reachable from the source (finite cost)."""
         return np.isfinite(self.cost)
 
     def __repr__(self) -> str:
+        """Return a compact representation for shell + log output."""
         return (
             f"ShortestPathResult(source={self.source!r}, target={self.target!r}, "
             f"cost={self.cost}, n_links={len(self.links)})"
@@ -68,6 +79,11 @@ class GMNSGraph:
     """An in-memory CSR routing graph derived from a GMNS network."""
 
     def __init__(self, *, node_index, coords, csr, edge_link_id, meta):
+        """Wrap the assembled CSR + node/edge mappings.
+
+        Construct via :meth:`build` or :meth:`from_network`; this constructor
+        takes the already-built arrays and is not intended for direct use.
+        """
         self.node_index = node_index  # pd.Index, position == graph node index
         self.node_ids = node_index.to_numpy()
         # Python-native mirror used by set-returning methods so callers receive
@@ -119,6 +135,16 @@ class GMNSGraph:
                 all links one-way/two-way; a string names a boolean column.
             mode: ``"node"`` (default). ``"edge"`` (movement expansion for turn
                 penalties) is reserved for a later release.
+            node_id_col: Column name on the node table holding the node id.
+            from_col: Column name on the link table holding the from-node id.
+            to_col: Column name on the link table holding the to-node id.
+            link_id_col: Column name on the link table holding the link id.
+            x_col: Column name on the node table holding the x coordinate.
+            y_col: Column name on the node table holding the y coordinate.
+            keep_missing_cost: When ``True``, give links with a non-finite cost
+                a unit weight instead of dropping them — for connectivity /
+                scope analysis where the topology matters even if length is
+                missing. Routing callers should leave this ``False``.
         """
         _require_extras()
         if mode == "edge":
@@ -303,16 +329,19 @@ class GMNSGraph:
     # -- accessors -----------------------------------------------------------
 
     def index_of(self, node_id) -> int:
+        """Return the graph (matrix-row) index for ``node_id``, or raise :class:`KeyError`."""
         i = self.node_index.get_indexer([node_id])[0]
         if i < 0:
             raise KeyError(f"node_id {node_id!r} is not in the graph.")
         return int(i)
 
     def node_at(self, index: int):
+        """Return the source node id at graph (matrix-row) ``index``."""
         return self.node_ids[index]
 
     @property
     def reverse_csr(self):
+        """Cached transpose of :attr:`csr` (built lazily on first access)."""
         if self._reverse_csr is None:
             self._reverse_csr = self.csr.T.tocsr()
         return self._reverse_csr
@@ -393,26 +422,39 @@ class GMNSGraph:
     # -- queries (delegated to sibling modules) ------------------------------
 
     def connectivity(self, connection: str = "weak"):
+        """Return per-node component labels — see :func:`gmnspy.graph.connectivity.connectivity`."""
         from .connectivity import connectivity
 
         return connectivity(self, connection=connection)
 
     def isochrone(self, source_node, cutoff: float):
+        """Return the isochrone from ``source_node`` — see :func:`gmnspy.graph.paths.isochrone`."""
         from .paths import isochrone
 
         return isochrone(self, source_node, cutoff)
 
     def shortest_path(self, source_node, target_node) -> ShortestPathResult:
+        """Return the least-cost path — see :func:`gmnspy.graph.paths.shortest_path`."""
         from .paths import shortest_path
 
         return shortest_path(self, source_node, target_node)
 
     def snap(self, x: float, y: float):
+        """Return the node id nearest to ``(x, y)`` — see :func:`gmnspy.graph.paths.snap`."""
         from .paths import snap
 
         return snap(self, x, y)
 
     def to_geodataframe(self, **kwargs):
+        """Return the graph as a geopandas GeoDataFrame (lazy-imports the viz module).
+
+        Args:
+            **kwargs: Forwarded to :func:`gmnspy.graph.viz.to_geodataframe`.
+
+        Raises:
+            ImportError: If ``geopandas``/``shapely`` are not installed
+                (install ``gmnspy[clean]`` to pick them up).
+        """
         try:
             from .viz import to_geodataframe
         except ImportError as e:  # pragma: no cover - exercised only without geopandas
@@ -442,6 +484,7 @@ class GMNSGraph:
         return int(sum(a.nbytes for a in arrays))
 
     def __repr__(self) -> str:
+        """Return a compact representation for shell + log output."""
         return f"GMNSGraph(nodes={self.meta['n_nodes']}, edges={self.meta['n_edges']}, mode={self.meta['mode']!r})"
 
 

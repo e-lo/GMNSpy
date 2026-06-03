@@ -49,19 +49,23 @@ class InMemorySource(NetworkSource):
     """Wrap the ``{table_name: DataFrame}`` dict returned by ``read_gmns_network``."""
 
     def __init__(self, network: dict):
+        """Wrap a ``{table_name: DataFrame}`` mapping as a :class:`NetworkSource`."""
         self._net = network
 
     @classmethod
     def from_directory(cls, data_directory: str, **kwargs) -> InMemorySource:
+        """Load a GMNS network directory via :meth:`Network.from_source` and wrap its tables."""
         from gmnspy import Network
 
         net = Network.from_source(data_directory, **kwargs)
         return cls({name: table.to_pandas() for name, table in net.tables.items()})
 
     def has_table(self, name: str) -> bool:
+        """Return ``True`` if ``name`` is present and non-null in the wrapped dict."""
         return name in self._net and self._net[name] is not None
 
     def table(self, name: str, columns: Sequence[str] | None = None) -> pa.Table | None:
+        """Materialise ``name`` as a pyarrow Table, optionally restricted to ``columns``."""
         if not self.has_table(name):
             return None
         df = self._net[name]
@@ -79,6 +83,7 @@ class ParquetSource(NetworkSource):
     """
 
     def __init__(self, source):
+        """Discover ``<table>.parquet`` files in a directory, or accept a ``{table: path}`` mapping."""
         if isinstance(source, dict):
             self._paths = dict(source)
         else:
@@ -89,9 +94,11 @@ class ParquetSource(NetworkSource):
                     self._paths[root] = os.path.join(source, fname)
 
     def has_table(self, name: str) -> bool:
+        """Return ``True`` if a parquet file is known for ``name``."""
         return name in self._paths
 
     def table(self, name: str, columns: Sequence[str] | None = None) -> pa.Table | None:
+        """Read ``name`` from parquet (column-pruned to ``columns`` when given)."""
         import pyarrow.parquet as pq
 
         if not self.has_table(name):
@@ -111,15 +118,18 @@ class DuckDBSource(NetworkSource):
     """
 
     def __init__(self, con, tables: dict | None = None):
+        """Open a duckdb connection (or accept one) and remember the GMNS->relation map."""
         import duckdb
 
         self._con = duckdb.connect(con) if isinstance(con, str) else con
         self._tables = tables or {}
 
     def _relation(self, name: str) -> str:
+        """Translate a GMNS table name to its actual duckdb relation name."""
         return self._tables.get(name, name)
 
     def has_table(self, name: str) -> bool:
+        """Return ``True`` if the underlying duckdb has a relation matching ``name``."""
         rel = self._relation(name)
         # pragma: allow-sql — this is a standalone duckdb *reader* in the optional
         # graph extra, not part of datagrove's engine layer; reading an arbitrary
@@ -132,6 +142,7 @@ class DuckDBSource(NetworkSource):
         return found is not None
 
     def table(self, name: str, columns: Sequence[str] | None = None) -> pa.Table | None:
+        """Read ``name`` from duckdb as an arrow Table (column-pruned to ``columns``)."""
         if not self.has_table(name):
             return None
         rel = self._relation(name)
@@ -155,6 +166,12 @@ class PolarsSource(NetworkSource):
     """
 
     def __init__(self, source, fmt: str = "parquet"):
+        """Discover ``<table>.<ext>`` files in a directory, or accept a ``{table: path}`` mapping.
+
+        Args:
+            source: Directory holding the table files, or an explicit mapping.
+            fmt: ``"parquet"`` (default) or ``"csv"`` — selects the polars reader.
+        """
         if fmt not in ("parquet", "csv"):
             raise ValueError(f"fmt must be 'parquet' or 'csv', got {fmt!r}.")
         self._fmt = fmt
@@ -169,9 +186,11 @@ class PolarsSource(NetworkSource):
                     self._paths[root] = os.path.join(source, fname)
 
     def has_table(self, name: str) -> bool:
+        """Return ``True`` if a file (parquet or csv) is known for ``name``."""
         return name in self._paths
 
     def table(self, name: str, columns: Sequence[str] | None = None) -> pa.Table | None:
+        """Read ``name`` via polars and hand back an Arrow table (column-pruned)."""
         import polars as pl
 
         if not self.has_table(name):
