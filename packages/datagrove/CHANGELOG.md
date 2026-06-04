@@ -31,6 +31,10 @@ First public preview of datagrove. This is a **beta**: API surface is stable eno
 - No raw SQL outside `datagrove.engines.ibis_engine` (enforced by `scripts/lint_no_sql.py` in CI).
 - datagrove never imports gmnspy (enforced by `import-linter`).
 
+### Notable fixes during beta-prep
+
+- `PolarsEngine.from_records` now passes `infer_schema_length=None` so a column that is null for the first >100 rows and then carries a value (common with optional fields) infers correctly instead of raising `ComputeError` on append.
+
 ### Known limitations going into beta
 
 - `Package.from_source()` mis-dispatches `.csv.zip` to the CSV adapter — use `csv_dir()` or `parquet_dir()` for now. Fix tracked.

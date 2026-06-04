@@ -28,6 +28,8 @@ This is a **beta**: API surface is stable enough to build against and most user-
 - **`gmnspy validate`** CLI with `--html <path>` for interactive single-file reports + `--spec` for version override.
 - **`gmnspy quality`** — data-quality rule pack beyond spec compliance: high-speed-on-residential, disconnected components, lane-count mismatch, sharp-angle bends, implausible v/c, etc. Plugin-extensible via the `datagrove.quality.rules` entry point.
 - **`gmnspy.scope`** — network-aware scope ops: `from_nodes`, `from_node`, `from_link`, `from_point`, `connected_component`, `from_zone`. Chainable. Returns a scoped `Network` with FK chain pre-filtered.
+- **`gmnspy.osm` + `gmnspy build` CLI** — build a validated GMNS network from OpenStreetMap for a bounding box, place name (city/county), or a lat/lon point + buffer. Hand-rolled Overpass + Nominatim access (no `osmnx` / `osm2gmns` dependency); maintained tag-mapping data files; produces a self-describing network with a `config` table declaring units. Behind the `gmnspy[osm]` extra (`requests`, `pyyaml`).
+- **`gmnspy.graph` + `gmnspy[graph]` extra** — scipy-CSR routing engine: connectivity (weak / strong components), isochrones, shortest paths, multi-source distance buffer, nearest-node snap. Builds from a `Network` or directly from parquet/duckdb/polars/in-memory sources. This is also the unified backend powering `gmnspy.semantics` + `gmnspy.scope` connectivity / network-distance ops (replacing the older `igraph`-based index).
 - **`gmnspy[clean]` extra** — network editing with atomic rollback (`simplify_geometry`, `merge_close_nodes`, `remove_orphans`, `recompute_lengths`). Every edit returns an `EditResult` with diff + log entry; sessions stored as sidecar parquet.
 - **`gmnspy[server]` extra** — self-hostable FastAPI server (`gmnspy server run`). Pluggable bearer-token auth. Ships `Dockerfile` + `docker-compose.example.yml`.
 - **`gmnspy[mcp]` extra** — MCP server (`gmnspy mcp serve`) exposing read / describe / query / scope / validate / quality_check / edit_session tools to Claude Desktop / Claude Code.
@@ -41,6 +43,10 @@ This is a **beta**: API surface is stable enough to build against and most user-
 - **`--json` on every CLI command** for tool-call loops.
 - **`llms.txt` + `llms-full.txt` + `ai/api-index.json`** auto-generated from docs + docstrings.
 - **Five Claude Code Skills** in [`skills/`](../../skills/) — `datagrove-validate`, `gmns-author`, `gmns-validate`, `gmns-convert`, `gmns-clean`.
+
+### Internal architecture
+
+- **Single graph backend.** All connectivity + network-aware-scope ops (`gmnspy.semantics.connectivity`, `gmnspy.scope`, `gmnspy.quality.rules` disconnected-components, `Network.build_indexes(graph=True)`) now run on a shared `gmnspy.graph.GMNSGraph` (scipy CSR), cached once per network. The earlier `gmnspy.indexes.GraphIndex` (igraph) wrapper is retired; the `igraph` dependency is dropped (`[clean]` no longer pulls it in). `SpatialIndex` (STRtree) is unaffected.
 
 ### Quality + process
 
@@ -67,7 +73,7 @@ This is a **beta**: API surface is stable enough to build against and most user-
 
 - Python 3.11, 3.12, 3.13.
 - macOS + Linux (Windows community-supported only; CI doesn't cover it).
-- Optional extras: `clean`, `server`, `mcp`, `notebook`, `all`.
+- Optional extras: `osm`, `graph`, `clean`, `server`, `mcp`, `notebook`, `all`.
 
 [Unreleased]: https://github.com/e-lo/GMNSpy/compare/gmnspy-v1.0.0-beta.1...HEAD
 [1.0.0-beta.1]: https://github.com/e-lo/GMNSpy/releases/tag/gmnspy-v1.0.0-beta.1
