@@ -74,8 +74,7 @@ def build_node_link_tables(
         for n in way["nodes"]:
             if n not in nodes:
                 raise ValueError(
-                    f"way {way_id} references node {n} which is not in the nodes dict "
-                    f"({len(nodes)} nodes given)"
+                    f"way {way_id} references node {n} which is not in the nodes dict ({len(nodes)} nodes given)"
                 )
 
     kept = _kept_nodes(ways)

@@ -138,6 +138,11 @@ def _parse(pkg: str, raw_args: str) -> tuple[tuple[str, ...], list[str]] | None:
     flags: list[str] = []
     seen_flag = False
     for tok in tokens:
+        # Shell pipeline / redirection — everything after belongs to a
+        # different command (e.g. `gmnspy bench --json | jq -r ...`).
+        # shlex treats these as ordinary tokens, so we stop here.
+        if tok in ("|", "||", "&&", ";", ">", ">>", "<", "<<", "2>", "2>>", "&"):
+            break
         # Stop accumulating command words once we see the first flag.
         if tok.startswith("--"):
             seen_flag = True
