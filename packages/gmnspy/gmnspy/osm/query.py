@@ -265,6 +265,11 @@ def geocode_area(
     if not data:
         raise LookupError(f"could not geocode place {place!r}")
     first = data[0]
+    if "boundingbox" not in first:
+        # Nominatim occasionally returns a hit without a bounding box (very
+        # broad / abstract entries). Treat as ungeocodable rather than letting
+        # a bare KeyError escape.
+        raise LookupError(f"could not geocode place {place!r}: result has no boundingbox")
     south, north, west, east = (float(v) for v in first["boundingbox"])
     polygon = None
     geojson = first.get("geojson")

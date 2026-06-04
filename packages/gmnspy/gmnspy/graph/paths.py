@@ -41,7 +41,15 @@ class IsochroneResult:
 
 
 def isochrone(graph, source_node, cutoff: float) -> IsochroneResult:
-    """Return the nodes (and links) reachable from ``source_node`` within ``cutoff`` cost."""
+    """Return the nodes (and links) reachable from ``source_node`` within ``cutoff`` cost.
+
+    Inclusion rule: a node is reachable iff its dijkstra distance from
+    ``source_node`` is finite within ``cutoff``; a link is included iff
+    BOTH of its endpoints are reachable. This is the standard node-graph
+    isochrone definition — a link near the budget can be included even if
+    traversing it would carry the running cost past ``cutoff``; the budget
+    is measured at endpoints, not along edges.
+    """
     from scipy.sparse.csgraph import dijkstra
 
     src = graph.index_of(source_node)

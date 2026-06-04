@@ -65,6 +65,19 @@ def build_node_link_tables(
         >>> len(link_recs)
         2
     """
+    # Fail fast on a way that references a node id absent from `nodes` (a
+    # malformed Overpass response from a non-default endpoint, or a hand-built
+    # input). The lookup at coord-assembly time would otherwise raise a bare
+    # KeyError with just the node id.
+    for way in ways:
+        way_id = way.get("id")
+        for n in way["nodes"]:
+            if n not in nodes:
+                raise ValueError(
+                    f"way {way_id} references node {n} which is not in the nodes dict "
+                    f"({len(nodes)} nodes given)"
+                )
+
     kept = _kept_nodes(ways)
     extra = list(extra_tags or [])
 

@@ -125,6 +125,13 @@ class TestGeocodeArea:
         with pytest.raises(LookupError):
             query.geocode_area("Nowhereville", session=sess, sleep=_NO_SLEEP)
 
+    def test_result_without_boundingbox_raises_lookuperror(self):
+        # Some Nominatim entries omit boundingbox; treat that as "not geocodable"
+        # rather than letting a bare KeyError escape.
+        sess = _FakeSession([_FakeResponse(200, [{"display_name": "Anytown"}])])
+        with pytest.raises(LookupError, match=r"could not geocode"):
+            query.geocode_area("Anytown", session=sess, sleep=_NO_SLEEP)
+
 
 class TestResolveArea:
     def test_four_tuple_is_bbox(self):

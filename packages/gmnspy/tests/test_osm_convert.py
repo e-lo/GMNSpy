@@ -157,3 +157,13 @@ class TestNodeRecords:
 
         node_recs, _ = convert.build_node_link_tables(nodes, ways)
         assert 9 not in {n["node_id"] for n in node_recs}
+
+
+class TestMalformedInput:
+    def test_unknown_node_in_way_raises_helpful_error(self):
+        # A way references node 99 which is not in the nodes dict (malformed
+        # Overpass response from a custom endpoint, or a manual build).
+        nodes = {1: (0.0, 0.0), 2: (0.0, 1.0)}
+        ways = [{"id": 42, "nodes": [1, 99, 2], "tags": {"highway": "residential"}}]
+        with pytest.raises(ValueError, match=r"way 42 references node 99"):
+            convert.build_node_link_tables(nodes, ways)

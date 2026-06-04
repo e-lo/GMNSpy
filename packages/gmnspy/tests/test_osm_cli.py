@@ -94,6 +94,14 @@ def test_build_rejects_bad_bbox(monkeypatch):
     assert result.exit_code != 0
 
 
+def test_build_rejects_buffer_with_bbox(monkeypatch):
+    monkeypatch.setattr("gmnspy.osm.build_network_from_osm", _fake_network)
+    # --buffer is only meaningful with --point; combining it with --bbox used to
+    # be silently ignored. The CLI should reject the combination instead.
+    result = runner.invoke(app, ["build", "out", "--bbox", "0,0,1,1", "--buffer", "500"])
+    assert result.exit_code != 0
+
+
 def test_build_reports_network_error_cleanly(monkeypatch):
     import requests
 

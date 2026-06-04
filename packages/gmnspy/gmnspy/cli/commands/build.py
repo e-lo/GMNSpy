@@ -36,6 +36,11 @@ def _parse_area(place: str | None, bbox: str | None, point: str | None, buffer_m
     if len(provided) != 1:
         raise typer.BadParameter("provide exactly one of --place, --bbox, or --point")
 
+    # --buffer is only meaningful with --point; reject the silent combination
+    # (a user passing --bbox --buffer 500 used to get the buffer ignored).
+    if buffer_m > 0 and not point:
+        raise typer.BadParameter("--buffer is only valid with --point; it has no effect on --bbox or --place")
+
     if place:
         return place
     if bbox:
