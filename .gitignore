@@ -150,3 +150,7 @@ packages/*/docs/llms.txt
 packages/*/docs/llms-full.txt
 packages/*/docs/ai/api-index.json
 
+# CLI run artifacts at repo root (gmnspy validate --html, gmnspy build out/)
+/report.html
+/out/
+
