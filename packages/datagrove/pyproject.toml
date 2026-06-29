@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "datagrove"
-version = "0.1.0.dev0"
+version = "1.0.0b1"
 description = "Generic Frictionless-aligned tabular-data-package engine. Code-agnostic schemas, lazy ibis/duckdb pipelines, foreign-key + sync-state validation, geographic scoping, and edit/rollback primitives."
 readme = "README.md"
 license = "Apache-2.0"

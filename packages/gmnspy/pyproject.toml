@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "gmnspy"
-version = "1.0.0.dev0"
+version = "1.0.0b1"
 description = "Python toolkit for the General Modeling Network Specification (GMNS). Fast I/O at regional scale (parquet/duckdb/zip/URL), foreign-key validation with out-of-sync awareness, geographic + network-aware scoping, data-quality checks, network editing with atomic rollback, and a CLI + notebook + programmatic API."
 readme = "README.md"
 license = "Apache-2.0"
@@ -30,7 +30,9 @@ classifiers = [
     "Topic :: Scientific/Engineering :: GIS",
 ]
 dependencies = [
-    "datagrove",  # transitively brings typer + rich + ibis + duckdb + pyarrow + fsspec
+    # Co-evolving sibling package — pinned to the same major so a future
+    # datagrove 2.x doesn't silently break installed gmnspy 1.x.
+    "datagrove>=1.0.0b1,<2",  # transitively brings typer + rich + ibis + duckdb + pyarrow + fsspec
 ]
 
 [project.optional-dependencies]
