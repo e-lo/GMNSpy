@@ -103,6 +103,28 @@ header.gv-header h1 { margin-bottom: 0.15em; }
 }
 .gv-osm-link { font-size: 0.9em; white-space: nowrap; }
 
+/* Layer toggle (custom, top-right). Replaces Leaflet's built-in
+ * L.Control.Layers — the built-in uses a sprite icon we strip from
+ * the inlined CSS to silence the file:// CSP warning. */
+.gv-layers-control {
+  background: white;
+  padding: 6px 10px;
+  border-radius: 4px;
+  font-size: 12px;
+  line-height: 1.6;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(0, 0, 0, 0.15);
+}
+.gv-layers-control label { display: block; cursor: pointer; user-select: none; }
+.gv-layers-control input[type="checkbox"] { margin-right: 6px; vertical-align: middle; }
+@media (prefers-color-scheme: dark) {
+  .gv-layers-control {
+    background: #1f2328;
+    color: #e6edf3;
+    border-color: rgba(255, 255, 255, 0.15);
+  }
+}
+
 /* Marker popup — Leaflet's `.leaflet-popup-content` is the body; reset the
  * default tight margin so paragraphs render naturally. */
 .leaflet-popup-content .gv-marker-popup { font-size: 0.9em; line-height: 1.4; }
