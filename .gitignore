@@ -152,5 +152,6 @@ packages/*/docs/ai/api-index.json
 
 # CLI run artifacts at repo root (gmnspy validate --html, gmnspy build out/)
 /report.html
+/net.html
 /out/
 
