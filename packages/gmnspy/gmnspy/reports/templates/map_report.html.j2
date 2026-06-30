@@ -4,9 +4,10 @@ Inputs (provided by gmnspy.reports.html_map.render_network_html):
   - title              : <title> + <h1> text
   - meta_subtitle      : optional one-liner under the H1 (e.g. spec_version)
   - counts             : list of [severity_str, n] for the top chips
-  - leaflet_css        : full Leaflet CSS, inlined
+  - leaflet_css        : full Leaflet CSS, inlined (with file:// url(images/) refs stripped)
   - leaflet_js         : full Leaflet JS, inlined
-  - map_css            : map_report.css, inlined
+  - water_css          : water.css classless drop-in, inlined (typography/forms/tables baseline)
+  - map_css            : map_report.css, inlined (severity colors, map sizing, popup, row sync)
   - map_js             : map_report.js, inlined
   - payload_json       : window.__GMNSPY_DATA__ JSON blob (markers, links, bbox)
   - issues             : list of issue dicts for the table (severity, code, table,
@@ -14,74 +15,77 @@ Inputs (provided by gmnspy.reports.html_map.render_network_html):
   - filter_options     : {"severity": [...], "table": [...]}
   - located_count      : number of issues that resolved to a coord
   - unlocated          : list of issue dicts with no coord (issue_id + display fields)
+
+Stylesheet order matters: water (baseline classless) → leaflet (map widgets)
+→ map_css (our overrides). Last one wins for conflicting selectors.
 -#}
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{ title }}</title>
+  <style>{{ water_css }}</style>
   <style>{{ leaflet_css }}</style>
   <style>{{ map_css }}</style>
 </head>
 <body>
   <header class="gv-header">
     <h1>{{ title }}</h1>
-    {% if meta_subtitle %}<div class="gv-meta">{{ meta_subtitle }}</div>{% endif %}
+    {% if meta_subtitle %}<p class="gv-meta">{{ meta_subtitle }}</p>{% endif %}
     {% if counts %}
-    <div class="gv-counts">
-      {% for label, n in counts %}
-      <span class="gv-chip severity-{{ label }}">{{ label }}: {{ n }}</span>
-      {% endfor %}
-      {% if issues %}<span class="gv-chip">{{ located_count }} on map · {{ unlocated|length }} unlocated</span>{% endif %}
-    </div>
+    <p class="gv-counts">
+      {% for label, n in counts %}<span class="gv-chip severity-{{ label }}">{{ label }}: {{ n }}</span>{% endfor %}
+      {% if issues %}<span class="gv-chip gv-chip-muted">{{ located_count }} on map · {{ unlocated|length }} unlocated</span>{% endif %}
+    </p>
     {% endif %}
   </header>
-  <main>
-    <section class="gv-map-section">
-      <div id="gv-map"></div>
-    </section>
 
-    {% if unlocated %}
-    <aside class="gv-unlocated">
-      <h2>Unlocated findings ({{ unlocated|length }})</h2>
-      <ul>
-        {% for issue in unlocated %}
-        <li data-unlocated-issue-id="{{ issue.issue_id }}">
-          <span class="gv-sev severity-{{ issue.severity }}">{{ issue.severity|upper }}</span>
-          <span class="gv-code">{{ issue.code }}</span> — {{ issue.message }}
-        </li>
-        {% endfor %}
-      </ul>
-    </aside>
-    {% endif %}
+  <section class="gv-map-section">
+    <div id="gv-map"></div>
+  </section>
 
-    {% if issues %}
-    <section class="gv-table-section">
-      <h2>Findings ({{ issues|length }})</h2>
-      <div class="gv-filters">
-        <label>Severity
-          <select id="gv-filter-severity">
-            <option value="">all</option>
-            {% for s in filter_options.severity %}<option value="{{ s }}">{{ s }}</option>{% endfor %}
-          </select>
-        </label>
-        <label>Table
-          <select id="gv-filter-table">
-            <option value="">all</option>
-            {% for t in filter_options.table %}<option value="{{ t }}">{{ t }}</option>{% endfor %}
-          </select>
-        </label>
-        <label>Search
-          <input id="gv-filter-search" type="search" placeholder="message or code…">
-        </label>
-      </div>
+  {% if unlocated %}
+  <details class="gv-unlocated" open>
+    <summary>Unlocated findings ({{ unlocated|length }})</summary>
+    <ul>
+      {% for issue in unlocated %}
+      <li data-unlocated-issue-id="{{ issue.issue_id }}">
+        <span class="gv-sev severity-{{ issue.severity }}">{{ issue.severity|upper }}</span>
+        <code class="gv-code">{{ issue.code }}</code> — {{ issue.message }}
+      </li>
+      {% endfor %}
+    </ul>
+  </details>
+  {% endif %}
+
+  {% if issues %}
+  <section class="gv-table-section">
+    <h2>Findings ({{ issues|length }})</h2>
+    <div class="gv-filters">
+      <label>Severity
+        <select id="gv-filter-severity">
+          <option value="">all</option>
+          {% for s in filter_options.severity %}<option value="{{ s }}">{{ s }}</option>{% endfor %}
+        </select>
+      </label>
+      <label>Table
+        <select id="gv-filter-table">
+          <option value="">all</option>
+          {% for t in filter_options.table %}<option value="{{ t }}">{{ t }}</option>{% endfor %}
+        </select>
+      </label>
+      <label>Search
+        <input id="gv-filter-search" type="search" placeholder="message or code…">
+      </label>
+    </div>
+    <div class="gv-table-wrap">
       <table class="gv-issues">
         <thead>
           <tr>
             <th>Severity</th>
             <th>Code</th>
-            <th>Table</th>
-            <th>Row</th>
+            <th>Location</th>
             <th>Message</th>
             <th>Action</th>
           </tr>
@@ -92,23 +96,26 @@ Inputs (provided by gmnspy.reports.html_map.render_network_html):
               data-severity="{{ issue.severity }}"
               data-table="{{ issue.table or '' }}">
             <td><span class="gv-sev severity-{{ issue.severity }}">{{ issue.severity|upper }}</span></td>
-            <td><span class="gv-code">{{ issue.code }}</span></td>
-            <td>{{ issue.table or '' }}{% if issue.column %}:{{ issue.column }}{% endif %}</td>
-            <td>{% if issue.row is not none %}{{ issue.row }}{% endif %}</td>
+            <td><code class="gv-code">{{ issue.code }}</code></td>
+            <td>
+              {%- if issue.table -%}
+                {{ issue.table }}{% if issue.column %}:{{ issue.column }}{% endif %}{% if issue.row is not none %} [{{ issue.row }}]{% endif %}
+              {%- endif -%}
+            </td>
             <td>
               {{ issue.message }}
               {% if issue.fix_hint %}<div class="gv-fixhint">&rarr; {{ issue.fix_hint }}</div>{% endif %}
             </td>
             <td>
-              {% if issue.edit_url %}<a class="gv-osm-link" href="{{ issue.edit_url }}" target="_blank" rel="noopener noreferrer">Edit in OSM</a>{% endif %}
+              {% if issue.edit_url %}<a class="gv-osm-link" href="{{ issue.edit_url }}" target="_blank" rel="noopener noreferrer">Edit in OSM &rarr;</a>{% endif %}
             </td>
           </tr>
           {% endfor %}
         </tbody>
       </table>
-    </section>
-    {% endif %}
-  </main>
+    </div>
+  </section>
+  {% endif %}
 
   <script>{{ leaflet_js|safe }}</script>
   <script>window.__GMNSPY_DATA__ = {{ payload_json|safe }};</script>

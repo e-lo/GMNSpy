@@ -1,140 +1,132 @@
-/* gmnspy.reports map-report viewer — paired with map_report.html.j2 + map_report.js. */
+/* gmnspy.reports map-report viewer — paired with map_report.html.j2 + map_report.js.
+ *
+ * water.css already handles body padding/max-width, typography, base table
+ * styling, form controls, and light/dark mode. This file only adds what
+ * water can't know about: severity colour tokens, the map container size,
+ * the marker popup, and the table-row highlight bridge.
+ */
 
 :root {
-  --color-error: #d1242f;
-  --color-warning: #9a6700;
-  --color-info: #0969da;
-  --color-row-highlight: #fff4a3;
-  --color-border: #d0d7de;
-  --color-text-muted: #57606a;
-  --color-bg-card: #ffffff;
-  --color-bg-page: #f6f8fa;
-  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
-  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  /* Severity tokens — referenced from .severity-* classes and the JS in
+   * map_report.js. Light theme; dark theme tweaks below. */
+  --gv-color-error: #d1242f;
+  --gv-color-warning: #9a6700;
+  --gv-color-info: #0969da;
+  --gv-color-row-highlight: #fff4a3;
+  --gv-color-row-highlight-peak: #ffd900;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --gv-color-error: #ff6b74;
+    --gv-color-warning: #e3b341;
+    --gv-color-info: #58a6ff;
+    --gv-color-row-highlight: #4a3f00;
+    --gv-color-row-highlight-peak: #6b5a00;
+  }
 }
 
-* { box-sizing: border-box; }
+/* water.css caps body at ~800px which is too narrow for a map + 5-column
+ * table. Widen it; keep the centred-on-page feel. */
+body { max-width: 1280px; }
 
-body {
-  font-family: var(--font-sans);
-  background: var(--color-bg-page);
-  color: #1f2328;
-  margin: 0;
-  padding: 0;
-  line-height: 1.5;
+/* Header — h1 + subtitle + counts chips */
+header.gv-header h1 { margin-bottom: 0.15em; }
+.gv-meta { color: var(--text-muted); margin: 0 0 0.6em; font-size: 0.9em; }
+.gv-counts { margin: 0; display: flex; gap: 0.5em; flex-wrap: wrap; }
+.gv-chip {
+  padding: 0.15em 0.7em;
+  border-radius: 999px;
+  border: 1px solid var(--border, var(--background-alt));
+  background: var(--background-alt);
+  font-size: 0.85em;
+  font-weight: 500;
 }
+.gv-chip.severity-error { color: var(--gv-color-error); border-color: var(--gv-color-error); background: transparent; }
+.gv-chip.severity-warning { color: var(--gv-color-warning); border-color: var(--gv-color-warning); background: transparent; }
+.gv-chip.severity-info { color: var(--gv-color-info); border-color: var(--gv-color-info); background: transparent; }
+.gv-chip-muted { color: var(--text-muted); }
 
-header.gv-header {
-  background: var(--color-bg-card);
-  border-bottom: 1px solid var(--color-border);
-  padding: 16px 24px;
-}
-header.gv-header h1 { margin: 0 0 4px 0; font-size: 18px; font-weight: 600; }
-header.gv-header .gv-meta { color: var(--color-text-muted); font-size: 13px; }
-header.gv-header .gv-counts { margin-top: 8px; display: flex; gap: 12px; flex-wrap: wrap; font-size: 13px; }
-header.gv-header .gv-counts .gv-chip {
-  padding: 2px 10px; border-radius: 12px; border: 1px solid var(--color-border); background: var(--color-bg-page);
-}
-.gv-chip.severity-error { color: var(--color-error); border-color: var(--color-error); }
-.gv-chip.severity-warning { color: var(--color-warning); border-color: var(--color-warning); }
-.gv-chip.severity-info { color: var(--color-info); border-color: var(--color-info); }
-
-main { padding: 16px 24px; max-width: 1400px; margin: 0 auto; }
-
-section.gv-map-section {
-  background: var(--color-bg-card);
-  border: 1px solid var(--color-border);
+/* Map section */
+.gv-map-section {
+  border: 1px solid var(--background-alt);
   border-radius: 6px;
-  margin-bottom: 16px;
   overflow: hidden;
+  margin: 1.2em 0;
 }
 #gv-map { width: 100%; height: 480px; }
 
-section.gv-table-section {
-  background: var(--color-bg-card);
-  border: 1px solid var(--color-border);
-  border-radius: 6px;
-  padding: 16px;
-}
-section.gv-table-section h2 { margin: 0 0 12px 0; font-size: 16px; font-weight: 600; }
+/* Unlocated findings — collapsible */
+.gv-unlocated { margin: 0 0 1.2em; }
+.gv-unlocated summary { font-weight: 600; cursor: pointer; }
+.gv-unlocated ul { padding-left: 1.2em; margin-top: 0.6em; }
+.gv-unlocated li { margin: 0.25em 0; cursor: pointer; }
+.gv-unlocated li:hover { color: var(--links); }
 
+/* Filter bar — water styles the inputs themselves; we just lay them out. */
 .gv-filters {
   display: flex;
-  gap: 12px;
+  gap: 0.8em;
   flex-wrap: wrap;
-  margin-bottom: 12px;
   align-items: center;
-  font-size: 13px;
+  margin-bottom: 0.8em;
 }
-.gv-filters label { color: var(--color-text-muted); }
-.gv-filters select, .gv-filters input {
-  font: inherit;
-  padding: 4px 8px;
-  border: 1px solid var(--color-border);
-  border-radius: 4px;
-  background: white;
-}
+.gv-filters label { font-size: 0.9em; color: var(--text-muted); }
+.gv-filters select, .gv-filters input { margin-left: 0.4em; }
 
-table.gv-issues {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 13px;
-}
-table.gv-issues th, table.gv-issues td {
-  text-align: left;
-  padding: 6px 10px;
-  border-bottom: 1px solid var(--color-border);
-  vertical-align: top;
-}
-table.gv-issues th {
-  background: var(--color-bg-page);
-  font-weight: 600;
-  color: var(--color-text-muted);
+/* Findings table — water gives us hover + stripe; add row highlight + sticky head. */
+.gv-table-wrap { overflow-x: auto; }
+.gv-issues { width: 100%; }
+.gv-issues th {
   position: sticky;
   top: 0;
+  background: var(--background-alt);
+  z-index: 1;
 }
-table.gv-issues tr:hover { background: #f6f8fa; }
-table.gv-issues tr.is-highlighted {
-  background: var(--color-row-highlight);
+.gv-issues tr.is-highlighted {
+  background: var(--gv-color-row-highlight) !important;
   animation: gv-flash 1.4s ease-out;
 }
 @keyframes gv-flash {
-  0% { background: #ffd900; }
-  100% { background: var(--color-row-highlight); }
+  0% { background: var(--gv-color-row-highlight-peak); }
+  100% { background: var(--gv-color-row-highlight); }
 }
 .gv-sev { font-weight: 600; }
-.gv-sev.severity-error { color: var(--color-error); }
-.gv-sev.severity-warning { color: var(--color-warning); }
-.gv-sev.severity-info { color: var(--color-info); }
-.gv-code { font-family: var(--font-mono); font-size: 12px; color: var(--color-text-muted); }
-.gv-fixhint { color: var(--color-text-muted); font-style: italic; font-size: 12px; }
-.gv-osm-link { font-size: 12px; }
-
-aside.gv-unlocated {
-  background: var(--color-bg-card);
-  border: 1px solid var(--color-border);
-  border-radius: 6px;
-  padding: 12px 16px;
-  margin-bottom: 16px;
+.gv-sev.severity-error { color: var(--gv-color-error); }
+.gv-sev.severity-warning { color: var(--gv-color-warning); }
+.gv-sev.severity-info { color: var(--gv-color-info); }
+.gv-code { font-size: 0.85em; }
+.gv-fixhint {
+  color: var(--text-muted);
+  font-style: italic;
+  font-size: 0.9em;
+  margin-top: 0.3em;
 }
-aside.gv-unlocated h2 { margin: 0 0 8px 0; font-size: 14px; font-weight: 600; }
-aside.gv-unlocated ul { margin: 0; padding-left: 20px; font-size: 13px; }
-aside.gv-unlocated li { margin-bottom: 4px; cursor: pointer; color: var(--color-info); }
-aside.gv-unlocated li:hover { text-decoration: underline; }
+.gv-osm-link { font-size: 0.9em; white-space: nowrap; }
 
-.gv-marker-popup .gv-popup-header {
-  font-weight: 600;
-  margin-bottom: 4px;
+/* Marker popup — Leaflet's `.leaflet-popup-content` is the body; reset the
+ * default tight margin so paragraphs render naturally. */
+.leaflet-popup-content .gv-marker-popup { font-size: 0.9em; line-height: 1.4; }
+.gv-marker-popup .gv-popup-header { font-weight: 600; margin-bottom: 0.25em; }
+.gv-marker-popup .gv-popup-code { font-size: 0.85em; color: var(--text-muted); }
+.gv-marker-popup .gv-popup-message { margin: 0.3em 0 0; }
+.gv-marker-popup .gv-popup-fixhint {
+  color: var(--text-muted);
+  font-style: italic;
+  font-size: 0.85em;
+  margin-top: 0.25em;
 }
-.gv-marker-popup .gv-popup-code { font-family: var(--font-mono); color: var(--color-text-muted); font-size: 11px; }
-.gv-marker-popup .gv-popup-message { margin-top: 4px; }
-.gv-marker-popup .gv-popup-fixhint { color: var(--color-text-muted); font-style: italic; font-size: 12px; margin-top: 4px; }
-.gv-marker-popup .gv-popup-actions { margin-top: 8px; display: flex; gap: 12px; font-size: 12px; }
-.gv-marker-popup .gv-popup-actions a, .gv-marker-popup .gv-popup-actions button {
+.gv-marker-popup .gv-popup-actions {
+  margin-top: 0.6em;
+  display: flex;
+  gap: 0.9em;
+  font-size: 0.85em;
+}
+.gv-marker-popup .gv-popup-actions a,
+.gv-marker-popup .gv-popup-actions button {
   background: none;
   border: none;
   padding: 0;
-  color: var(--color-info);
+  color: var(--links);
   cursor: pointer;
   font: inherit;
   text-decoration: underline;
