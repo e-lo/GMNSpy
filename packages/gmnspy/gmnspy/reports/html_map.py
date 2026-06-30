@@ -156,6 +156,7 @@ def render_network_html(
         title=final_title,
         meta_subtitle=_meta_subtitle(network),
         counts=counts,
+        water_css=_read_template("water.min.css"),
         leaflet_css=_sanitise_leaflet_css(_read_template("leaflet.min.css")),
         leaflet_js=_read_template("leaflet.min.js"),
         map_css=_read_template("map_report.css"),
