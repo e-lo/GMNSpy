@@ -1,0 +1,27 @@
+{#- gmnspy.map standalone HTML doc — wraps one map fragment.
+
+The minimal wrapper for :meth:`NetworkMap.to_html`. For the richer
+findings-table-attached page see ``validation_report.html.j2``.
+
+Inputs:
+  - title         : <title> + <h1> text
+  - head_assets   : NetworkMap.head_assets() — Leaflet+water+component CSS/JS
+  - body_fragment : NetworkMap.body_fragment() — <div> + per-instance bootstrap
+  - meta_subtitle : optional one-line subtitle under H1
+-#}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ title }}</title>
+  {{ head_assets | safe }}
+</head>
+<body>
+  <header class="gv-header">
+    <h1>{{ title }}</h1>
+    {% if meta_subtitle %}<p class="gv-meta">{{ meta_subtitle }}</p>{% endif %}
+  </header>
+  {{ body_fragment | safe }}
+</body>
+</html>

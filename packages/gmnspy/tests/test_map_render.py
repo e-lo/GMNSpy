@@ -18,7 +18,7 @@ from datagrove.engines.pandas_engine import PandasEngine
 from datagrove.reports import Category, Issue, Severity, ValidationReport
 from gmnspy import Network
 from gmnspy.fixtures import leavenworth
-from gmnspy.reports import render_network_html, render_validation_html
+from gmnspy.map import render_network_html, render_validation_html
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -73,7 +73,7 @@ def test_payload_carries_nodes_as_toggleable_layer(tmp_path):
     """
     net = _osm_network(tmp_path)
     html = render_network_html(net)
-    payload_match = re.search(r"__GMNSPY_DATA__ = (\{.*?\});", html, re.S)
+    payload_match = re.search(r"\[\"[a-zA-Z0-9_-]+\"\] = (\{.*?\});", html, re.S)
     assert payload_match is not None
     payload = payload_match.group(1)
     # Layers structure with a `nodes` entry that carries point coords.
@@ -87,7 +87,7 @@ def test_payload_layers_array_is_extensible(tmp_path):
     """``layers`` is a list of dicts so future layer types slot in without renderer changes."""
     net = _osm_network(tmp_path)
     html = render_network_html(net)
-    payload_match = re.search(r"__GMNSPY_DATA__ = (\{.*?\});", html, re.S)
+    payload_match = re.search(r"\[\"[a-zA-Z0-9_-]+\"\] = (\{.*?\});", html, re.S)
     assert payload_match is not None
     import json as _json
 
@@ -134,7 +134,7 @@ def test_underlay_uses_geometry_table_when_no_inline_geometry(tmp_path):
     net = Network.from_source(csv_dir, engine=PandasEngine())
 
     html = render_network_html(net)
-    payload_match = re.search(r"__GMNSPY_DATA__ = (\{.*?\});", html, re.S)
+    payload_match = re.search(r"\[\"[a-zA-Z0-9_-]+\"\] = (\{.*?\});", html, re.S)
     assert payload_match is not None
     payload = payload_match.group(1)
     assert "-120.55" in payload
@@ -150,7 +150,7 @@ def test_link_polylines_carry_props_for_tooltips(tmp_path):
     """
     net = _osm_network(tmp_path)
     html = render_network_html(net)
-    payload_match = re.search(r"__GMNSPY_DATA__ = (\{.*?\});", html, re.S)
+    payload_match = re.search(r"\[\"[a-zA-Z0-9_-]+\"\] = (\{.*?\});", html, re.S)
     assert payload_match is not None
     import json as _json
 
@@ -168,7 +168,7 @@ def test_node_points_carry_props_for_tooltips(tmp_path):
     """Each node feature must carry a ``props`` dict so hovering surfaces node_id etc."""
     net = _osm_network(tmp_path)
     html = render_network_html(net)
-    payload_match = re.search(r"__GMNSPY_DATA__ = (\{.*?\});", html, re.S)
+    payload_match = re.search(r"\[\"[a-zA-Z0-9_-]+\"\] = (\{.*?\});", html, re.S)
     assert payload_match is not None
     import json as _json
 
@@ -203,7 +203,7 @@ def test_props_skip_long_or_internal_columns(tmp_path):
     net = Network.from_source(csv_dir, engine=PandasEngine())
 
     html = render_network_html(net)
-    payload_match = re.search(r"__GMNSPY_DATA__ = (\{.*?\});", html, re.S)
+    payload_match = re.search(r"\[\"[a-zA-Z0-9_-]+\"\] = (\{.*?\});", html, re.S)
     assert payload_match is not None
     # The WKT string itself must NEVER appear in the rendered HTML — it's
     # huge, it bloats tooltips, and the user already sees the geometry as a
@@ -252,7 +252,7 @@ def test_render_network_html_empty_issues_treated_like_none(tmp_path):
     html = render_network_html(net, [])
     assert "Findings (0)" not in html  # the table section is not rendered for empty
     # Map div is still present.
-    assert 'id="gv-map"' in html
+    assert 'id="gv-map-' in html
 
 
 # ---------------------------------------------------------------------------
@@ -323,8 +323,8 @@ def test_popup_has_no_wkt_geometry_string(tmp_path):
     html = render_network_html(net, [issue])
     # The geometry column in the source DOES contain "LINESTRING (...)" but
     # that's never echoed into the payload or table.
-    payload_match = re.search(r"__GMNSPY_DATA__ = (\{.*?\});", html, re.S)
-    assert payload_match is not None, "expected window.__GMNSPY_DATA__ blob"
+    payload_match = re.search(r"\[\"[a-zA-Z0-9_-]+\"\] = (\{.*?\});", html, re.S)
+    assert payload_match is not None, "expected per-instance __GMNSPY_INSTANCES__ slot"
     payload = payload_match.group(1)
     assert "LINESTRING" not in payload
 
@@ -335,28 +335,30 @@ def test_popup_has_no_wkt_geometry_string(tmp_path):
 
 
 def test_each_marker_and_table_row_share_an_issue_id(tmp_path):
-    """Every located issue's marker and its table row carry a matching data-issue-id."""
+    """Every located issue's marker and its table row carry a matching data-issue-id.
+
+    The marker → row bridge is a validation-report feature (a standalone
+    map has no findings table, so there's nothing to bridge TO).
+    """
     net = _osm_network(tmp_path)
-    issues = [
-        Issue(
-            severity=Severity.WARNING,
-            category=Category.SCHEMA,
-            code="schema.required",
-            message="link row 0",
-            table="link",
-            row=0,
-        ),
-        Issue(
-            severity=Severity.WARNING,
-            category=Category.DATA_QUALITY,
-            code="quality.example",
-            message="point",
-            extra={"lon": -120.55, "lat": 47.55},
-        ),
-    ]
-    html = render_network_html(net, issues)
-    # Every issue_id in the payload appears as data-issue-id on a table row.
-    payload_match = re.search(r"__GMNSPY_DATA__ = (\{.*?\});", html, re.S)
+    report = ValidationReport(source="t.gmns", spec_version="0.97")
+    report.add(
+        severity=Severity.WARNING,
+        category=Category.SCHEMA,
+        code="schema.required",
+        message="link row 0",
+        table="link",
+        row=0,
+    )
+    report.add(
+        severity=Severity.WARNING,
+        category=Category.DATA_QUALITY,
+        code="quality.example",
+        message="point",
+        extra={"lon": -120.55, "lat": 47.55},
+    )
+    html = render_validation_html(net, report)
+    payload_match = re.search(r"\[\"[a-zA-Z0-9_-]+\"\] = (\{.*?\});", html, re.S)
     assert payload_match is not None
     payload = payload_match.group(1)
     issue_ids_in_payload = re.findall(r'"issue_id":\s*"([^"]+)"', payload)
@@ -366,15 +368,16 @@ def test_each_marker_and_table_row_share_an_issue_id(tmp_path):
 
 
 def test_unlocated_issue_goes_to_sidebar_with_issue_id():
-    """A cross-cutting issue with no coords appears in the sidebar AND has a row in the table."""
+    """A cross-cutting issue with no coords appears in the validation-report sidebar."""
     net = _leavenworth_network()
-    issue = Issue(
+    report = ValidationReport(source="lw.gmns", spec_version="0.97")
+    report.add(
         severity=Severity.ERROR,
         category=Category.STRUCTURAL,
         code="structural.missing_table",
         message="some required table missing",
     )
-    html = render_network_html(net, [issue])
+    html = render_validation_html(net, report)
     assert "Unlocated findings" in html
     assert "data-unlocated-issue-id=" in html
     assert "structural.missing_table" in html
@@ -428,24 +431,23 @@ def test_render_validation_html_wraps_render_network_html(tmp_path):
 
 
 def test_header_shows_located_vs_unlocated_split(tmp_path):
-    """Header counter shows N on map · M unlocated."""
+    """Validation-report header counter shows N on map · M unlocated."""
     net = _osm_network(tmp_path)
-    issues = [
-        Issue(
-            severity=Severity.WARNING,
-            category=Category.SCHEMA,
-            code="schema.required",
-            message="link row 0",
-            table="link",
-            row=0,
-        ),  # located via link midpoint
-        Issue(
-            severity=Severity.ERROR,
-            category=Category.STRUCTURAL,
-            code="structural.x",
-            message="cross-cutting",
-        ),  # unlocated
-    ]
-    html = render_network_html(net, issues)
+    report = ValidationReport(source="t.gmns", spec_version="0.97")
+    report.add(
+        severity=Severity.WARNING,
+        category=Category.SCHEMA,
+        code="schema.required",
+        message="link row 0",
+        table="link",
+        row=0,
+    )  # located via link midpoint
+    report.add(
+        severity=Severity.ERROR,
+        category=Category.STRUCTURAL,
+        code="structural.x",
+        message="cross-cutting",
+    )  # unlocated
+    html = render_validation_html(net, report)
     assert "1 on map" in html
     assert "1 unlocated" in html

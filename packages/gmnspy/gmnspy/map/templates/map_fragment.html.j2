@@ -1,0 +1,18 @@
+{#- gmnspy.map per-instance fragment — just the <div> + payload + bootstrap.
+
+This is the EMBEDDABLE bit. Any host page (NetworkMap.to_html() standalone,
+validation report, custom dashboard, notebook iframe) drops one of these
+per map instance. The shared head assets (Leaflet, water.css, our CSS+JS)
+must be included once on the host page — see :meth:`NetworkMap.head_assets`.
+
+Inputs:
+  - uid              : unique id for this instance (gv-map-<uid>)
+  - height           : CSS height for the map container (e.g. "480px")
+  - payload_json     : window.__GMNSPY_INSTANCES__[uid] blob (markers, layers, bbox)
+-#}
+<div id="gv-map-{{ uid }}" class="gv-map" style="height: {{ height }};"></div>
+<script>
+  (window.__GMNSPY_INSTANCES__ = window.__GMNSPY_INSTANCES__ || {})["{{ uid }}"] = {{ payload_json | safe }};
+  (window.__GMNSPY_QUEUE__ = window.__GMNSPY_QUEUE__ || []).push("{{ uid }}");
+  if (window.__gmnspyAttach) window.__gmnspyAttach("{{ uid }}");
+</script>

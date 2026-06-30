@@ -130,9 +130,12 @@ include = [
     "gmnspy/fixtures/**/README.md",
     # gmnspy.reports HTML viewer assets (Jinja template, our own CSS/JS, and
     # the vendored Leaflet 1.9.4 bundle so the report is fully offline).
-    "gmnspy/reports/templates/*.j2",
-    "gmnspy/reports/templates/*.css",
-    "gmnspy/reports/templates/*.js",
+    # gmnspy.map HTML viewer assets (Jinja templates, our own CSS/JS, the
+    # vendored Leaflet 1.9.4 bundle, and water.css — so reports are fully
+    # offline).
+    "gmnspy/map/templates/*.j2",
+    "gmnspy/map/templates/*.css",
+    "gmnspy/map/templates/*.js",
 ]
 
 [tool.hatch.build.targets.sdist]
