@@ -197,7 +197,7 @@ def test_read_single_file_delegates_to_engine(adapter: ParquetAdapter, engine_na
     engine = get_engine(engine_name)
     expr = adapter.read(LEAVENWORTH_LINK_PARQUET, engine)
     df = engine.to_pandas(expr)
-    assert len(df) == 214  # Leavenworth fixture link count
+    assert len(df) == 339  # Leavenworth fixture link count
     assert "link_id" in df.columns
     assert "from_node_id" in df.columns
 
@@ -303,7 +303,7 @@ def test_write_single_file_roundtrip(
 
     reread = adapter.read(dest, engine)
     df = engine.to_pandas(reread)
-    assert len(df) == 214
+    assert len(df) == 339
     assert set(["link_id", "from_node_id", "to_node_id"]).issubset(df.columns)
 
 

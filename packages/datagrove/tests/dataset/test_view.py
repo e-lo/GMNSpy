@@ -36,7 +36,7 @@ from datagrove.engines.pandas_engine import PandasEngine
 from gmnspy.fixtures import leavenworth
 
 # Downtown Leavenworth bbox (chosen to be tight enough to filter out
-# the bulk of the 214-row fixture but loose enough to keep a non-empty
+# the bulk of the 339-row fixture but loose enough to keep a non-empty
 # result on both engines).
 _BBOX = (-120.67, 47.59, -120.66, 47.60)
 

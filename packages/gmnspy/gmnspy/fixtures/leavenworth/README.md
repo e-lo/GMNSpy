@@ -14,10 +14,10 @@ A small but realistic example network in [GMNS 0.97](https://github.com/zephyr-d
 
 | GMNS table              | Rows | Notes                                                                                |
 | ----------------------- | ---- | ------------------------------------------------------------------------------------ |
-| `node`                  | 75   | `ctrl_type` exercises 5 of the 7 v0.97 shared-categories values (incl. `signal`)     |
-| `link`                  | 214  | `bike_facility` / `ped_facility` / `parking` use v0.97 shared-categories enums       |
-| `geometry`              | 214  | One WKT LineString per link (true OSM shape where present, else straight)            |
-| `lane`                  | 280  | One row per travel lane per link                                                     |
+| `node`                  | 121  | `ctrl_type` exercises 5 of the 7 v0.97 shared-categories values (incl. `signal`); `osm_node_id` carries OSM provenance |
+| `link`                  | 339  | `bike_facility` / `ped_facility` / `parking` use v0.97 shared-categories enums; `osm_way_id` carries OSM provenance |
+| `geometry`              | 339  | One WKT LineString per link (true OSM shape where present, else straight)            |
+| `lane`                  | 429  | One row per travel lane per link                                                     |
 | `use_definition`        | 5    | `auto`, `truck`, `transit`, `bike`, `walk`                                           |
 | `use_group`             | 2    | `motorized`, `nonmotorized`                                                          |
 | `time_set_definitions`  | 1    | `weekday_am_peak` (Mon-Fri 07:00-09:00)                                              |
@@ -31,12 +31,17 @@ That's **9 distinct table types** including a TOD restriction and several uses o
 The bundled data was synthesized from OpenStreetMap via [`osmnx`](https://github.com/gboeing/osmnx) using this exact call:
 
 ```python
-osmnx.graph_from_address(
-    "Leavenworth, WA, USA",
-    dist=600,            # ~600 m radius around the city centroid
+osmnx.graph_from_place(
+    "Leavenworth, Washington, USA",   # resolves via Nominatim to the city polygon
     network_type="drive",
 )
 ```
+
+The `graph_from_place` call follows OSM's city-relation polygon for
+Leavenworth rather than a bbox-clipped buffer around the geocoded
+centroid, so the fixture covers the whole town (not just the downtown
+core). Each link / node row carries its source OSM id in `osm_way_id` /
+`osm_node_id` so validation findings can deep-link into the iD editor.
 
 GMNS attributes are derived from OSM tags as follows:
 

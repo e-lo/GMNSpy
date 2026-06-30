@@ -68,8 +68,11 @@ DATAPACKAGE_PATH = FIXTURE_DIR / "datapackage.json"
 # OSM source signature - documented for reproducibility
 # ---------------------------------------------------------------------------
 
-OSM_ADDRESS = "Leavenworth, WA, USA"
-OSM_DIST_M = 600  # ~600m radius around city centroid -> downtown core
+# Resolves to OSM relation 8915833 ("Leavenworth, Chelan County, Washington"
+# city boundary) via Nominatim. Using the place-polygon rather than a bbox
+# means the fixture covers the whole town as OSM defines it — not just a
+# bbox cap centered on the geocoded address.
+OSM_PLACE = "Leavenworth, Washington, USA"
 OSM_NETWORK_TYPE = "drive"
 
 # ---------------------------------------------------------------------------
@@ -192,9 +195,14 @@ def _coerce_float(value: object, default: float | None = None) -> float | None:
 
 
 def fetch_graph() -> tuple[object, str]:
-    """Fetch the OSM driving graph + return (graph, fetch_iso_timestamp)."""
+    """Fetch the OSM driving graph + return (graph, fetch_iso_timestamp).
+
+    Uses ``ox.graph_from_place`` so the network follows the actual city
+    polygon (resolved via Nominatim → Overpass) instead of a bbox or
+    point buffer around the centroid.
+    """
     fetched_at = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
-    g = ox.graph_from_address(OSM_ADDRESS, dist=OSM_DIST_M, network_type=OSM_NETWORK_TYPE)
+    g = ox.graph_from_place(OSM_PLACE, network_type=OSM_NETWORK_TYPE)
     return g, fetched_at
 
 
@@ -237,6 +245,10 @@ def build_node_table(g: object) -> pd.DataFrame:
                 "y_coord": round(float(attrs["y"]), 7),
                 "node_type": ntype,
                 "ctrl_type": ctrl,
+                # OSM provenance — lets gmnspy.osm.edit produce iD/JOSM
+                # deep links from validation findings even though this
+                # fixture is consumed as a plain CSV directory.
+                "osm_node_id": int(osmid),
             }
         )
     df = pd.DataFrame(rows).sort_values("node_id").reset_index(drop=True)
@@ -313,6 +325,17 @@ def build_link_and_geometry_tables(g: object, osmid_to_node_id: dict) -> tuple[p
         if isinstance(data.get("oneway"), str):
             directed = data.get("oneway", "").lower() in {"yes", "true", "1"}
 
+        # OSM way id — pick the smallest when osmnx returns a list for
+        # merged/collapsed ways, for determinism.
+        osmid = data.get("osmid")
+        if isinstance(osmid, list):
+            way_id = min(int(x) for x in osmid)
+        else:
+            try:
+                way_id = int(osmid)
+            except (TypeError, ValueError):
+                way_id = 0
+
         edge_rows.append(
             {
                 "link_id": link_id,
@@ -329,6 +352,9 @@ def build_link_and_geometry_tables(g: object, osmid_to_node_id: dict) -> tuple[p
                 "ped_facility": ped_facility,
                 "parking": parking,
                 "allowed_uses": "auto,truck,walk,bike",
+                # OSM provenance — enables iD/JOSM edit deep-links from
+                # validation findings.
+                "osm_way_id": way_id,
             }
         )
 
@@ -632,7 +658,7 @@ def _dir_size(p: Path) -> int:
 
 def main() -> int:
     """Build all four format variants. Print a summary; return non-zero on failure."""
-    print(f"[leavenworth] fetching OSM: {OSM_ADDRESS} dist={OSM_DIST_M}m type={OSM_NETWORK_TYPE}")
+    print(f"[leavenworth] fetching OSM: place={OSM_PLACE!r} type={OSM_NETWORK_TYPE}")
     g, fetched_at = fetch_graph()
     print(f"[leavenworth] OSM graph: {len(g.nodes)} nodes, {len(g.edges)} edges (fetched at {fetched_at})")
 

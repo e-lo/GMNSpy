@@ -1,4 +1,4 @@
-"""Tests for :class:`gmnspy.Network` (task 3.7 / issue #75).
+"""Tests for :class:`gmnspy.Network` (task 3.7 / issue #121).
 
 Covers the GMNS-aware :class:`~datagrove.dataset.Package` subclass:
 

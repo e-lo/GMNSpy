@@ -79,7 +79,7 @@ def test_spatial_index_bbox_query_returns_link_ids(links_with_geom: Table) -> No
     """A bbox that covers all of Leavenworth must return all link_ids."""
     idx = SpatialIndex.build(links_with_geom)
     # generous bbox over the Leavenworth area (lon, lat WGS84)
-    hits = idx.query_bbox(-120.70, 47.58, -120.65, 47.62)
+    hits = idx.query_bbox(-120.69, 47.58, -120.64, 47.61)
     assert len(hits) == len(idx)
     # link_ids are ints in the fixture
     assert all(isinstance(h, int) for h in hits)
@@ -105,7 +105,7 @@ def test_spatial_index_geometry_query(links_with_geom: Table) -> None:
     from shapely.geometry import box
 
     idx = SpatialIndex.build(links_with_geom)
-    poly = box(-120.70, 47.58, -120.65, 47.62)
+    poly = box(-120.69, 47.58, -120.64, 47.61)
     hits = idx.query_geometry(poly)
     assert len(hits) == len(idx)
 
@@ -139,8 +139,8 @@ def test_cache_round_trip_spatial(links_with_geom: Table) -> None:
         loaded = load_cached(p)
         assert loaded is not None
         # Same query returns same hits
-        assert sorted(loaded.query_bbox(-120.70, 47.58, -120.65, 47.62)) == sorted(
-            idx.query_bbox(-120.70, 47.58, -120.65, 47.62)
+        assert sorted(loaded.query_bbox(-120.69, 47.58, -120.64, 47.61)) == sorted(
+            idx.query_bbox(-120.69, 47.58, -120.64, 47.61)
         )
 
 
@@ -220,8 +220,8 @@ def test_indexes_build_under_ibis_engine() -> None:
     ibis_spatial = SpatialIndex.build(ibis_links)
     pandas_spatial = SpatialIndex.build(pandas_links)
     assert len(ibis_spatial) == len(pandas_spatial)
-    assert sorted(ibis_spatial.query_bbox(-120.70, 47.58, -120.65, 47.62)) == sorted(
-        pandas_spatial.query_bbox(-120.70, 47.58, -120.65, 47.62)
+    assert sorted(ibis_spatial.query_bbox(-120.69, 47.58, -120.64, 47.61)) == sorted(
+        pandas_spatial.query_bbox(-120.69, 47.58, -120.64, 47.61)
     )
 
     # Graph slot is a GMNSGraph (scipy); its full engine-parity is covered by

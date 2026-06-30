@@ -219,7 +219,7 @@ def test_assemble_geometry_falls_back_to_node_endpoints():
 
     engine = _engine()
     nodes = _node_table(
-        engine, [{"node_id": 1, "x_coord": 0.5, "y_coord": 0.25}, {"node_id": 2, "x_coord": 3.5, "y_coord": 4.75}]
+        engine, [{"node_id": 1, "x_coord": 0.5, "y_coord": 0.25}, {"node_id": 2, "x_coord": 3.5, "y_coord": 4.121}]
     )
     links = _link_table(
         engine,
@@ -239,7 +239,7 @@ def test_assemble_geometry_falls_back_to_node_endpoints():
     # Use 'in' to be tolerant of formatter trailing zeros / int coercion.
     wkt = tbl.column("geometry_wkt").to_pylist()[0]
     assert wkt.startswith("LINESTRING (")
-    assert "0.5" in wkt and "0.25" in wkt and "3.5" in wkt and "4.75" in wkt
+    assert "0.5" in wkt and "0.25" in wkt and "3.5" in wkt and "4.121" in wkt
 
 
 def test_assemble_geometry_leavenworth_uses_geometry_table():

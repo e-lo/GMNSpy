@@ -39,7 +39,7 @@ Expected:
 
 ### 1. Run against the bundled reference
 
-The Leavenworth fixture is small (214 links / 75 nodes) — total runtime is under a second. It's a baseline, not a benchmark; useful for confirming nothing's wrong with the install:
+The Leavenworth fixture is small (339 links / 121 nodes) — total runtime is under a second. It's a baseline, not a benchmark; useful for confirming nothing's wrong with the install:
 
 ```bash
 gmnspy bench packages/gmnspy/gmnspy/fixtures/leavenworth/csv
@@ -88,7 +88,7 @@ The shape is stable inside a major version. Each phase is one logical operation:
   "source": "...",
   "engine": "ibis",
   "spec_version": "0.97",
-  "table_counts": {"link": 214, "node": 75, "lane": 412, ...},
+  "table_counts": {"link": 339, "node": 121, "lane": 429, ...},
   "phases": [
     {"name": "load",         "seconds": 0.082},
     {"name": "validate",     "seconds": 0.124},
