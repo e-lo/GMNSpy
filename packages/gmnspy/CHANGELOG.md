@@ -6,7 +6,38 @@ This file is for the **gmnspy** package only. The underlying generic engine `dat
 
 ## [Unreleased]
 
-(Reserved for changes between the most recent release and the next.)
+### Added
+
+- **Interactive network-on-map HTML viewer** (`gmnspy.reports`). A new
+  optional `[reports]` extra (`pip install 'gmnspy[reports]'`) ships
+  a Leaflet-based renderer that overlays validation findings (and any
+  other `Issue` source — quality rules, graph topology checks, custom
+  rules) onto the actual network geometry. Single self-contained HTML
+  file; no internet required when opened. For OSM-sourced networks,
+  popups carry one-click "Edit in OSM" deep links to the iD editor.
+  Public API:
+  - `gmnspy.reports.render_network_html(net, issues=None, *, title=, tile_provider=, osm_editor=)`
+  - `gmnspy.reports.render_validation_html(net, report, **opts)`
+  - `gmnspy.reports.write_findings_csv(issues, path)`
+  - `gmnspy.reports.write_findings_xlsx(issues, path)`
+  - `gmnspy.osm.osm_edit_url(osm_id, *, kind=, editor=)`
+  - `gmnspy.osm.issue_osm_edit_url(issue, network, *, editor=)`
+- **CLI output flags** on `gmnspy validate`:
+  - `--html` now writes the new map+table viewer (gracefully falls
+    back to the datagrove table-only HTML when `[reports]` is missing,
+    so `--html` always produces a file).
+  - `--csv` writes a flat findings table.
+  - `--xlsx` writes a single-sheet workbook (requires `[reports]`).
+- **New cookbook recipe** `view-your-network.md` showing the standalone
+  network map (no validation required).
+
+### Changed
+
+- `gmnspy.osm.__init__` is now lazy — importing the package no longer
+  eagerly requires the `[osm]` extra. `osm_edit_url` and
+  `issue_osm_edit_url` are dep-free helpers and load without
+  `requests`/`pyyaml`. `build_network_from_osm` / `network_from_records`
+  still need `[osm]` and surface the same helpful `ImportError`.
 
 ## [1.0.0-beta.1] — TBD
 

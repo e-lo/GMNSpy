@@ -140,22 +140,79 @@ def test_gmns_validate_loads_spec_for_csv_directory():
 
 
 def test_gmns_validate_writes_html_report(tmp_path):
-    """`gmnspy validate --html <path>` writes a self-contained HTML report.
+    """`gmnspy validate --html <path>` writes the interactive map+table viewer.
 
-    Regression for the v1.0 CLI walk-through finding that the
-    docs / cookbook claimed a ``--report=html -o ...`` flag existed
-    but the CLI had only ``--json``. The override added an ``--html
-    <path>`` flag that wires :meth:`ValidationReport.to_html`.
+    Since gmnspy 1.x the ``--html`` output is the gmnspy.reports
+    network-on-map viewer (Leaflet map pane + filterable issue
+    table), not the legacy datagrove table-only report. The viewer
+    is composed via :func:`gmnspy.reports.render_validation_html`.
     """
     out = tmp_path / "report.html"
     result = runner.invoke(app, ["validate", "--html", str(out), str(leavenworth.csv_dir())])
     assert result.exit_code == 0, result.stderr
     assert out.is_file()
     html = out.read_text(encoding="utf-8")
-    # Self-contained: should be a full HTML document with embedded
-    # styling, not a fragment.
     assert html.startswith("<!DOCTYPE html") or "<html" in html[:200]
-    assert "validation report" in html.lower() or "validation" in html.lower()
+    # Map viewer markers — the gv-map div is the signature of the new renderer.
+    assert 'id="gv-map"' in html
+    # And Leaflet is inlined (no remote script src).
+    assert "Leaflet" in html
+    assert "<script src=" not in html
+
+
+def test_gmns_validate_writes_csv_findings(tmp_path):
+    """``gmnspy validate --csv <path>`` writes the findings as a flat CSV file."""
+    out = tmp_path / "findings.csv"
+    result = runner.invoke(app, ["validate", "--csv", str(out), str(leavenworth.csv_dir())])
+    assert result.exit_code == 0, result.stderr
+    assert out.is_file()
+    text = out.read_text(encoding="utf-8")
+    # CSV header must include the standard columns the writer emits.
+    assert "severity,category,code" in text.splitlines()[0]
+
+
+def test_gmns_validate_writes_xlsx_findings(tmp_path):
+    """``gmnspy validate --xlsx <path>`` writes the findings as an .xlsx workbook."""
+    out = tmp_path / "findings.xlsx"
+    result = runner.invoke(app, ["validate", "--xlsx", str(out), str(leavenworth.csv_dir())])
+    assert result.exit_code == 0, result.stderr
+    assert out.is_file()
+    # The file must be a real xlsx (zip-based); openpyxl can open it.
+    import openpyxl
+
+    wb = openpyxl.load_workbook(out, read_only=True)
+    ws = wb.active
+    header = next(ws.iter_rows(values_only=True))
+    assert "severity" in header
+    assert "code" in header
+
+
+def test_gmns_validate_html_falls_back_when_reports_extra_missing(tmp_path, monkeypatch):
+    """``--html`` must still write something when ``[reports]`` is missing.
+
+    Simulates the case where jinja2 (or the gmnspy.reports package itself) is
+    not importable. The command falls back to datagrove's table-only HTML
+    and prints a stderr note pointing at the install command. Exit is 0
+    (or whatever the validation verdict says); the fallback is operational,
+    not an error.
+    """
+    out = tmp_path / "report.html"
+    import sys
+
+    # Drop the reports submodule from sys.modules so the CLI's lazy import
+    # path takes the ImportError branch.
+    monkeypatch.setitem(sys.modules, "gmnspy.reports", None)
+    monkeypatch.setitem(sys.modules, "gmnspy.reports.html_map", None)
+
+    result = runner.invoke(app, ["validate", "--html", str(out), str(leavenworth.csv_dir())])
+    assert result.exit_code == 0, result.stderr
+    assert out.is_file()
+    html = out.read_text(encoding="utf-8")
+    # Fallback is datagrove's table-only report.
+    assert html.startswith("<!DOCTYPE html") or "<html" in html[:200]
+    # Stderr note steers the user toward the right install command.
+    combined = (result.stderr or "") + (result.stdout or "")
+    assert "[reports]" in combined or "gmnspy[reports]" in combined
 
 
 def test_gmns_validate_respects_spec_override():

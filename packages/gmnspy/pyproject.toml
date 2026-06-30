@@ -68,8 +68,15 @@ notebook = [
     "ipywidgets>=8.1",
     "anywidget>=0.9",
 ]
+reports = [
+    # Interactive network-on-map HTML viewer (gmnspy.reports): openpyxl for the
+    # XLSX findings writer, jinja2 for the template engine. Leaflet ships
+    # vendored under reports/templates/ so no JS/CSS network calls are needed.
+    "openpyxl>=3.1",
+    "jinja2>=3.1",  # also a transitive datagrove dep; pinned explicitly here
+]
 all = [
-    "gmnspy[clean,server,mcp,notebook,osm,graph]",
+    "gmnspy[clean,server,mcp,notebook,osm,graph,reports]",
 ]
 dev-fixtures = [
     # Only required to *rebuild* bundled example fixtures (e.g. Leavenworth).
@@ -121,6 +128,11 @@ include = [
     "gmnspy/fixtures/**/*.zip",
     "gmnspy/fixtures/**/datapackage.json",
     "gmnspy/fixtures/**/README.md",
+    # gmnspy.reports HTML viewer assets (Jinja template, our own CSS/JS, and
+    # the vendored Leaflet 1.9.4 bundle so the report is fully offline).
+    "gmnspy/reports/templates/*.j2",
+    "gmnspy/reports/templates/*.css",
+    "gmnspy/reports/templates/*.js",
 ]
 
 [tool.hatch.build.targets.sdist]

@@ -148,8 +148,14 @@ Stable identifier strings let you script around specific findings without parsin
     gmnspy validate <source> --json | jq '.issues[] | select(.severity=="error")'
     ```
 
-??? note "Standalone HTML report for a stakeholder"
-    Self-contained file you can email or upload to a docs site.
+??? note "Interactive map+table HTML report (`--html`)"
+    Self-contained file you can email or upload to a docs site. The map
+    pane on top plots each finding on the actual network geometry
+    (Leaflet, vendored — no network calls when the report is opened);
+    the filterable table below shows the same findings with severity,
+    code, message, and fix hint. For networks imported from
+    OpenStreetMap, each finding's popup carries a one-click "Edit in
+    OSM" deep link to the iD editor.
 
     ```bash
     gmnspy validate <source> --html report.html
@@ -158,8 +164,27 @@ Stable identifier strings let you script around specific findings without parsin
     Or programmatically:
 
     ```python
-    report.to_html("report.html")
+    from gmnspy.reports import render_validation_html
+    open("report.html", "w").write(render_validation_html(net, report))
     ```
+
+    Requires `pip install 'gmnspy[reports]'`. When that extra is not
+    installed, `--html` still writes a file — the older datagrove
+    table-only HTML — and prints a stderr note pointing at the install
+    command.
+
+??? note "Findings spreadsheet (`--csv` / `--xlsx`)"
+    Flat one-row-per-finding spreadsheet — the right shape for triage in
+    Excel, Google Sheets, or jq.
+
+    ```bash
+    gmnspy validate <source> --csv findings.csv --xlsx findings.xlsx
+    ```
+
+    Columns: `severity, category, code, table, column, row, message,
+    fix_hint, extra`. The `extra` column is a JSON blob carrying
+    adapter-specific payload (FK target, OSM provenance, …).
+    `--xlsx` needs `[reports]`; `--csv` works on the lean install.
 
 ??? note "Just the failing tables"
     Useful for triaging which datasets need attention first.

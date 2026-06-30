@@ -1,0 +1,141 @@
+/* gmnspy.reports map-report viewer — paired with map_report.html.j2 + map_report.js. */
+
+:root {
+  --color-error: #d1242f;
+  --color-warning: #9a6700;
+  --color-info: #0969da;
+  --color-row-highlight: #fff4a3;
+  --color-border: #d0d7de;
+  --color-text-muted: #57606a;
+  --color-bg-card: #ffffff;
+  --color-bg-page: #f6f8fa;
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: var(--font-sans);
+  background: var(--color-bg-page);
+  color: #1f2328;
+  margin: 0;
+  padding: 0;
+  line-height: 1.5;
+}
+
+header.gv-header {
+  background: var(--color-bg-card);
+  border-bottom: 1px solid var(--color-border);
+  padding: 16px 24px;
+}
+header.gv-header h1 { margin: 0 0 4px 0; font-size: 18px; font-weight: 600; }
+header.gv-header .gv-meta { color: var(--color-text-muted); font-size: 13px; }
+header.gv-header .gv-counts { margin-top: 8px; display: flex; gap: 12px; flex-wrap: wrap; font-size: 13px; }
+header.gv-header .gv-counts .gv-chip {
+  padding: 2px 10px; border-radius: 12px; border: 1px solid var(--color-border); background: var(--color-bg-page);
+}
+.gv-chip.severity-error { color: var(--color-error); border-color: var(--color-error); }
+.gv-chip.severity-warning { color: var(--color-warning); border-color: var(--color-warning); }
+.gv-chip.severity-info { color: var(--color-info); border-color: var(--color-info); }
+
+main { padding: 16px 24px; max-width: 1400px; margin: 0 auto; }
+
+section.gv-map-section {
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  margin-bottom: 16px;
+  overflow: hidden;
+}
+#gv-map { width: 100%; height: 480px; }
+
+section.gv-table-section {
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  padding: 16px;
+}
+section.gv-table-section h2 { margin: 0 0 12px 0; font-size: 16px; font-weight: 600; }
+
+.gv-filters {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+  align-items: center;
+  font-size: 13px;
+}
+.gv-filters label { color: var(--color-text-muted); }
+.gv-filters select, .gv-filters input {
+  font: inherit;
+  padding: 4px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  background: white;
+}
+
+table.gv-issues {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+table.gv-issues th, table.gv-issues td {
+  text-align: left;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--color-border);
+  vertical-align: top;
+}
+table.gv-issues th {
+  background: var(--color-bg-page);
+  font-weight: 600;
+  color: var(--color-text-muted);
+  position: sticky;
+  top: 0;
+}
+table.gv-issues tr:hover { background: #f6f8fa; }
+table.gv-issues tr.is-highlighted {
+  background: var(--color-row-highlight);
+  animation: gv-flash 1.4s ease-out;
+}
+@keyframes gv-flash {
+  0% { background: #ffd900; }
+  100% { background: var(--color-row-highlight); }
+}
+.gv-sev { font-weight: 600; }
+.gv-sev.severity-error { color: var(--color-error); }
+.gv-sev.severity-warning { color: var(--color-warning); }
+.gv-sev.severity-info { color: var(--color-info); }
+.gv-code { font-family: var(--font-mono); font-size: 12px; color: var(--color-text-muted); }
+.gv-fixhint { color: var(--color-text-muted); font-style: italic; font-size: 12px; }
+.gv-osm-link { font-size: 12px; }
+
+aside.gv-unlocated {
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  padding: 12px 16px;
+  margin-bottom: 16px;
+}
+aside.gv-unlocated h2 { margin: 0 0 8px 0; font-size: 14px; font-weight: 600; }
+aside.gv-unlocated ul { margin: 0; padding-left: 20px; font-size: 13px; }
+aside.gv-unlocated li { margin-bottom: 4px; cursor: pointer; color: var(--color-info); }
+aside.gv-unlocated li:hover { text-decoration: underline; }
+
+.gv-marker-popup .gv-popup-header {
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+.gv-marker-popup .gv-popup-code { font-family: var(--font-mono); color: var(--color-text-muted); font-size: 11px; }
+.gv-marker-popup .gv-popup-message { margin-top: 4px; }
+.gv-marker-popup .gv-popup-fixhint { color: var(--color-text-muted); font-style: italic; font-size: 12px; margin-top: 4px; }
+.gv-marker-popup .gv-popup-actions { margin-top: 8px; display: flex; gap: 12px; font-size: 12px; }
+.gv-marker-popup .gv-popup-actions a, .gv-marker-popup .gv-popup-actions button {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--color-info);
+  cursor: pointer;
+  font: inherit;
+  text-decoration: underline;
+}
