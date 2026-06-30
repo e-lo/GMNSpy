@@ -153,8 +153,8 @@ def test_gmns_validate_writes_html_report(tmp_path):
     assert out.is_file()
     html = out.read_text(encoding="utf-8")
     assert html.startswith("<!DOCTYPE html") or "<html" in html[:200]
-    # Map viewer markers — the gv-map div is the signature of the new renderer.
-    assert 'id="gv-map"' in html
+    # Map viewer markers — the gv-map-<uid> div is the signature of the new renderer.
+    assert 'id="gv-map-' in html
     # And Leaflet is inlined (no remote script src).
     assert "Leaflet" in html
     assert "<script src=" not in html
@@ -199,10 +199,11 @@ def test_gmns_validate_html_falls_back_when_reports_extra_missing(tmp_path, monk
     out = tmp_path / "report.html"
     import sys
 
-    # Drop the reports submodule from sys.modules so the CLI's lazy import
-    # path takes the ImportError branch.
-    monkeypatch.setitem(sys.modules, "gmnspy.reports", None)
-    monkeypatch.setitem(sys.modules, "gmnspy.reports.html_map", None)
+    # Drop the gmnspy.map submodule from sys.modules so the CLI's lazy
+    # import path takes the ImportError branch.
+    monkeypatch.setitem(sys.modules, "gmnspy.map", None)
+    monkeypatch.setitem(sys.modules, "gmnspy.map.component", None)
+    monkeypatch.setitem(sys.modules, "gmnspy.map.render", None)
 
     result = runner.invoke(app, ["validate", "--html", str(out), str(leavenworth.csv_dir())])
     assert result.exit_code == 0, result.stderr

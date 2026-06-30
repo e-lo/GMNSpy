@@ -1,4 +1,4 @@
-"""Tests for :mod:`gmnspy.reports.geo_resolver` — Issue → (lon, lat).
+"""Tests for :mod:`gmnspy.map.geo_resolver` — Issue → (lon, lat).
 
 The resolver turns each :class:`~datagrove.reports.Issue` into a
 ``(lon, lat)`` tuple by trying, in priority order: explicit
@@ -16,7 +16,7 @@ import pytest
 from datagrove.engines.pandas_engine import PandasEngine
 from datagrove.reports import Category, Issue, Severity
 from gmnspy import Network
-from gmnspy.reports.geo_resolver import GeoResolver
+from gmnspy.map.geo_resolver import GeoResolver
 
 
 def _make_network(tmp_path, *, with_geometry: bool, with_osm: bool = False) -> Network:

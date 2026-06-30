@@ -139,12 +139,12 @@ def _write_html(net: Network, report, path: Path, *, source: Path) -> None:
     """Write the map+table HTML viewer, falling back to datagrove's table-only on ImportError.
 
     Uses :func:`importlib.import_module` rather than a static import so the
-    import-linter contract ``gmnspy.cli ↛ gmnspy.reports`` keeps holding —
-    the CLI is the optional-extras integration point and threads the
-    extra in at call time.
+    import-linter contract ``gmnspy.cli ↛ gmnspy.{map,reports}`` keeps
+    holding — the CLI is the optional-extras integration point and
+    threads the extra in at call time.
     """
     try:
-        reports = importlib.import_module("gmnspy.reports")
+        gmnspy_map = importlib.import_module("gmnspy.map")
     except ImportError:
         # The [reports] extra (jinja2 / openpyxl) isn't installed — emit
         # the datagrove table-only report and steer the user to the right
@@ -158,7 +158,7 @@ def _write_html(net: Network, report, path: Path, *, source: Path) -> None:
         console.print(f"[green]wrote HTML report to {path}[/green]")
         return
 
-    html = reports.render_validation_html(net, report)
+    html = gmnspy_map.render_validation_html(net, report)
     path.write_text(html, encoding="utf-8")
     console.print(f"[green]wrote HTML report to {path}[/green]")
 

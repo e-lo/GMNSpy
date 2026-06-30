@@ -1,23 +1,20 @@
-{#- gmnspy.reports.html_map Jinja template — single self-contained HTML.
+{#- gmnspy.map validation report — composes a NetworkMap fragment with the
+findings-table chrome (severity chips, filter bar, table, unlocated sidebar).
 
-Inputs (provided by gmnspy.reports.html_map.render_network_html):
-  - title              : <title> + <h1> text
-  - meta_subtitle      : optional one-liner under the H1 (e.g. spec_version)
-  - counts             : list of [severity_str, n] for the top chips
-  - leaflet_css        : full Leaflet CSS, inlined (with file:// url(images/) refs stripped)
-  - leaflet_js         : full Leaflet JS, inlined
-  - water_css          : water.css classless drop-in, inlined (typography/forms/tables baseline)
-  - map_css            : map_report.css, inlined (severity colors, map sizing, popup, row sync)
-  - map_js             : map_report.js, inlined
-  - payload_json       : window.__GMNSPY_DATA__ JSON blob (markers, links, bbox)
-  - issues             : list of issue dicts for the table (severity, code, table,
-                         column, row, message, fix_hint, issue_id, edit_url, located)
+This is the page :func:`gmnspy.map.render_validation_html` produces. It is
+ONE example of how to host a NetworkMap on a page; the map fragment itself
+is reusable in any host (notebook IFrame, custom dashboard, blog post).
+
+Inputs:
+  - title              : <title> + <h1>
+  - meta_subtitle      : optional one-liner under H1 (e.g. spec_version)
+  - counts             : list of (severity, n) for the chips at the top
+  - head_assets        : NetworkMap.head_assets() inlined
+  - body_fragment      : NetworkMap.body_fragment() — the embeddable map
+  - issues             : list of issue dicts for the findings table
   - filter_options     : {"severity": [...], "table": [...]}
-  - located_count      : number of issues that resolved to a coord
-  - unlocated          : list of issue dicts with no coord (issue_id + display fields)
-
-Stylesheet order matters: water (baseline classless) → leaflet (map widgets)
-→ map_css (our overrides). Last one wins for conflicting selectors.
+  - located_count      : number of issues resolved to a coord
+  - unlocated          : list of issue dicts with no coord
 -#}
 <!DOCTYPE html>
 <html lang="en">
@@ -25,16 +22,7 @@ Stylesheet order matters: water (baseline classless) → leaflet (map widgets)
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{ title }}</title>
-  {#- Inlined CSS blocks must be |safe — Jinja autoescape otherwise turns
-      every `>` in a child-combinator selector into `&gt;`, which makes the
-      whole comma-separated rule invalid per CSS spec. Leaflet's very first
-      rule (`.leaflet-pane, .leaflet-tile, .leaflet-pane > svg, ... { position:
-      absolute }`) then silently fails to apply, panes stretch in normal
-      document flow, and overlay layers render hundreds of px below the map.
-      Same hazard for water.min.css and our own map_report.css. -#}
-  <style>{{ water_css|safe }}</style>
-  <style>{{ leaflet_css|safe }}</style>
-  <style>{{ map_css|safe }}</style>
+  {{ head_assets | safe }}
 </head>
 <body>
   <header class="gv-header">
@@ -48,9 +36,7 @@ Stylesheet order matters: water (baseline classless) → leaflet (map widgets)
     {% endif %}
   </header>
 
-  <section class="gv-map-section">
-    <div id="gv-map"></div>
-  </section>
+  {{ body_fragment | safe }}
 
   {% if unlocated %}
   <details class="gv-unlocated" open>
@@ -122,10 +108,39 @@ Stylesheet order matters: water (baseline classless) → leaflet (map widgets)
       </table>
     </div>
   </section>
+  <script>
+    // Findings-table chrome — lives in the report page, not the map component.
+    (function () {
+      "use strict";
+      const sevFilter = document.getElementById("gv-filter-severity");
+      const tableFilter = document.getElementById("gv-filter-table");
+      const searchFilter = document.getElementById("gv-filter-search");
+      const applyFilters = () => {
+        const sev = sevFilter ? sevFilter.value : "";
+        const tbl = tableFilter ? tableFilter.value : "";
+        const q = searchFilter ? searchFilter.value.toLowerCase().trim() : "";
+        document.querySelectorAll("tr[data-issue-id]").forEach((row) => {
+          const rSev = row.getAttribute("data-severity") || "";
+          const rTbl = row.getAttribute("data-table") || "";
+          const text = row.textContent.toLowerCase();
+          const ok = (!sev || rSev === sev) && (!tbl || rTbl === tbl) && (!q || text.indexOf(q) !== -1);
+          row.style.display = ok ? "" : "none";
+        });
+      };
+      [sevFilter, tableFilter, searchFilter].forEach((el) => el && el.addEventListener("input", applyFilters));
+      document.querySelectorAll("[data-unlocated-issue-id]").forEach((el) => {
+        el.addEventListener("click", () => {
+          const id = el.getAttribute("data-unlocated-issue-id");
+          if (!id) return;
+          const row = document.querySelector('tr[data-issue-id="' + id.replace(/(["\\])/g, "\\$1") + '"]');
+          if (!row) return;
+          document.querySelectorAll("tr.is-highlighted").forEach((r) => r.classList.remove("is-highlighted"));
+          row.classList.add("is-highlighted");
+          row.scrollIntoView({ behavior: "smooth", block: "center" });
+        });
+      });
+    })();
+  </script>
   {% endif %}
-
-  <script>{{ leaflet_js|safe }}</script>
-  <script>window.__GMNSPY_DATA__ = {{ payload_json|safe }};</script>
-  <script>{{ map_js|safe }}</script>
 </body>
 </html>

@@ -46,14 +46,17 @@ header.gv-header h1 { margin-bottom: 0.15em; }
 .gv-chip.severity-info { color: var(--gv-color-info); border-color: var(--gv-color-info); background: transparent; }
 .gv-chip-muted { color: var(--text-muted); }
 
-/* Map section */
-.gv-map-section {
+/* Map container — one per NetworkMap instance. Each div has id
+ * gv-map-<uid> (per-instance) and class .gv-map (shared styling).
+ * Height is set inline from the NetworkMap `height=` constructor arg.
+ */
+.gv-map {
+  width: 100%;
   border: 1px solid var(--background-alt);
   border-radius: 6px;
   overflow: hidden;
   margin: 1.2em 0;
 }
-#gv-map { width: 100%; height: 480px; }
 
 /* Unlocated findings — collapsible */
 .gv-unlocated { margin: 0 0 1.2em; }
