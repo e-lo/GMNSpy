@@ -39,6 +39,60 @@ __all__ = ["GeoResolver"]
 
 _WKT_POINT_RE = re.compile(r"(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)")
 
+# Columns to hide from hover tooltips. Long-form WKT and FK-only identifiers
+# (``geometry_id``, ``osm_node_ids``) make tooltips unreadable; coordinate
+# columns are redundant when the marker IS at that coordinate.
+_LINK_PROP_SKIP: frozenset[str] = frozenset({"geometry", "geometry_id", "osm_node_ids"})
+_NODE_PROP_SKIP: frozenset[str] = frozenset({"x_coord", "y_coord"})
+# Truncate any single value longer than this so a stray free-text column can't
+# blow up the tooltip width.
+_PROP_VALUE_MAX_CHARS = 80
+
+
+def _build_props(record, columns: list[str], *, skip: frozenset[str]) -> dict:
+    """Build a JSON-serialisable tooltip props dict from a pandas row.
+
+    Skips long-form / internal columns, drops null / NaN, truncates over-long
+    string values, and coerces numpy scalars to Python primitives so the
+    output round-trips through :func:`json.dumps` cleanly.
+    """
+    out: dict[str, object] = {}
+    for col in columns:
+        if col in skip:
+            continue
+        val = record.get(col)
+        coerced = _to_json_primitive(val)
+        if coerced is None:
+            continue
+        if isinstance(coerced, str):
+            if not coerced or coerced == "nan":
+                continue
+            if len(coerced) > _PROP_VALUE_MAX_CHARS:
+                coerced = coerced[: _PROP_VALUE_MAX_CHARS - 1] + "…"
+        out[col] = coerced
+    return out
+
+
+def _to_json_primitive(val) -> object | None:
+    """Coerce a pandas/numpy cell value to a JSON-serialisable Python primitive.
+
+    Returns ``None`` for nulls (``None``, ``NaN``) so callers can drop them
+    instead of carrying ``"nan"`` strings into the tooltip.
+    """
+    if val is None:
+        return None
+    # numpy scalars expose .item() which returns the Python primitive.
+    if hasattr(val, "item") and not isinstance(val, (str, bytes, bool, int, float)):
+        try:
+            val = val.item()
+        except (TypeError, ValueError):
+            return str(val)
+    if isinstance(val, float) and val != val:  # NaN
+        return None
+    if isinstance(val, (bool, int, float, str)):
+        return val
+    return str(val)
+
 
 def _parse_linestring_points(wkt: str) -> list[tuple[float, float]]:
     """Parse a ``LINESTRING (x y, x y, ...)`` WKT to a list of ``(lon, lat)``.
@@ -183,44 +237,64 @@ class GeoResolver:
                 return self._wkt_by_geometry_id.get(gid)
         return None
 
-    def node_points(self, *, limit: int) -> list[list[float]]:
-        """Return up to ``limit`` nodes as ``[[lon, lat], ...]`` for a point layer.
+    def node_features(self, *, limit: int) -> list[dict]:
+        """Return up to ``limit`` nodes as ``{"coord": [lon, lat], "props": {...}}`` dicts.
 
-        Reads pre-computed ``_node_coord_by_id`` so this is essentially free
-        — the same lookup the FK-resolution path uses.
+        ``props`` carries every column from the ``node`` table except
+        coordinate columns (redundant — the marker IS at that coord) and
+        anything in :data:`_LONG_COLS`. Used by the viewer to bind hover
+        tooltips to each node circle.
         """
-        out: list[list[float]] = []
-        for _node_id, (lon, lat) in self._node_coord_by_id.items():
-            if len(out) >= limit:
-                break
-            out.append([lon, lat])
+        df = self._nodes_df
+        if df is None or df.empty:
+            return []
+        cols = list(df.columns)
+        out: list[dict] = []
+        for _, record in df.head(limit).iterrows():
+            node_id = record.get("node_id")
+            coord = self._node_coord_by_id.get(node_id)
+            if coord is None:
+                continue
+            out.append(
+                {
+                    "coord": [coord[0], coord[1]],
+                    "props": _build_props(record, cols, skip=_NODE_PROP_SKIP),
+                }
+            )
         return out
 
-    def link_polylines(self, *, limit: int) -> list[list[list[float]]]:
-        """Return up to ``limit`` link polylines as ``[[[lon, lat], ...], ...]`` for the underlay.
+    def link_features(self, *, limit: int) -> list[dict]:
+        """Return up to ``limit`` link features as ``{"coords": [...], "props": {...}}`` dicts.
 
-        Uses the same WKT resolution as :meth:`resolve` — inline
-        ``geometry`` first, then ``geometry_id`` → ``geometry`` table —
-        and falls back to a straight from/to-node segment when neither
-        is available. Shared with the renderer so the underlay and
-        per-issue resolution can't drift.
+        ``coords`` uses the same WKT resolution as :meth:`resolve` —
+        inline ``geometry`` first, then ``geometry_id`` → ``geometry``
+        table — falling back to a straight from/to-node segment when
+        neither is available. ``props`` carries link-table columns
+        suitable for a hover tooltip; long / internal columns
+        (:data:`_LINK_PROP_SKIP`) are dropped so the tooltip stays
+        readable.
         """
         df = self._links_df
         if df is None or df.empty:
             return []
-        cols = set(df.columns)
-        out: list[list[list[float]]] = []
+        cols = list(df.columns)
+        cols_set = set(cols)
+        out: list[dict] = []
         for _, record in df.head(limit).iterrows():
-            wkt = self._link_wkt(record, cols)
+            coords: list[list[float]] | None = None
+            wkt = self._link_wkt(record, cols_set)
             if wkt:
                 pts = _parse_linestring_points(wkt)
                 if len(pts) >= 2:
-                    out.append([[lon, lat] for lon, lat in pts])
-                    continue
-            a = self._node_coord_by_id.get(record.get("from_node_id"))
-            b = self._node_coord_by_id.get(record.get("to_node_id"))
-            if a and b:
-                out.append([[a[0], a[1]], [b[0], b[1]]])
+                    coords = [[lon, lat] for lon, lat in pts]
+            if coords is None:
+                a = self._node_coord_by_id.get(record.get("from_node_id"))
+                b = self._node_coord_by_id.get(record.get("to_node_id"))
+                if a and b:
+                    coords = [[a[0], a[1]], [b[0], b[1]]]
+            if coords is None:
+                continue
+            out.append({"coords": coords, "props": _build_props(record, cols, skip=_LINK_PROP_SKIP)})
         return out
 
     def _resolve_node_row(self, row: int) -> tuple[float, float] | None:
