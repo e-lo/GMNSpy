@@ -121,7 +121,7 @@ curl -H "Authorization: Bearer $TOKEN" http://127.0.0.1:8000/networks
 Expected:
 
 ```json
-[{"id": "leavenworth", "spec_version": "0.97", "link_count": 214, ...}]
+[{"id": "leavenworth", "spec_version": "0.97", "link_count": 339, ...}]
 ```
 
 Run quality checks with a POST:

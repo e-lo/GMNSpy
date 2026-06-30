@@ -294,9 +294,27 @@ def test_link_issue_on_osm_network_popup_has_edit_in_osm(tmp_path):
     )
 
 
-def test_link_issue_on_non_osm_network_has_no_osm_link():
-    """Non-OSM network: NO openstreetmap.org/edit URL anywhere."""
-    net = _leavenworth_network()
+def test_link_issue_on_non_osm_network_has_no_osm_link(tmp_path):
+    """Non-OSM network: NO openstreetmap.org/edit URL anywhere.
+
+    Hand-built fixture — the bundled Leavenworth fixture now carries OSM
+    provenance, so we need a deliberately non-OSM mini-network.
+    """
+    link = pd.DataFrame(
+        {
+            "link_id": [1],
+            "from_node_id": [1],
+            "to_node_id": [2],
+            "directed": [True],
+            "length": [100.0],
+        }
+    )
+    node = pd.DataFrame({"node_id": [1, 2], "x_coord": [-120.6, -120.5], "y_coord": [47.5, 47.6]})
+    csv_dir = tmp_path / "non_osm"
+    csv_dir.mkdir()
+    link.to_csv(csv_dir / "link.csv", index=False)
+    node.to_csv(csv_dir / "node.csv", index=False)
+    net = Network.from_source(csv_dir, engine=PandasEngine())
     issue = Issue(
         severity=Severity.WARNING,
         category=Category.SCHEMA,

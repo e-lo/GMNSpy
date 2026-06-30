@@ -54,13 +54,13 @@ print(f"{net.spec_version}: {net.links.count()} links, {net.nodes.count()} nodes
 You should see:
 
 ```text
-0.97: 214 links, 75 nodes
+0.97: 339 links, 121 nodes
 ```
 
 In a notebook, evaluating `net` on its own renders an HTML summary card with the spec version, table inventory, and a thumbnail map.
 
 ![Network summary card for the Leavenworth fixture](assets/screenshots/leavenworth-network-card.png){ .screenshot }
-*Network summary card (`net._repr_html_()`). Spec version 0.97, 25 tables, 214 links / 75 nodes, with a thumbnail of the link geometry.*
+*Network summary card (`net._repr_html_()`). Spec version 0.97, 25 tables, 339 links / 121 nodes, with a thumbnail of the link geometry.*
 
 ### 2. Render the network as a map
 

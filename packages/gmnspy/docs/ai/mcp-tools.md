@@ -34,7 +34,7 @@ Generic package overview. Available on any Frictionless package, not just GMNS.
   "engine": "DuckDBIbisEngine",
   "table_count": 9,
   "tables": [
-    {"name": "link", "rows": 214, "columns": ["link_id", "from_node_id", ...]},
+    {"name": "link", "rows": 339, "columns": ["link_id", "from_node_id", ...]},
     {"name": "node", "rows": 75,  "columns": ["node_id", "x_coord", ...]}
   ]
 }
@@ -126,8 +126,8 @@ GMNS-aware version of `describe_package`. Surfaces the GMNS-specific fields an a
   "name": "leavenworth",
   "spec_version": "0.97",
   "engine": "DuckDBIbisEngine",
-  "links": 214,
-  "nodes": 75,
+  "links": 339,
+  "nodes": 121,
   "table_count": 9,
   "tables": ["lane", "link", "link_tod", "node", "signal_phase", ...]
 }

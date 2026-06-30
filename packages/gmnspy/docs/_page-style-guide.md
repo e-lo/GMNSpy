@@ -102,7 +102,7 @@ Four page kinds. Each has a fixed section order so an agent that learned the tem
 > Expected:
 >
 > ```text
-> 0.97: 214 links, 75 nodes
+> 0.97: 339 links, 121 nodes
 > ```
 
 ❌ Wrong:

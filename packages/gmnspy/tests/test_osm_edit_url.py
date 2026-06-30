@@ -15,7 +15,6 @@ import pytest
 from datagrove.engines.pandas_engine import PandasEngine
 from datagrove.reports import Category, Issue, Severity
 from gmnspy import Network
-from gmnspy.fixtures import leavenworth
 from gmnspy.osm.edit import issue_osm_edit_url, osm_edit_url
 
 # ---------------------------------------------------------------------------
@@ -193,10 +192,28 @@ def test_issue_osm_edit_url_node_on_osm_network(tmp_path):
     assert url == "https://www.openstreetmap.org/edit?editor=id&node=43"
 
 
-def test_issue_osm_edit_url_non_osm_network_returns_none():
-    """Non-OSM network (no osm_way_id column in links) → None."""
-    # The bundled Leavenworth CSV fixture has no OSM provenance columns.
-    net = Network.from_source(leavenworth.csv_dir(), engine=PandasEngine())
+def test_issue_osm_edit_url_non_osm_network_returns_none(tmp_path):
+    """Non-OSM network (no osm_way_id column in links) → None.
+
+    Hand-built fixture — the bundled Leavenworth fixture now carries OSM
+    provenance columns, so we need an explicitly non-OSM mini-network
+    to assert this contract.
+    """
+    link = pd.DataFrame(
+        {
+            "link_id": [1],
+            "from_node_id": [1],
+            "to_node_id": [2],
+            "directed": [True],
+            "length": [100.0],
+        }
+    )
+    node = pd.DataFrame({"node_id": [1, 2], "x_coord": [-120.6, -120.5], "y_coord": [47.5, 47.6]})
+    csv_dir = tmp_path / "non_osm"
+    csv_dir.mkdir()
+    link.to_csv(csv_dir / "link.csv", index=False)
+    node.to_csv(csv_dir / "node.csv", index=False)
+    net = Network.from_source(csv_dir, engine=PandasEngine())
     issue = Issue(
         severity=Severity.WARNING,
         category=Category.SCHEMA,

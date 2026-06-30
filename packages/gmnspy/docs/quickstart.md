@@ -32,7 +32,7 @@ print(f"{net.spec_version}: {net.links.count()} links, {net.nodes.count()} nodes
 Expected:
 
 ```text
-0.97: 214 links, 75 nodes
+0.97: 339 links, 121 nodes
 ```
 
 You just loaded the bundled Leavenworth network through the default ibis + DuckDB engine. Nothing was materialised — `net.links` is a lazy expression; only the integer count came back from DuckDB to Python.
@@ -89,7 +89,7 @@ print(f"{net.spec_version}: {net.links.count()} links, {net.nodes.count()} nodes
 Expected:
 
 ```text
-0.97: 214 links, 75 nodes
+0.97: 339 links, 121 nodes
 ```
 
 In a Jupyter notebook, evaluating `net` on its own renders an HTML summary card with the spec version, table counts, and a thumbnail map.

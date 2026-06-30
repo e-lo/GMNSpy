@@ -98,19 +98,19 @@ def test_accepts_existing_backend():
 def test_scan_csv_returns_ibis_table(engine: IbisEngine, link_csv: Path):
     t = engine.scan(link_csv)
     assert isinstance(t, ibis.expr.types.Table)
-    assert t.count().to_pyarrow().as_py() == 214
+    assert t.count().to_pyarrow().as_py() == 339
 
 
 def test_scan_parquet_returns_ibis_table(engine: IbisEngine, link_parquet: Path):
     t = engine.scan(link_parquet)
     assert isinstance(t, ibis.expr.types.Table)
-    assert t.count().to_pyarrow().as_py() == 214
+    assert t.count().to_pyarrow().as_py() == 339
 
 
 def test_scan_duckdb_with_explicit_table(engine: IbisEngine, duckdb_path: Path):
     t = engine.scan(duckdb_path, table="link")
     assert isinstance(t, ibis.expr.types.Table)
-    assert t.count().to_pyarrow().as_py() == 214
+    assert t.count().to_pyarrow().as_py() == 339
 
 
 def test_scan_duckdb_dict_handle(engine: IbisEngine, duckdb_path: Path):
@@ -130,12 +130,12 @@ def test_scan_duckdb_without_table_kwarg_raises(engine: IbisEngine, duckdb_path:
 def test_scan_with_format_override_csv(engine: IbisEngine, link_csv: Path):
     """An explicit format= still works when the extension already matches."""
     t = engine.scan(link_csv, format="csv")
-    assert t.count().to_pyarrow().as_py() == 214
+    assert t.count().to_pyarrow().as_py() == 339
 
 
 def test_scan_with_format_override_parquet(engine: IbisEngine, link_parquet: Path):
     t = engine.scan(link_parquet, format="parquet")
-    assert t.count().to_pyarrow().as_py() == 214
+    assert t.count().to_pyarrow().as_py() == 339
 
 
 def test_scan_with_schema_casts_types(engine: IbisEngine, link_csv: Path, link_schema):
@@ -232,14 +232,14 @@ def test_to_pandas_returns_pandas_dataframe(engine: IbisEngine, link_csv: Path):
 
     df = engine.to_pandas(engine.scan(link_csv))
     assert isinstance(df, pd.DataFrame)
-    assert len(df) == 214
+    assert len(df) == 339
 
 
 def test_to_polars_returns_polars_dataframe(engine: IbisEngine, link_csv: Path):
     pl = pytest.importorskip("polars")
     df = engine.to_polars(engine.scan(link_csv))
     assert isinstance(df, pl.DataFrame)
-    assert len(df) == 214
+    assert len(df) == 339
 
 
 def test_to_polars_without_polars_raises_engine_not_available(engine: IbisEngine, link_csv: Path, monkeypatch):
@@ -267,7 +267,7 @@ def test_materialize_makes_values_stable(engine: IbisEngine, link_csv: Path):
     df1 = engine.to_pandas(mat1).sort_values("link_id").reset_index(drop=True)
     df2 = engine.to_pandas(mat2).sort_values("link_id").reset_index(drop=True)
     assert df1.equals(df2)
-    assert len(df1) == 214
+    assert len(df1) == 339
 
 
 def test_materialize_returns_ibis_table(engine: IbisEngine, link_csv: Path):
@@ -285,7 +285,7 @@ def test_write_csv_roundtrip(engine: IbisEngine, link_csv: Path, tmp_path: Path)
     engine.write(engine.scan(link_csv), out, "csv")
     assert out.exists()
     again = engine.scan(out)
-    assert again.count().to_pyarrow().as_py() == 214
+    assert again.count().to_pyarrow().as_py() == 339
 
 
 def test_write_parquet_roundtrip(engine: IbisEngine, link_csv: Path, tmp_path: Path):
@@ -293,7 +293,7 @@ def test_write_parquet_roundtrip(engine: IbisEngine, link_csv: Path, tmp_path: P
     engine.write(engine.scan(link_csv), out, "parquet")
     assert out.exists()
     again = engine.scan(out)
-    assert again.count().to_pyarrow().as_py() == 214
+    assert again.count().to_pyarrow().as_py() == 339
 
 
 def test_write_duckdb_roundtrip(engine: IbisEngine, link_csv: Path, tmp_path: Path):
@@ -301,7 +301,7 @@ def test_write_duckdb_roundtrip(engine: IbisEngine, link_csv: Path, tmp_path: Pa
     engine.write(engine.scan(link_csv), out, "duckdb", table="link")
     assert out.exists()
     again = engine.scan(out, table="link")
-    assert again.count().to_pyarrow().as_py() == 214
+    assert again.count().to_pyarrow().as_py() == 339
 
 
 def test_write_unsupported_format_raises(engine: IbisEngine, link_csv: Path, tmp_path: Path):
