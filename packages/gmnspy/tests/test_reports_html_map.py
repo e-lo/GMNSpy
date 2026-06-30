@@ -65,6 +65,42 @@ def _leavenworth_network() -> Network:
 # ---------------------------------------------------------------------------
 
 
+def test_payload_carries_nodes_as_toggleable_layer(tmp_path):
+    """The payload must expose a ``nodes`` layer so the JS can render + toggle it.
+
+    Users on a clean (no-error) network often just want to see what
+    they've got — toggling nodes on/off is the obvious next move.
+    """
+    net = _osm_network(tmp_path)
+    html = render_network_html(net)
+    payload_match = re.search(r"__GMNSPY_DATA__ = (\{.*?\});", html, re.S)
+    assert payload_match is not None
+    payload = payload_match.group(1)
+    # Layers structure with a `nodes` entry that carries point coords.
+    assert '"id": "nodes"' in payload or '"id":"nodes"' in payload
+    # The _osm_network fixture has 3 nodes at x = -120.6, -120.5, -120.4.
+    assert "-120.6" in payload
+    assert "-120.4" in payload
+
+
+def test_payload_layers_array_is_extensible(tmp_path):
+    """``layers`` is a list of dicts so future layer types slot in without renderer changes."""
+    net = _osm_network(tmp_path)
+    html = render_network_html(net)
+    payload_match = re.search(r"__GMNSPY_DATA__ = (\{.*?\});", html, re.S)
+    assert payload_match is not None
+    import json as _json
+
+    data = _json.loads(payload_match.group(1))
+    assert isinstance(data["layers"], list)
+    ids = {layer["id"] for layer in data["layers"]}
+    assert "links" in ids
+    assert "nodes" in ids
+    for layer in data["layers"]:
+        # Every layer must carry the four keys the JS expects.
+        assert {"id", "label", "type", "default_on"} <= set(layer)
+
+
 def test_underlay_uses_geometry_table_when_no_inline_geometry(tmp_path):
     """Leavenworth-shape: link.geometry_id → geometry.geometry WKT polyline.
 
