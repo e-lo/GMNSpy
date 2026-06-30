@@ -259,6 +259,15 @@ class NetworkMap:
         link_features = resolver.link_features(limit=_MAX_LAYER_ITEMS)
         node_features = resolver.node_features(limit=_MAX_LAYER_ITEMS)
 
+        # Build positional row → props lookups so each marker can carry the
+        # full row contents into the popup. The edit log needs the PK
+        # (e.g. link_id) to identify the row stably; the editor needs the
+        # current values to pre-fill and to drift-check on apply.
+        feature_props_by_row = {
+            "link": {i: f["props"] for i, f in enumerate(link_features)},
+            "node": {i: f["props"] for i, f in enumerate(node_features)},
+        }
+
         layers: list[dict[str, Any]] = []
         if link_features:
             layers.append(
@@ -287,21 +296,31 @@ class NetworkMap:
 
         markers: list[dict[str, Any]] = []
         for e in self.enriched_issues():
-            if e["located"]:
-                markers.append(
-                    {
-                        "issue_id": e["issue_id"],
-                        "lon": e["lon"],
-                        "lat": e["lat"],
-                        "severity": e["severity"],
-                        "code": e["code"],
-                        "message": e["message"],
-                        "fix_hint": e["fix_hint"],
-                        "table": e["table"],
-                        "row": e["row"],
-                        "edit_url": e["edit_url"],
-                    }
-                )
+            if not e["located"]:
+                continue
+            row_props = None
+            if e["table"] in feature_props_by_row and e["row"] is not None:
+                row_props = feature_props_by_row[e["table"]].get(e["row"])
+            markers.append(
+                {
+                    "issue_id": e["issue_id"],
+                    "lon": e["lon"],
+                    "lat": e["lat"],
+                    "severity": e["severity"],
+                    "code": e["code"],
+                    "message": e["message"],
+                    "fix_hint": e["fix_hint"],
+                    "table": e["table"],
+                    "row": e["row"],
+                    "edit_url": e["edit_url"],
+                    # The full props for this row — drives the inline "Propose
+                    # fix" editor: pre-fills the suspect column with its
+                    # current value and carries the PK (link_id/node_id) used
+                    # to write the edit-log entry.
+                    "row_props": row_props,
+                    "column": e["column"],
+                }
+            )
 
         return {
             "tile_provider": self.tile_provider,

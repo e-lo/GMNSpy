@@ -142,6 +142,7 @@ nav:
       - cookbook/index.md
       - Validate a network: cookbook/validate-network.md
       - View a network on a map: cookbook/view-your-network.md
+      - Triage and fix findings: cookbook/fix-findings.md
       - Query and update linked tables: cookbook/query-and-update.md
       - Customise quality rules: cookbook/customise-quality.md
       - Scope from seed nodes: cookbook/scope-from-nodes.md

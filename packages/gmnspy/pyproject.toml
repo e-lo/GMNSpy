@@ -69,11 +69,13 @@ notebook = [
     "anywidget>=0.9",
 ]
 reports = [
-    # Interactive network-on-map HTML viewer (gmnspy.reports): openpyxl for the
-    # XLSX findings writer, jinja2 for the template engine. Leaflet ships
-    # vendored under reports/templates/ so no JS/CSS network calls are needed.
+    # Interactive network-on-map HTML viewer (gmnspy.map): openpyxl for the
+    # XLSX findings writer, jinja2 for the template engine, pyyaml for the
+    # edit log round-trip. Leaflet ships vendored under gmnspy/map/templates/
+    # so no JS/CSS network calls are needed.
     "openpyxl>=3.1",
     "jinja2>=3.1",  # also a transitive datagrove dep; pinned explicitly here
+    "pyyaml>=6",    # edit-log load/dump (gmnspy.map.edits)
 ]
 all = [
     "gmnspy[clean,server,mcp,notebook,osm,graph,reports]",

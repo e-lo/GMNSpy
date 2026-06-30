@@ -108,18 +108,27 @@
         fillOpacity: 0.75,
         weight: 2,
       });
-      marker.bindPopup(buildPopup(m), { maxWidth: 320 });
+      marker.bindPopup(buildPopup(m), { maxWidth: 360 });
       marker.on("popupopen", () => {
-        const btn = document.querySelector(`[data-popup-show-row="${cssEscape(m.issue_id)}"]`);
-        if (btn) {
-          btn.addEventListener("click", (ev) => {
+        // "Show row" — scrolls the findings table on the host page.
+        const showBtn = document.querySelector(`[data-popup-show-row="${cssEscape(m.issue_id)}"]`);
+        if (showBtn) {
+          showBtn.addEventListener("click", (ev) => {
             ev.preventDefault();
-            // No-op when there's no findings table on the host page.
             const row = document.querySelector('tr[data-issue-id="' + cssEscape(m.issue_id) + '"]');
             if (!row) return;
             document.querySelectorAll("tr.is-highlighted").forEach((r) => r.classList.remove("is-highlighted"));
             row.classList.add("is-highlighted");
             row.scrollIntoView({ behavior: "smooth", block: "center" });
+          });
+        }
+        // "Propose fix" — opens the inline mini-editor in place of the
+        // action bar.
+        const fixBtn = document.querySelector(`[data-popup-propose-fix="${cssEscape(m.issue_id)}"]`);
+        if (fixBtn) {
+          fixBtn.addEventListener("click", (ev) => {
+            ev.preventDefault();
+            openInlineEditor(fixBtn, m);
           });
         }
       });
@@ -250,11 +259,19 @@
         html += '<div class="gv-popup-fixhint">' + esc(m.fix_hint) + "</div>";
       }
       html += '<div class="gv-popup-actions">';
+      // "Propose fix" — opens the inline mini-editor inside the popup.
+      // Only offered when we have a row_props (i.e. the finding maps to
+      // a known link/node row whose PK we can record).
+      if (m.row_props && m.column) {
+        html +=
+          '<button type="button" class="gv-action gv-action-fix" data-popup-propose-fix="' +
+          esc(m.issue_id || "") + '">Propose fix</button>';
+      }
       if (m.edit_url) {
         html +=
-          '<a href="' + esc(m.edit_url) + '" target="_blank" rel="noopener noreferrer">Edit in OSM &rarr;</a>';
+          '<a class="gv-action" href="' + esc(m.edit_url) + '" target="_blank" rel="noopener noreferrer">Edit in OSM &rarr;</a>';
       }
-      html += '<button type="button" data-popup-show-row="' + esc(m.issue_id || "") + '">Show row</button>';
+      html += '<button type="button" class="gv-action" data-popup-show-row="' + esc(m.issue_id || "") + '">Show row</button>';
       html += "</div></div>";
       return html;
     }
@@ -265,6 +282,219 @@
         .map(([k, v]) => `<b>${esc(k)}:</b> ${esc(String(v))}`)
         .join("<br>");
     }
+
+    // ----- Edit-log: Propose-fix mini-editor + sidebar ----------------------
+
+    function openInlineEditor(triggerBtn, m) {
+      // Replace the popup action bar with a small form for the suspect column.
+      const popup = triggerBtn.closest(".gv-marker-popup");
+      if (!popup) return;
+      const actions = popup.querySelector(".gv-popup-actions");
+      if (!actions) return;
+      const pk = pickPk(m.table, m.row_props);
+      if (!pk) return;
+      const colName = m.column || "";
+      const current = m.row_props ? m.row_props[colName] : "";
+      const esc = htmlEscape;
+      const pkSummary = Object.entries(pk).map(([k, v]) => `${esc(k)}=${esc(String(v))}`).join(", ");
+      actions.innerHTML =
+        '<div class="gv-fix-editor">' +
+        '<div class="gv-fix-row"><b>' + esc(m.table || "") + "</b> [" + esc(pkSummary) + "]</div>" +
+        '<div class="gv-fix-row"><label><b>' + esc(colName) + ":</b> " +
+        '<input class="gv-fix-input" type="text" value="' + esc(current == null ? "" : String(current)) + '"></label></div>' +
+        '<div class="gv-fix-row"><label>Reason: ' +
+        '<input class="gv-fix-reason" type="text" placeholder="" value="' +
+        esc((m.code ? m.code + ": " : "") + (m.message || "")) + '"></label></div>' +
+        '<div class="gv-fix-row gv-fix-actions">' +
+        '<button type="button" class="gv-action gv-fix-save">Add to edit log</button>' +
+        '<button type="button" class="gv-action gv-fix-cancel">Cancel</button>' +
+        "</div></div>";
+      actions.querySelector(".gv-fix-cancel").addEventListener("click", () => {
+        // Re-render popup to restore the action bar.
+        triggerBtn.closest(".leaflet-popup-content")?.querySelector(".gv-marker-popup")?.replaceWith(_buildPopupNode(m));
+      });
+      actions.querySelector(".gv-fix-save").addEventListener("click", () => {
+        const newVal = actions.querySelector(".gv-fix-input").value;
+        const reason = actions.querySelector(".gv-fix-reason").value;
+        addEdit({
+          id: "e" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+          kind: "fix",
+          table: m.table,
+          pk: pk,
+          column: colName,
+          from_value: current == null ? null : current,
+          to_value: coerceLikely(newVal, current),
+          reason: reason || null,
+          issue_id: m.issue_id || null,
+          timestamp: new Date().toISOString(),
+        });
+        renderEditLogSidebar();
+        // Close the popup so the user sees the sidebar update.
+        triggerBtn.closest(".leaflet-popup")?.querySelector(".leaflet-popup-close-button")?.click();
+      });
+    }
+
+    function _buildPopupNode(m) {
+      // Used to restore the popup body after Cancel — reparses buildPopup().
+      const wrapper = document.createElement("div");
+      wrapper.innerHTML = buildPopup(m);
+      return wrapper.firstChild;
+    }
+
+    // Pick the GMNS primary-key columns for a given table from a row's props.
+    // For Phase 1 we only know link/node; future tables would extend here.
+    function pickPk(table, props) {
+      if (!props) return null;
+      if (table === "link" && "link_id" in props) return { link_id: props.link_id };
+      if (table === "node" && "node_id" in props) return { node_id: props.node_id };
+      return null;
+    }
+
+    // Coerce a typed input back into the type the source column appeared
+    // to have. Numbers stay numbers, otherwise string. Empty → null.
+    function coerceLikely(input, sample) {
+      if (input === "" || input == null) return null;
+      if (typeof sample === "number" || (typeof sample === "string" && sample.match(/^-?\d+(\.\d+)?$/))) {
+        const n = Number(input);
+        if (!isNaN(n)) return n;
+      }
+      return input;
+    }
+
+    // ----- Edit-log state + sidebar UI -------------------------------------
+
+    const EDIT_LOG_KEY = "gmnspyEditLog";
+
+    function loadEditLog() {
+      try {
+        const raw = window.sessionStorage.getItem(EDIT_LOG_KEY);
+        return raw ? JSON.parse(raw) : [];
+      } catch {
+        return [];
+      }
+    }
+    function saveEditLog(edits) {
+      try {
+        window.sessionStorage.setItem(EDIT_LOG_KEY, JSON.stringify(edits));
+      } catch {
+        /* sessionStorage quota or disabled — ignore */
+      }
+    }
+    function addEdit(edit) {
+      const log = loadEditLog();
+      log.push(edit);
+      saveEditLog(log);
+    }
+    function removeEdit(id) {
+      saveEditLog(loadEditLog().filter((e) => e.id !== id));
+      renderEditLogSidebar();
+    }
+
+    function ensureEditLogSidebar() {
+      let el = document.querySelector(".gv-edit-log-sidebar");
+      if (el) return el;
+      el = document.createElement("aside");
+      el.className = "gv-edit-log-sidebar";
+      document.body.appendChild(el);
+      return el;
+    }
+
+    function renderEditLogSidebar() {
+      const el = ensureEditLogSidebar();
+      const log = loadEditLog();
+      if (!log.length) {
+        el.innerHTML = "";
+        el.style.display = "none";
+        return;
+      }
+      const esc = htmlEscape;
+      const rows = log.map((e) => {
+        const pk = Object.entries(e.pk).map(([k, v]) => `${esc(k)}=${esc(String(v))}`).join(", ");
+        const fromV = e.from_value == null ? "null" : String(e.from_value);
+        const toV = e.to_value == null ? "null" : String(e.to_value);
+        return (
+          '<li><div class="gv-edit-summary">' +
+          '<b>' + esc(e.table) + "</b> [" + esc(pk) + "]." + esc(e.column) +
+          ': <code>' + esc(fromV) + "</code> → <code>" + esc(toV) + "</code>" +
+          '<button type="button" class="gv-edit-remove" data-edit-id="' + esc(e.id) + '" title="Remove">×</button>' +
+          "</div></li>"
+        );
+      }).join("");
+      el.style.display = "";
+      el.innerHTML =
+        '<details open><summary>Edit log (' + log.length + ')</summary>' +
+        '<ul class="gv-edit-list">' + rows + '</ul>' +
+        '<div class="gv-edit-actions">' +
+        '<button type="button" class="gv-action gv-edit-download">Download YAML</button>' +
+        '<button type="button" class="gv-action gv-edit-copy">Copy YAML</button>' +
+        '<button type="button" class="gv-action gv-edit-clear">Clear</button>' +
+        "</div></details>";
+      el.querySelectorAll(".gv-edit-remove").forEach((b) =>
+        b.addEventListener("click", () => removeEdit(b.getAttribute("data-edit-id")))
+      );
+      el.querySelector(".gv-edit-download").addEventListener("click", () => downloadYaml());
+      el.querySelector(".gv-edit-copy").addEventListener("click", () => copyYaml());
+      el.querySelector(".gv-edit-clear").addEventListener("click", () => {
+        if (window.confirm("Clear all " + log.length + " proposed edits?")) {
+          saveEditLog([]);
+          renderEditLogSidebar();
+        }
+      });
+    }
+
+    function buildYaml() {
+      const log = loadEditLog();
+      // Hand-rolled — tiny scope, simple shape, no need to vendor a YAML lib.
+      let s = "edit_log:\n";
+      s += "  schema_version: '1'\n";
+      s += "  created_at: " + new Date().toISOString() + "\n";
+      s += "  client: gmnspy.map (browser)\n";
+      s += "  edits:\n";
+      log.forEach((e) => {
+        s += "    - id: " + yamlScalar(e.id) + "\n";
+        s += "      kind: " + yamlScalar(e.kind) + "\n";
+        s += "      table: " + yamlScalar(e.table) + "\n";
+        s += "      pk:\n";
+        for (const [k, v] of Object.entries(e.pk)) {
+          s += "        " + k + ": " + yamlScalar(v) + "\n";
+        }
+        s += "      column: " + yamlScalar(e.column) + "\n";
+        s += "      from: " + yamlScalar(e.from_value) + "\n";
+        s += "      to: " + yamlScalar(e.to_value) + "\n";
+        if (e.reason) s += "      reason: " + yamlScalar(e.reason) + "\n";
+        if (e.issue_id) s += "      issue_id: " + yamlScalar(e.issue_id) + "\n";
+        if (e.timestamp) s += "      timestamp: " + yamlScalar(e.timestamp) + "\n";
+      });
+      return s;
+    }
+    function yamlScalar(v) {
+      if (v == null) return "null";
+      if (typeof v === "number" || typeof v === "boolean") return String(v);
+      const s = String(v);
+      if (/^[A-Za-z0-9_\-./:]+$/.test(s) && !["null", "true", "false", "yes", "no"].includes(s.toLowerCase())) {
+        return s;
+      }
+      return "'" + s.replace(/'/g, "''") + "'";
+    }
+    function downloadYaml() {
+      const yaml = buildYaml();
+      const blob = new Blob([yaml], { type: "text/yaml" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "edits-" + new Date().toISOString().slice(0, 19).replace(/:/g, "-") + ".yaml";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+    function copyYaml() {
+      const yaml = buildYaml();
+      navigator.clipboard?.writeText(yaml);
+    }
+
+    // Render once on attach so a refresh keeps showing the running log.
+    renderEditLogSidebar();
 
     function htmlEscape(s) {
       return String(s).replace(/[&<>"']/g, (c) => ({
