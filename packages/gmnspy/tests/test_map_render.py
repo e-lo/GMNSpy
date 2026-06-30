@@ -65,6 +65,39 @@ def _leavenworth_network() -> Network:
 # ---------------------------------------------------------------------------
 
 
+def test_marker_payload_carries_row_props_with_pk_for_inline_editor(tmp_path):
+    """Each row-level marker carries the row's full props (incl. PK) for the editor.
+
+    The browser-side "Propose fix" mini-editor needs the PK (link_id /
+    node_id) to write a stable edit-log entry, and the current value at
+    each column to pre-fill the form. Both come from ``marker.row_props``.
+    """
+    net = _osm_network(tmp_path)
+    report = ValidationReport(source="t.gmns", spec_version="0.97")
+    report.add(
+        severity=Severity.WARNING,
+        category=Category.SCHEMA,
+        code="schema.required",
+        message="link row 0",
+        table="link",
+        column="length",
+        row=0,
+    )
+    html = render_validation_html(net, report)
+    payload_match = re.search(r"\[\"[a-zA-Z0-9_-]+\"\] = (\{.*?\});", html, re.S)
+    assert payload_match is not None
+    import json as _json
+
+    data = _json.loads(payload_match.group(1))
+    located_markers = [m for m in data["markers"] if m["row_props"]]
+    assert located_markers, "expected at least one row-level marker with row_props"
+    m = located_markers[0]
+    # Stable PK is in the row props so the JS editor can build an edit entry.
+    assert "link_id" in m["row_props"]
+    # The flagged column is surfaced so the editor pre-fills it.
+    assert m["column"] == "length"
+
+
 def test_payload_carries_nodes_as_toggleable_layer(tmp_path):
     """The payload must expose a ``nodes`` layer so the JS can render + toggle it.
 
