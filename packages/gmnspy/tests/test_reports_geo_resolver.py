@@ -133,6 +133,67 @@ def test_link_row_geometry_midpoint_multi_segment(tmp_path):
 # ---------------------------------------------------------------------------
 
 
+def test_link_row_geometry_via_geometry_table_fk(tmp_path):
+    """Leavenworth-shape network: link.geometry_id FK → geometry.geometry WKT.
+
+    The link table carries no inline ``geometry`` column, only a
+    ``geometry_id`` FK pointing into the optional ``geometry`` resource.
+    The resolver must follow the FK before falling back to node
+    midpoints.
+    """
+    link = pd.DataFrame(
+        {
+            "link_id": [1, 2],
+            "from_node_id": [1, 2],
+            "to_node_id": [2, 3],
+            "directed": [True, True],
+            "length": [100.0, 200.0],
+            "geometry_id": [10, 11],
+        }
+    )
+    node = pd.DataFrame(
+        {
+            "node_id": [1, 2, 3],
+            "x_coord": [0.0, 10.0, 10.0],
+            "y_coord": [0.0, 0.0, 20.0],
+        }
+    )
+    # Geometry table: WKT differs from straight from→to nodes so we can tell
+    # which path was used. Linestring 10: midpoint (5, 5) not (5, 0).
+    geometry = pd.DataFrame(
+        {
+            "geometry_id": [10, 11],
+            "geometry": [
+                "LINESTRING (0 0, 0 10, 10 10, 10 0)",  # midpoint along polyline ≠ from/to mid
+                "LINESTRING (10 0, 10 10, 10 20)",
+            ],
+        }
+    )
+    csv_dir = tmp_path / "fk_net"
+    csv_dir.mkdir()
+    link.to_csv(csv_dir / "link.csv", index=False)
+    node.to_csv(csv_dir / "node.csv", index=False)
+    geometry.to_csv(csv_dir / "geometry.csv", index=False)
+    net = Network.from_source(csv_dir, engine=PandasEngine())
+
+    resolver = GeoResolver(net)
+    issue = Issue(
+        severity=Severity.WARNING,
+        category=Category.SCHEMA,
+        code="schema.required",
+        message="link row 0",
+        table="link",
+        row=0,
+    )
+    result = resolver.resolve(issue)
+    assert result is not None
+    # If we'd taken the from/to fallback, midpoint would be (5, 0). The
+    # actual polyline midpoint is at (5, 10) — half-length along
+    # 0,0 → 0,10 → 10,10 → 10,0 (total len 30, half 15 falls mid-segment 2,
+    # which runs along y=10 from x=0 to x=10).
+    assert result == pytest.approx((5.0, 10.0))
+
+
 def test_link_row_falls_back_to_node_midpoint_when_no_geometry(tmp_path):
     """No ``geometry`` column → use the midpoint of from_node and to_node coords."""
     net = _make_network(tmp_path, with_geometry=False)

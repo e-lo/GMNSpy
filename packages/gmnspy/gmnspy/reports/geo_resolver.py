@@ -98,7 +98,7 @@ class GeoResolver:
     """
 
     def __init__(self, network: Network) -> None:
-        """Materialise ``network``'s ``link`` / ``node`` tables and pre-compute a node-id lookup."""
+        """Materialise ``network``'s ``link`` / ``node`` / ``geometry`` tables and pre-compute lookups."""
         self.network = network
         self._links_df: pd.DataFrame | None = self._materialise("link")
         self._nodes_df: pd.DataFrame | None = self._materialise("node")
@@ -111,6 +111,16 @@ class GeoResolver:
                 strict=False,
             ):
                 self._node_coord_by_id[node_id] = (float(x), float(y))
+        # GMNS allows link geometry to live either inline on ``link.geometry``
+        # (OSM importer shape) or out-of-band in a separate ``geometry``
+        # resource referenced by ``link.geometry_id`` (Leavenworth shape).
+        # Build the FK lookup once.
+        self._wkt_by_geometry_id: dict[object, str] = {}
+        geom_df = self._materialise("geometry")
+        if geom_df is not None and {"geometry_id", "geometry"} <= set(geom_df.columns):
+            for gid, wkt in zip(geom_df["geometry_id"], geom_df["geometry"], strict=False):
+                if isinstance(wkt, str):
+                    self._wkt_by_geometry_id[gid] = wkt
 
     def _materialise(self, table_name: str) -> pd.DataFrame | None:
         table = self.network.tables.get(table_name)
@@ -143,9 +153,10 @@ class GeoResolver:
         if df is None or row < 0 or row >= len(df):
             return None
         record = df.iloc[row]
-        # Geometry midpoint when the column exists and parses.
-        if "geometry" in df.columns:
-            mid = _polyline_midpoint(_parse_linestring_points(record["geometry"]))
+        # Geometry midpoint when the column exists and parses (OSM-import shape).
+        wkt = self._link_wkt(record, set(df.columns))
+        if wkt:
+            mid = _polyline_midpoint(_parse_linestring_points(wkt))
             if mid is not None:
                 return mid
         # Fall back to from/to node coord midpoint.
@@ -154,6 +165,50 @@ class GeoResolver:
         if from_coord is not None and to_coord is not None:
             return ((from_coord[0] + to_coord[0]) / 2, (from_coord[1] + to_coord[1]) / 2)
         return from_coord or to_coord
+
+    def _link_wkt(self, link_record, link_columns: set[str]) -> str | None:
+        """Return the link's WKT — inline ``geometry`` column or via ``geometry_id`` FK.
+
+        ``link_record`` must support ``.get(name)``. Both ``pandas.Series``
+        and plain ``dict`` do, which lets the same helper serve both the
+        per-row resolver path and the bulk-underlay path.
+        """
+        if "geometry" in link_columns:
+            wkt = link_record.get("geometry")
+            if isinstance(wkt, str) and wkt:
+                return wkt
+        if "geometry_id" in link_columns and self._wkt_by_geometry_id:
+            gid = link_record.get("geometry_id")
+            if gid is not None:
+                return self._wkt_by_geometry_id.get(gid)
+        return None
+
+    def link_polylines(self, *, limit: int) -> list[list[list[float]]]:
+        """Return up to ``limit`` link polylines as ``[[[lon, lat], ...], ...]`` for the underlay.
+
+        Uses the same WKT resolution as :meth:`resolve` — inline
+        ``geometry`` first, then ``geometry_id`` → ``geometry`` table —
+        and falls back to a straight from/to-node segment when neither
+        is available. Shared with the renderer so the underlay and
+        per-issue resolution can't drift.
+        """
+        df = self._links_df
+        if df is None or df.empty:
+            return []
+        cols = set(df.columns)
+        out: list[list[list[float]]] = []
+        for _, record in df.head(limit).iterrows():
+            wkt = self._link_wkt(record, cols)
+            if wkt:
+                pts = _parse_linestring_points(wkt)
+                if len(pts) >= 2:
+                    out.append([[lon, lat] for lon, lat in pts])
+                    continue
+            a = self._node_coord_by_id.get(record.get("from_node_id"))
+            b = self._node_coord_by_id.get(record.get("to_node_id"))
+            if a and b:
+                out.append([[a[0], a[1]], [b[0], b[1]]])
+        return out
 
     def _resolve_node_row(self, row: int) -> tuple[float, float] | None:
         df = self._nodes_df
