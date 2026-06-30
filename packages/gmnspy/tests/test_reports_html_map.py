@@ -141,6 +141,27 @@ def test_underlay_uses_geometry_table_when_no_inline_geometry(tmp_path):
     assert "-120.52" in payload
 
 
+def test_inlined_css_preserves_child_combinator_selectors(tmp_path):
+    """Inlined CSS must not be HTML-escaped, or `>` becomes `&gt;` and rules silently fail.
+
+    Regression for a real silent breakage: Jinja autoescape converted the
+    `>` in Leaflet's `.leaflet-pane > svg` selector into `&gt;`, which made
+    the whole comma-separated rule invalid per CSS spec. The first rule
+    in leaflet.min.css groups `.leaflet-pane`, `.leaflet-tile`,
+    `.leaflet-pane > svg`, and others under `position: absolute` — when
+    that rule was discarded, the panes used `position: static` in
+    document flow, the tile pane stretched to fit absolutely-positioned
+    tile transforms, and the SVG overlay (with all the link polylines)
+    rendered hundreds of pixels below the visible map.
+    """
+    net = _osm_network(tmp_path)
+    html = render_network_html(net)
+    # Leaflet's first rule has `.leaflet-pane > svg`. The `>` MUST survive
+    # raw — `&gt;` here means autoescape leaked into the <style> block.
+    assert ".leaflet-pane > svg" in html
+    assert ".leaflet-pane &gt; svg" not in html
+
+
 def test_render_network_html_no_issues_returns_self_contained_html(tmp_path):
     """``render_network_html(network, None)`` works — network alone."""
     net = _osm_network(tmp_path)

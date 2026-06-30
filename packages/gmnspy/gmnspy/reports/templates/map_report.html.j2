@@ -25,9 +25,16 @@ Stylesheet order matters: water (baseline classless) → leaflet (map widgets)
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{ title }}</title>
-  <style>{{ water_css }}</style>
-  <style>{{ leaflet_css }}</style>
-  <style>{{ map_css }}</style>
+  {#- Inlined CSS blocks must be |safe — Jinja autoescape otherwise turns
+      every `>` in a child-combinator selector into `&gt;`, which makes the
+      whole comma-separated rule invalid per CSS spec. Leaflet's very first
+      rule (`.leaflet-pane, .leaflet-tile, .leaflet-pane > svg, ... { position:
+      absolute }`) then silently fails to apply, panes stretch in normal
+      document flow, and overlay layers render hundreds of px below the map.
+      Same hazard for water.min.css and our own map_report.css. -#}
+  <style>{{ water_css|safe }}</style>
+  <style>{{ leaflet_css|safe }}</style>
+  <style>{{ map_css|safe }}</style>
 </head>
 <body>
   <header class="gv-header">
