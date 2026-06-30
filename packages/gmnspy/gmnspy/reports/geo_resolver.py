@@ -183,6 +183,19 @@ class GeoResolver:
                 return self._wkt_by_geometry_id.get(gid)
         return None
 
+    def node_points(self, *, limit: int) -> list[list[float]]:
+        """Return up to ``limit`` nodes as ``[[lon, lat], ...]`` for a point layer.
+
+        Reads pre-computed ``_node_coord_by_id`` so this is essentially free
+        — the same lookup the FK-resolution path uses.
+        """
+        out: list[list[float]] = []
+        for _node_id, (lon, lat) in self._node_coord_by_id.items():
+            if len(out) >= limit:
+                break
+            out.append([lon, lat])
+        return out
+
     def link_polylines(self, *, limit: int) -> list[list[list[float]]]:
         """Return up to ``limit`` link polylines as ``[[[lon, lat], ...], ...]`` for the underlay.
 

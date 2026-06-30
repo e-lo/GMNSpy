@@ -121,10 +121,45 @@ def render_network_html(
             if sev_counts.get(sev):
                 counts.append((sev, sev_counts[sev]))
 
+    # `layers` is an array of toggleable overlays — each entry has a stable
+    # `id`, a display `label`, a `type` the JS dispatches on
+    # ("polyline" / "point"), and the geometry payload. Built as a list so
+    # future GMNS layers (movements at nodes, zone polygons, …) slot in
+    # without renderer-or-template changes.
+    link_polys = resolver.link_polylines(limit=_MAX_LINK_UNDERLAY)
+    node_pts = resolver.node_points(limit=_MAX_LINK_UNDERLAY)
+    layers: list[dict[str, Any]] = []
+    if link_polys:
+        layers.append(
+            {
+                "id": "links",
+                "label": "Links",
+                "type": "polyline",
+                "count": len(link_polys),
+                "default_on": True,
+                "style": {"color": "#1f77b4", "weight": 3, "opacity": 0.9},
+                "polylines": link_polys,
+            }
+        )
+    if node_pts:
+        layers.append(
+            {
+                "id": "nodes",
+                "label": "Nodes",
+                "type": "point",
+                "count": len(node_pts),
+                # Default off for now: 50k-node regional networks would
+                # render too many circles otherwise. Toggleable on demand.
+                "default_on": False,
+                "style": {"color": "#1f77b4", "radius": 3, "fillOpacity": 0.85},
+                "points": node_pts,
+            }
+        )
+
     payload = {
         "tile_provider": tile_provider,
-        "links": resolver.link_polylines(limit=_MAX_LINK_UNDERLAY),
         "bbox": _network_bbox(network),
+        "layers": layers,
         "markers": [
             {
                 "issue_id": e["issue_id"],
