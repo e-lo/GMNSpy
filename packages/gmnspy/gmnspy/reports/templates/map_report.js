@@ -56,28 +56,35 @@
   layersData.forEach((spec) => {
     const group = L.layerGroup();
     const style = spec.style || {};
-    if (spec.type === "polyline" && Array.isArray(spec.polylines)) {
-      spec.polylines.forEach((coords) => {
-        if (!coords || coords.length < 2) return;
-        const latlngs = coords.map((c) => [c[1], c[0]]);
-        L.polyline(latlngs, {
+    const items = Array.isArray(spec.items) ? spec.items : [];
+    items.forEach((item) => {
+      let leafletLayer = null;
+      if (spec.type === "polyline" && Array.isArray(item.coords) && item.coords.length >= 2) {
+        const latlngs = item.coords.map((c) => [c[1], c[0]]);
+        leafletLayer = L.polyline(latlngs, {
           color: style.color || "#1f77b4",
           weight: style.weight || 3,
           opacity: style.opacity || 0.9,
-        }).addTo(group);
-      });
-    } else if (spec.type === "point" && Array.isArray(spec.points)) {
-      spec.points.forEach((p) => {
-        if (!Array.isArray(p) || p.length < 2) return;
-        L.circleMarker([p[1], p[0]], {
+        });
+      } else if (spec.type === "point" && Array.isArray(item.coord) && item.coord.length >= 2) {
+        leafletLayer = L.circleMarker([item.coord[1], item.coord[0]], {
           radius: style.radius || 3,
           color: style.color || "#1f77b4",
           fillColor: style.color || "#1f77b4",
           fillOpacity: style.fillOpacity || 0.85,
           weight: 1,
-        }).addTo(group);
-      });
-    }
+        });
+      }
+      if (!leafletLayer) return;
+      if (item.props && Object.keys(item.props).length) {
+        leafletLayer.bindTooltip(formatProps(item.props), {
+          sticky: true, // follows the mouse — easier to hit a thin polyline
+          direction: "top",
+          opacity: 0.95,
+        });
+      }
+      leafletLayer.addTo(group);
+    });
     layerByName[spec.id] = { group, spec };
     if (spec.default_on) group.addTo(map);
   });
@@ -185,13 +192,23 @@
     // Last resort: union of layer geometries.
     const all = [];
     layersData.forEach((spec) => {
-      if (spec.type === "polyline" && Array.isArray(spec.polylines)) {
-        spec.polylines.forEach((coords) => coords.forEach((c) => all.push([c[1], c[0]])));
-      } else if (spec.type === "point" && Array.isArray(spec.points)) {
-        spec.points.forEach((p) => all.push([p[1], p[0]]));
-      }
+      const items = Array.isArray(spec.items) ? spec.items : [];
+      items.forEach((item) => {
+        if (Array.isArray(item.coords)) {
+          item.coords.forEach((c) => all.push([c[1], c[0]]));
+        } else if (Array.isArray(item.coord)) {
+          all.push([item.coord[1], item.coord[0]]);
+        }
+      });
     });
     return all.length ? L.latLngBounds(all) : null;
+  }
+
+  function formatProps(props) {
+    const esc = htmlEscape;
+    return Object.entries(props)
+      .map(([k, v]) => `<b>${esc(k)}:</b> ${esc(String(v))}`)
+      .join("<br>");
   }
 
   function buildLayerToggle() {

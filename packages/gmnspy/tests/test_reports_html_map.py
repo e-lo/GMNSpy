@@ -141,6 +141,76 @@ def test_underlay_uses_geometry_table_when_no_inline_geometry(tmp_path):
     assert "-120.52" in payload
 
 
+def test_link_polylines_carry_props_for_tooltips(tmp_path):
+    """Each link feature in the payload must carry a ``props`` dict for hover tooltips.
+
+    Hovering a link in the viewer should surface link_id, name, length,
+    facility_type, etc. — otherwise the network is just abstract lines
+    and users can't tell which polyline maps back to which row.
+    """
+    net = _osm_network(tmp_path)
+    html = render_network_html(net)
+    payload_match = re.search(r"__GMNSPY_DATA__ = (\{.*?\});", html, re.S)
+    assert payload_match is not None
+    import json as _json
+
+    data = _json.loads(payload_match.group(1))
+    links_layer = next(layer for layer in data["layers"] if layer["id"] == "links")
+    assert links_layer.get("items"), "links layer must have an `items` array"
+    first = links_layer["items"][0]
+    assert "coords" in first
+    assert isinstance(first.get("props"), dict)
+    # link_id is the natural identifier — must be on every item.
+    assert "link_id" in first["props"]
+
+
+def test_node_points_carry_props_for_tooltips(tmp_path):
+    """Each node feature must carry a ``props`` dict so hovering surfaces node_id etc."""
+    net = _osm_network(tmp_path)
+    html = render_network_html(net)
+    payload_match = re.search(r"__GMNSPY_DATA__ = (\{.*?\});", html, re.S)
+    assert payload_match is not None
+    import json as _json
+
+    data = _json.loads(payload_match.group(1))
+    nodes_layer = next(layer for layer in data["layers"] if layer["id"] == "nodes")
+    assert nodes_layer.get("items"), "nodes layer must have an `items` array"
+    first = nodes_layer["items"][0]
+    assert "coord" in first
+    assert isinstance(first.get("props"), dict)
+    assert "node_id" in first["props"]
+
+
+def test_props_skip_long_or_internal_columns(tmp_path):
+    """``geometry`` WKT strings must NOT be dumped into the tooltip props — far too long."""
+    # Build a network with a `geometry` column on the link table; props
+    # serialisation must not expose it.
+    link = pd.DataFrame(
+        {
+            "link_id": [1],
+            "from_node_id": [1],
+            "to_node_id": [2],
+            "directed": [True],
+            "length": [100.0],
+            "geometry": ["LINESTRING (-120.6 47.5, -120.5 47.6)"],
+        }
+    )
+    node = pd.DataFrame({"node_id": [1, 2], "x_coord": [-120.6, -120.5], "y_coord": [47.5, 47.6]})
+    csv_dir = tmp_path / "with_wkt"
+    csv_dir.mkdir()
+    link.to_csv(csv_dir / "link.csv", index=False)
+    node.to_csv(csv_dir / "node.csv", index=False)
+    net = Network.from_source(csv_dir, engine=PandasEngine())
+
+    html = render_network_html(net)
+    payload_match = re.search(r"__GMNSPY_DATA__ = (\{.*?\});", html, re.S)
+    assert payload_match is not None
+    # The WKT string itself must NEVER appear in the rendered HTML — it's
+    # huge, it bloats tooltips, and the user already sees the geometry as a
+    # polyline on the map.
+    assert "LINESTRING" not in html
+
+
 def test_inlined_css_preserves_child_combinator_selectors(tmp_path):
     """Inlined CSS must not be HTML-escaped, or `>` becomes `&gt;` and rules silently fail.
 
