@@ -33,15 +33,16 @@
   const tileConfig = TILE_CONFIG[tileProvider] || TILE_CONFIG.openstreetmap;
   L.tileLayer(tileConfig.url, { attribution: tileConfig.attribution, maxZoom: tileConfig.maxZoom }).addTo(map);
 
-  // Optional: lightweight render of all network links so the map is useful
-  // even when no findings are present.
+  // Render the network so it's visible even when no findings are present.
+  // Dark slate over the muted carto basemap so the network reads as the
+  // primary subject; the basemap is context, not the headline.
   if (links.length) {
     const linkLayer = L.layerGroup();
     links.forEach((coords) => {
       if (!coords || coords.length < 2) return;
       // coords: [[lon,lat], ...] — Leaflet wants [lat, lon].
       const latlngs = coords.map((c) => [c[1], c[0]]);
-      L.polyline(latlngs, { color: "#888", weight: 1.5, opacity: 0.6 }).addTo(linkLayer);
+      L.polyline(latlngs, { color: "#2c3e50", weight: 2.5, opacity: 0.85 }).addTo(linkLayer);
     });
     linkLayer.addTo(map);
   }
@@ -99,6 +100,16 @@
   if (!fitted) {
     map.setView([47.5, -120.5], 9);
   }
+
+  // Leaflet caches the container size at init time. If the page's CSS layout
+  // (flex, grid, responsive image, etc.) settled AFTER L.map() ran, the map
+  // computes its bounds for the smaller initial size and loads only a partial
+  // strip of tiles. requestAnimationFrame waits for the next paint, by which
+  // point the container has its final size.
+  requestAnimationFrame(() => map.invalidateSize());
+  // And once more after a short delay for slow font-loading / image-decode
+  // cases that nudge layout a second time.
+  setTimeout(() => map.invalidateSize(), 250);
 
   // Wire the unlocated-findings sidebar click-handlers.
   document.querySelectorAll("[data-unlocated-issue-id]").forEach((el) => {

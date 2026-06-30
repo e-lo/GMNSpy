@@ -23,12 +23,13 @@ from __future__ import annotations
 
 import contextlib
 import json
+import re
 from importlib import resources
 from typing import TYPE_CHECKING, Any
 
 from gmnspy.osm.edit import issue_osm_edit_url
 
-from .geo_resolver import GeoResolver, _parse_linestring_points
+from .geo_resolver import GeoResolver
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from datagrove.reports import Issue, ValidationReport
@@ -49,7 +50,7 @@ def render_network_html(
     issues: list[Issue] | None = None,
     *,
     title: str | None = None,
-    tile_provider: str = "openstreetmap",
+    tile_provider: str = "carto-positron",
     osm_editor: str = "id",
 ) -> str:
     """Render a self-contained interactive HTML map of ``network`` with ``issues`` overlaid.
@@ -63,8 +64,9 @@ def render_network_html(
         title: Optional override for the ``<title>`` / ``<h1>``. Falls
             back to ``"GMNS network"`` (or a validation-style title from
             :func:`render_validation_html`).
-        tile_provider: ``"openstreetmap"`` (default) or
-            ``"carto-positron"`` — the basemap tile source.
+        tile_provider: ``"carto-positron"`` (default — muted greyscale so
+            the network stands out) or ``"openstreetmap"`` for the
+            classic colourful OSM tiles.
         osm_editor: ``"id"`` (default) or ``"josm"`` — which editor
             "Edit in OSM" links point to. No-op for non-OSM networks.
 
@@ -121,7 +123,7 @@ def render_network_html(
 
     payload = {
         "tile_provider": tile_provider,
-        "links": _link_underlay_coords(network),
+        "links": resolver.link_polylines(limit=_MAX_LINK_UNDERLAY),
         "bbox": _network_bbox(network),
         "markers": [
             {
@@ -154,7 +156,7 @@ def render_network_html(
         title=final_title,
         meta_subtitle=_meta_subtitle(network),
         counts=counts,
-        leaflet_css=_read_template("leaflet.min.css"),
+        leaflet_css=_sanitise_leaflet_css(_read_template("leaflet.min.css")),
         leaflet_js=_read_template("leaflet.min.js"),
         map_css=_read_template("map_report.css"),
         map_js=_read_template("map_report.js"),
@@ -239,49 +241,16 @@ def _network_bbox(network: Network) -> list[float] | None:
     ]
 
 
-def _link_underlay_coords(network: Network) -> list[list[list[float]]]:
-    """Return the polyline coords to draw as the network underlay.
+# Strip ``url(images/...)`` references from the vendored Leaflet CSS. We use
+# ``L.circleMarker`` everywhere and never instantiate the default ``L.Marker``
+# / ``L.Control.Layers``, so the marker-icon + layer-control PNGs are dead
+# weight. Worse, when the report is opened over ``file://``, the browser
+# resolves these to ``file:///<dir>/images/...`` and prints a security warning
+# ("'file:' URLs are treated as unique security origins"). Stripping the rules
+# silences the warning without changing any rendered output we use.
+_LEAFLET_IMG_URL_RE = re.compile(r"url\(images/[^)]*\)")
 
-    Reads the link table's ``geometry`` column when present, otherwise
-    synthesises one segment from the from/to node coords. Capped at
-    :data:`_MAX_LINK_UNDERLAY` polylines — past that, the underlay
-    slows the page down without clustering.
-    """
-    link = network.tables.get("link")
-    node = network.tables.get("node")
-    if link is None or node is None:
-        return []
-    try:
-        link_df = link.to_pandas()
-        node_df = node.to_pandas()
-    except Exception:
-        return []
-    if link_df.empty or node_df.empty:
-        return []
 
-    polylines: list[list[list[float]]] = []
-    if "geometry" in link_df.columns:
-        for wkt in link_df["geometry"].head(_MAX_LINK_UNDERLAY):
-            pts = _parse_linestring_points(wkt)
-            if len(pts) >= 2:
-                polylines.append([[lon, lat] for lon, lat in pts])
-        if polylines:
-            return polylines
-
-    if {"node_id", "x_coord", "y_coord"} <= set(node_df.columns) and {"from_node_id", "to_node_id"} <= set(
-        link_df.columns
-    ):
-        coord_by_id = {
-            nid: (float(x), float(y))
-            for nid, x, y in zip(node_df["node_id"], node_df["x_coord"], node_df["y_coord"], strict=False)
-        }
-        for f, t in zip(
-            link_df["from_node_id"].head(_MAX_LINK_UNDERLAY),
-            link_df["to_node_id"].head(_MAX_LINK_UNDERLAY),
-            strict=False,
-        ):
-            a = coord_by_id.get(f)
-            b = coord_by_id.get(t)
-            if a and b:
-                polylines.append([[a[0], a[1]], [b[0], b[1]]])
-    return polylines
+def _sanitise_leaflet_css(css: str) -> str:
+    """Remove dead-weight image URL refs that 404 + trigger file:// CSP warnings."""
+    return _LEAFLET_IMG_URL_RE.sub("none", css)

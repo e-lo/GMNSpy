@@ -65,6 +65,46 @@ def _leavenworth_network() -> Network:
 # ---------------------------------------------------------------------------
 
 
+def test_underlay_uses_geometry_table_when_no_inline_geometry(tmp_path):
+    """Leavenworth-shape: link.geometry_id → geometry.geometry WKT polyline.
+
+    The payload's ``links`` underlay must carry the real polyline coords
+    from the joined geometry table, not just straight from→to segments.
+    """
+    link = pd.DataFrame(
+        {
+            "link_id": [1],
+            "from_node_id": [1],
+            "to_node_id": [2],
+            "directed": [True],
+            "length": [100.0],
+            "geometry_id": [10],
+        }
+    )
+    node = pd.DataFrame({"node_id": [1, 2], "x_coord": [-120.6, -120.5], "y_coord": [47.5, 47.6]})
+    geometry = pd.DataFrame(
+        {
+            "geometry_id": [10],
+            # 4-vertex polyline; the inner two vertices would be lost in a
+            # straight from→to fallback.
+            "geometry": ["LINESTRING (-120.6 47.5, -120.55 47.55, -120.52 47.58, -120.5 47.6)"],
+        }
+    )
+    csv_dir = tmp_path / "geom_table_net"
+    csv_dir.mkdir()
+    link.to_csv(csv_dir / "link.csv", index=False)
+    node.to_csv(csv_dir / "node.csv", index=False)
+    geometry.to_csv(csv_dir / "geometry.csv", index=False)
+    net = Network.from_source(csv_dir, engine=PandasEngine())
+
+    html = render_network_html(net)
+    payload_match = re.search(r"__GMNSPY_DATA__ = (\{.*?\});", html, re.S)
+    assert payload_match is not None
+    payload = payload_match.group(1)
+    assert "-120.55" in payload
+    assert "-120.52" in payload
+
+
 def test_render_network_html_no_issues_returns_self_contained_html(tmp_path):
     """``render_network_html(network, None)`` works — network alone."""
     net = _osm_network(tmp_path)
