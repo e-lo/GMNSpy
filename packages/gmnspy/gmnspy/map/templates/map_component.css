@@ -157,8 +157,45 @@ header.gv-header h1 { margin-bottom: 0.15em; }
   text-decoration: underline;
 }
 
-/* Inline "Propose fix" mini-editor — replaces the action bar inside the
- * popup. Stacked layout to keep the popup narrow. */
+/* Findings-table Action column — stack Fix locally / Fix upstream so
+ * they don't wrap under narrow columns. */
+td.gv-cell-actions {
+  white-space: nowrap;
+}
+td.gv-cell-actions .gv-action {
+  display: inline-block;
+  margin: 0 0.35em 0.15em 0;
+  padding: 0.15em 0.5em;
+  font-size: 0.85em;
+  border: 1px solid var(--border, #d0d7de);
+  border-radius: 4px;
+  background: var(--background-alt);
+  color: var(--links);
+  text-decoration: none;
+  cursor: pointer;
+}
+td.gv-cell-actions .gv-action:hover { background: var(--border, #d0d7de); }
+
+/* Inline editor row (spans the whole table under the row being fixed). */
+tr.gv-inline-editor-row > td {
+  background: var(--background-alt);
+  padding: 0.7em 1em;
+}
+tr.gv-inline-editor-row .gv-fix-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5em;
+  max-width: 640px;
+}
+tr.gv-inline-editor-row .gv-fix-input,
+tr.gv-inline-editor-row .gv-fix-reason {
+  width: 100%;
+  padding: 0.25em 0.5em;
+  font-size: 0.9em;
+}
+
+/* Inline "Fix locally" editor — same UI in the popup. Stacked layout to
+ * keep the popup narrow. */
 .gv-marker-popup .gv-fix-editor {
   display: flex;
   flex-direction: column;

@@ -40,6 +40,7 @@ In the browser:
 
 Then back in Python:
 
+<!-- doctest: skip -->
 ```python
 from gmnspy import Network
 from gmnspy.map.edits import apply_edits, load_edit_log

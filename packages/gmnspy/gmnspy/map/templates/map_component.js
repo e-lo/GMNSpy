@@ -259,19 +259,25 @@
         html += '<div class="gv-popup-fixhint">' + esc(m.fix_hint) + "</div>";
       }
       html += '<div class="gv-popup-actions">';
-      // "Propose fix" — opens the inline mini-editor inside the popup.
-      // Only offered when we have a row_props (i.e. the finding maps to
-      // a known link/node row whose PK we can record).
+      // Two fix paths + one navigation:
+      // - "Fix locally" opens the inline mini-editor inside the popup.
+      //   Only offered when the finding maps to a known link/node row
+      //   whose PK we can record for the edit log.
+      // - "Fix upstream (OSM)" opens the source-of-truth editor. Today
+      //   that's iD/JOSM for OSM-sourced networks; future upstreams
+      //   (INRIX, HERE, ...) will slot in the same action slot.
+      // - "Show error in table" is nav-only — scrolls the findings
+      //   table to this row and highlights it.
       if (m.row_props && m.column) {
         html +=
           '<button type="button" class="gv-action gv-action-fix" data-popup-propose-fix="' +
-          esc(m.issue_id || "") + '">Propose fix</button>';
+          esc(m.issue_id || "") + '">Fix locally</button>';
       }
       if (m.edit_url) {
         html +=
-          '<a class="gv-action" href="' + esc(m.edit_url) + '" target="_blank" rel="noopener noreferrer">Edit in OSM &rarr;</a>';
+          '<a class="gv-action" href="' + esc(m.edit_url) + '" target="_blank" rel="noopener noreferrer">Fix upstream (OSM) &rarr;</a>';
       }
-      html += '<button type="button" class="gv-action" data-popup-show-row="' + esc(m.issue_id || "") + '">Show row</button>';
+      html += '<button type="button" class="gv-action" data-popup-show-row="' + esc(m.issue_id || "") + '">Show error in table</button>';
       html += "</div></div>";
       return html;
     }
@@ -284,6 +290,74 @@
     }
 
     // ----- Edit-log: Propose-fix mini-editor + sidebar ----------------------
+    //
+    // Two entry points share the same editor UI:
+    //  - From a marker popup: openInlineEditor(trigger, marker) — swaps the
+    //    popup's action bar for the form.
+    //  - From a findings-table row: window.gmnspyEditor.openInRow(tr, meta)
+    //    — inserts a colspan sub-row below the clicked row with the form.
+
+    function openInRowEditor(tr, m) {
+      if (!tr || !m) return;
+      const table = tr.closest("table");
+      const nCols = table ? table.querySelectorAll("thead th").length : 5;
+      const pk = pickPk(m.table, m.row_props);
+      if (!pk) return;
+      const colName = m.column || "";
+      const current = m.row_props ? m.row_props[colName] : "";
+      const esc = htmlEscape;
+      const pkSummary = Object.entries(pk).map(([k, v]) => `${esc(k)}=${esc(String(v))}`).join(", ");
+
+      // Toggle: clicking Fix locally again on an already-open row closes it.
+      let editorRow = tr.nextElementSibling;
+      if (editorRow && editorRow.classList.contains("gv-inline-editor-row")) {
+        editorRow.remove();
+        return;
+      }
+      editorRow = document.createElement("tr");
+      editorRow.className = "gv-inline-editor-row";
+      const cell = document.createElement("td");
+      cell.colSpan = nCols;
+      cell.innerHTML =
+        '<div class="gv-fix-editor">' +
+        '<div class="gv-fix-row"><b>' + esc(m.table || "") + "</b> [" + esc(pkSummary) + "]</div>" +
+        '<div class="gv-fix-row"><label><b>' + esc(colName) + ":</b> " +
+        '<input class="gv-fix-input" type="text" value="' + esc(current == null ? "" : String(current)) + '"></label></div>' +
+        '<div class="gv-fix-row"><label>Reason: ' +
+        '<input class="gv-fix-reason" type="text" value="' +
+        esc((m.code ? m.code + ": " : "") + (m.message || "")) + '"></label></div>' +
+        '<div class="gv-fix-row gv-fix-actions">' +
+        '<button type="button" class="gv-action gv-fix-save">Add to edit log</button>' +
+        '<button type="button" class="gv-action gv-fix-cancel">Cancel</button>' +
+        "</div></div>";
+      editorRow.appendChild(cell);
+      tr.insertAdjacentElement("afterend", editorRow);
+      cell.querySelector(".gv-fix-cancel").addEventListener("click", () => editorRow.remove());
+      cell.querySelector(".gv-fix-save").addEventListener("click", () => {
+        const newVal = cell.querySelector(".gv-fix-input").value;
+        const reason = cell.querySelector(".gv-fix-reason").value;
+        addEdit({
+          id: "e" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+          kind: "fix",
+          table: m.table,
+          pk,
+          column: colName,
+          from_value: current == null ? null : current,
+          to_value: coerceLikely(newVal, current),
+          reason: reason || null,
+          issue_id: m.issue_id || null,
+          timestamp: new Date().toISOString(),
+        });
+        renderEditLogSidebar();
+        editorRow.remove();
+      });
+    }
+
+    // Cross-instance handle so the validation-report chrome (which
+    // lives outside this closure) can open the same editor UI on a
+    // findings-table row.
+    window.gmnspyEditor = window.gmnspyEditor || {};
+    window.gmnspyEditor.openInRow = openInRowEditor;
 
     function openInlineEditor(triggerBtn, m) {
       // Replace the popup action bar with a small form for the suspect column.
