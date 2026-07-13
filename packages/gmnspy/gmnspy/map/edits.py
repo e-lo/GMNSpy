@@ -386,9 +386,17 @@ def apply_edits(net: Network, log: EditLog) -> ApplyResult:
     5. Write ``to_value`` into the cell.
 
     The returned ``ApplyResult.net`` is a fresh :class:`~gmnspy.network.Network`
-    backed by :class:`~datagrove.engines.pandas_engine.PandasEngine` —
-    tables you didn't touch are carried through as-is; tables you DID
-    touch are now pandas-backed snapshots of the mutated state.
+    backed by :class:`~datagrove.engines.pandas_engine.PandasEngine` for
+    EVERY table — mutated tables carry the edited DataFrames, untouched
+    tables are materialised snapshots of their source expressions. All
+    tables share a single engine so ``net.write(dest)`` sees a
+    consistent state (mixing pandas and ibis/duckdb tables in one
+    write() call would raise on the engine's next dispatch).
+
+    On very large networks (100k+ links) this materialises every table
+    to pandas even when you only edited a few rows — measurable but
+    typically fine for interactive fix sessions. If you need a lower-
+    memory path, ``apply_edits`` sub-sets are on the roadmap.
 
     Args:
         net: The source network. Not mutated in-place.
@@ -449,25 +457,27 @@ def apply_edits(net: Network, log: EditLog) -> ApplyResult:
         df.loc[mask, edit.column] = edit.to_value
         applied.append(AppliedEdit(edit, applied_at=datetime.now(UTC).isoformat()))
 
-    # Rebuild the network with the mutated tables. Untouched tables ride
-    # through as-is (their lazy expressions are preserved); mutated tables
-    # become pandas-backed snapshots wrapping the new DataFrame.
+    # Rebuild the network with a single engine for every table.
+    # Mutated tables carry their new DataFrame; untouched tables get
+    # materialised via to_pandas() so write() dispatches consistently
+    # instead of hitting a pandas-vs-ibis-vs-duckdb mixed state.
     new_engine = PandasEngine()
-    new_tables = dict(net.tables)
-    for name, df in mutated.items():
+    new_tables: dict[str, Table] = {}
+    for name, existing in net.tables.items():
+        df = mutated[name] if name in mutated else existing.to_pandas()
         new_tables[name] = Table(
             name=name,
             expr=df,
             engine=new_engine,
-            schema=net.tables[name].schema,
-            source=net.tables[name].source,
-            format=net.tables[name].format,
+            schema=existing.schema,
+            source=existing.source,
+            format=existing.format,
         )
 
     new_net = type(net)(
         spec=net.spec,
         tables=new_tables,
-        engine=net.engine,
+        engine=new_engine,
         source=net.source,
         dirty_tracker=net.dirty_tracker,
         metadata=dict(net.metadata),

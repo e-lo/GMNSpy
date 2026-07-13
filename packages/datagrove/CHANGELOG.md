@@ -8,6 +8,14 @@ This file is for the **datagrove** package only. `gmnspy` (which depends on data
 
 (Reserved for changes between the most recent release and the next.)
 
+## [1.0.0-beta.2] — TBD
+
+Version bumped in lockstep with `gmnspy` v1.0.0-beta.2. No
+user-visible datagrove changes in this release; the only edits are
+test-side adjustments to accommodate the rebuilt Leavenworth fixture
+(row counts changed as `gmnspy.fixtures.leavenworth` now covers the
+whole city polygon instead of a 600m centroid buffer).
+
 ## [0.1.0-beta.1] — TBD
 
 First public preview of datagrove. This is a **beta**: API surface is stable enough to build against but we expect bug reports + small breaking changes before 0.1.0 GA.

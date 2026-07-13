@@ -6,38 +6,96 @@ This file is for the **gmnspy** package only. The underlying generic engine `dat
 
 ## [Unreleased]
 
+(Reserved for changes between the most recent release and the next.)
+
+## [1.0.0-beta.2] — TBD
+
+Second public preview. The big theme: an **interactive map viewer** with
+an integrated **edit log** so you can triage findings in a browser, apply
+the fixes deterministically in Python, and save.
+
 ### Added
 
-- **Interactive network-on-map HTML viewer** (`gmnspy.reports`). A new
-  optional `[reports]` extra (`pip install 'gmnspy[reports]'`) ships
-  a Leaflet-based renderer that overlays validation findings (and any
-  other `Issue` source — quality rules, graph topology checks, custom
-  rules) onto the actual network geometry. Single self-contained HTML
-  file; no internet required when opened. For OSM-sourced networks,
-  popups carry one-click "Edit in OSM" deep links to the iD editor.
-  Public API:
-  - `gmnspy.reports.render_network_html(net, issues=None, *, title=, tile_provider=, osm_editor=)`
-  - `gmnspy.reports.render_validation_html(net, report, **opts)`
-  - `gmnspy.reports.write_findings_csv(issues, path)`
-  - `gmnspy.reports.write_findings_xlsx(issues, path)`
-  - `gmnspy.osm.osm_edit_url(osm_id, *, kind=, editor=)`
-  - `gmnspy.osm.issue_osm_edit_url(issue, network, *, editor=)`
+- **`gmnspy.map` module** — embeddable interactive network viewer.
+  - `NetworkMap` — reusable component class. Any host page (validation
+    report, notebook, custom dashboard) can include shared head assets
+    (`NetworkMap.head_assets()`) once and drop in one or more per-instance
+    body fragments (`instance.body_fragment()`). Each instance carries a
+    UID so multiple maps coexist on one page.
+  - `NetworkMap.to_html()` — full standalone HTML doc.
+  - `NetworkMap._repr_html_()` — iframe-isolated Jupyter render.
+  - `gmnspy.map.render_network_html(net, issues=None, ...)` — thin
+    convenience over `NetworkMap.to_html()`.
+  - `gmnspy.map.render_validation_html(net, report, ...)` — full
+    validation report page composing a NetworkMap with the findings
+    table.
+  - Toggleable layers (links, nodes; extensible for zones / segments /
+    movements). Hover tooltips on every element show its GMNS row
+    columns. Popups on findings carry `Fix locally` / `Fix upstream
+    (OSM) →` / `Show error in table`.
+- **Edit log Phase 1** — `gmnspy.map.edits`:
+  - `Edit`, `EditLog`, `AppliedEdit`, `SkippedEdit`, `ApplyResult`
+    dataclasses.
+  - `load_edit_log(path)` / `dump_edit_log(log, path)` — YAML round-trip.
+  - `apply_edits(net, log) → ApplyResult` — deterministic replay with
+    PK-indexed row lookup, drift check (`from_value` vs current), and
+    per-edit `skipped` reasons.
+  - **On-disk format is `network-wrangler` ProjectCard.** Each session
+    serialises to a single ProjectCard with `changes[]` of
+    `roadway_property_change` entries. GMNS `link_id` maps to
+    `model_link_id` in the facility selector; per-cell values live under
+    `property_changes.<column>.{existing, set}`. Node property changes
+    emit with the same shape via `model_node_id` (gmnspy extension —
+    standard ProjectCard has no first-class node-property-change type).
 - **CLI output flags** on `gmnspy validate`:
-  - `--html` now writes the new map+table viewer (gracefully falls
-    back to the datagrove table-only HTML when `[reports]` is missing,
-    so `--html` always produces a file).
+  - `--html` writes the new map+table viewer (gracefully falls back to
+    the datagrove table-only HTML when `[reports]` is missing, so
+    `--html` always produces a file).
   - `--csv` writes a flat findings table.
   - `--xlsx` writes a single-sheet workbook (requires `[reports]`).
-- **New cookbook recipe** `view-your-network.md` showing the standalone
-  network map (no validation required).
+- **`gmnspy.osm` deep-link helpers** — `osm_edit_url(osm_id, *, kind,
+  editor)`, `issue_osm_edit_url(issue, network, *, editor)`. Now
+  detection is column-based (`osm_way_id` on link, `osm_node_id` on
+  node), so ANY network carrying those columns gets Edit-in-OSM
+  links — regardless of whether it was built via `gmnspy.osm.build`.
+- **Bundled Leavenworth fixture rebuilt.** Built from the full OSM city
+  polygon via `osmnx.graph_from_place("Leavenworth, Washington, USA")`
+  instead of a 600m centroid buffer. Every link row now carries
+  `osm_way_id`, every node row `osm_node_id`, so Edit-in-OSM works on
+  the bundled fixture out of the box.
+  - Row counts: node 75 → 121, link 214 → 339, lane 280 → 429.
+  - Total fixture size ~700KB → ~2.7MB (still under the 5MB wheel cap).
+- **New cookbook recipes**:
+  - `view-your-network.md` — the standalone map, no validation.
+  - `fix-findings.md` — the full triage → YAML → apply → save flow.
 
 ### Changed
 
-- `gmnspy.osm.__init__` is now lazy — importing the package no longer
-  eagerly requires the `[osm]` extra. `osm_edit_url` and
+- **`gmnspy.osm.__init__` is now lazy.** Importing the package no longer
+  eagerly requires the `[osm]` extra. `osm_edit_url` /
   `issue_osm_edit_url` are dep-free helpers and load without
-  `requests`/`pyyaml`. `build_network_from_osm` / `network_from_records`
-  still need `[osm]` and surface the same helpful `ImportError`.
+  `requests` / `pyyaml`. `build_network_from_osm` /
+  `network_from_records` still need `[osm]` and surface the same
+  helpful `ImportError`.
+- **`[reports]` extra now includes `pyyaml>=6`** for the edit-log
+  YAML round-trip.
+
+### Deprecated
+
+- `gmnspy.reports.render_network_html` / `render_validation_html` —
+  moved to `gmnspy.map`. The old imports still work via re-export but
+  emit a `DeprecationWarning`. `gmnspy.reports.write_findings_csv` /
+  `write_findings_xlsx` stay put.
+
+### Known limitations (Phase 2)
+
+- Edit log only supports `kind: fix` (per-cell value changes). Row
+  additions, row deletions, and schema changes are deferred. The YAML
+  format reserves ProjectCard `kind: modification` for future use.
+- No bulk-fix UI in the browser — bulk fixes go through Python
+  directly.
+- The map's marker layer has no clustering; past ~5k markers Leaflet
+  will slow.
 
 ## [1.0.0-beta.1] — TBD
 
