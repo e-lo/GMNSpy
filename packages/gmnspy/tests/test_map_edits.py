@@ -302,6 +302,51 @@ def test_apply_edits_unknown_table_is_skipped(tiny_net):
     assert len(result.skipped) == 1
 
 
+def test_apply_edits_result_net_writes_cleanly(tiny_net, tmp_path):
+    """The mutated network must round-trip through ``net.write()`` without
+    OutOfSyncWarning / engine-mixing errors.
+
+    Regression: ``apply_edits`` used to leave un-mutated tables backed by
+    the original engine (e.g. ibis+duckdb) while mutated tables used
+    PandasEngine — writing the resulting Network then blew up on the
+    engine mismatch. All tables now share a single PandasEngine.
+
+    Also verifies #164: no ``OutOfSyncWarning`` on the edit-then-save
+    flow through ``apply_edits`` — the rebuilt Network's tables start
+    with fresh ``dirty=False`` flags.
+    """
+    import warnings
+
+    from gmnspy import Network as _Network
+
+    log = EditLog(
+        edits=[
+            Edit(
+                id="e1",
+                kind="fix",
+                table="link",
+                pk={"link_id": 3},
+                column="free_speed",
+                from_value=None,
+                to_value=25,
+            )
+        ]
+    )
+    result = apply_edits(tiny_net, log)
+
+    dest = tmp_path / "written"
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        result.net.write(dest, overwrite=True)
+        oos = [x for x in w if "OutOfSync" in x.category.__name__]
+    assert not oos, f"unexpected OutOfSyncWarning after apply_edits: {[str(x.message) for x in oos]}"
+
+    # Round-trip: the edit landed on disk.
+    reloaded = _Network.from_source(dest)
+    df = reloaded.links.to_pandas()
+    assert df[df["link_id"] == 3]["free_speed"].iloc[0] == 25
+
+
 def test_apply_result_summary_includes_counts(tiny_net):
     """ApplyResult.summary() is human-readable, names applied + skipped counts."""
     log = EditLog(

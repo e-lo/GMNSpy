@@ -53,9 +53,9 @@ print(result.summary())                # "12 applied, 2 skipped"
 for s in result.skipped:               # inspect anything that didn't apply
     print(s.edit.id, "→", s.reason)
 
-# Save either way
-result.net.save()                      # overwrite the source
-result.net.save_as("./my-net-v2")      # write to a new directory
+# Save either way — Network.write() takes a destination path.
+result.net.write("./my-net", overwrite=True)   # overwrite the source
+result.net.write("./my-net-v2")                # write to a new directory
 ```
 
 ## The edit log shape
