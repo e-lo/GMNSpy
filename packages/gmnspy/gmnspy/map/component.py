@@ -224,12 +224,26 @@ class NetworkMap:
 
         Re-used by :func:`gmnspy.map.render_validation_html` so the
         findings table and the map markers stay in sync.
+
+        Also carries ``row_props`` for row-level findings (link / node
+        tables) so the findings-table "Fix locally" action can open the
+        same mini-editor the marker popup uses — without duplicating the
+        lookup on the JS side.
         """
         resolver = GeoResolver(self.network)
+        link_features = resolver.link_features(limit=_MAX_LAYER_ITEMS)
+        node_features = resolver.node_features(limit=_MAX_LAYER_ITEMS)
+        props_by_row = {
+            "link": {i: f["props"] for i, f in enumerate(link_features)},
+            "node": {i: f["props"] for i, f in enumerate(node_features)},
+        }
         out: list[dict[str, Any]] = []
         for i, issue in enumerate(self.issues):
             coord = resolver.resolve(issue)
             edit_url = issue_osm_edit_url(issue, self.network, editor=self.osm_editor)  # type: ignore[arg-type]
+            row_props = None
+            if issue.table in props_by_row and issue.row is not None:
+                row_props = props_by_row[issue.table].get(issue.row)
             out.append(
                 {
                     "issue_id": f"i{i}",
@@ -242,6 +256,7 @@ class NetworkMap:
                     "column": issue.column,
                     "row": issue.row,
                     "edit_url": edit_url,
+                    "row_props": row_props,
                     "lon": coord[0] if coord else None,
                     "lat": coord[1] if coord else None,
                     "located": coord is not None,
@@ -259,10 +274,13 @@ class NetworkMap:
         link_features = resolver.link_features(limit=_MAX_LAYER_ITEMS)
         node_features = resolver.node_features(limit=_MAX_LAYER_ITEMS)
 
-        # Build positional row → props lookups so each marker can carry the
-        # full row contents into the popup. The edit log needs the PK
-        # (e.g. link_id) to identify the row stably; the editor needs the
-        # current values to pre-fill and to drift-check on apply.
+        # Positional-row → props lookup so each marker can carry the full
+        # row contents. The edit log needs the PK (e.g. link_id) to
+        # identify the row stably; the editor needs the current values
+        # to pre-fill and to drift-check on apply.
+        # (enriched_issues() computes the same lookup — kept as a local
+        # here so the marker payload path doesn't need to reach back
+        # through GeoResolver a second time.)
         feature_props_by_row = {
             "link": {i: f["props"] for i, f in enumerate(link_features)},
             "node": {i: f["props"] for i, f in enumerate(node_features)},

@@ -259,19 +259,25 @@
         html += '<div class="gv-popup-fixhint">' + esc(m.fix_hint) + "</div>";
       }
       html += '<div class="gv-popup-actions">';
-      // "Propose fix" — opens the inline mini-editor inside the popup.
-      // Only offered when we have a row_props (i.e. the finding maps to
-      // a known link/node row whose PK we can record).
+      // Two fix paths + one navigation:
+      // - "Fix locally" opens the inline mini-editor inside the popup.
+      //   Only offered when the finding maps to a known link/node row
+      //   whose PK we can record for the edit log.
+      // - "Fix upstream (OSM)" opens the source-of-truth editor. Today
+      //   that's iD/JOSM for OSM-sourced networks; future upstreams
+      //   (INRIX, HERE, ...) will slot in the same action slot.
+      // - "Show error in table" is nav-only — scrolls the findings
+      //   table to this row and highlights it.
       if (m.row_props && m.column) {
         html +=
           '<button type="button" class="gv-action gv-action-fix" data-popup-propose-fix="' +
-          esc(m.issue_id || "") + '">Propose fix</button>';
+          esc(m.issue_id || "") + '">Fix locally</button>';
       }
       if (m.edit_url) {
         html +=
-          '<a class="gv-action" href="' + esc(m.edit_url) + '" target="_blank" rel="noopener noreferrer">Edit in OSM &rarr;</a>';
+          '<a class="gv-action" href="' + esc(m.edit_url) + '" target="_blank" rel="noopener noreferrer">Fix upstream (OSM) &rarr;</a>';
       }
-      html += '<button type="button" class="gv-action" data-popup-show-row="' + esc(m.issue_id || "") + '">Show row</button>';
+      html += '<button type="button" class="gv-action" data-popup-show-row="' + esc(m.issue_id || "") + '">Show error in table</button>';
       html += "</div></div>";
       return html;
     }
@@ -284,6 +290,74 @@
     }
 
     // ----- Edit-log: Propose-fix mini-editor + sidebar ----------------------
+    //
+    // Two entry points share the same editor UI:
+    //  - From a marker popup: openInlineEditor(trigger, marker) — swaps the
+    //    popup's action bar for the form.
+    //  - From a findings-table row: window.gmnspyEditor.openInRow(tr, meta)
+    //    — inserts a colspan sub-row below the clicked row with the form.
+
+    function openInRowEditor(tr, m) {
+      if (!tr || !m) return;
+      const table = tr.closest("table");
+      const nCols = table ? table.querySelectorAll("thead th").length : 5;
+      const pk = pickPk(m.table, m.row_props);
+      if (!pk) return;
+      const colName = m.column || "";
+      const current = m.row_props ? m.row_props[colName] : "";
+      const esc = htmlEscape;
+      const pkSummary = Object.entries(pk).map(([k, v]) => `${esc(k)}=${esc(String(v))}`).join(", ");
+
+      // Toggle: clicking Fix locally again on an already-open row closes it.
+      let editorRow = tr.nextElementSibling;
+      if (editorRow && editorRow.classList.contains("gv-inline-editor-row")) {
+        editorRow.remove();
+        return;
+      }
+      editorRow = document.createElement("tr");
+      editorRow.className = "gv-inline-editor-row";
+      const cell = document.createElement("td");
+      cell.colSpan = nCols;
+      cell.innerHTML =
+        '<div class="gv-fix-editor">' +
+        '<div class="gv-fix-row"><b>' + esc(m.table || "") + "</b> [" + esc(pkSummary) + "]</div>" +
+        '<div class="gv-fix-row"><label><b>' + esc(colName) + ":</b> " +
+        '<input class="gv-fix-input" type="text" value="' + esc(current == null ? "" : String(current)) + '"></label></div>' +
+        '<div class="gv-fix-row"><label>Reason: ' +
+        '<input class="gv-fix-reason" type="text" value="' +
+        esc((m.code ? m.code + ": " : "") + (m.message || "")) + '"></label></div>' +
+        '<div class="gv-fix-row gv-fix-actions">' +
+        '<button type="button" class="gv-action gv-fix-save">Add to edit log</button>' +
+        '<button type="button" class="gv-action gv-fix-cancel">Cancel</button>' +
+        "</div></div>";
+      editorRow.appendChild(cell);
+      tr.insertAdjacentElement("afterend", editorRow);
+      cell.querySelector(".gv-fix-cancel").addEventListener("click", () => editorRow.remove());
+      cell.querySelector(".gv-fix-save").addEventListener("click", () => {
+        const newVal = cell.querySelector(".gv-fix-input").value;
+        const reason = cell.querySelector(".gv-fix-reason").value;
+        addEdit({
+          id: "e" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+          kind: "fix",
+          table: m.table,
+          pk,
+          column: colName,
+          from_value: current == null ? null : current,
+          to_value: coerceLikely(newVal, current),
+          reason: reason || null,
+          issue_id: m.issue_id || null,
+          timestamp: new Date().toISOString(),
+        });
+        renderEditLogSidebar();
+        editorRow.remove();
+      });
+    }
+
+    // Cross-instance handle so the validation-report chrome (which
+    // lives outside this closure) can open the same editor UI on a
+    // findings-table row.
+    window.gmnspyEditor = window.gmnspyEditor || {};
+    window.gmnspyEditor.openInRow = openInRowEditor;
 
     function openInlineEditor(triggerBtn, m) {
       // Replace the popup action bar with a small form for the suspect column.
@@ -443,27 +517,56 @@
     }
 
     function buildYaml() {
+      // Emits a network-wrangler ProjectCard:
+      //   project: <name>
+      //   tags: [gmnspy, edit-log]
+      //   notes: |
+      //     source: ...
+      //     spec_version: ...
+      //     created_at: ...
+      //     client: gmnspy.map (browser)
+      //   changes:
+      //     - roadway_property_change:
+      //         facility:
+      //           model_link_id: [42]     # or model_node_id for node edits
+      //         property_changes:
+      //           free_speed:
+      //             existing: 40           # our "from" (omitted when null)
+      //             set: 25                # our "to"
+      //         notes: 'reason · issue_id=i0 · edit_id=e...'
+      //
+      // Node property changes aren't a first-class ProjectCard type; we
+      // emit the same shape via ``model_node_id`` as a gmnspy extension
+      // so the file round-trips through gmnspy.map.edits.load_edit_log.
       const log = loadEditLog();
-      // Hand-rolled — tiny scope, simple shape, no need to vendor a YAML lib.
-      let s = "edit_log:\n";
-      s += "  schema_version: '1'\n";
+      const PK_TO_FACILITY = { link_id: "model_link_id", node_id: "model_node_id" };
+      let s = "";
+      s += "project: gmnspy edits " + new Date().toISOString() + "\n";
+      s += "tags: [gmnspy, edit-log]\n";
+      s += "notes: |\n";
       s += "  created_at: " + new Date().toISOString() + "\n";
       s += "  client: gmnspy.map (browser)\n";
-      s += "  edits:\n";
+      s += "changes:\n";
       log.forEach((e) => {
-        s += "    - id: " + yamlScalar(e.id) + "\n";
-        s += "      kind: " + yamlScalar(e.kind) + "\n";
-        s += "      table: " + yamlScalar(e.table) + "\n";
-        s += "      pk:\n";
-        for (const [k, v] of Object.entries(e.pk)) {
-          s += "        " + k + ": " + yamlScalar(v) + "\n";
+        let facKey = null, facId = null;
+        for (const [col, val] of Object.entries(e.pk || {})) {
+          if (PK_TO_FACILITY[col]) { facKey = PK_TO_FACILITY[col]; facId = val; break; }
         }
-        s += "      column: " + yamlScalar(e.column) + "\n";
-        s += "      from: " + yamlScalar(e.from_value) + "\n";
-        s += "      to: " + yamlScalar(e.to_value) + "\n";
-        if (e.reason) s += "      reason: " + yamlScalar(e.reason) + "\n";
-        if (e.issue_id) s += "      issue_id: " + yamlScalar(e.issue_id) + "\n";
-        if (e.timestamp) s += "      timestamp: " + yamlScalar(e.timestamp) + "\n";
+        if (!facKey) return; // skip unsupported PK shape
+        s += "  - roadway_property_change:\n";
+        s += "      facility:\n";
+        s += "        " + facKey + ": [" + yamlScalar(facId) + "]\n";
+        s += "      property_changes:\n";
+        s += "        " + e.column + ":\n";
+        if (e.from_value !== null && e.from_value !== undefined) {
+          s += "          existing: " + yamlScalar(e.from_value) + "\n";
+        }
+        s += "          set: " + yamlScalar(e.to_value) + "\n";
+        const bits = [];
+        if (e.reason) bits.push(e.reason);
+        if (e.issue_id) bits.push("issue_id=" + e.issue_id);
+        if (e.id) bits.push("edit_id=" + e.id);
+        if (bits.length) s += "      notes: " + yamlScalar(bits.join(" · ")) + "\n";
       });
       return s;
     }

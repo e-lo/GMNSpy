@@ -87,7 +87,9 @@ Inputs:
           {% for issue in issues %}
           <tr data-issue-id="{{ issue.issue_id }}"
               data-severity="{{ issue.severity }}"
-              data-table="{{ issue.table or '' }}">
+              data-table="{{ issue.table or '' }}"
+              {%- if issue.row_props %} data-row-props='{{ issue.row_props | tojson }}'{% endif %}
+              {%- if issue.column %} data-column="{{ issue.column }}"{% endif %}>
             <td><span class="gv-sev severity-{{ issue.severity }}">{{ issue.severity|upper }}</span></td>
             <td><code class="gv-code">{{ issue.code }}</code></td>
             <td>
@@ -99,8 +101,9 @@ Inputs:
               {{ issue.message }}
               {% if issue.fix_hint %}<div class="gv-fixhint">&rarr; {{ issue.fix_hint }}</div>{% endif %}
             </td>
-            <td>
-              {% if issue.edit_url %}<a class="gv-osm-link" href="{{ issue.edit_url }}" target="_blank" rel="noopener noreferrer">Edit in OSM &rarr;</a>{% endif %}
+            <td class="gv-cell-actions">
+              {% if issue.row_props and issue.column %}<button type="button" class="gv-action gv-action-fix" data-row-fix-locally="{{ issue.issue_id }}">Fix locally</button>{% endif %}
+              {% if issue.edit_url %}<a class="gv-action gv-osm-link" href="{{ issue.edit_url }}" target="_blank" rel="noopener noreferrer">Fix upstream (OSM) &rarr;</a>{% endif %}
             </td>
           </tr>
           {% endfor %}
@@ -137,6 +140,30 @@ Inputs:
           document.querySelectorAll("tr.is-highlighted").forEach((r) => r.classList.remove("is-highlighted"));
           row.classList.add("is-highlighted");
           row.scrollIntoView({ behavior: "smooth", block: "center" });
+        });
+      });
+
+      // "Fix locally" from a table row → expand the row with the inline
+      // mini-editor. Reuses window.gmnspyEditor.open() defined in
+      // map_component.js so the flow is identical to the marker-popup
+      // path (same PK extraction, same coercion, same edit-log target).
+      document.querySelectorAll("[data-row-fix-locally]").forEach((btn) => {
+        btn.addEventListener("click", (ev) => {
+          ev.preventDefault();
+          const row = btn.closest("tr");
+          if (!row || !window.gmnspyEditor) return;
+          let rowProps;
+          try { rowProps = JSON.parse(row.getAttribute("data-row-props") || "null"); }
+          catch { rowProps = null; }
+          if (!rowProps) return;
+          window.gmnspyEditor.openInRow(row, {
+            issue_id: row.getAttribute("data-issue-id"),
+            table: row.getAttribute("data-table"),
+            column: row.getAttribute("data-column"),
+            row_props: rowProps,
+            code: row.querySelector("code.gv-code")?.textContent || "",
+            message: row.querySelector("td:nth-child(4)")?.firstChild?.textContent?.trim() || "",
+          });
         });
       });
     })();

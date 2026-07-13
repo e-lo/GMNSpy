@@ -40,6 +40,7 @@ In the browser:
 
 Then back in Python:
 
+<!-- doctest: skip -->
 ```python
 from gmnspy import Network
 from gmnspy.map.edits import apply_edits, load_edit_log
@@ -59,34 +60,43 @@ result.net.save_as("./my-net-v2")      # write to a new directory
 
 ## The edit log shape
 
-A YAML file under a top-level `edit_log:` key. Each entry is one fix
-proposal, identified by table + primary key (not by positional row
-index — PKs survive row reordering / partial reloads):
+The download is a [network-wrangler ProjectCard](https://network-wrangler.github.io/projectcard/main/json-schemas/):
+one card per session, with a top-level `changes:` array of
+`roadway_property_change` entries. Each fix targets a single row via its
+primary key (not positional row index — PKs survive row reordering
+and partial reloads):
 
 ```yaml
-edit_log:
-  schema_version: '1'
-  created_at: 2026-06-30T19:00:00Z
+project: gmnspy edits 2026-06-30T19:00:00.000Z
+tags: [gmnspy, edit-log]
+notes: |
+  created_at: 2026-06-30T19:00:00.000Z
   client: gmnspy.map (browser)
-  edits:
-    - id: el7f9c3a
-      kind: fix
-      table: link
-      pk:
-        link_id: 42
-      column: free_speed
-      from: null
-      to: 25
-      reason: 'schema.required: free_speed missing'
-      issue_id: i0
-      timestamp: 2026-06-30T19:01:23Z
+changes:
+  - roadway_property_change:
+      facility:
+        model_link_id: [42]
+      property_changes:
+        free_speed:
+          existing: null            # gmnspy "from" — drift check on apply
+          set: 25                   # gmnspy "to"
+      notes: 'schema.required: free_speed missing · issue_id=i0 · edit_id=el7f9c3a'
 ```
 
-`from:` is the value the browser-side editor *thought* was there when
-you proposed the fix. The applier uses it for a drift check — if the
-table's current value differs, the edit is skipped (with a reason)
-rather than silently clobbering a concurrent change. Use `from: null`
-to disable the drift check.
+**Interop with network-wrangler.** The file is a real ProjectCard; you
+can pipe it into network-wrangler's own tooling. GMNS `link_id` maps to
+`model_link_id` in the facility selector; per-cell values live under
+`property_changes.<column>.set` with an optional `existing` drift
+check. Node property changes emit with the same shape via
+`model_node_id` — that's a gmnspy extension since standard
+ProjectCard doesn't have a first-class node-property-change type;
+network-wrangler may accept or reject depending on its version.
+
+`existing:` is the value the browser-side editor *thought* was there
+when you proposed the fix. `apply_edits` uses it for a drift check —
+if the table's current value differs, the edit is skipped (with a
+reason) rather than silently clobbering a concurrent change. Omit
+`existing:` (or send `null`) to disable the check.
 
 ## Variations
 
