@@ -1,28 +1,31 @@
 """Edit log — the bridge from interactive viewer to Python-side network mutation.
 
-Phase 1 of the editing story. The interactive viewer
-(:class:`~gmnspy.map.NetworkMap`) collects proposed fixes per user click
-and lets the user download the accumulated log as YAML. This module is
-the Python half: load that YAML, replay it against a
-:class:`~gmnspy.network.Network`, save the mutated result.
+The interactive viewer (:class:`~gmnspy.map.NetworkMap`) collects
+proposed fixes per user click and lets the user download the
+accumulated session as a `network-wrangler ProjectCard
+<https://network-wrangler.github.io/projectcard/main/json-schemas/>`_
+YAML. This module is the Python half: load that YAML, replay it
+against a :class:`~gmnspy.network.Network`, save the mutated result.
 
-Design intent (per the user-driven workflow):
+Design intent:
 
 * **Identify rows by primary key, not positional row index.** Positional
   rows are not stable across reloads / partial scans / partial deletes;
   PKs (``link_id``, ``node_id``, …) are.
 * **Two halves: browser collects, Python applies.** The browser is good
   at click-by-click triage. Python is good at deterministic, typed
-  mutation. Keep them cleanly separated; the YAML log is the boundary.
-* **Forward-compatible with ProjectCard.** Phase 1 only handles
-  ``kind: fix`` (per-cell value changes). The schema reserves
-  ``kind: modification`` for future ProjectCard payloads so the on-disk
-  log format doesn't need migration when modifications land.
+  mutation. The YAML log is the boundary.
+* **ProjectCard-compatible on disk.** Each session serialises to a
+  single ProjectCard with a top-level ``changes`` array. Each per-cell
+  fix becomes one ``roadway_property_change`` entry. The file is
+  consumable by network-wrangler; extension fields (e.g. node
+  property changes via ``model_node_id``) are permitted and gmnspy
+  parses them faithfully on round-trip.
 
 The default applier runs through the pandas engine — i.e. the returned
 ``ApplyResult.net`` always backs its mutated tables with
 :class:`~datagrove.engines.pandas_engine.PandasEngine`. Other engines'
-lazy expressions aren't mutated in place; that's a Phase-2 concern.
+lazy expressions aren't mutated in place; that's a future concern.
 """
 
 from __future__ import annotations
@@ -50,6 +53,15 @@ __all__ = [
 # The on-disk schema version we accept. Bumping this is a breaking change
 # — load_edit_log rejects anything else loud and clear.
 _SCHEMA_VERSION = "1"
+
+# GMNS primary-key column → ProjectCard facility selector key. network-wrangler
+# uses ``model_link_id`` / ``model_node_id`` for its road-network model; we
+# translate on both sides so the on-disk YAML stays interoperable.
+_PK_COL_TO_FACILITY_KEY = {"link_id": "model_link_id", "node_id": "model_node_id"}
+_FACILITY_KEY_TO_TABLE_PK = {
+    "model_link_id": ("link", "link_id"),
+    "model_node_id": ("node", "node_id"),
+}
 
 
 # ---------------------------------------------------------------------------
@@ -144,7 +156,16 @@ class ApplyResult:
 
 
 def load_edit_log(path: str | Path) -> EditLog:
-    """Load an edit log from a YAML file.
+    """Load an edit log from a network-wrangler ProjectCard YAML file.
+
+    Accepts a single project card whose top-level ``changes`` is an
+    array of ``roadway_property_change`` entries. Each entry becomes
+    one :class:`Edit`.
+
+    The ``project`` name and top-level ``notes`` (when present) round-trip
+    onto ``EditLog.source`` (best effort — we pull ``source: <val>`` and
+    ``spec_version: <val>`` lines from a structured notes block if they
+    were written by :func:`dump_edit_log`).
 
     Args:
         path: Path to the YAML file produced by the viewer (or hand-written).
@@ -153,7 +174,8 @@ def load_edit_log(path: str | Path) -> EditLog:
         The parsed :class:`EditLog`.
 
     Raises:
-        ValueError: When the file's ``schema_version`` is not supported.
+        ValueError: When the top-level document is not a recognisable
+            ProjectCard shape (no ``project`` key, no ``changes`` array).
         ImportError: When ``pyyaml`` is not installed (it ships in the
             ``[reports]`` extra).
     """
@@ -165,48 +187,116 @@ def load_edit_log(path: str | Path) -> EditLog:
         ) from e
 
     data = yaml.safe_load(Path(path).read_text(encoding="utf-8")) or {}
-    if isinstance(data, dict) and "edit_log" in data:
-        data = data["edit_log"]
-
-    version = str(data.get("schema_version", ""))
-    if version != _SCHEMA_VERSION:
+    if not isinstance(data, dict) or "project" not in data:
         raise ValueError(
-            f"unsupported edit-log schema_version {version!r}; this version of "
-            f"gmnspy.map.edits expects {_SCHEMA_VERSION!r}"
+            "not a ProjectCard: expected a top-level 'project' key. "
+            "See https://network-wrangler.github.io/projectcard/main/json-schemas/"
         )
 
-    edits = [
-        Edit(
-            id=e["id"],
-            kind=e["kind"],
-            table=e["table"],
-            pk=dict(e["pk"]),
-            column=e["column"],
-            from_value=e.get("from"),
-            to_value=e.get("to"),
-            reason=e.get("reason"),
-            issue_id=e.get("issue_id"),
-            timestamp=e.get("timestamp"),
-        )
-        for e in data.get("edits", [])
-    ]
+    # Accept either the multi-change wrapper (top-level ``changes: [...]``)
+    # or a single-change card (top-level one-off ``roadway_property_change``).
+    raw_changes: list[dict[str, Any]] = []
+    if isinstance(data.get("changes"), list):
+        raw_changes = data["changes"]
+    elif "roadway_property_change" in data:
+        raw_changes = [{"roadway_property_change": data["roadway_property_change"]}]
+    else:
+        raise ValueError("ProjectCard has no 'changes' array and no top-level 'roadway_property_change'")
+
+    edits: list[Edit] = []
+    for i, change in enumerate(raw_changes):
+        rpc = change.get("roadway_property_change") if isinstance(change, dict) else None
+        if not isinstance(rpc, dict):
+            continue  # skip change types we don't handle (e.g. roadway_addition)
+        edits.extend(_edits_from_roadway_property_change(rpc, seq=i))
+
+    # Metadata round-trip out of the top-level notes block.
+    notes = data.get("notes") or ""
     return EditLog(
-        schema_version=version,
-        source=data.get("source"),
-        spec_version=data.get("spec_version"),
-        created_at=data.get("created_at"),
-        client=data.get("client"),
+        schema_version=_SCHEMA_VERSION,
+        source=_notes_lookup(notes, "source"),
+        spec_version=_notes_lookup(notes, "spec_version"),
+        created_at=_notes_lookup(notes, "created_at"),
+        client=_notes_lookup(notes, "client"),
         edits=edits,
     )
 
 
-def dump_edit_log(log: EditLog, path: str | Path) -> None:
-    """Write an edit log to a YAML file.
+def _edits_from_roadway_property_change(rpc: dict[str, Any], *, seq: int) -> list[Edit]:
+    """Expand one ``roadway_property_change`` into one Edit per changed cell.
 
-    The ``from_value`` / ``to_value`` dataclass fields are written under
-    their YAML-natural ``from:`` / ``to:`` keys (``from`` is reserved in
-    Python so we can't name the field that, but the on-disk shape stays
-    natural).
+    A single roadway_property_change may target multiple facilities
+    (facility ids list) and multiple properties. We fan it out to
+    per-``(pk, column)`` :class:`Edit` records so ``apply_edits``
+    stays cell-scoped.
+    """
+    facility = rpc.get("facility") or {}
+    property_changes = rpc.get("property_changes") or {}
+    change_notes = rpc.get("notes")
+
+    # Facility selector — first supported key wins. GMNS tables have at
+    # most one primary-key column so this is unambiguous.
+    fac_key: str | None = None
+    ids: list[Any] = []
+    for candidate in ("model_link_id", "model_node_id"):
+        if candidate in facility:
+            fac_key = candidate
+            raw = facility[candidate]
+            ids = list(raw) if isinstance(raw, list) else [raw]
+            break
+    if fac_key is None or not ids:
+        return []
+    table, pk_col = _FACILITY_KEY_TO_TABLE_PK[fac_key]
+
+    out: list[Edit] = []
+    for fid in ids:
+        for j, (column, change_spec) in enumerate(property_changes.items()):
+            if not isinstance(change_spec, dict) or "set" not in change_spec:
+                continue
+            out.append(
+                Edit(
+                    id=f"c{seq}f{fid}p{j}",
+                    kind="fix",
+                    table=table,
+                    pk={pk_col: fid},
+                    column=column,
+                    from_value=change_spec.get("existing"),
+                    to_value=change_spec["set"],
+                    reason=change_notes if isinstance(change_notes, str) else None,
+                    issue_id=None,
+                    timestamp=None,
+                )
+            )
+    return out
+
+
+def _notes_lookup(notes: str, key: str) -> str | None:
+    """Extract a ``key: value`` line from a structured top-level notes block."""
+    if not isinstance(notes, str):
+        return None
+    prefix = f"{key}:"
+    for line in notes.splitlines():
+        stripped = line.strip()
+        if stripped.startswith(prefix):
+            return stripped[len(prefix) :].strip() or None
+    return None
+
+
+def dump_edit_log(log: EditLog, path: str | Path) -> None:
+    """Write an edit log as a network-wrangler ProjectCard YAML file.
+
+    Emits a single project card with a top-level ``changes`` array.
+    Each :class:`Edit` becomes one ``roadway_property_change`` — the
+    facility selector uses ``model_link_id`` / ``model_node_id`` per
+    network-wrangler convention. gmnspy-specific metadata (source,
+    spec_version, issue_id, edit id, timestamp) rides on the card's
+    top-level ``notes`` block and the per-change ``notes`` field so it
+    round-trips without breaking ProjectCard consumers.
+
+    Node property changes aren't a first-class ProjectCard change type;
+    we emit them with the same shape via ``model_node_id`` as an
+    extension so gmnspy round-trips faithfully. network-wrangler may
+    accept or reject them depending on its version.
     """
     try:
         import yaml
@@ -215,43 +305,66 @@ def dump_edit_log(log: EditLog, path: str | Path) -> None:
             "gmnspy.map.edits requires pyyaml from the [reports] extra: pip install 'gmnspy[reports]'"
         ) from e
 
-    body = {
-        "schema_version": log.schema_version,
-        **{
-            k: v
-            for k, v in {
-                "source": log.source,
-                "spec_version": log.spec_version,
-                "created_at": log.created_at,
-                "client": log.client,
-            }.items()
-            if v is not None
-        },
-        "edits": [
-            {
-                "id": e.id,
-                "kind": e.kind,
-                "table": e.table,
-                "pk": e.pk,
-                "column": e.column,
-                "from": e.from_value,
-                "to": e.to_value,
-                **{
-                    k: v
-                    for k, v in {
-                        "reason": e.reason,
-                        "issue_id": e.issue_id,
-                        "timestamp": e.timestamp,
-                    }.items()
-                    if v is not None
-                },
+    changes: list[dict[str, Any]] = []
+    for e in log.edits:
+        # Only "fix" edits emit as roadway_property_change today; future
+        # kinds (modification / project_card) would emit as their own
+        # change types.
+        if e.kind != "fix":
+            continue
+        # Pick the PK column that maps to a facility key.
+        fac_key = None
+        fac_id = None
+        for col, val in e.pk.items():
+            if col in _PK_COL_TO_FACILITY_KEY:
+                fac_key = _PK_COL_TO_FACILITY_KEY[col]
+                fac_id = val
+                break
+        if fac_key is None:
+            continue  # skip unsupported PK shape
+
+        prop_change: dict[str, Any] = {}
+        if e.from_value is not None:
+            prop_change["existing"] = e.from_value
+        prop_change["set"] = e.to_value
+
+        # Per-change note — reason + issue_id + edit id, if any.
+        note_bits: list[str] = []
+        if e.reason:
+            note_bits.append(e.reason)
+        if e.issue_id:
+            note_bits.append(f"issue_id={e.issue_id}")
+        if e.id:
+            note_bits.append(f"edit_id={e.id}")
+
+        change: dict[str, Any] = {
+            "roadway_property_change": {
+                "facility": {fac_key: [fac_id]},
+                "property_changes": {e.column: prop_change},
             }
-            for e in log.edits
-        ],
+        }
+        if note_bits:
+            change["roadway_property_change"]["notes"] = " · ".join(note_bits)
+        changes.append(change)
+
+    # Top-level structured notes so metadata survives the round-trip.
+    top_notes_lines: list[str] = []
+    for key in ("source", "spec_version", "created_at", "client"):
+        val = getattr(log, key)
+        if val is not None:
+            top_notes_lines.append(f"{key}: {val}")
+
+    body: dict[str, Any] = {
+        "project": f"gmnspy edits {log.created_at or ''}".strip(),
+        "tags": ["gmnspy", "edit-log"],
     }
+    if top_notes_lines:
+        body["notes"] = "\n".join(top_notes_lines)
+    body["changes"] = changes
+
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(yaml.safe_dump({"edit_log": body}, default_flow_style=False, sort_keys=False))
+    target.write_text(yaml.safe_dump(body, default_flow_style=False, sort_keys=False))
 
 
 # ---------------------------------------------------------------------------

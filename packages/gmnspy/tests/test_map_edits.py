@@ -96,12 +96,98 @@ def test_edit_log_is_serialisable_roundtrip_via_yaml(tmp_path):
     assert loaded.edits[0].to_value == 25
 
 
-def test_load_edit_log_rejects_unknown_schema_version(tmp_path):
-    """A future schema bump should be a loud error, not silent misparse."""
+def test_dump_edit_log_emits_projectcard_shape(tmp_path):
+    """The on-disk YAML is a network-wrangler ProjectCard.
+
+    - Top-level ``project`` key (required by ProjectCard schema)
+    - Top-level ``changes`` array
+    - Each change wraps a ``roadway_property_change`` with a facility
+      selector (``model_link_id`` for link edits, ``model_node_id``
+      for node edits) and ``property_changes`` values with ``existing``
+      (drift check) + ``set`` (new value).
+    """
+    import yaml
+
+    log = EditLog(
+        source="./tiny",
+        spec_version="0.97",
+        edits=[
+            Edit(
+                id="e1",
+                kind="fix",
+                table="link",
+                pk={"link_id": 42},
+                column="free_speed",
+                from_value=40,
+                to_value=25,
+                reason="schema.required: free_speed missing",
+                issue_id="i0",
+            ),
+            Edit(
+                id="e2",
+                kind="fix",
+                table="node",
+                pk={"node_id": 7},
+                column="y_coord",
+                from_value=None,
+                to_value=47.6022,
+            ),
+        ],
+    )
+    path = tmp_path / "edits.yaml"
+    dump_edit_log(log, path)
+    data = yaml.safe_load(path.read_text())
+
+    assert "project" in data, "ProjectCard requires a top-level 'project' key"
+    assert isinstance(data.get("changes"), list) and len(data["changes"]) == 2
+
+    first = data["changes"][0]["roadway_property_change"]
+    assert first["facility"] == {"model_link_id": [42]}
+    assert first["property_changes"]["free_speed"]["existing"] == 40
+    assert first["property_changes"]["free_speed"]["set"] == 25
+    assert "schema.required" in first["notes"]
+    assert "issue_id=i0" in first["notes"]
+
+    second = data["changes"][1]["roadway_property_change"]
+    assert second["facility"] == {"model_node_id": [7]}
+    # from_value=None → no drift key emitted (empty `existing` would be
+    # ambiguous with "existing null" for a real column default).
+    assert "existing" not in second["property_changes"]["y_coord"]
+    assert second["property_changes"]["y_coord"]["set"] == 47.6022
+
+
+def test_load_edit_log_rejects_non_projectcard_shape(tmp_path):
+    """Not a ProjectCard: no ``project`` key → loud error, not silent misparse."""
     bad = tmp_path / "bad.yaml"
-    bad.write_text("edit_log:\n  schema_version: '99'\n  edits: []\n")
-    with pytest.raises(ValueError, match="schema_version"):
+    bad.write_text("something_else:\n  - foo\n")
+    with pytest.raises(ValueError, match="ProjectCard"):
         load_edit_log(bad)
+
+
+def test_load_edit_log_reads_hand_written_projectcard(tmp_path):
+    """A ProjectCard someone hand-wrote (no gmnspy metadata) still loads.
+
+    Real network-wrangler workflows: a user hand-authored a card
+    without ever touching the viewer. We still parse it and produce
+    valid Edits that apply_edits can consume.
+    """
+    path = tmp_path / "hand.yaml"
+    path.write_text(
+        "project: hand-authored\n"
+        "changes:\n"
+        "  - roadway_property_change:\n"
+        "      facility:\n"
+        "        model_link_id: [5]\n"
+        "      property_changes:\n"
+        "        free_speed:\n"
+        "          set: 30\n"
+    )
+    log = load_edit_log(path)
+    assert len(log.edits) == 1
+    assert log.edits[0].pk == {"link_id": 5}
+    assert log.edits[0].column == "free_speed"
+    assert log.edits[0].to_value == 30
+    assert log.edits[0].from_value is None
 
 
 # ---------------------------------------------------------------------------

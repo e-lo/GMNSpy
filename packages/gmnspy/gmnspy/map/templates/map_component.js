@@ -517,27 +517,56 @@
     }
 
     function buildYaml() {
+      // Emits a network-wrangler ProjectCard:
+      //   project: <name>
+      //   tags: [gmnspy, edit-log]
+      //   notes: |
+      //     source: ...
+      //     spec_version: ...
+      //     created_at: ...
+      //     client: gmnspy.map (browser)
+      //   changes:
+      //     - roadway_property_change:
+      //         facility:
+      //           model_link_id: [42]     # or model_node_id for node edits
+      //         property_changes:
+      //           free_speed:
+      //             existing: 40           # our "from" (omitted when null)
+      //             set: 25                # our "to"
+      //         notes: 'reason · issue_id=i0 · edit_id=e...'
+      //
+      // Node property changes aren't a first-class ProjectCard type; we
+      // emit the same shape via ``model_node_id`` as a gmnspy extension
+      // so the file round-trips through gmnspy.map.edits.load_edit_log.
       const log = loadEditLog();
-      // Hand-rolled — tiny scope, simple shape, no need to vendor a YAML lib.
-      let s = "edit_log:\n";
-      s += "  schema_version: '1'\n";
+      const PK_TO_FACILITY = { link_id: "model_link_id", node_id: "model_node_id" };
+      let s = "";
+      s += "project: gmnspy edits " + new Date().toISOString() + "\n";
+      s += "tags: [gmnspy, edit-log]\n";
+      s += "notes: |\n";
       s += "  created_at: " + new Date().toISOString() + "\n";
       s += "  client: gmnspy.map (browser)\n";
-      s += "  edits:\n";
+      s += "changes:\n";
       log.forEach((e) => {
-        s += "    - id: " + yamlScalar(e.id) + "\n";
-        s += "      kind: " + yamlScalar(e.kind) + "\n";
-        s += "      table: " + yamlScalar(e.table) + "\n";
-        s += "      pk:\n";
-        for (const [k, v] of Object.entries(e.pk)) {
-          s += "        " + k + ": " + yamlScalar(v) + "\n";
+        let facKey = null, facId = null;
+        for (const [col, val] of Object.entries(e.pk || {})) {
+          if (PK_TO_FACILITY[col]) { facKey = PK_TO_FACILITY[col]; facId = val; break; }
         }
-        s += "      column: " + yamlScalar(e.column) + "\n";
-        s += "      from: " + yamlScalar(e.from_value) + "\n";
-        s += "      to: " + yamlScalar(e.to_value) + "\n";
-        if (e.reason) s += "      reason: " + yamlScalar(e.reason) + "\n";
-        if (e.issue_id) s += "      issue_id: " + yamlScalar(e.issue_id) + "\n";
-        if (e.timestamp) s += "      timestamp: " + yamlScalar(e.timestamp) + "\n";
+        if (!facKey) return; // skip unsupported PK shape
+        s += "  - roadway_property_change:\n";
+        s += "      facility:\n";
+        s += "        " + facKey + ": [" + yamlScalar(facId) + "]\n";
+        s += "      property_changes:\n";
+        s += "        " + e.column + ":\n";
+        if (e.from_value !== null && e.from_value !== undefined) {
+          s += "          existing: " + yamlScalar(e.from_value) + "\n";
+        }
+        s += "          set: " + yamlScalar(e.to_value) + "\n";
+        const bits = [];
+        if (e.reason) bits.push(e.reason);
+        if (e.issue_id) bits.push("issue_id=" + e.issue_id);
+        if (e.id) bits.push("edit_id=" + e.id);
+        if (bits.length) s += "      notes: " + yamlScalar(bits.join(" · ")) + "\n";
       });
       return s;
     }
