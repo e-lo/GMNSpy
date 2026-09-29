@@ -10,5 +10,6 @@ interstates/state routes live in `ref`, not `name`. Used by
 `gmnspy.select` tests to exercise natural-language selection on real
 limited-access interchange topology.
 
-Rebuild: `python build_fixture.py` (see the spike scratchpad). Data © OpenStreetMap
+Rebuild: `python build.py` (run from the `packages/gmnspy` dir with the
+`[osm,graph]` extras installed; hits the Overpass API). Data © OpenStreetMap
 contributors, ODbL.
