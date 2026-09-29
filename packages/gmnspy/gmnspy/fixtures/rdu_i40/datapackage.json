@@ -1,0 +1,27 @@
+{
+  "$schema": "https://datapackage.org/profiles/2.0/datapackage.json",
+  "name": "rdu-i40",
+  "description": "Small GMNS network (I-40 in Research Triangle Park, NC; South Miami Blvd / Page Rd / Airport Blvd interchanges) synthesized from OpenStreetMap. Carries the OSM `ref` tag. Bundled for gmnspy.select natural-language selection tests.",
+  "homepage": "https://github.com/e-lo/GMNSpy",
+  "licenses": [
+    {"name": "ODbL-1.0", "path": "https://opendatacommons.org/licenses/odbl/1-0/", "title": "Open Database License"}
+  ],
+  "resources": [
+    {
+      "encoding": "utf-8",
+      "format": "csv",
+      "mediatype": "text/csv",
+      "name": "node",
+      "path": "csv/node.csv",
+      "schema": "../../spec/0.97/node.schema.json"
+    },
+    {
+      "encoding": "utf-8",
+      "format": "csv",
+      "mediatype": "text/csv",
+      "name": "link",
+      "path": "csv/link.csv",
+      "schema": "../../spec/0.97/link.schema.json"
+    }
+  ]
+}
