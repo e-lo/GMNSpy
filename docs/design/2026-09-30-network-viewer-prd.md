@@ -223,10 +223,18 @@ These future modes influence the tech approach now: a **per-feature-class layer 
   **per-feature scalar/vector attributes** — precompute offline (Python/GeoParquet), pass as
   binary, never per-feature JS in the browser. Prefer **stock deck.gl layers + extensions** over
   custom shaders; push heavy transforms (WKT parse, shape-cutting, diff join) to the backend.
-- **Scale path:** whole network resident as typed arrays (~1–2M links, memory-bound) is the
-  default (SimWrapper-style). Escape hatches that keep the *same* deck.gl layer: server-side
-  **bbox streaming** (send only viewport links) and, only if truly needed, **PMTiles** vector
-  tiles. Consistency preserved because the layer/data-format stays constant.
+- **Scale path — a proven two-track model (Overture explorer, all permissive licenses).**
+  Overture (GeoParquet/DuckDB-native, the closest match to our stance) does NOT stream raw
+  GeoParquet per-frame for the whole planet; it splits: (1) **PMTiles vector tiles** rendered by
+  MapLibre for the *whole-network overview at scale* (single static file, HTTP range requests, no
+  tile server), and (2) **GeoArrow → deck.gl** (via `geoarrow-rs`/`parquet-wasm`) for the
+  *active/filtered/queried subset* and export. **`lonboard` (MIT)** is the reference for track (2)
+  and validates our binary pipeline (GeoParquet→GeoArrow→deck.gl, no GeoJSON; ~50× over
+  GeoJSON-based tools). Mapping to GMNS: **deck.gl-binary GeoArrow is the default** for the working
+  network / selection (memory-bound, ~1–2M links, no tile build); add a **PMTiles overview track**
+  only when a network is too big to hold resident. Both tracks share MapLibre + the same data
+  origin, so consistency holds. Plus a cheap high-value **"export visible viewport"** (→ GeoParquet/
+  GeoJSON) feature falls out of track (2).
 - **Backend:** FastAPI (reuse `datagrove.api` composition), consistent with `gmnspy
   select-serve`; endpoints: network binary buffers, attribute detail, selection resolve, diff.
 - **Frontend footprint:** deck.gl + luma + MapLibre + a small offset-shader layer + a
@@ -284,7 +292,7 @@ with offline shape-cutting.)*
 - **QGIS diff conventions** — green=added / red=removed / amber=modified (Mergin Maps changes
   viewer; LayerDiffViewer). Establishes the diff palette + separate-layer-per-change pattern.
 
-**Under review (2nd prior-art pass — GUI/UX + parquet viz + NL interaction):**
+**2nd prior-art pass (reviewed — folded into §8, §14, §15):**
 - **Overture Maps explorer** (https://explore.overturemaps.org/) — GeoParquet + duckdb ecosystem;
   closest match to our storage stance for "render whole network from GeoParquet fast."
 - **conveyal/transitive.js** — schematic/stylized transit rendering ideas (dated tech).
@@ -342,3 +350,54 @@ freely learn from any tool (including commercial ones); the line is *copying cod
 **Net:** the recommended architecture (MapLibre + deck.gl + GeoArrow/GeoParquet + DuckDB, optional
 PMTiles) is entirely permissive and clean for an Apache-2.0 project. The only copyleft in view is
 SimWrapper, handled by treating it as an ideas reference and not copying its code.
+
+## 14. GUI / UX patterns to adopt (prior-art review)
+
+Ranked, each with the product that demonstrates it (all realistic for an OSS parquet/duckdb +
+deck.gl tool; realtime multi-user collab and cloud-warehouse coupling are explicitly out of scope):
+
+1. **End-to-end binary pipeline, GeoArrow → deck.gl, never GeoJSON** (lonboard). Foundational;
+   confirms §8. GeoParquet on disk + DuckDB for query.
+2. **Two-track rendering:** PMTiles overview for the whole network + GeoArrow/deck.gl for the
+   active/filtered subset (Overture). The realistic "render the whole network fast" path (§8).
+3. **Linked stats widgets with cross-filtering** — histogram/category/formula panels that both
+   summarize and *filter* the map (and each other) by field + viewport (CARTO). Highest-value
+   analytical UX; back it with DuckDB SQL over Parquet. → new capability for §5.
+4. **Accessor/expression style-by-attribute + `feature-state`-style hover/select** (Mapbox GL):
+   per-feature styling via deck.gl `getColor`/`getWidth` + `updateTriggers`; cheap highlight via
+   picking state without mutating source (fits §5.3/§5.4).
+5. **Auto-generated, live legend from a declarative, text-serializable style spec** where category
+   order = legend + draw order (Felt Style Language *idea* — we write our own spec, §13). Shareable
+   as a config file; fits the parquet/config ethos.
+6. **List-view (author) vs Legend-view (present) split, with all layer visibility in one place**
+   (Felt; Conveyal's split-visibility is the anti-pattern to avoid).
+7. **Route/line bundling + node consolidation + "highlight one, dim the rest"** for busy corridors
+   (transitive.js *concepts*, implemented on deck.gl PathLayer offsets — not schematic reprojection).
+8. **"Export visible viewport" (→ GeoParquet/GeoJSON) and SQL-defined layers** (Overture + CARTO) —
+   turns the viewer into a lightweight query/extract tool.
+
+## 15. NL interaction model (prior-art review)
+
+Keep our spine — **LLM emits a validated structured intent; deterministic code executes it** — which
+is exactly what the credible product (Felt, via its MCP tool catalog) converges on. Generalize it:
+
+- **Action schema (discriminated union of validated models), not generated code** for common ops.
+  `SelectIntent` (have it) is the primitive; add `StyleAction` (target + attribute + method + palette),
+  `FilterAction` (a **constrained predicate** validated against the GMNS field set — *not* free-form
+  NL→spatial-SQL, which the GeoSQL research shows hallucinates spatial functions), `NavigateAction`
+  (bbox/place/selection; geocoding is the one sanctioned external lookup). Later: `EditAction`,
+  `DiffAction`.
+- **Interaction surface:** a docked **chat panel** (keyboard-accessible) that composes these actions
+  over multi-turn context ("now color the selection by speed instead"), with a command-bar entry
+  feeding the same schema for power users.
+- **Trust/safety patterns to adopt (Felt):** (a) **execution transparency** — echo the structured
+  action + what changed; (b) **draft-before-apply** for anything mutating (essential once editing/
+  diffing land); (c) **`@`-references** to disambiguate layers/selections ("style @selection by
+  lanes"); (d) **scoped grounding** — feed the loaded layers + GMNS schema into the prompt so field/
+  op validation is deterministic; (e) **self-correction loop** — re-prompt with the validation error
+  rather than surfacing a raw failure.
+- **Reserve generated code/SQL** for an explicit, always-**reviewable-draft** "advanced" escape hatch
+  (Felt does this) — never the silent default.
+- **Avoid:** Monarcha's opaque "just describe it / 50+ tools, trust us" black-box framing (bad for
+  OSS auditability); free-form NL→spatial-SQL as the default; coupling the NL layer to one LLM
+  provider (keep the action schema plain JSON-schema tool defs → works across Anthropic/OpenAI/local).
