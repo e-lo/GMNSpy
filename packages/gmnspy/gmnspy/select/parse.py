@@ -48,18 +48,23 @@ class StubParser:
 
     def parse(self, utterance: str) -> SelectionIntent:
         text = utterance.strip()
-        m = re.search(r"\bbetween\b(.*)\band\b(.*)$", text, re.IGNORECASE)
-        if not m:
-            raise IntentError(f"could not parse a 'between A and B' selection from {utterance!r}")
-        head = text[: m.start()].strip()
-        from_anchor = self._clean_anchor(m.group(1))
-        to_anchor = self._clean_anchor(m.group(2))
+        # optional segment: "<facility> [dir] between A and B" OR "... from A to B";
+        # with no segment clause the whole facility is selected.
+        m = re.search(r"\b(?:between|from)\b(.*)\b(?:and|to)\b(.*)$", text, re.IGNORECASE)
+        if m:
+            head = text[: m.start()].strip()
+            from_anchor = self._clean_anchor(m.group(1))
+            to_anchor = self._clean_anchor(m.group(2))
+        else:
+            head, from_anchor, to_anchor = text, None, None
 
         direction = None
         tokens = head.split()
         if tokens and tokens[-1].lower() in _DIR_WORDS:
             direction = _DIR_WORDS[tokens[-1].lower()]
             head = " ".join(tokens[:-1]).strip()
+        if not head:
+            raise IntentError(f"could not find a facility in {utterance!r}")
 
         facility = _facility_from_text(head)
         return SelectionIntent(
@@ -74,24 +79,34 @@ class StubParser:
 
 
 #: Anthropic tool schema constraining the model to emit a SelectionIntent.
+#: Mirrors a ProjectCard roadway facility selection (see gmnspy.select.intent).
 INTENT_TOOL: dict[str, Any] = {
     "name": "emit_selection_intent",
-    "description": "Return the structured network selection described by the user. "
-                   "Never invent link or node ids; only describe the facility and anchors.",
+    "description": (
+        "Return the structured roadway selection the user described. Choose ONE primary "
+        "selector: a facility (by name and/or ref), select_all, or explicit link_ids. Add "
+        "from_anchor/to_anchor ONLY when the user wants a segment between two points; omit "
+        "them to select the whole facility. Use conditions for attribute filters (e.g. "
+        "\"where there are 2 lanes\" -> {\"lanes\": [2]}). Never invent link or node ids "
+        "unless the user gave them explicitly."
+    ),
     "input_schema": {
         "type": "object",
-        "required": ["facility", "from_anchor", "to_anchor"],
         "properties": {
             "facility": {
                 "type": "object",
                 "properties": {
                     "ref": {"type": "string", "description": "Route number e.g. 'I 40', 'NC 54'."},
-                    "name": {"type": "string", "description": "Street name if not a numbered route."},
+                    "name": {"type": "string", "description": "Street/road name, e.g. 'North Harrison Ave'."},
                     "direction": {"type": "string", "enum": ["EB", "WB", "NB", "SB"]},
                 },
             },
-            "from_anchor": {"type": "string", "description": "Upstream cross-street/interchange."},
-            "to_anchor": {"type": "string", "description": "Downstream cross-street/interchange."},
+            "from_anchor": {"type": "string", "description": "Upstream cross-street/interchange (segment start)."},
+            "to_anchor": {"type": "string", "description": "Downstream cross-street/interchange (segment end)."},
+            "select_all": {"type": "boolean", "description": "Select every link (then narrowed by conditions/modes)."},
+            "link_ids": {"type": "array", "items": {"type": "integer"}, "description": "Explicit link ids, only if the user gave them."},
+            "modes": {"type": "array", "items": {"type": "string"}, "description": "e.g. ['drive','bike','walk','transit']."},
+            "conditions": {"type": "object", "description": "Attribute AND-filters, {column: value | [values]}, e.g. {\"lanes\": [2,3]}."},
         },
     },
 }
@@ -117,10 +132,14 @@ class ClaudeParser:
             messages=[{"role": "user", "content": utterance}],
         )
         payload = self._extract_tool_input(resp)
-        fac = payload.get("facility", {})
+        fac = payload.get("facility") or {}
+        facility = (Facility(ref=fac.get("ref"), name=fac.get("name"), direction=fac.get("direction"))
+                    if (fac.get("ref") or fac.get("name")) else None)
         return SelectionIntent(
-            facility=Facility(ref=fac.get("ref"), name=fac.get("name"), direction=fac.get("direction")),
-            from_anchor=payload["from_anchor"], to_anchor=payload["to_anchor"], utterance=utterance,
+            facility=facility,
+            from_anchor=payload.get("from_anchor"), to_anchor=payload.get("to_anchor"),
+            select_all=bool(payload.get("select_all", False)), link_ids=payload.get("link_ids"),
+            modes=payload.get("modes"), conditions=payload.get("conditions") or {}, utterance=utterance,
         )
 
     @staticmethod

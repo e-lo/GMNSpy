@@ -26,6 +26,18 @@ def test_stub_surface_street_no_direction():
     assert intent.facility.direction is None
 
 
+def test_stub_from_to_grammar():
+    intent = StubParser().parse("I-40 EB from Davis Drive to Aviation Parkway")
+    assert intent.facility.ref == "I 40" and intent.facility.direction == "EB"
+    assert intent.from_anchor == "Davis Drive" and intent.to_anchor == "Aviation Parkway"
+
+
+def test_stub_bare_facility_is_whole_selection():
+    intent = StubParser().parse("Electra Ave")
+    assert intent.facility.name == "Electra Ave"
+    assert intent.from_anchor is None and intent.to_anchor is None
+
+
 def test_claude_parser_reads_tool_use_input():
     class _Block:
         type = "tool_use"

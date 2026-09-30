@@ -1,21 +1,22 @@
 """Resolve a SelectionIntent to GMNS link/node ids against a network.
 
-Pipeline (engine-agnostic; operates on materialized link/node frames):
-  1. facility narrowing  — normalized-exact ref/name among mainline links
-  2. direction filter     — link bearing within +-75 deg of the cardinal
-  3. anchor resolution    — gore/merge rule (see :mod:`gmnspy.select.anchors`)
-  4. path                 — shortest path along the directed carriageway
-  5. validate + classify  — contiguity + status
+ProjectCard-select-links parity. Pipeline (engine-agnostic; pandas frames):
+  1. base selection   — ``link_ids`` | ``select_all`` | facility (name/ref, any class)
+  2. direction filter — facility bearing within +-75 deg of the cardinal
+  3. modes/conditions — AND-filters on link attributes
+  4. segment or whole — if from/to anchors: shortest path along the facility
+     (freeway gore/merge); else the whole filtered set
 """
 from __future__ import annotations
 
 import collections
 
+import pandas as pd
+
 from . import anchors as _anchors
 from ._support import (
     bearing_deg,
     dijkstra_links,
-    is_link_class,
     link_length,
     matches_direction,
     norm_name,
@@ -27,77 +28,136 @@ from .result import SelectionResult
 
 __all__ = ["resolve_frames", "resolve"]
 
-_MAINLINE_TYPES = ("motorway", "trunk")
+_FREEWAY_TYPES = ("motorway", "trunk")
 
 
 def _node_coords(nodes):
-    nx = dict(zip(nodes["node_id"], nodes["x_coord"]))
-    ny = dict(zip(nodes["node_id"], nodes["y_coord"]))
-    return nx, ny
+    return (dict(zip(nodes["node_id"], nodes["x_coord"])),
+            dict(zip(nodes["node_id"], nodes["y_coord"])))
 
 
 def _facility_links(links, facility):
-    """Mainline links whose normalized ref or name matches the facility."""
-    if facility.ref:
-        want = norm_ref(facility.ref)
-        hit = links["ref"].apply(lambda r: bool(want & norm_ref(r)))
-    else:
-        want_name = norm_name(facility.name)
-        hit = links["name"].apply(lambda n: bool(want_name) and want_name == norm_name(n))
-    mainline = links[hit & links["facility_type"].isin(_MAINLINE_TYPES)]
-    return mainline
+    """Links whose normalized ref or name matches the facility (any road class).
+
+    ``ref``/``name`` may each be a single value or a list (OR-matched).
+    """
+    hit = pd.Series(False, index=links.index)
+    refs = facility.refs()
+    if refs:
+        want = set().union(*(norm_ref(r) for r in refs))
+        hit = hit | links["ref"].apply(lambda r: bool(want & norm_ref(r)))
+    names = facility.names()
+    if names:
+        wantn = {norm_name(n) for n in names}
+        nm = links["name"].fillna("").astype("string").str.lower().str.replace(r"[^a-z0-9]", "", regex=True)
+        hit = hit | nm.isin(wantn)
+    return links[hit.fillna(False)]
 
 
 def _filter_direction(mainline, direction, nx, ny):
     if direction is None:
         return mainline
-    keep = [
-        row["link_id"]
-        for _, row in mainline.iterrows()
-        if matches_direction(bearing_deg(nx, ny, row["from_node_id"], row["to_node_id"]), direction)
-    ]
+    keep = [row.link_id for row in mainline.itertuples()
+            if matches_direction(bearing_deg(nx, ny, row.from_node_id, row.to_node_id), direction)]
     return mainline[mainline["link_id"].isin(keep)]
+
+
+def _apply_conditions(base, conditions: dict):
+    """Attribute AND-filters: ``{col: value}`` -> ==, ``{col: [values]}`` -> isin."""
+    missing = []
+    for col, val in (conditions or {}).items():
+        if col not in base.columns:
+            missing.append(col)
+            continue
+        if isinstance(val, (list, tuple, set)):
+            base = base[base[col].isin(list(val))]
+        else:
+            base = base[base[col] == val]
+    return base, missing
+
+
+def _apply_modes(base, modes):
+    """Best-effort mode filter (GMNS mode modelling varies). Filters on an
+    ``allowed_uses``/``modes`` column when present; otherwise a no-op carried
+    through to the emitted selection for ProjectCard fidelity."""
+    if not modes:
+        return base, False
+    for col in ("allowed_uses", "modes"):
+        if col in base.columns:
+            want = set(modes)
+            keep = base[col].apply(lambda v: bool(want & set(str(v).replace(",", " ").split())))
+            return base[keep], True
+    return base, False   # no mode data — selection unfiltered (modes still emitted)
+
+
+def _base_selection(intent, links):
+    if intent.link_ids:
+        return links[links["link_id"].isin(list(intent.link_ids))], "explicit link_ids"
+    if intent.select_all:
+        return links, "all links"
+    return _facility_links(links, intent.facility), "facility " + repr(
+        list(intent.facility.refs()) + list(intent.facility.names()))
+
+
+def _whole(intent, base, diags):
+    link_ids = [to_py(i) for i in base["link_id"].tolist()]
+    status = "resolved" if link_ids else "not_found"
+    return SelectionResult(status, intent, link_ids=link_ids, node_path=[], diagnostics=diags)
 
 
 def resolve_frames(intent: SelectionIntent, links, nodes) -> SelectionResult:
     """Resolve against materialized pandas link/node frames (the testable core)."""
     nx, ny = _node_coords(nodes)
-    mainline = _facility_links(links, intent.facility)
-    if mainline.empty:
-        return SelectionResult("not_found", intent, diagnostics=[
-            f"no mainline links matched facility ref/name {intent.facility.ref or intent.facility.name!r}"])
 
-    directed = _filter_direction(mainline, intent.facility.direction, nx, ny)
-    if directed.empty:
-        return SelectionResult("not_found", intent, diagnostics=[
-            f"facility found but no links in direction {intent.facility.direction!r}"])
+    # 1. base selection
+    base, source = _base_selection(intent, links)
+    if base.empty:
+        return SelectionResult("not_found", intent, diagnostics=[f"{source}: no links matched"])
 
-    directed_nodes = set(directed["from_node_id"]) | set(directed["to_node_id"])
-    mainline_nodes = set(mainline["from_node_id"]) | set(mainline["to_node_id"])
+    # 2. direction filter (facility only)
+    direction = intent.facility.direction if intent.facility else None
+    if direction:
+        base = _filter_direction(base, direction, nx, ny)
+        if base.empty:
+            return SelectionResult("not_found", intent,
+                                   diagnostics=[f"facility found but no links in direction {direction!r}"])
+
+    # 3. modes + attribute conditions (AND)
+    base, missing_cols = _apply_conditions(base, intent.conditions)
+    base, _mode_applied = _apply_modes(base, intent.modes)
+    diags = [f"{source}: {len(base)} link(s)"]
+    if missing_cols:
+        diags.append(f"ignored conditions on unknown column(s): {missing_cols}")
+    if base.empty:
+        return SelectionResult("not_found", intent, diagnostics=diags + ["no links after filters"])
+
+    # 4. whole-facility / all  vs  segment (from/to)
+    if not (intent.from_anchor and intent.to_anchor):
+        return _whole(intent, base, diags)
+
+    # --- segment: freeway gore/merge path along the facility ---
+    facility_all = _facility_links(links, intent.facility) if intent.facility else base
+    directed_nodes = set(base["from_node_id"]) | set(base["to_node_id"])
+    mainline_nodes = set(facility_all["from_node_id"]) | set(facility_all["to_node_id"])
     interchanges = _anchors.classify_interchanges(links, directed_nodes, mainline_nodes)
-
     from_m = _anchors.resolve_anchor(intent.from_anchor, "from", links, interchanges)
     to_m = _anchors.resolve_anchor(intent.to_anchor, "to", links, interchanges)
-
-    diags = [from_m.detail, to_m.detail]
+    diags += [from_m.detail, to_m.detail]
     if from_m.node_id is None or to_m.node_id is None:
         return SelectionResult("not_found", intent, from_match=from_m, to_match=to_m, diagnostics=diags)
 
-    # directed adjacency over the carriageway
     adj = collections.defaultdict(list)
-    for _, r in directed.iterrows():
-        adj[r["from_node_id"]].append((r["to_node_id"], link_length(nx, ny, r), r["link_id"]))
+    for row in base.itertuples():
+        adj[row.from_node_id].append((row.to_node_id, link_length(nx, ny, {
+            "length": getattr(row, "length", None), "from_node_id": row.from_node_id,
+            "to_node_id": row.to_node_id}), row.link_id))
     path = dijkstra_links(adj, from_m.node_id, to_m.node_id)
     if path is None:
         return SelectionResult("not_found", intent, from_match=from_m, to_match=to_m,
                                diagnostics=diags + ["no directed path between resolved anchor nodes"])
-
-    link_ids, node_path = path
-    link_ids = [to_py(i) for i in link_ids]
-    node_path = [to_py(n) for n in node_path]
-    status = "resolved"
-    if from_m.candidates or to_m.candidates:
-        status = "ambiguous"
+    link_ids, node_path = ([to_py(i) for i in path[0]], [to_py(n) for n in path[1]])
+    status = "ambiguous" if (from_m.candidates or to_m.candidates) else "resolved"
+    if status == "ambiguous":
         diags.append("multiple interchange candidates; picked nearest (see candidates)")
     return SelectionResult(status, intent, link_ids=link_ids, node_path=node_path,
                            from_match=from_m, to_match=to_m, diagnostics=diags)
