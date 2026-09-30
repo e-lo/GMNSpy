@@ -69,6 +69,22 @@ def test_link_detail_404_for_unknown(client):
     assert client.get("/api/link/999999999").status_code == 404
 
 
+def test_properties_classifies_columns(client):
+    props = {p["name"]: p["kind"] for p in client.get("/api/properties").json()["properties"]}
+    assert props.get("lanes") == "continuous"
+    assert props.get("facility_type") == "categorical"
+    assert "geometry" not in props and "link_id" not in props  # skipped
+
+
+def test_property_values_continuous_and_categorical(client):
+    lanes = client.get("/api/property/lanes").json()
+    assert lanes["kind"] == "continuous" and lanes["min"] <= lanes["max"]
+    ft = client.get("/api/property/facility_type").json()
+    assert ft["kind"] == "categorical" and "motorway" in ft["categories"]
+    assert len(ft["values"]) == len(lanes["values"])
+    assert client.get("/api/property/nope").status_code == 404
+
+
 def test_select_returns_link_ids_and_anchors(client):
     r = client.get("/api/select",
                    params={"utterance": "I-40 EB between South Miami Boulevard and Airport Boulevard"})

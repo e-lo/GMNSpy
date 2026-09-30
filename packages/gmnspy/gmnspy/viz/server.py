@@ -42,6 +42,40 @@ def _json_scalar(v: Any) -> Any:
     return getattr(v, "item", lambda: v)()
 
 
+#: Columns never offered as a color-by property (geometry/opaque or identity).
+_SKIP_STYLE_COLS = {"geometry", "osm_node_ids", "osm_way_id", "link_id",
+                    "from_node_id", "to_node_id"}
+_MAX_CATEGORIES = 25
+
+
+def _styleable_columns(links) -> list[dict]:
+    """List columns usable for color-by, classified continuous vs categorical."""
+    out = []
+    for c in links.columns:
+        if c in _SKIP_STYLE_COLS:
+            continue
+        s = links[c]
+        if pd.api.types.is_numeric_dtype(s):
+            out.append({"name": c, "kind": "continuous"})
+        elif s.nunique(dropna=True) <= _MAX_CATEGORIES:   # skip high-cardinality (e.g. name)
+            out.append({"name": c, "kind": "categorical"})
+    return out
+
+
+def _property_payload(links, name: str) -> dict | None:
+    if name not in links.columns:
+        return None
+    s = links[name]
+    values = [_json_scalar(v) for v in s]
+    if pd.api.types.is_numeric_dtype(s):
+        nn = [v for v in values if v is not None]
+        return {"name": name, "kind": "continuous", "values": values,
+                "min": min(nn) if nn else 0, "max": max(nn) if nn else 1}
+    cats = sorted({str(v) for v in values if v is not None})
+    return {"name": name, "kind": "categorical", "values": [None if v is None else str(v) for v in values],
+            "categories": cats}
+
+
 _ESRI = "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas"
 #: Free, no-key vector Positron (OpenMapTiles/OSM data). Gives the muted
 #: "network pops" look without any API key or secret to manage.
@@ -103,6 +137,17 @@ def build_app(links, nodes, *, provider: str = "stub", parser=None, basemap: str
     @app.get("/api/network.attrs.json")
     def network_attrs_json() -> JSONResponse:
         return JSONResponse(_attrs())
+
+    @app.get("/api/properties")
+    def properties() -> JSONResponse:
+        return JSONResponse({"properties": _styleable_columns(links)})
+
+    @app.get("/api/property/{name}")
+    def property_values(name: str) -> JSONResponse:
+        payload = _property_payload(links, name)
+        if payload is None:
+            return JSONResponse({"error": f"unknown property {name}"}, status_code=404)
+        return JSONResponse(payload)
 
     @app.get("/api/link/{link_id}")
     def link_detail(link_id: str) -> JSONResponse:

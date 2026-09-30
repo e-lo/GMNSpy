@@ -22,35 +22,59 @@
   button { padding:9px 16px; border:0; border-radius:8px; background:var(--accent); color:#11151a;
            font-weight:600; cursor:pointer; }
   button:disabled { opacity:.5; }
+  #count { color:var(--muted); font-size:12px; margin-left:auto; }
   #map { position:relative; width:100%; height:100%; }
-  #controls { position:absolute; top:12px; right:12px; z-index:2; width:190px; padding:12px;
-              background:rgba(23,26,33,.92); border:1px solid var(--edge); border-radius:10px;
-              color:var(--ink); font-size:12.5px; backdrop-filter:blur(3px); }
-  #controls .ctl-row { display:flex; align-items:center; gap:8px; margin-bottom:10px; }
-  #controls label { color:var(--muted); }
-  #controls select { flex:1; background:#0c0e12; color:var(--ink); border:1px solid var(--edge);
-                     border-radius:6px; padding:4px 6px; font-size:12.5px; }
-  #controls .ctl-layers { display:grid; grid-template-columns:1fr 1fr; gap:4px 10px; margin-bottom:10px;
-                          padding-top:8px; border-top:1px solid var(--edge); }
-  #controls .ctl-layers label { color:var(--ink); display:flex; align-items:center; gap:6px; cursor:pointer; }
-  #legend:empty { display:none; }
-  #legend { padding-top:8px; border-top:1px solid var(--edge); }
-  .lg-item { display:flex; align-items:center; gap:7px; margin:3px 0; color:var(--ink); }
+  #side { background:var(--panel); border-left:1px solid var(--edge); padding:16px; overflow:auto; }
+
+  /* top-right controls */
+  #map-btns { position:absolute; top:12px; right:12px; z-index:3; display:flex; gap:6px; }
+  .iconbtn { width:34px; height:34px; padding:0; display:flex; align-items:center; justify-content:center;
+             background:rgba(23,26,33,.92); color:var(--ink); border:1px solid var(--edge); border-radius:8px;
+             font-size:16px; cursor:pointer; backdrop-filter:blur(3px); }
+  .iconbtn.on { background:var(--accent); color:#11151a; border-color:var(--accent); }
+  .panel { position:absolute; top:54px; right:12px; z-index:3; width:224px; padding:12px;
+           background:rgba(23,26,33,.95); border:1px solid var(--edge); border-radius:10px; color:var(--ink);
+           font-size:12.5px; backdrop-filter:blur(3px); display:none; }
+  .panel.open { display:block; }
+  .panel h4 { margin:0 0 10px; font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); }
+  .row { display:flex; align-items:center; gap:8px; margin:8px 0; }
+  .row .grow { flex:1; }
+  .row select { flex:1; background:#0c0e12; color:var(--ink); border:1px solid var(--edge); border-radius:6px;
+                padding:4px 6px; font-size:12.5px; }
+  .swatch { width:20px; height:20px; border:1px solid var(--edge); border-radius:5px; padding:0; background:none; cursor:pointer; }
+  .hex { width:66px; background:#0c0e12; color:var(--ink); border:1px solid var(--edge); border-radius:6px;
+         padding:3px 6px; font-size:12px; font-family:ui-monospace,monospace; }
+  /* toggle switch */
+  .sw { position:relative; width:34px; height:18px; flex:none; }
+  .sw input { opacity:0; width:0; height:0; }
+  .sw span { position:absolute; inset:0; background:#3a4150; border-radius:999px; transition:.15s; cursor:pointer; }
+  .sw span::before { content:""; position:absolute; width:14px; height:14px; left:2px; top:2px; background:#e6e8ec;
+                     border-radius:50%; transition:.15s; }
+  .sw input:checked + span { background:var(--accent); }
+  .sw input:checked + span::before { transform:translateX(16px); }
+  .sw input:disabled + span { opacity:.4; }
+  .lbl { flex:1; }
+
+  /* standalone legend, bottom-right (screenshot-friendly) */
+  #legend { position:absolute; bottom:24px; right:12px; z-index:2; min-width:130px; max-width:220px; padding:10px 12px;
+            background:rgba(23,26,33,.94); border:1px solid var(--edge); border-radius:10px; color:var(--ink);
+            font-size:12px; backdrop-filter:blur(3px); display:none; }
+  #legend .lg-title { font-weight:600; margin-bottom:6px; }
+  .lg-item { display:flex; align-items:center; gap:7px; margin:3px 0; }
   .lg-sw { width:14px; height:10px; border-radius:2px; flex:none; }
   .lg-grad { height:10px; border-radius:2px; margin:4px 0 2px; }
   .lg-scale { display:flex; justify-content:space-between; color:var(--muted); font-size:11px; }
-  #side { background:var(--panel); border-left:1px solid var(--edge); padding:16px; overflow:auto; }
+
   .status { display:inline-block; padding:3px 10px; border-radius:999px; font-size:12px; font-weight:600; }
   .status.resolved { background:rgba(53,196,106,.15); color:var(--from); }
   .status.ambiguous { background:rgba(255,140,59,.15); color:var(--accent); }
   .status.not_found { background:rgba(224,82,77,.15); color:var(--to); }
   .label { color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:.06em; margin:16px 0 6px; }
-  pre { background:#0c0e12; border:1px solid var(--edge); border-radius:8px; padding:10px;
-        font-size:12px; white-space:pre-wrap; word-break:break-word; margin:0; }
+  pre { background:#0c0e12; border:1px solid var(--edge); border-radius:8px; padding:10px; font-size:12px;
+        white-space:pre-wrap; word-break:break-word; margin:0; }
   .diag { color:var(--muted); font-size:12.5px; margin:4px 0; }
   .dot { display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:6px; }
   .empty { color:var(--muted); }
-  #count { color:var(--muted); font-size:12px; margin-left:auto; }
   #details table { width:100%; border-collapse:collapse; }
   #details td { padding:3px 6px; border-bottom:1px solid var(--edge); font-size:12px; vertical-align:top; }
   #details td.k { color:var(--muted); white-space:nowrap; }
@@ -67,24 +91,41 @@
     <span id="count"></span>
   </header>
   <div id="map">
-    <div id="controls">
-      <div class="ctl-row">
-        <label for="colorby">Color by</label>
-        <select id="colorby">
-          <option value="none">None</option>
-          <option value="facility_type">Facility type</option>
-          <option value="lanes"># Lanes</option>
-        </select>
-      </div>
-      <div class="ctl-layers">
-        <label><input type="checkbox" id="tg-links" checked> Links</label>
-        <label><input type="checkbox" id="tg-nodes" checked> Nodes</label>
-        <label><input type="checkbox" id="tg-labels" checked> Labels</label>
-        <label><input type="checkbox" id="tg-selection" checked> Selection</label>
-        <label><input type="checkbox" id="tg-offset" checked> Offset dirs</label>
-      </div>
-      <div id="legend"></div>
+    <div id="map-btns">
+      <button class="iconbtn" id="btn-layers" title="Layers">&#9635;</button>
+      <button class="iconbtn" id="btn-settings" title="Settings">&#9881;</button>
     </div>
+
+    <div class="panel" id="layers-panel">
+      <h4>Layers</h4>
+      <div class="row"><span class="sw"><input type="checkbox" id="tg-links" checked><span></span></span>
+        <span class="lbl">Links</span>
+        <input type="color" class="swatch" id="col-links" value="#2e406e"></div>
+      <div class="row"><span class="sw"><input type="checkbox" id="tg-nodes" checked><span></span></span>
+        <span class="lbl">Nodes</span>
+        <input type="color" class="swatch" id="col-nodes" value="#465a78"></div>
+      <div class="row"><span class="sw"><input type="checkbox" id="tg-selection" checked><span></span></span>
+        <span class="lbl">Selection</span>
+        <input type="color" class="swatch" id="col-selection" value="#ff8c3b"></div>
+      <div class="row"><span class="sw"><input type="checkbox" id="tg-labels" checked><span></span></span>
+        <span class="lbl">Basemap labels</span></div>
+      <h4 style="margin-top:14px">Color links by</h4>
+      <div class="row"><select id="colorby"><option value="none">None (single color)</option></select></div>
+      <div class="row" id="ramp-row" style="display:none"><span class="lbl">Ramp</span>
+        <select id="ramp"><option>YlOrRd</option><option>Blues</option><option>Viridis</option></select></div>
+    </div>
+
+    <div class="panel" id="settings-panel">
+      <h4>Settings</h4>
+      <div class="row"><span class="lbl">Offset directions</span>
+        <span class="sw"><input type="checkbox" id="tg-offset" checked><span></span></span></div>
+      <div class="row"><span class="lbl">Show direction</span>
+        <span class="sw"><input type="checkbox" id="tg-direction"><span></span></span></div>
+      <div class="row"><span class="lbl">Show legend</span>
+        <span class="sw"><input type="checkbox" id="tg-legend" checked><span></span></span></div>
+    </div>
+
+    <div id="legend"></div>
   </div>
   <aside id="side">
     <div id="status-wrap"><span class="empty">Click a link for details; hover to inspect; type an utterance to select.</span></div>
@@ -99,67 +140,62 @@
   </aside>
 </div>
 <script>
-// map + basemap are built from /api/config (the basemap — incl. any API key —
-// is provided by the server at runtime from env, never baked into this file).
+// ---- state ----
 let map = null, overlay = null;
-let NET = null, ATTRS = null, ID2IDX = new Map();
-let LANE_RANGE = [1, 1];
-const CUR = { linkIds: [], anchors: [] };            // current selection
-const STYLE = { colorBy: "none", offset: true, show: { links: true, nodes: true, labels: true, selection: true } };
-// PathStyleExtension applies the lateral offset in BOTH the render and picking
-// passes, so clicks match what's drawn (unlike a hand-rolled offset shader).
-const OFFSET_EXT = (typeof deck.PathStyleExtension === "function") ? new deck.PathStyleExtension({ offset: true }) : null;
-const OFFSET_AMT = 0.8;   // in path-width units; separates opposing directed links
-
-const FT_PALETTE = {                                  // facility_type -> RGB (readable on light)
-  motorway: [214, 69, 65], motorway_link: [214, 69, 65], trunk: [232, 119, 34], trunk_link: [232, 119, 34],
-  primary: [240, 171, 0], primary_link: [240, 171, 0], secondary: [90, 160, 70], secondary_link: [90, 160, 70],
-  tertiary: [60, 150, 140], tertiary_link: [60, 150, 140], residential: [120, 130, 160],
-  service: [175, 182, 194], unclassified: [150, 150, 165], trunk_link_: [232, 119, 34],
+let NET = null, ATTRS = null, ID2IDX = new Map(), PROP = null;
+const CUR = { linkIds: [], anchors: [] };
+const STYLE = {
+  colorBy: "none", ramp: "YlOrRd", offset: true, showDirection: false, showLegend: true,
+  show: { links: true, nodes: true, labels: true, selection: true },
+  colors: { links: [46, 64, 110], nodes: [70, 90, 120], selection: [255, 140, 59] },
 };
-const FT_DEFAULT = [110, 122, 150];
-const FT_LEGEND_ORDER = ["motorway", "trunk", "primary", "secondary", "tertiary", "residential", "service", "unclassified"];
-const LANE_STOPS = [[255, 237, 160], [254, 178, 76], [240, 59, 32]];   // YlOrRd
+const OFFSET_EXT = (typeof deck.PathStyleExtension === "function") ? new deck.PathStyleExtension({ offset: true }) : null;
+const OFFSET_AMT = 0.8, ARROW_ZOOM = 13;
 
-function laneRamp(t) {
-  const x = Math.max(0, Math.min(1, t)) * (LANE_STOPS.length - 1);
-  const i = Math.min(LANE_STOPS.length - 2, Math.floor(x)), f = x - i;
-  const a = LANE_STOPS[i], b = LANE_STOPS[i + 1];
-  return [0, 1, 2].map(k => Math.round(a[k] + (b[k] - a[k]) * f));
-}
-function linkColorRGB(i) {
-  if (STYLE.colorBy === "facility_type") return FT_PALETTE[ATTRS.facility_type[i]] || FT_DEFAULT;
-  if (STYLE.colorBy === "lanes") {
-    const [mn, mx] = LANE_RANGE;
-    return laneRamp(mx > mn ? (NET.linkLanes[i] - mn) / (mx - mn) : 0.5);
-  }
-  return [46, 64, 110];
-}
-function buildLinkColors() {                           // per-VERTEX RGBA (deck binary needs per-vertex)
-  const n = NET.linkStart[NET.L.count], c = new Uint8Array(n * 4);
-  for (let i = 0; i < NET.L.count; i++) {
-    const [r, g, b] = linkColorRGB(i);
-    for (let v = NET.linkStart[i]; v < NET.linkStart[i + 1]; v++) { c[v*4]=r; c[v*4+1]=g; c[v*4+2]=b; c[v*4+3]=220; }
-  }
-  NET.linkColors = c;
-}
-function refresh() { if (NET) render(CUR.linkIds, CUR.anchors); }
+// ---- palettes ----
+const FT_PALETTE = {                         // curated; ramps (_link) distinct from mainline
+  motorway:[214,69,65], motorway_link:[242,150,120], trunk:[232,119,34], trunk_link:[245,182,132],
+  primary:[236,160,20], primary_link:[249,214,120], secondary:[86,158,70], secondary_link:[160,200,130],
+  tertiary:[56,150,140], tertiary_link:[150,202,196], residential:[120,130,160],
+  service:[176,184,196], unclassified:[150,150,165], living_street:[150,150,165], road:[150,150,165],
+};
+const CAT_PALETTE = [[228,66,62],[57,126,184],[77,175,74],[152,78,163],[255,140,40],[212,190,40],
+  [166,86,40],[247,129,191],[120,130,160],[60,170,160]];
+const RAMPS = { YlOrRd:[[255,237,160],[254,178,76],[240,59,32]],
+  Blues:[[222,235,247],[107,174,214],[8,81,156]], Viridis:[[68,1,84],[33,145,140],[253,231,37]] };
+const ARROW_SVG = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(
+  '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><polygon points="12,3 20,21 12,16 4,21" fill="white"/></svg>');
 
+const rgb = c => `rgb(${c[0]},${c[1]},${c[2]})`;
+const hex2rgb = h => [1,3,5].map(i => parseInt(h.slice(i, i+2), 16));
+const rgb2hex = c => "#" + c.map(x => x.toString(16).padStart(2,"0")).join("");
+const fmt = v => (Math.abs(v) >= 100 ? Math.round(v) : Math.round(v*10)/10);
+function ramp(name, t) {
+  const s = RAMPS[name] || RAMPS.YlOrRd, x = Math.max(0,Math.min(1,t))*(s.length-1);
+  const i = Math.min(s.length-2, Math.floor(x)), f = x-i, a = s[i], b = s[i+1];
+  return [0,1,2].map(k => Math.round(a[k]+(b[k]-a[k])*f));
+}
+function catColor(cat, i) { return (PROP && PROP.name === "facility_type" && FT_PALETTE[cat]) || CAT_PALETTE[i % CAT_PALETTE.length]; }
+
+// ---- init ----
 async function init() {
   const cfg = await fetch("/api/config").then(r => r.json());
   map = new maplibregl.Map({ container: "map", style: cfg.style, center: [-78.8, 35.88], zoom: 11 });
   map.addControl(new maplibregl.NavigationControl(), "top-left");
   overlay = new deck.MapboxOverlay({ interleaved: false, layers: [], getTooltip });
   map.addControl(overlay);
+  map.on("zoomend", () => { if (STYLE.showDirection) refresh(); });
   map.on("load", loadNetwork);
+  wirePanels();
 }
 
 function take(buf, off, bytes, Ctor) { return new Ctor(buf.slice(off, off + bytes)); }
 
 async function loadNetwork() {
-  const [buf, attrs] = await Promise.all([
+  const [buf, attrs, props] = await Promise.all([
     fetch("/api/network.bin").then(r => r.arrayBuffer()),
     fetch("/api/network.attrs.json").then(r => r.json()),
+    fetch("/api/properties").then(r => r.json()),
   ]);
   const hlen = new DataView(buf).getUint32(0, true);
   const header = JSON.parse(new TextDecoder().decode(new Uint8Array(buf, 4, hlen)));
@@ -169,47 +205,76 @@ async function loadNetwork() {
   const linkIds = take(buf, off, L.idsBytes, Float64Array); off += L.idsBytes;
   const linkLanes = take(buf, off, L.lanesBytes, Uint8Array); off += L.lanesBytes;
   const nodePositions = take(buf, off, N.positionsBytes, Float32Array); off += N.positionsBytes;
-  // deck.gl binary PathLayer wants per-VERTEX attributes: expand lane-width per vertex.
   const numVerts = linkStart[L.count];
   const linkWidths = new Float32Array(numVerts);
-  for (let i = 0; i < L.count; i++) {
-    const w = widthForLanes(linkLanes[i]);
-    for (let v = linkStart[i]; v < linkStart[i + 1]; v++) linkWidths[v] = w;
-  }
-  NET = { L, N, linkPositions, linkStart, linkIds, linkLanes, linkWidths, nodePositions, linkColors: null };
+  for (let i = 0; i < L.count; i++) { const w = widthForLanes(linkLanes[i]);
+    for (let v = linkStart[i]; v < linkStart[i + 1]; v++) linkWidths[v] = w; }
+  NET = { L, N, linkPositions, linkStart, linkIds, linkLanes, linkWidths, nodePositions, linkColors: null, arrows: null };
   ATTRS = attrs;
   for (let i = 0; i < linkIds.length; i++) ID2IDX.set(linkIds[i], i);
-  LANE_RANGE = [Math.min(...linkLanes), Math.max(...linkLanes)];
   document.getElementById("count").textContent = `${L.count.toLocaleString()} links · ${N.count.toLocaleString()} nodes`;
+  populateColorby(props.properties || []);
+  buildArrows();
   buildLinkColors();
-  wireControls();
-  renderLegend();
   refresh();
   fitToNetwork(nodePositions);
 }
 
-function widthForLanes(lanes) {           // lanes -> pixel width; freeways pop
-  return Math.max(1.2, Math.min(9, 0.9 + 0.8 * lanes));
+function widthForLanes(lanes) { return Math.max(1.2, Math.min(9, 0.9 + 0.8 * lanes)); }
+
+// ---- colors ----
+function linkColorRGB(i) {
+  if (STYLE.colorBy === "none" || !PROP) return STYLE.colors.links;
+  const v = PROP.values[i];
+  if (v === null || v === undefined) return [205, 208, 214];
+  if (PROP.kind === "continuous") {
+    const t = PROP.max > PROP.min ? (v - PROP.min) / (PROP.max - PROP.min) : 0.5;
+    return ramp(STYLE.ramp, t);
+  }
+  return catColor(v, PROP.categories.indexOf(v));
+}
+function buildLinkColors() {
+  const n = NET.linkStart[NET.L.count], c = new Uint8Array(n * 4);
+  for (let i = 0; i < NET.L.count; i++) { const [r, g, b] = linkColorRGB(i);
+    for (let v = NET.linkStart[i]; v < NET.linkStart[i + 1]; v++) { c[v*4]=r; c[v*4+1]=g; c[v*4+2]=b; c[v*4+3]=222; } }
+  NET.linkColors = c;
 }
 
+function buildArrows() {
+  const a = [];
+  for (let i = 0; i < NET.L.count; i++) {
+    const s = NET.linkStart[i], e = NET.linkStart[i + 1]; if (e - s < 2) continue;
+    const m = Math.max(s + 1, Math.floor((s + e) / 2));
+    const x1 = NET.linkPositions[(m-1)*2], y1 = NET.linkPositions[(m-1)*2+1];
+    const x2 = NET.linkPositions[m*2], y2 = NET.linkPositions[m*2+1];
+    a.push({ position: [(x1+x2)/2, (y1+y2)/2], angle: -Math.atan2(x2-x1, y2-y1) * 180 / Math.PI });
+  }
+  NET.arrows = a;
+}
+
+// ---- layers ----
 function baseLayers() {
   const { L, N, linkPositions, linkStart, linkWidths, linkColors, nodePositions } = NET;
   const layers = [];
   if (STYLE.show.nodes) layers.push(new deck.ScatterplotLayer({ id: "nodes",
     data: { length: N.count, attributes: { getPosition: { value: nodePositions, size: 2 } } },
     getRadius: 1.8, radiusUnits: "pixels", radiusMinPixels: 1,
-    getFillColor: [70, 90, 120, 130], pickable: false }));
+    getFillColor: [...STYLE.colors.nodes, 150], pickable: false }));
   if (STYLE.show.links) {
     const props = { id: "links", _pathType: "open",
       data: { length: L.count, startIndices: linkStart,
               attributes: { getPath: { value: linkPositions, size: 2 },
                             getWidth: { value: linkWidths, size: 1 },
                             getColor: { value: linkColors, size: 4 } } },
-      widthUnits: "pixels", widthMinPixels: 1,
-      capRounded: true, jointRounded: true, pickable: true, autoHighlight: true,
-      highlightColor: [255, 140, 59, 235], onClick: onLinkClick };
+      widthUnits: "pixels", widthMinPixels: 1, capRounded: true, jointRounded: true,
+      pickable: true, autoHighlight: true, highlightColor: [255, 140, 59, 235], onClick: onLinkClick };
     if (OFFSET_EXT) { props.extensions = [OFFSET_EXT]; props.getOffset = STYLE.offset ? OFFSET_AMT : 0; }
     layers.push(new deck.PathLayer(props));
+    if (STYLE.showDirection && NET.arrows && map.getZoom() >= ARROW_ZOOM)
+      layers.push(new deck.IconLayer({ id: "arrows", data: NET.arrows,
+        getIcon: () => ({ url: ARROW_SVG, width: 24, height: 24, anchorY: 12 }),
+        getPosition: d => d.position, getAngle: d => d.angle, getSize: 13, sizeUnits: "pixels",
+        getColor: [40, 52, 78, 230], pickable: false }));
   }
   return layers;
 }
@@ -218,105 +283,123 @@ function selectionLayers(linkIds, anchors) {
   const layers = [];
   if (!STYLE.show.selection) return layers;
   if (linkIds && linkIds.length) {
-    const { linkPositions, linkStart } = NET;
-    const positions = []; const startIndices = [0]; const widths = [];
+    const { linkPositions } = NET;
+    const positions = [], startIndices = [0], widths = [];
     for (const id of linkIds) {
       const i = ID2IDX.get(id); if (i == null) continue;
-      const a = NET.linkStart[i] * 2, b = NET.linkStart[i + 1] * 2;
-      const w = widthForLanes(NET.linkLanes[i]) + 3;      // always proud of base
-      for (let k = a; k < b; k += 2) { positions.push(linkPositions[k], linkPositions[k + 1]); widths.push(w); }
+      const a = NET.linkStart[i]*2, b = NET.linkStart[i+1]*2, w = widthForLanes(NET.linkLanes[i]) + 3;
+      for (let k = a; k < b; k += 2) { positions.push(linkPositions[k], linkPositions[k+1]); widths.push(w); }
       startIndices.push(positions.length / 2);
     }
     layers.push(new deck.PathLayer({ id: "selection", _pathType: "open",
       data: { length: startIndices.length - 1, startIndices: new Uint32Array(startIndices),
               attributes: { getPath: { value: new Float32Array(positions), size: 2 },
                             getWidth: { value: new Float32Array(widths), size: 1 } } },
-      getColor: [255, 140, 59, 255], widthUnits: "pixels", widthMinPixels: 3,
+      getColor: [...STYLE.colors.selection, 255], widthUnits: "pixels", widthMinPixels: 3,
       capRounded: true, jointRounded: true, parameters: { depthTest: false } }));
   }
-  if (anchors && anchors.length) {
-    layers.push(new deck.ScatterplotLayer({ id: "anchors", data: anchors,
-      getPosition: a => [a.lon, a.lat], getRadius: 7, radiusUnits: "pixels",
-      getFillColor: a => a.role === "from" ? [53, 196, 106] : [224, 82, 77],
-      getLineColor: [17, 21, 26], lineWidthMinPixels: 2, stroked: true,
-      parameters: { depthTest: false } }));
-  }
+  if (anchors && anchors.length) layers.push(new deck.ScatterplotLayer({ id: "anchors", data: anchors,
+    getPosition: a => [a.lon, a.lat], getRadius: 7, radiusUnits: "pixels",
+    getFillColor: a => a.role === "from" ? [53, 196, 106] : [224, 82, 77],
+    getLineColor: [17, 21, 26], lineWidthMinPixels: 2, stroked: true, parameters: { depthTest: false } }));
   return layers;
 }
 
-function render(linkIds, anchors) {
-  overlay.setProps({ layers: [...baseLayers(), ...selectionLayers(linkIds, anchors)] });
-}
+function render(linkIds, anchors) { overlay.setProps({ layers: [...baseLayers(), ...selectionLayers(linkIds, anchors)] }); }
+function refresh() { if (NET) render(CUR.linkIds, CUR.anchors); }
 
-const rgb = c => `rgb(${c[0]},${c[1]},${c[2]})`;
-function renderLegend() {
-  const el = document.getElementById("legend");
-  if (STYLE.colorBy === "facility_type") {
-    const present = new Set(ATTRS.facility_type);
-    const items = FT_LEGEND_ORDER.filter(f => present.has(f));
-    el.innerHTML = items.map(f => `<div class="lg-item"><span class="lg-sw" style="background:${rgb(FT_PALETTE[f] || FT_DEFAULT)}"></span>${f}</div>`).join("");
-  } else if (STYLE.colorBy === "lanes") {
-    const [mn, mx] = LANE_RANGE;
-    const grad = `linear-gradient(90deg, ${rgb(LANE_STOPS[0])}, ${rgb(LANE_STOPS[1])}, ${rgb(LANE_STOPS[2])})`;
-    el.innerHTML = `<div class="lg-item" style="margin-bottom:2px">lanes</div>` +
-      `<div class="lg-grad" style="background:${grad}"></div>` +
-      `<div class="lg-scale"><span>${mn}</span><span>${mx}</span></div>`;
-  } else { el.innerHTML = ""; }
+// ---- tooltip / click ----
+function getTooltip({ layer, index }) {
+  if (!layer || layer.id !== "links" || index == null || index < 0 || !ATTRS) return null;
+  const id = ATTRS.link_id[index], nm = ATTRS.name[index], rf = ATTRS.ref[index], ft = ATTRS.facility_type[index];
+  return { html: `<b>link ${id}</b><br>${nm || "<i>unnamed</i>"}${rf ? " · " + rf : ""}<br><span style="color:#8a93a3">${ft || ""}</span>`,
+           style: { background: "#11151a", color: "#e6e8ec", fontSize: "12px", padding: "6px 8px",
+                    borderRadius: "6px", border: "1px solid #2a2f3a" } };
 }
-
-function toggleLabels(show) {                            // works for vector (symbol) + esri (raster 'labels')
-  if (!map || !map.getStyle) return;
-  for (const lyr of map.getStyle().layers || []) {
-    if (lyr.type === "symbol" || lyr.id === "labels")
-      map.setLayoutProperty(lyr.id, "visibility", show ? "visible" : "none");
-  }
-}
-
-function wireControls() {
-  const cb = document.getElementById("colorby");
-  cb.value = STYLE.colorBy;
-  cb.onchange = () => { STYLE.colorBy = cb.value; buildLinkColors(); renderLegend(); refresh(); };
-  const bind = (id, key, after) => {
-    const el = document.getElementById(id); el.checked = STYLE.show[key];
-    el.onchange = () => { STYLE.show[key] = el.checked; (after || refresh)(); };
-  };
-  bind("tg-links", "links"); bind("tg-nodes", "nodes"); bind("tg-selection", "selection");
-  bind("tg-labels", "labels", () => toggleLabels(STYLE.show.labels));
-  const off = document.getElementById("tg-offset");
-  off.checked = STYLE.offset; off.disabled = !OFFSET_EXT;
-  off.onchange = () => { STYLE.offset = off.checked; refresh(); };
-}
-
 async function onLinkClick(info) {
   if (!info || info.index == null || info.index < 0) return;
-  const id = ATTRS.link_id[info.index];
-  const el = document.getElementById("details");
+  const id = ATTRS.link_id[info.index], el = document.getElementById("details");
   el.innerHTML = `<div class="lid">link ${id}</div><span class="empty">loading…</span>`;
-  try {
-    const j = await (await fetch("/api/link/" + encodeURIComponent(id))).json();
-    renderDetails(id, j.attributes || {});
-  } catch (e) { el.innerHTML = `<div class="lid">link ${id}</div><span class="empty">error: ${e}</span>`; }
+  try { const j = await (await fetch("/api/link/" + encodeURIComponent(id))).json(); renderDetails(id, j.attributes || {}); }
+  catch (e) { el.innerHTML = `<div class="lid">link ${id}</div><span class="empty">error: ${e}</span>`; }
 }
 function renderDetails(id, attrs) {
-  const rows = Object.entries(attrs)
-    .filter(([k, v]) => k !== "link_id" && v !== null && v !== "")
+  const rows = Object.entries(attrs).filter(([k, v]) => k !== "link_id" && v !== null && v !== "")
     .map(([k, v]) => `<tr><td class="k">${k}</td><td class="v">${String(v)}</td></tr>`).join("");
   document.getElementById("details").innerHTML = `<div class="lid">link ${id}</div><table>${rows}</table>`;
 }
 
-function getTooltip({ layer, index }) {
-  if (!layer || layer.id !== "links" || index == null || index < 0 || !ATTRS) return null;
-  const id = ATTRS.link_id[index], nm = ATTRS.name[index], rf = ATTRS.ref[index], ft = ATTRS.facility_type[index];
-  return { html: `<b>link ${id}</b><br>${nm || "<i>unnamed</i>"}${rf ? " · " + rf : ""}` +
-                 `<br><span style="color:#8a93a3">${ft || ""}</span>`,
-           style: { background: "#11151a", color: "#e6e8ec", fontSize: "12px",
-                    padding: "6px 8px", borderRadius: "6px", border: "1px solid #2a2f3a" } };
+// ---- legend ----
+function renderLegend() {
+  const el = document.getElementById("legend");
+  if (!STYLE.showLegend || STYLE.colorBy === "none" || !PROP) { el.style.display = "none"; return; }
+  el.style.display = "block";
+  let html = `<div class="lg-title">${PROP.name}</div>`;
+  if (PROP.kind === "continuous") {
+    const grad = `linear-gradient(90deg, ${RAMPS[STYLE.ramp].map(rgb).join(", ")})`;
+    html += `<div class="lg-grad" style="background:${grad}"></div>` +
+            `<div class="lg-scale"><span>${fmt(PROP.min)}</span><span>${fmt(PROP.max)}</span></div>`;
+  } else {
+    html += PROP.categories.map((c, i) => `<div class="lg-item"><span class="lg-sw" style="background:${rgb(catColor(c, i))}"></span>${c}</div>`).join("");
+  }
+  el.innerHTML = html;
+}
+
+// ---- controls ----
+function populateColorby(props) {
+  const sel = document.getElementById("colorby");
+  for (const p of props) { const o = document.createElement("option"); o.value = p.name;
+    o.textContent = p.name + (p.kind === "continuous" ? " (num)" : ""); o.dataset.kind = p.kind; sel.appendChild(o); }
+}
+async function applyColorBy(name) {
+  STYLE.colorBy = name;
+  document.getElementById("ramp-row").style.display = "none";
+  if (name === "none") { PROP = null; buildLinkColors(); renderLegend(); refresh(); return; }
+  PROP = await fetch("/api/property/" + encodeURIComponent(name)).then(r => r.json());
+  if (PROP.kind === "continuous") document.getElementById("ramp-row").style.display = "flex";
+  buildLinkColors(); renderLegend(); refresh();
+}
+function toggleLabels(show) {
+  if (!map || !map.getStyle) return;
+  for (const l of map.getStyle().layers || [])
+    if (l.type === "symbol" || l.id === "labels") map.setLayoutProperty(l.id, "visibility", show ? "visible" : "none");
+}
+function wirePanels() {
+  const sp = document.getElementById("settings-panel"), lp = document.getElementById("layers-panel");
+  const bs = document.getElementById("btn-settings"), bl = document.getElementById("btn-layers");
+  const openPanel = (which) => {
+    const toS = which === "s" && !sp.classList.contains("open");
+    const toL = which === "l" && !lp.classList.contains("open");
+    sp.classList.toggle("open", toS); lp.classList.toggle("open", toL);
+    bs.classList.toggle("on", toS); bl.classList.toggle("on", toL);
+  };
+  bs.onclick = () => openPanel("s"); bl.onclick = () => openPanel("l");
+
+  document.getElementById("colorby").onchange = e => applyColorBy(e.target.value);
+  document.getElementById("ramp").onchange = e => { STYLE.ramp = e.target.value; buildLinkColors(); renderLegend(); refresh(); };
+
+  const bindSwitch = (id, get, set, after) => { const el = document.getElementById(id); el.checked = get();
+    el.onchange = () => { set(el.checked); (after || refresh)(); }; };
+  bindSwitch("tg-links", () => STYLE.show.links, v => STYLE.show.links = v);
+  bindSwitch("tg-nodes", () => STYLE.show.nodes, v => STYLE.show.nodes = v);
+  bindSwitch("tg-selection", () => STYLE.show.selection, v => STYLE.show.selection = v);
+  bindSwitch("tg-labels", () => STYLE.show.labels, v => STYLE.show.labels = v, () => toggleLabels(STYLE.show.labels));
+  bindSwitch("tg-offset", () => STYLE.offset, v => STYLE.offset = v);
+  if (!OFFSET_EXT) document.getElementById("tg-offset").disabled = true;
+  bindSwitch("tg-direction", () => STYLE.showDirection, v => STYLE.showDirection = v);
+  bindSwitch("tg-legend", () => STYLE.showLegend, v => STYLE.showLegend = v, () => { renderLegend(); });
+
+  const bindColor = (id, key, onApply) => { const el = document.getElementById(id); el.value = rgb2hex(STYLE.colors[key]);
+    el.oninput = () => { STYLE.colors[key] = hex2rgb(el.value); (onApply || refresh)(); }; };
+  bindColor("col-links", "links", () => { if (STYLE.colorBy === "none") buildLinkColors(); refresh(); });
+  bindColor("col-nodes", "nodes");
+  bindColor("col-selection", "selection");
 }
 
 function fitToNetwork(nodePositions) {
   const b = new maplibregl.LngLatBounds();
   for (let i = 0; i < nodePositions.length; i += 2) b.extend([nodePositions[i], nodePositions[i + 1]]);
-  if (!b.isEmpty()) map.fitBounds(b, { padding: 50, maxZoom: 15, duration: 0 });
+  if (!b.isEmpty()) map.fitBounds(b, { padding: 60, maxZoom: 15, duration: 0 });
 }
 
 async function runSelect() {
@@ -324,13 +407,11 @@ async function runSelect() {
   const btn = document.getElementById("go"); btn.disabled = true;
   try {
     const j = await (await fetch("/api/select?utterance=" + encodeURIComponent(q))).json();
-    CUR.linkIds = j.link_ids || []; CUR.anchors = j.anchors || [];
-    refresh();
+    CUR.linkIds = j.link_ids || []; CUR.anchors = j.anchors || []; refresh();
     if ((j.link_ids || []).length) {
       const b = new maplibregl.LngLatBounds();
       for (const id of j.link_ids) { const i = ID2IDX.get(id); if (i == null) continue;
-        for (let k = NET.linkStart[i] * 2; k < NET.linkStart[i + 1] * 2; k += 2)
-          b.extend([NET.linkPositions[k], NET.linkPositions[k + 1]]); }
+        for (let k = NET.linkStart[i]*2; k < NET.linkStart[i+1]*2; k += 2) b.extend([NET.linkPositions[k], NET.linkPositions[k+1]]); }
       if (!b.isEmpty()) map.fitBounds(b, { padding: 80, maxZoom: 15, duration: 600 });
     }
     document.getElementById("status-wrap").innerHTML = `<span class="status ${j.status}">${j.status.replace("_", " ")}</span>`;
@@ -343,7 +424,6 @@ async function runSelect() {
       ? j.diagnostics.map(d => `<div class="diag">• ${d}</div>`).join("") : '<span class="empty">—</span>';
   } finally { btn.disabled = false; }
 }
-
 document.getElementById("go").addEventListener("click", runSelect);
 document.getElementById("utterance").addEventListener("keydown", e => { if (e.key === "Enter") runSelect(); });
 init();
