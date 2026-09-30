@@ -30,8 +30,8 @@ classifiers = [
 ]
 dependencies = [
     "pydantic>=2.6",
-    "ibis-framework[duckdb]>=9.0",
-    "duckdb>=1.0",
+    "ibis-framework[duckdb]>=9.0,<10",  # 10+ changed create_table codegen; breaks from_records on duckdb
+    "duckdb>=1.0,<1.2",
     "pyarrow>=16",
     "fsspec>=2024.3",
     "rich>=13",

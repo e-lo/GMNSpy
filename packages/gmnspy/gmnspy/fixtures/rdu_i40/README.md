@@ -13,3 +13,6 @@ limited-access interchange topology.
 Rebuild: `python build.py` (run from the `packages/gmnspy` dir with the
 `[osm,graph]` extras installed; hits the Overpass API). Data © OpenStreetMap
 contributors, ODbL.
+
+Load in code: `Network.from_source(<this dir>/'parquet')` (or `/'csv'`) — the
+loader auto-discovers GMNS tables by filename; no datapackage.json needed.
