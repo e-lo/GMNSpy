@@ -406,3 +406,38 @@ is exactly what the credible product (Felt, via its MCP tool catalog) converges 
 - **Avoid:** Monarcha's opaque "just describe it / 50+ tools, trust us" black-box framing (bad for
   OSS auditability); free-form NL→spatial-SQL as the default; coupling the NL layer to one LLM
   provider (keep the action schema plain JSON-schema tool defs → works across Anthropic/OpenAI/local).
+
+## 16. Selection-engine roadmap (from real usage)
+
+Driving the viewer on a full metro network surfaced that the v1 selection engine is a deliberate
+slice; these are the capabilities to grow it into "an utterance just handles open-ended requests."
+Two layers matter: **(P) parser flexibility** (LLM vs the offline stub) and **(R) resolver/schema
+capability** (what a structured intent can express + execute). The LLM gives flexible *phrasing*;
+the schema+resolver decide what can actually be *asked and resolved*.
+
+- **16.1 Live LLM parser (P).** Default the viewer to the `ClaudeParser` (provider-pluggable;
+  Anthropic/OpenAI/local) so phrasing is flexible ("from A to B", casual wording). The stub stays
+  the offline/test fallback. Key from env, never committed (§13).
+- **16.2 Richer intent schema (R).** Expand `SelectionIntent` (and the LLM tool schema) beyond
+  "facility + required from/to":
+  - facility by **name OR ref** (surface arterials, not just motorway/trunk);
+  - **optional anchors** → whole-facility select ("Electra Ave" = all of it, connected);
+  - **attribute predicate** ("where lanes = 2", "where speed < 30") as a validated structured
+    filter over GMNS fields (NOT free-form SQL — hallucination risk, §15);
+  - later: multiple facilities / multi-hop routes.
+- **16.3 Surface + at-grade anchor resolution (R).** For arterial facilities, resolve `from/to`
+  to **at-grade intersection** nodes (node on the facility incident to a link named by the anchor) —
+  simpler than the freeway gore/merge path — and handle a freeway-interchange anchor on a surface
+  street (where the arterial meets the ramps).
+- **16.4 Conversational disambiguation (P+R+UI).** When a name/anchor matches multiple candidates
+  ("Harrison Ave" vs "North Harrison Ave"; several interchanges), return ranked candidates, **render
+  them on the map**, and ask the user to pick — a multi-turn clarify loop in the chat panel (§15).
+  Today ambiguity is only flagged passively.
+- **16.5 Interactive link selection (UI, new phase).** Build a selection set **directly on the map**
+  — click links to add/remove, box/lasso select, shift-click ranges — independent of NL. The result
+  is the same selection object (highlight, emit fragment, zoom-to-selection). Complements NL
+  selection and feeds the future edit track.
+
+**Phasing:** slot as P5 (16.1–16.3 richer NL + surface/whole/filter), P6 (16.4 conversation),
+and a dedicated **Pi — Interactive selection** (16.5) that can land early since it's self-contained
+and high-value for QA.
