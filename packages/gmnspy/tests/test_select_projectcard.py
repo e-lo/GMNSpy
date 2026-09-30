@@ -54,11 +54,48 @@ def test_condition_with_no_matches_is_not_found(rdu):
     assert r.status == "not_found"
 
 
+def test_facility_name_list_or_matched(rdu):
+    links, nodes = rdu
+    r = resolve_frames(SelectionIntent(facility=Facility(name=["South Miami Boulevard", "Page Road"])), links, nodes)
+    assert r.status == "resolved"
+    names = set(links[links.link_id.isin(r.link_ids)].name)
+    assert names == {"South Miami Boulevard", "Page Road"}
+
+
+def test_surface_facility_freeway_anchor_via_ramps(rdu):
+    links, nodes = rdu
+    r = resolve_frames(SelectionIntent(facility=Facility(name="Page Road"),
+                                       from_anchor="I 40", to_anchor="Emperor Boulevard"), links, nodes)
+    assert r.status in {"resolved", "ambiguous"} and r.link_ids
+    assert r.from_match.kind == "ramp" and r.to_match.kind == "intersection"
+
+
 def test_explicit_link_ids(rdu):
     links, nodes = rdu
     ids = list(links.link_id.iloc[:5])
     r = resolve_frames(SelectionIntent(link_ids=ids), links, nodes)
     assert r.status == "resolved" and sorted(r.link_ids) == sorted(ids)
+
+
+def test_surface_arterial_segment_at_grade(rdu):
+    links, nodes = rdu
+    r = resolve_frames(SelectionIntent(facility=Facility(name="Page Road"),
+                                       from_anchor="Emperor Boulevard", to_anchor="Top Golf Way"),
+                       links, nodes)
+    assert r.status in {"resolved", "ambiguous"}
+    assert r.link_ids
+    sel = links[links.link_id.isin(r.link_ids)]
+    assert (sel.name == "Page Road").all()          # the segment runs along Page Road
+    assert r.from_match.kind == "intersection" and r.to_match.kind == "intersection"
+
+
+def test_surface_anchor_not_found_names_it(rdu):
+    links, nodes = rdu
+    r = resolve_frames(SelectionIntent(facility=Facility(name="Page Road"),
+                                       from_anchor="Nonexistent Rd", to_anchor="Top Golf Way"),
+                       links, nodes)
+    assert r.status == "not_found"
+    assert any("Nonexistent Rd" in d for d in r.diagnostics)
 
 
 def test_freeway_segment_still_works(rdu):

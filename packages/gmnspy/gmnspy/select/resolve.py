@@ -105,6 +105,59 @@ def _whole(intent, base, diags):
     return SelectionResult(status, intent, link_ids=link_ids, node_path=[], diagnostics=diags)
 
 
+def _row_len(nx, ny, row):
+    return link_length(nx, ny, {"length": getattr(row, "length", None),
+                                "from_node_id": row.from_node_id, "to_node_id": row.to_node_id})
+
+
+def _result_from_path(intent, base, from_m, to_m, path, diags, *, cand_note):
+    if path is None:
+        return SelectionResult("not_found", intent, from_match=from_m, to_match=to_m,
+                               diagnostics=diags + ["no path between resolved anchor nodes"])
+    link_ids = [to_py(i) for i in path[0]]
+    node_path = [to_py(n) for n in path[1]]
+    status = "ambiguous" if (from_m.candidates or to_m.candidates) else "resolved"
+    if status == "ambiguous":
+        diags = diags + [cand_note]
+    return SelectionResult(status, intent, link_ids=link_ids, node_path=node_path,
+                           from_match=from_m, to_match=to_m, diagnostics=diags)
+
+
+def _freeway_segment(intent, base, links, nx, ny, diags):
+    """Gore/merge anchors + shortest directed path along the carriageway."""
+    facility_all = _facility_links(links, intent.facility) if intent.facility else base
+    directed_nodes = set(base["from_node_id"]) | set(base["to_node_id"])
+    mainline_nodes = set(facility_all["from_node_id"]) | set(facility_all["to_node_id"])
+    interchanges = _anchors.classify_interchanges(links, directed_nodes, mainline_nodes)
+    from_m = _anchors.resolve_anchor(intent.from_anchor, "from", links, interchanges)
+    to_m = _anchors.resolve_anchor(intent.to_anchor, "to", links, interchanges)
+    diags = diags + [from_m.detail, to_m.detail]
+    if from_m.node_id is None or to_m.node_id is None:
+        return SelectionResult("not_found", intent, from_match=from_m, to_match=to_m, diagnostics=diags)
+    adj = collections.defaultdict(list)
+    for row in base.itertuples():
+        adj[row.from_node_id].append((row.to_node_id, _row_len(nx, ny, row), row.link_id))
+    return _result_from_path(intent, base, from_m, to_m, dijkstra_links(adj, from_m.node_id, to_m.node_id),
+                             diags, cand_note="multiple interchange candidates; picked nearest (see candidates)")
+
+
+def _surface_segment(intent, base, links, nx, ny, diags):
+    """At-grade intersection (or freeway-ramp) anchors + undirected path along the facility."""
+    facility_nodes = set(base["from_node_id"]) | set(base["to_node_id"])
+    from_m = _anchors.resolve_surface_anchor(intent.from_anchor, facility_nodes, links)
+    to_m = _anchors.resolve_surface_anchor(intent.to_anchor, facility_nodes, links)
+    diags = diags + [from_m.detail, to_m.detail]
+    if from_m.node_id is None or to_m.node_id is None:
+        return SelectionResult("not_found", intent, from_match=from_m, to_match=to_m, diagnostics=diags)
+    adj = collections.defaultdict(list)      # undirected: surface streets are usually two-way
+    for row in base.itertuples():
+        w = _row_len(nx, ny, row)
+        adj[row.from_node_id].append((row.to_node_id, w, row.link_id))
+        adj[row.to_node_id].append((row.from_node_id, w, row.link_id))
+    return _result_from_path(intent, base, from_m, to_m, dijkstra_links(adj, from_m.node_id, to_m.node_id),
+                             diags, cand_note="multiple intersection candidates; picked nearest (see candidates)")
+
+
 def resolve_frames(intent: SelectionIntent, links, nodes) -> SelectionResult:
     """Resolve against materialized pandas link/node frames (the testable core)."""
     nx, ny = _node_coords(nodes)
@@ -135,32 +188,10 @@ def resolve_frames(intent: SelectionIntent, links, nodes) -> SelectionResult:
     if not (intent.from_anchor and intent.to_anchor):
         return _whole(intent, base, diags)
 
-    # --- segment: freeway gore/merge path along the facility ---
-    facility_all = _facility_links(links, intent.facility) if intent.facility else base
-    directed_nodes = set(base["from_node_id"]) | set(base["to_node_id"])
-    mainline_nodes = set(facility_all["from_node_id"]) | set(facility_all["to_node_id"])
-    interchanges = _anchors.classify_interchanges(links, directed_nodes, mainline_nodes)
-    from_m = _anchors.resolve_anchor(intent.from_anchor, "from", links, interchanges)
-    to_m = _anchors.resolve_anchor(intent.to_anchor, "to", links, interchanges)
-    diags += [from_m.detail, to_m.detail]
-    if from_m.node_id is None or to_m.node_id is None:
-        return SelectionResult("not_found", intent, from_match=from_m, to_match=to_m, diagnostics=diags)
-
-    adj = collections.defaultdict(list)
-    for row in base.itertuples():
-        adj[row.from_node_id].append((row.to_node_id, link_length(nx, ny, {
-            "length": getattr(row, "length", None), "from_node_id": row.from_node_id,
-            "to_node_id": row.to_node_id}), row.link_id))
-    path = dijkstra_links(adj, from_m.node_id, to_m.node_id)
-    if path is None:
-        return SelectionResult("not_found", intent, from_match=from_m, to_match=to_m,
-                               diagnostics=diags + ["no directed path between resolved anchor nodes"])
-    link_ids, node_path = ([to_py(i) for i in path[0]], [to_py(n) for n in path[1]])
-    status = "ambiguous" if (from_m.candidates or to_m.candidates) else "resolved"
-    if status == "ambiguous":
-        diags.append("multiple interchange candidates; picked nearest (see candidates)")
-    return SelectionResult(status, intent, link_ids=link_ids, node_path=node_path,
-                           from_match=from_m, to_match=to_m, diagnostics=diags)
+    # --- segment (from/to): freeway gore/merge, or surface at-grade ---
+    if intent.facility is not None and bool(base["facility_type"].isin(_FREEWAY_TYPES).any()):
+        return _freeway_segment(intent, base, links, nx, ny, diags)
+    return _surface_segment(intent, base, links, nx, ny, diags)
 
 
 def resolve(intent: SelectionIntent, net) -> SelectionResult:
