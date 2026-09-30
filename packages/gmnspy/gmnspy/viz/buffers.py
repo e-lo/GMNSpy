@@ -16,10 +16,28 @@ import json
 import struct
 
 import numpy as np
+import pandas as pd
 
 from gmnspy.select._geojson import _coords_for_link
 
 __all__ = ["pack_network", "unpack_network", "network_attrs"]
+
+#: Fallback lane count by facility_type when `lanes` is untagged, so freeways
+#: still render thick. Ramps/links stay thin.
+_LANES_DEFAULT = {"motorway": 4, "trunk": 3, "primary": 3, "secondary": 2, "tertiary": 2}
+
+
+def _effective_lanes(links) -> np.ndarray:
+    """Per-link lane count for width styling: `lanes` if tagged (>0), else a
+    facility_type default (ramps=1). Clamped to 1..255 as uint8."""
+    lanes = pd.to_numeric(links.get("lanes"), errors="coerce") if "lanes" in links.columns \
+        else pd.Series([np.nan] * len(links))
+    ft = links["facility_type"].astype(str) if "facility_type" in links.columns \
+        else pd.Series([""] * len(links))
+    default = ft.map(lambda f: 1 if f.endswith("_link") else _LANES_DEFAULT.get(f, 1))
+    eff = lanes.fillna(0).astype(int)
+    eff = eff.where(eff > 0, default)
+    return eff.clip(1, 255).to_numpy(dtype="<u1")
 
 
 def _node_coords(nodes):
@@ -56,19 +74,21 @@ def pack_network(links, nodes) -> bytes:
     """Pack link paths + node points into the binary wire format."""
     nx, ny = _node_coords(nodes)
     lpos, lstart, lids = _link_paths(links, nx, ny)
+    llanes = _effective_lanes(links)
     npos, nids = _node_points(nodes)
 
     header = {
         "links": {"count": int(len(links)),
                   "positionsBytes": int(lpos.nbytes),
                   "startIndicesBytes": int(lstart.nbytes),
-                  "idsBytes": int(lids.nbytes)},
+                  "idsBytes": int(lids.nbytes),
+                  "lanesBytes": int(llanes.nbytes)},
         "nodes": {"count": int(len(nodes)),
                   "positionsBytes": int(npos.nbytes),
                   "idsBytes": int(nids.nbytes)},
     }
     header_bytes = json.dumps(header, separators=(",", ":")).encode("utf-8")
-    payload = b"".join([lpos.tobytes(), lstart.tobytes(), lids.tobytes(),
+    payload = b"".join([lpos.tobytes(), lstart.tobytes(), lids.tobytes(), llanes.tobytes(),
                         npos.tobytes(), nids.tobytes()])
     return struct.pack("<I", len(header_bytes)) + header_bytes + payload
 
@@ -90,11 +110,13 @@ def unpack_network(blob: bytes) -> dict:
     lpos = take(lk["positionsBytes"], "<f4")
     lstart = take(lk["startIndicesBytes"], "<u4")
     lids = take(lk["idsBytes"], "<f8")
+    llanes = take(lk["lanesBytes"], "<u1")
     npos = take(nd["positionsBytes"], "<f4")
     nids = take(nd["idsBytes"], "<f8")
     return {
         "links": {"count": lk["count"], "positions": lpos.tolist(),
-                  "startIndices": lstart.tolist(), "ids": [int(i) for i in lids.tolist()]},
+                  "startIndices": lstart.tolist(), "ids": [int(i) for i in lids.tolist()],
+                  "lanes": [int(x) for x in llanes.tolist()]},
         "nodes": {"count": nd["count"], "positions": npos.tolist(),
                   "ids": [int(i) for i in nids.tolist()]},
     }

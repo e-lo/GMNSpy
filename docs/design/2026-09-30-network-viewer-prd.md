@@ -332,10 +332,12 @@ freely learn from any tool (including commercial ones); the line is *copying cod
   write from scratch. (This is why the §8 recommendation is what it is.)
 - **Mapbox GL JS v2+ is proprietary** (Mapbox BSL / commercial terms). Do not use it or its code —
   we use **MapLibre** (BSD-3). Mapbox's expression spec/Studio are inspiration, not code to copy.
-- **Basemap tiles are a *service*, not a code license.** `tile.openstreetmap.org` (used in the
-  prototype) is fine for dev under the OSMF tile-usage policy but **prohibits heavy/production use**;
-  a real deployment needs a proper basemap source (self-hosted tiles, or MapTiler/Stadia/Carto/
-  Protomaps under their terms). Always show attribution (© OpenStreetMap contributors).
+- **Basemap tiles are a *service*, not a code license.** The viewer uses **Esri "World Light Gray
+  Canvas"** (muted Positron-like, **no API key**, attribution "Esri, © OpenStreetMap contributors")
+  so the network pops. Note: **Carto's free basemap CDN now requires an API key** (returns an
+  "API KEY REQUIRED" watermark), so we avoid it; OpenFreeMap's `positron` vector style is a no-key
+  alternative if we want vector. A production deployment should confirm the chosen provider's terms
+  (Esri basemaps are free with attribution for most uses) or self-host tiles. Always show attribution.
 - **Network *data* licenses.** GMNS networks built from OSM (`osm2gmns` / `gmnspy.osm.build`) carry
   **ODbL** obligations — attribution + share-alike on derived databases; our bundled fixtures
   already state ODbL. **Overture** data is CDLA-Permissive-2.0 for most themes and **ODbL** for

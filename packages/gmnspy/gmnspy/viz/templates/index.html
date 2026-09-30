@@ -60,9 +60,14 @@
 const map = new maplibregl.Map({
   container: "map",
   style: { version: 8,
-    sources: { osm: { type: "raster", tiles: ["https://a.tile.openstreetmap.org/{z}/{x}/{y}.png"],
-                      tileSize: 256, attribution: "© OpenStreetMap contributors" } },
-    layers: [{ id: "osm", type: "raster", source: "osm" }] },
+    sources: {
+      basemap: { type: "raster", tileSize: 256, attribution: "Esri, © OpenStreetMap contributors",
+        tiles: ["https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}"] },
+      labels: { type: "raster", tileSize: 256,
+        tiles: ["https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Reference/MapServer/tile/{z}/{y}/{x}"] },
+    },
+    layers: [{ id: "basemap", type: "raster", source: "basemap" },
+             { id: "labels", type: "raster", source: "labels" }] },
   center: [-78.8, 35.88], zoom: 11,
 });
 map.addControl(new maplibregl.NavigationControl(), "top-left");
@@ -84,8 +89,16 @@ async function loadNetwork() {
   const linkPositions = take(buf, off, L.positionsBytes, Float32Array); off += L.positionsBytes;
   const linkStart = take(buf, off, L.startIndicesBytes, Uint32Array); off += L.startIndicesBytes;
   const linkIds = take(buf, off, L.idsBytes, Float64Array); off += L.idsBytes;
+  const linkLanes = take(buf, off, L.lanesBytes, Uint8Array); off += L.lanesBytes;
   const nodePositions = take(buf, off, N.positionsBytes, Float32Array); off += N.positionsBytes;
-  NET = { L, N, linkPositions, linkStart, linkIds, nodePositions };
+  // deck.gl binary PathLayer wants per-VERTEX attributes: expand lane-width per vertex.
+  const numVerts = linkStart[L.count];
+  const linkWidths = new Float32Array(numVerts);
+  for (let i = 0; i < L.count; i++) {
+    const w = widthForLanes(linkLanes[i]);
+    for (let v = linkStart[i]; v < linkStart[i + 1]; v++) linkWidths[v] = w;
+  }
+  NET = { L, N, linkPositions, linkStart, linkIds, linkLanes, linkWidths, nodePositions };
   ATTRS = attrs;
   for (let i = 0; i < linkIds.length; i++) ID2IDX.set(linkIds[i], i);
   document.getElementById("count").textContent = `${L.count.toLocaleString()} links · ${N.count.toLocaleString()} nodes`;
@@ -93,19 +106,24 @@ async function loadNetwork() {
   fitToNetwork(nodePositions);
 }
 
+function widthForLanes(lanes) {           // lanes -> pixel width; freeways pop
+  return Math.max(1.2, Math.min(9, 0.9 + 0.8 * lanes));
+}
+
 function baseLayers() {
-  const { L, N, linkPositions, linkStart, nodePositions } = NET;
+  const { L, N, linkPositions, linkStart, linkWidths, nodePositions } = NET;
   return [
     new deck.ScatterplotLayer({ id: "nodes",
       data: { length: N.count, attributes: { getPosition: { value: nodePositions, size: 2 } } },
-      getRadius: 2, radiusUnits: "pixels", radiusMinPixels: 1,
-      getFillColor: [90, 110, 140, 150], pickable: false }),
+      getRadius: 1.8, radiusUnits: "pixels", radiusMinPixels: 1,
+      getFillColor: [70, 90, 120, 130], pickable: false }),
     new deck.PathLayer({ id: "links", _pathType: "open",
       data: { length: L.count, startIndices: linkStart,
-              attributes: { getPath: { value: linkPositions, size: 2 } } },
-      getColor: [70, 90, 120, 205], widthUnits: "pixels", getWidth: 1.8, widthMinPixels: 1.2,
+              attributes: { getPath: { value: linkPositions, size: 2 },
+                            getWidth: { value: linkWidths, size: 1 } } },
+      getColor: [46, 64, 110, 220], widthUnits: "pixels", widthMinPixels: 1,
       capRounded: true, jointRounded: true, pickable: true, autoHighlight: true,
-      highlightColor: [255, 140, 59, 230] }),
+      highlightColor: [255, 140, 59, 235] }),
   ];
 }
 
@@ -113,17 +131,19 @@ function selectionLayers(linkIds, anchors) {
   const layers = [];
   if (linkIds && linkIds.length) {
     const { linkPositions, linkStart } = NET;
-    const positions = []; const startIndices = [0];
+    const positions = []; const startIndices = [0]; const widths = [];
     for (const id of linkIds) {
       const i = ID2IDX.get(id); if (i == null) continue;
       const a = NET.linkStart[i] * 2, b = NET.linkStart[i + 1] * 2;
-      for (let k = a; k < b; k++) positions.push(linkPositions[k]);
+      const w = widthForLanes(NET.linkLanes[i]) + 3;      // always proud of base
+      for (let k = a; k < b; k += 2) { positions.push(linkPositions[k], linkPositions[k + 1]); widths.push(w); }
       startIndices.push(positions.length / 2);
     }
     layers.push(new deck.PathLayer({ id: "selection", _pathType: "open",
       data: { length: startIndices.length - 1, startIndices: new Uint32Array(startIndices),
-              attributes: { getPath: { value: new Float32Array(positions), size: 2 } } },
-      getColor: [255, 140, 59, 255], widthUnits: "pixels", getWidth: 5, widthMinPixels: 3,
+              attributes: { getPath: { value: new Float32Array(positions), size: 2 },
+                            getWidth: { value: new Float32Array(widths), size: 1 } } },
+      getColor: [255, 140, 59, 255], widthUnits: "pixels", widthMinPixels: 3,
       capRounded: true, jointRounded: true, parameters: { depthTest: false } }));
   }
   if (anchors && anchors.length) {

@@ -49,6 +49,20 @@ def test_straight_fallback_when_no_geometry(rdu):
     assert si[1] - si[0] == 2
 
 
+def test_lanes_present_and_freeway_thicker(rdu):
+    links, nodes = rdu
+    net = unpack_network(pack_network(links, nodes))
+    lanes = net["links"]["lanes"]
+    assert len(lanes) == len(links) and all(l >= 1 for l in lanes)
+    # motorway links should default to more lanes than residential when untagged
+    ids = net["links"]["ids"]
+    ft = dict(zip(links["link_id"], links["facility_type"]))
+    mot = [lanes[i] for i, lid in enumerate(ids) if ft.get(lid) == "motorway"]
+    res = [lanes[i] for i, lid in enumerate(ids) if ft.get(lid) == "residential"]
+    if mot and res:
+        assert max(mot) > min(res)
+
+
 def test_network_attrs_index_aligned(rdu):
     links, nodes = rdu
     attrs = network_attrs(links)
