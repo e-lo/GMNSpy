@@ -92,6 +92,8 @@
   </header>
   <div id="map">
     <div id="map-btns">
+      <button class="iconbtn" id="btn-fitnet" title="Zoom to full network">&#9974;</button>
+      <button class="iconbtn" id="btn-fitsel" title="Zoom to selection">&#9673;</button>
       <button class="iconbtn" id="btn-layers" title="Layers">&#9635;</button>
       <button class="iconbtn" id="btn-settings" title="Settings">&#9881;</button>
     </div>
@@ -374,6 +376,8 @@ function wirePanels() {
     bs.classList.toggle("on", toS); bl.classList.toggle("on", toL);
   };
   bs.onclick = () => openPanel("s"); bl.onclick = () => openPanel("l");
+  document.getElementById("btn-fitnet").onclick = () => { if (NET) fitToNetwork(NET.nodePositions); };
+  document.getElementById("btn-fitsel").onclick = () => fitSelection();
 
   document.getElementById("colorby").onchange = e => applyColorBy(e.target.value);
   document.getElementById("ramp").onchange = e => { STYLE.ramp = e.target.value; buildLinkColors(); renderLegend(); refresh(); };
@@ -399,7 +403,14 @@ function wirePanels() {
 function fitToNetwork(nodePositions) {
   const b = new maplibregl.LngLatBounds();
   for (let i = 0; i < nodePositions.length; i += 2) b.extend([nodePositions[i], nodePositions[i + 1]]);
-  if (!b.isEmpty()) map.fitBounds(b, { padding: 60, maxZoom: 15, duration: 0 });
+  if (!b.isEmpty()) map.fitBounds(b, { padding: 60, maxZoom: 15, duration: 400 });
+}
+function fitSelection() {
+  if (!NET || !CUR.linkIds.length) return;
+  const b = new maplibregl.LngLatBounds();
+  for (const id of CUR.linkIds) { const i = ID2IDX.get(id); if (i == null) continue;
+    for (let k = NET.linkStart[i] * 2; k < NET.linkStart[i + 1] * 2; k += 2) b.extend([NET.linkPositions[k], NET.linkPositions[k + 1]]); }
+  if (!b.isEmpty()) map.fitBounds(b, { padding: 80, maxZoom: 15, duration: 600 });
 }
 
 async function runSelect() {
@@ -408,12 +419,7 @@ async function runSelect() {
   try {
     const j = await (await fetch("/api/select?utterance=" + encodeURIComponent(q))).json();
     CUR.linkIds = j.link_ids || []; CUR.anchors = j.anchors || []; refresh();
-    if ((j.link_ids || []).length) {
-      const b = new maplibregl.LngLatBounds();
-      for (const id of j.link_ids) { const i = ID2IDX.get(id); if (i == null) continue;
-        for (let k = NET.linkStart[i]*2; k < NET.linkStart[i+1]*2; k += 2) b.extend([NET.linkPositions[k], NET.linkPositions[k+1]]); }
-      if (!b.isEmpty()) map.fitBounds(b, { padding: 80, maxZoom: 15, duration: 600 });
-    }
+    fitSelection();
     document.getElementById("status-wrap").innerHTML = `<span class="status ${j.status}">${j.status.replace("_", " ")}</span>`;
     document.getElementById("anchors").innerHTML = (j.anchors || []).length
       ? j.anchors.map(a => `<div><span class="dot" style="background:${a.role === "from" ? "#35c46a" : "#e0524d"}"></span>` +
