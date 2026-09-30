@@ -25,10 +25,15 @@ def register(app: typer.Typer) -> None:
         source: Path = typer.Argument(..., help="Path/URL to a GMNS network."),
         provider: str = typer.Option("stub", "--provider", help="NL parser: stub | claude."),
         engine: str = typer.Option(None, "--engine", help="ibis/pandas/polars (default: ibis)."),
+        basemap: str = typer.Option("positron", "--basemap", help="Basemap: positron | esri (both keyless)."),
         host: str = typer.Option("127.0.0.1", "--host", help="Bind host."),
         port: int = typer.Option(8850, "--port", help="Bind port."),
     ) -> None:
-        """Serve the interactive network viewer at http://host:port."""
+        """Serve the interactive network viewer at http://host:port.
+
+        Basemap is keyless: ``positron`` (OpenFreeMap vector Positron, default) or
+        ``esri`` (Esri Light Gray). No API key or secret is required.
+        """
         import uvicorn
 
         from ...viz.server import build_app
@@ -36,5 +41,5 @@ def register(app: typer.Typer) -> None:
         net = Network.from_source(source, engine=resolve_engine(engine))
         links = net.links.to_pandas() if hasattr(net.links, "to_pandas") else net.links.execute()
         nodes = net.nodes.to_pandas() if hasattr(net.nodes, "to_pandas") else net.nodes.execute()
-        typer.echo(f"gmnspy viz on http://{host}:{port}  ({len(links)} links, {len(nodes)} nodes)")
-        uvicorn.run(build_app(links, nodes, provider=provider), host=host, port=port)
+        typer.echo(f"gmnspy viz on http://{host}:{port}  ({len(links)} links, {len(nodes)} nodes; basemap={basemap})")
+        uvicorn.run(build_app(links, nodes, provider=provider, basemap=basemap), host=host, port=port)

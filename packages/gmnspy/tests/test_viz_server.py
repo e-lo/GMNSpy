@@ -22,6 +22,21 @@ def test_index_served(client):
     assert r.status_code == 200 and "text/html" in r.headers["content-type"]
 
 
+def test_config_default_is_keyless_positron(client):
+    style = client.get("/api/config").json()["style"]
+    # default positron is a no-key vector style URL; no api_key anywhere
+    assert isinstance(style, str) and "openfreemap" in style and "api_key" not in style
+
+
+def test_config_esri_option_is_keyless():
+    from gmnspy.viz.server import build_app
+    app = build_app(pd.DataFrame({"link_id": [], "from_node_id": [], "to_node_id": [], "geometry": []}),
+                    pd.DataFrame({"node_id": [], "x_coord": [], "y_coord": []}), basemap="esri")
+    style = TestClient(app).get("/api/config").json()["style"]
+    tiles = style["sources"]["basemap"]["tiles"][0]
+    assert "arcgisonline.com" in tiles and "api_key" not in tiles
+
+
 def test_network_bin_parses(client):
     r = client.get("/api/network.bin")
     assert r.status_code == 200

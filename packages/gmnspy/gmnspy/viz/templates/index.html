@@ -57,24 +57,19 @@
   </aside>
 </div>
 <script>
-const map = new maplibregl.Map({
-  container: "map",
-  style: { version: 8,
-    sources: {
-      basemap: { type: "raster", tileSize: 256, attribution: "Esri, © OpenStreetMap contributors",
-        tiles: ["https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}"] },
-      labels: { type: "raster", tileSize: 256,
-        tiles: ["https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Reference/MapServer/tile/{z}/{y}/{x}"] },
-    },
-    layers: [{ id: "basemap", type: "raster", source: "basemap" },
-             { id: "labels", type: "raster", source: "labels" }] },
-  center: [-78.8, 35.88], zoom: 11,
-});
-map.addControl(new maplibregl.NavigationControl(), "top-left");
-
+// map + basemap are built from /api/config (the basemap — incl. any API key —
+// is provided by the server at runtime from env, never baked into this file).
+let map = null, overlay = null;
 let NET = null, ATTRS = null, ID2IDX = new Map();
-const overlay = new deck.MapboxOverlay({ interleaved: false, layers: [], getTooltip });
-map.addControl(overlay);
+
+async function init() {
+  const cfg = await fetch("/api/config").then(r => r.json());
+  map = new maplibregl.Map({ container: "map", style: cfg.style, center: [-78.8, 35.88], zoom: 11 });
+  map.addControl(new maplibregl.NavigationControl(), "top-left");
+  overlay = new deck.MapboxOverlay({ interleaved: false, layers: [], getTooltip });
+  map.addControl(overlay);
+  map.on("load", loadNetwork);
+}
 
 function take(buf, off, bytes, Ctor) { return new Ctor(buf.slice(off, off + bytes)); }
 
@@ -201,7 +196,7 @@ async function runSelect() {
 
 document.getElementById("go").addEventListener("click", runSelect);
 document.getElementById("utterance").addEventListener("keydown", e => { if (e.key === "Enter") runSelect(); });
-map.on("load", loadNetwork);
+init();
 </script>
 </body>
 </html>

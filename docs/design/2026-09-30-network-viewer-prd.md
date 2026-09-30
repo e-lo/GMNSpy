@@ -332,12 +332,15 @@ freely learn from any tool (including commercial ones); the line is *copying cod
   write from scratch. (This is why the §8 recommendation is what it is.)
 - **Mapbox GL JS v2+ is proprietary** (Mapbox BSL / commercial terms). Do not use it or its code —
   we use **MapLibre** (BSD-3). Mapbox's expression spec/Studio are inspiration, not code to copy.
-- **Basemap tiles are a *service*, not a code license.** The viewer uses **Esri "World Light Gray
-  Canvas"** (muted Positron-like, **no API key**, attribution "Esri, © OpenStreetMap contributors")
-  so the network pops. Note: **Carto's free basemap CDN now requires an API key** (returns an
-  "API KEY REQUIRED" watermark), so we avoid it; OpenFreeMap's `positron` vector style is a no-key
-  alternative if we want vector. A production deployment should confirm the chosen provider's terms
-  (Esri basemaps are free with attribution for most uses) or self-host tiles. Always show attribution.
+- **Basemap tiles are a *service*, not a code license, and we keep them keyless.** Default is
+  **OpenFreeMap's vector Positron** (`tiles.openfreemap.org/styles/positron`, no API key, OSM/
+  OpenMapTiles data, crisp at any zoom) so the network pops; `--basemap esri` switches to Esri
+  World Light Gray (raster, capped at z16 so MapLibre overzooms instead of hitting Esri's "map data
+  not yet available" placeholder). **Carto's CDN now requires an API key** (watermarks otherwise),
+  and its `?api_key=` raster form did not authenticate in testing — so we avoid it; **no basemap
+  option embeds or requires a secret.** If a keyed provider is ever wanted, inject the key at
+  runtime via a config endpoint from an env var — never commit it. Always show attribution; a
+  production deployment should confirm the provider's terms or self-host tiles.
 - **Network *data* licenses.** GMNS networks built from OSM (`osm2gmns` / `gmnspy.osm.build`) carry
   **ODbL** obligations — attribution + share-alike on derived databases; our bundled fixtures
   already state ODbL. **Overture** data is CDLA-Permissive-2.0 for most themes and **ODbL** for

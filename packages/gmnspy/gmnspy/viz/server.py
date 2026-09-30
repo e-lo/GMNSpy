@@ -32,9 +32,41 @@ def _py(v: Any) -> Any:
     return getattr(v, "item", lambda: v)()
 
 
-def build_app(links, nodes, *, provider: str = "stub", parser=None) -> FastAPI:
-    """Return the viewer FastAPI app over ``links``/``nodes`` frames."""
+_ESRI = "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas"
+#: Free, no-key vector Positron (OpenMapTiles/OSM data). Gives the muted
+#: "network pops" look without any API key or secret to manage.
+_POSITRON_URL = "https://tiles.openfreemap.org/styles/positron"
+
+
+def _basemap_style(basemap: str = "positron"):
+    """Return a MapLibre style for ``basemap``.
+
+    * ``"positron"`` (default) — OpenFreeMap's no-key vector Positron (a style
+      URL string). No API key, crisp at all zooms.
+    * ``"esri"`` — Esri World Light Gray raster, capped at z16 so MapLibre
+      overzooms rather than hitting the 'map data not yet available' tiles.
+
+    No basemap option requires or embeds a secret.
+    """
+    if basemap == "esri":
+        return {"version": 8, "sources": {
+            "basemap": {"type": "raster", "tileSize": 256, "maxzoom": 16,
+                        "attribution": "Esri, © OpenStreetMap contributors",
+                        "tiles": [f"{_ESRI}/World_Light_Gray_Base/MapServer/tile/{{z}}/{{y}}/{{x}}"]},
+            "labels": {"type": "raster", "tileSize": 256, "maxzoom": 16,
+                       "tiles": [f"{_ESRI}/World_Light_Gray_Reference/MapServer/tile/{{z}}/{{y}}/{{x}}"]}},
+            "layers": [{"id": "basemap", "type": "raster", "source": "basemap"},
+                       {"id": "labels", "type": "raster", "source": "labels"}]}
+    return _POSITRON_URL
+
+
+def build_app(links, nodes, *, provider: str = "stub", parser=None, basemap: str = "positron") -> FastAPI:
+    """Return the viewer FastAPI app over ``links``/``nodes`` frames.
+
+    ``basemap`` selects the (keyless) basemap: ``"positron"`` (default) or ``"esri"``.
+    """
     app = FastAPI(title="gmnspy viz")
+    _style = _basemap_style(basemap)
     _parser = parser or (ClaudeParser() if provider == "claude" else StubParser())
     node_xy = {r.node_id: (float(r.x_coord), float(r.y_coord)) for r in nodes.itertuples()}
 
@@ -49,6 +81,10 @@ def build_app(links, nodes, *, provider: str = "stub", parser=None) -> FastAPI:
     @app.get("/", response_class=HTMLResponse)
     def index() -> str:
         return _page()
+
+    @app.get("/api/config")
+    def config() -> JSONResponse:
+        return JSONResponse({"style": _style})
 
     @app.get("/api/network.bin")
     def network_bin() -> Response:
