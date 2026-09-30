@@ -31,6 +31,7 @@ from .commands import (
     quality,
     scope,
     select,
+    viz,
     server,
     spec,
     validate,
@@ -71,6 +72,7 @@ def _build_gmnspy_app() -> typer.Typer:
     index.register(gmnspy_app)
     build.register(gmnspy_app)
     select.register(gmnspy_app)
+    viz.register(gmnspy_app)
     return gmnspy_app
 
 

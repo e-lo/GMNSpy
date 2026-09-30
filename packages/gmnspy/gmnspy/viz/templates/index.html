@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>gmnspy · viz</title>
+<link href="https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet" />
+<script src="https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/deck.gl@9.0.38/dist.min.js"></script>
+<style>
+  :root { --bg:#0f1115; --panel:#171a21; --edge:#2a2f3a; --ink:#e6e8ec; --muted:#9aa3b2;
+          --accent:#ff8c3b; --from:#35c46a; --to:#e0524d; }
+  * { box-sizing:border-box; }
+  html,body { margin:0; height:100%; font:14px/1.45 ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+              color:var(--ink); background:var(--bg); }
+  #app { display:grid; grid-template-columns:1fr 330px; grid-template-rows:auto 1fr; height:100%; }
+  header { grid-column:1 / -1; display:flex; gap:10px; align-items:center; padding:12px 16px;
+           background:var(--panel); border-bottom:1px solid var(--edge); }
+  header h1 { font-size:14px; font-weight:600; margin:0 12px 0 0; color:var(--muted); }
+  #utterance { flex:1; padding:9px 12px; border:1px solid var(--edge); border-radius:8px;
+               background:#0c0e12; color:var(--ink); font-size:14px; }
+  button { padding:9px 16px; border:0; border-radius:8px; background:var(--accent); color:#11151a;
+           font-weight:600; cursor:pointer; }
+  button:disabled { opacity:.5; }
+  #map { position:relative; width:100%; height:100%; }
+  #side { background:var(--panel); border-left:1px solid var(--edge); padding:16px; overflow:auto; }
+  .status { display:inline-block; padding:3px 10px; border-radius:999px; font-size:12px; font-weight:600; }
+  .status.resolved { background:rgba(53,196,106,.15); color:var(--from); }
+  .status.ambiguous { background:rgba(255,140,59,.15); color:var(--accent); }
+  .status.not_found { background:rgba(224,82,77,.15); color:var(--to); }
+  .label { color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:.06em; margin:16px 0 6px; }
+  pre { background:#0c0e12; border:1px solid var(--edge); border-radius:8px; padding:10px;
+        font-size:12px; white-space:pre-wrap; word-break:break-word; margin:0; }
+  .diag { color:var(--muted); font-size:12.5px; margin:4px 0; }
+  .dot { display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:6px; }
+  .empty { color:var(--muted); }
+  #count { color:var(--muted); font-size:12px; margin-left:auto; }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <h1>gmnspy · viz</h1>
+    <input id="utterance" placeholder='e.g. "I-40 EB between South Miami Boulevard and Airport Boulevard"' />
+    <button id="go">Select</button>
+    <span id="count"></span>
+  </header>
+  <div id="map"></div>
+  <aside id="side">
+    <div id="status-wrap"><span class="empty">Network loaded. Hover a link to inspect; type an utterance to select.</span></div>
+    <div class="label">Anchors</div>
+    <div id="anchors"><span class="empty">—</span></div>
+    <div class="label">Fragment</div>
+    <pre id="fragment">—</pre>
+    <div class="label">Diagnostics</div>
+    <div id="diag"><span class="empty">—</span></div>
+  </aside>
+</div>
+<script>
+const map = new maplibregl.Map({
+  container: "map",
+  style: { version: 8,
+    sources: { osm: { type: "raster", tiles: ["https://a.tile.openstreetmap.org/{z}/{x}/{y}.png"],
+                      tileSize: 256, attribution: "© OpenStreetMap contributors" } },
+    layers: [{ id: "osm", type: "raster", source: "osm" }] },
+  center: [-78.8, 35.88], zoom: 11,
+});
+map.addControl(new maplibregl.NavigationControl(), "top-left");
+
+let NET = null, ATTRS = null, ID2IDX = new Map();
+const overlay = new deck.MapboxOverlay({ interleaved: false, layers: [], getTooltip });
+map.addControl(overlay);
+
+function take(buf, off, bytes, Ctor) { return new Ctor(buf.slice(off, off + bytes)); }
+
+async function loadNetwork() {
+  const [buf, attrs] = await Promise.all([
+    fetch("/api/network.bin").then(r => r.arrayBuffer()),
+    fetch("/api/network.attrs.json").then(r => r.json()),
+  ]);
+  const hlen = new DataView(buf).getUint32(0, true);
+  const header = JSON.parse(new TextDecoder().decode(new Uint8Array(buf, 4, hlen)));
+  let off = 4 + hlen; const L = header.links, N = header.nodes;
+  const linkPositions = take(buf, off, L.positionsBytes, Float32Array); off += L.positionsBytes;
+  const linkStart = take(buf, off, L.startIndicesBytes, Uint32Array); off += L.startIndicesBytes;
+  const linkIds = take(buf, off, L.idsBytes, Float64Array); off += L.idsBytes;
+  const nodePositions = take(buf, off, N.positionsBytes, Float32Array); off += N.positionsBytes;
+  NET = { L, N, linkPositions, linkStart, linkIds, nodePositions };
+  ATTRS = attrs;
+  for (let i = 0; i < linkIds.length; i++) ID2IDX.set(linkIds[i], i);
+  document.getElementById("count").textContent = `${L.count.toLocaleString()} links · ${N.count.toLocaleString()} nodes`;
+  render([], []);
+  fitToNetwork(nodePositions);
+}
+
+function baseLayers() {
+  const { L, N, linkPositions, linkStart, nodePositions } = NET;
+  return [
+    new deck.ScatterplotLayer({ id: "nodes",
+      data: { length: N.count, attributes: { getPosition: { value: nodePositions, size: 2 } } },
+      getRadius: 2, radiusUnits: "pixels", radiusMinPixels: 1,
+      getFillColor: [90, 110, 140, 150], pickable: false }),
+    new deck.PathLayer({ id: "links", _pathType: "open",
+      data: { length: L.count, startIndices: linkStart,
+              attributes: { getPath: { value: linkPositions, size: 2 } } },
+      getColor: [70, 90, 120, 205], widthUnits: "pixels", getWidth: 1.8, widthMinPixels: 1.2,
+      capRounded: true, jointRounded: true, pickable: true, autoHighlight: true,
+      highlightColor: [255, 140, 59, 230] }),
+  ];
+}
+
+function selectionLayers(linkIds, anchors) {
+  const layers = [];
+  if (linkIds && linkIds.length) {
+    const { linkPositions, linkStart } = NET;
+    const positions = []; const startIndices = [0];
+    for (const id of linkIds) {
+      const i = ID2IDX.get(id); if (i == null) continue;
+      const a = NET.linkStart[i] * 2, b = NET.linkStart[i + 1] * 2;
+      for (let k = a; k < b; k++) positions.push(linkPositions[k]);
+      startIndices.push(positions.length / 2);
+    }
+    layers.push(new deck.PathLayer({ id: "selection", _pathType: "open",
+      data: { length: startIndices.length - 1, startIndices: new Uint32Array(startIndices),
+              attributes: { getPath: { value: new Float32Array(positions), size: 2 } } },
+      getColor: [255, 140, 59, 255], widthUnits: "pixels", getWidth: 5, widthMinPixels: 3,
+      capRounded: true, jointRounded: true, parameters: { depthTest: false } }));
+  }
+  if (anchors && anchors.length) {
+    layers.push(new deck.ScatterplotLayer({ id: "anchors", data: anchors,
+      getPosition: a => [a.lon, a.lat], getRadius: 7, radiusUnits: "pixels",
+      getFillColor: a => a.role === "from" ? [53, 196, 106] : [224, 82, 77],
+      getLineColor: [17, 21, 26], lineWidthMinPixels: 2, stroked: true,
+      parameters: { depthTest: false } }));
+  }
+  return layers;
+}
+
+function render(linkIds, anchors) {
+  overlay.setProps({ layers: [...baseLayers(), ...selectionLayers(linkIds, anchors)] });
+}
+
+function getTooltip({ layer, index }) {
+  if (!layer || layer.id !== "links" || index == null || index < 0 || !ATTRS) return null;
+  const id = ATTRS.link_id[index], nm = ATTRS.name[index], rf = ATTRS.ref[index], ft = ATTRS.facility_type[index];
+  return { html: `<b>link ${id}</b><br>${nm || "<i>unnamed</i>"}${rf ? " · " + rf : ""}` +
+                 `<br><span style="color:#8a93a3">${ft || ""}</span>`,
+           style: { background: "#11151a", color: "#e6e8ec", fontSize: "12px",
+                    padding: "6px 8px", borderRadius: "6px", border: "1px solid #2a2f3a" } };
+}
+
+function fitToNetwork(nodePositions) {
+  const b = new maplibregl.LngLatBounds();
+  for (let i = 0; i < nodePositions.length; i += 2) b.extend([nodePositions[i], nodePositions[i + 1]]);
+  if (!b.isEmpty()) map.fitBounds(b, { padding: 50, maxZoom: 15, duration: 0 });
+}
+
+async function runSelect() {
+  const q = document.getElementById("utterance").value.trim(); if (!q) return;
+  const btn = document.getElementById("go"); btn.disabled = true;
+  try {
+    const j = await (await fetch("/api/select?utterance=" + encodeURIComponent(q))).json();
+    render(j.link_ids || [], j.anchors || []);
+    if ((j.link_ids || []).length) {
+      const b = new maplibregl.LngLatBounds();
+      for (const id of j.link_ids) { const i = ID2IDX.get(id); if (i == null) continue;
+        for (let k = NET.linkStart[i] * 2; k < NET.linkStart[i + 1] * 2; k += 2)
+          b.extend([NET.linkPositions[k], NET.linkPositions[k + 1]]); }
+      if (!b.isEmpty()) map.fitBounds(b, { padding: 80, maxZoom: 15, duration: 600 });
+    }
+    document.getElementById("status-wrap").innerHTML = `<span class="status ${j.status}">${j.status.replace("_", " ")}</span>`;
+    document.getElementById("anchors").innerHTML = (j.anchors || []).length
+      ? j.anchors.map(a => `<div><span class="dot" style="background:${a.role === "from" ? "#35c46a" : "#e0524d"}"></span>` +
+          `<b>${a.role}</b> · node ${a.node_id} · ${a.kind} <span class="diag">(${a.detail})</span></div>`).join("")
+      : '<span class="empty">none</span>';
+    document.getElementById("fragment").textContent = j.fragment ? JSON.stringify(j.fragment, null, 2) : "—";
+    document.getElementById("diag").innerHTML = (j.diagnostics || []).length
+      ? j.diagnostics.map(d => `<div class="diag">• ${d}</div>`).join("") : '<span class="empty">—</span>';
+  } finally { btn.disabled = false; }
+}
+
+document.getElementById("go").addEventListener("click", runSelect);
+document.getElementById("utterance").addEventListener("keydown", e => { if (e.key === "Enter") runSelect(); });
+map.on("load", loadNetwork);
+</script>
+</body>
+</html>
