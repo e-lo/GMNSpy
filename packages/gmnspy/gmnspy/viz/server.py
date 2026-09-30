@@ -12,6 +12,7 @@ from functools import lru_cache
 from importlib import resources
 from typing import Any
 
+import pandas as pd
 from fastapi import FastAPI, Query, Response
 from fastapi.responses import HTMLResponse, JSONResponse
 
@@ -29,6 +30,15 @@ def _page() -> str:
 
 
 def _py(v: Any) -> Any:
+    return getattr(v, "item", lambda: v)()
+
+
+def _json_scalar(v: Any) -> Any:
+    try:
+        if v is None or pd.isna(v):
+            return None
+    except (TypeError, ValueError):
+        pass
     return getattr(v, "item", lambda: v)()
 
 
@@ -93,6 +103,20 @@ def build_app(links, nodes, *, provider: str = "stub", parser=None, basemap: str
     @app.get("/api/network.attrs.json")
     def network_attrs_json() -> JSONResponse:
         return JSONResponse(_attrs())
+
+    @app.get("/api/link/{link_id}")
+    def link_detail(link_id: str) -> JSONResponse:
+        """Full attribute row for one link (the detailed-inspection table)."""
+        try:
+            key: Any = int(link_id)
+        except ValueError:
+            key = link_id
+        row = links[links["link_id"] == key]
+        if len(row) == 0:
+            return JSONResponse({"error": f"link {link_id} not found"}, status_code=404)
+        rec = row.iloc[0].to_dict()
+        return JSONResponse({"link_id": _py(key),
+                             "attributes": {k: _json_scalar(v) for k, v in rec.items()}})
 
     @app.get("/api/select")
     def select(utterance: str = Query(..., min_length=1)) -> dict:

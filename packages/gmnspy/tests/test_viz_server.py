@@ -52,6 +52,23 @@ def test_network_attrs(client):
     assert len(j["link_id"]) == len(j["facility_type"])
 
 
+def test_link_detail_returns_full_row(client):
+    import pandas as pd
+    base = resources.files("gmnspy.fixtures.rdu_i40").joinpath("parquet")
+    lid = int(pd.read_parquet(base.joinpath("link.parquet"))["link_id"].iloc[0])
+    r = client.get(f"/api/link/{lid}")
+    assert r.status_code == 200
+    j = r.json()
+    assert j["link_id"] == lid
+    attrs = j["attributes"]
+    assert attrs["link_id"] == lid
+    assert "facility_type" in attrs and "from_node_id" in attrs
+
+
+def test_link_detail_404_for_unknown(client):
+    assert client.get("/api/link/999999999").status_code == 404
+
+
 def test_select_returns_link_ids_and_anchors(client):
     r = client.get("/api/select",
                    params={"utterance": "I-40 EB between South Miami Boulevard and Airport Boulevard"})

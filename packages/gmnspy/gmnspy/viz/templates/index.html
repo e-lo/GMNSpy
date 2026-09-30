@@ -51,6 +51,11 @@
   .dot { display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:6px; }
   .empty { color:var(--muted); }
   #count { color:var(--muted); font-size:12px; margin-left:auto; }
+  #details table { width:100%; border-collapse:collapse; }
+  #details td { padding:3px 6px; border-bottom:1px solid var(--edge); font-size:12px; vertical-align:top; }
+  #details td.k { color:var(--muted); white-space:nowrap; }
+  #details td.v { word-break:break-word; max-width:200px; }
+  #details .lid { color:var(--accent); font-weight:600; margin-bottom:4px; }
 </style>
 </head>
 <body>
@@ -76,12 +81,15 @@
         <label><input type="checkbox" id="tg-nodes" checked> Nodes</label>
         <label><input type="checkbox" id="tg-labels" checked> Labels</label>
         <label><input type="checkbox" id="tg-selection" checked> Selection</label>
+        <label><input type="checkbox" id="tg-offset" checked> Offset dirs</label>
       </div>
       <div id="legend"></div>
     </div>
   </div>
   <aside id="side">
-    <div id="status-wrap"><span class="empty">Network loaded. Hover a link to inspect; type an utterance to select.</span></div>
+    <div id="status-wrap"><span class="empty">Click a link for details; hover to inspect; type an utterance to select.</span></div>
+    <div class="label">Link details</div>
+    <div id="details"><span class="empty">Click a link on the map.</span></div>
     <div class="label">Anchors</div>
     <div id="anchors"><span class="empty">—</span></div>
     <div class="label">Fragment</div>
@@ -97,7 +105,11 @@ let map = null, overlay = null;
 let NET = null, ATTRS = null, ID2IDX = new Map();
 let LANE_RANGE = [1, 1];
 const CUR = { linkIds: [], anchors: [] };            // current selection
-const STYLE = { colorBy: "none", show: { links: true, nodes: true, labels: true, selection: true } };
+const STYLE = { colorBy: "none", offset: true, show: { links: true, nodes: true, labels: true, selection: true } };
+// PathStyleExtension applies the lateral offset in BOTH the render and picking
+// passes, so clicks match what's drawn (unlike a hand-rolled offset shader).
+const OFFSET_EXT = (typeof deck.PathStyleExtension === "function") ? new deck.PathStyleExtension({ offset: true }) : null;
+const OFFSET_AMT = 0.8;   // in path-width units; separates opposing directed links
 
 const FT_PALETTE = {                                  // facility_type -> RGB (readable on light)
   motorway: [214, 69, 65], motorway_link: [214, 69, 65], trunk: [232, 119, 34], trunk_link: [232, 119, 34],
@@ -187,14 +199,18 @@ function baseLayers() {
     data: { length: N.count, attributes: { getPosition: { value: nodePositions, size: 2 } } },
     getRadius: 1.8, radiusUnits: "pixels", radiusMinPixels: 1,
     getFillColor: [70, 90, 120, 130], pickable: false }));
-  if (STYLE.show.links) layers.push(new deck.PathLayer({ id: "links", _pathType: "open",
-    data: { length: L.count, startIndices: linkStart,
-            attributes: { getPath: { value: linkPositions, size: 2 },
-                          getWidth: { value: linkWidths, size: 1 },
-                          getColor: { value: linkColors, size: 4 } } },
-    widthUnits: "pixels", widthMinPixels: 1,
-    capRounded: true, jointRounded: true, pickable: true, autoHighlight: true,
-    highlightColor: [255, 140, 59, 235] }));
+  if (STYLE.show.links) {
+    const props = { id: "links", _pathType: "open",
+      data: { length: L.count, startIndices: linkStart,
+              attributes: { getPath: { value: linkPositions, size: 2 },
+                            getWidth: { value: linkWidths, size: 1 },
+                            getColor: { value: linkColors, size: 4 } } },
+      widthUnits: "pixels", widthMinPixels: 1,
+      capRounded: true, jointRounded: true, pickable: true, autoHighlight: true,
+      highlightColor: [255, 140, 59, 235], onClick: onLinkClick };
+    if (OFFSET_EXT) { props.extensions = [OFFSET_EXT]; props.getOffset = STYLE.offset ? OFFSET_AMT : 0; }
+    layers.push(new deck.PathLayer(props));
+  }
   return layers;
 }
 
@@ -266,6 +282,26 @@ function wireControls() {
   };
   bind("tg-links", "links"); bind("tg-nodes", "nodes"); bind("tg-selection", "selection");
   bind("tg-labels", "labels", () => toggleLabels(STYLE.show.labels));
+  const off = document.getElementById("tg-offset");
+  off.checked = STYLE.offset; off.disabled = !OFFSET_EXT;
+  off.onchange = () => { STYLE.offset = off.checked; refresh(); };
+}
+
+async function onLinkClick(info) {
+  if (!info || info.index == null || info.index < 0) return;
+  const id = ATTRS.link_id[info.index];
+  const el = document.getElementById("details");
+  el.innerHTML = `<div class="lid">link ${id}</div><span class="empty">loading…</span>`;
+  try {
+    const j = await (await fetch("/api/link/" + encodeURIComponent(id))).json();
+    renderDetails(id, j.attributes || {});
+  } catch (e) { el.innerHTML = `<div class="lid">link ${id}</div><span class="empty">error: ${e}</span>`; }
+}
+function renderDetails(id, attrs) {
+  const rows = Object.entries(attrs)
+    .filter(([k, v]) => k !== "link_id" && v !== null && v !== "")
+    .map(([k, v]) => `<tr><td class="k">${k}</td><td class="v">${String(v)}</td></tr>`).join("");
+  document.getElementById("details").innerHTML = `<div class="lid">link ${id}</div><table>${rows}</table>`;
 }
 
 function getTooltip({ layer, index }) {
