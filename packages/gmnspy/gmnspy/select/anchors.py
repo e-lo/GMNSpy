@@ -14,6 +14,8 @@ from __future__ import annotations
 import collections
 from dataclasses import dataclass
 
+import pandas as pd
+
 from ._support import bounded_bfs, is_link_class, norm_name, norm_ref, to_py
 from .result import AnchorMatch
 
@@ -38,35 +40,44 @@ def classify_interchanges(links, directed_nodes: set, mainline_nodes: set) -> In
     gore node. A ramp that joins the carriageway marks its ``to_node`` a merge
     node.
     """
-    gore, merge = set(), set()
-    for _, r in links.iterrows():
-        if not is_link_class(r["facility_type"]):
-            continue
-        f, t = r["from_node_id"], r["to_node_id"]
-        if f in directed_nodes and t not in mainline_nodes:
-            gore.add(f)
-        if t in directed_nodes and f not in mainline_nodes:
-            merge.add(t)
+    ramps = links[links["facility_type"].astype("string").str.endswith("_link").fillna(False)]
+    f, t = ramps["from_node_id"], ramps["to_node_id"]
+    f_in_d, t_in_m = f.isin(directed_nodes), t.isin(mainline_nodes)
+    t_in_d, f_in_m = t.isin(directed_nodes), f.isin(mainline_nodes)
+    gore = set(f[f_in_d & ~t_in_m].tolist())
+    merge = set(t[t_in_d & ~f_in_m].tolist())
     return Interchanges(gore=gore, merge=merge)
 
 
 def _surface_links(links, anchor: str):
-    """Links whose name OR ref matches the anchor (excluding motorway/ramps)."""
+    """Links whose name OR ref matches the anchor (excluding motorway/ramps).
+
+    Vectorized: name match via pandas string ops; the ``ref`` match (rarer,
+    needs set-overlap) runs only when the anchor looks like a route number.
+    """
     a_name = norm_name(anchor)
     a_ref = norm_ref(anchor)
-    name_hit = links["name"].apply(lambda n: bool(a_name) and a_name == norm_name(n))
-    ref_hit = links["ref"].apply(lambda r: bool(a_ref & norm_ref(r)))
-    surf = links[name_hit | ref_hit]
+    norm = links["name"].fillna("").astype("string").str.lower().str.replace(r"[^a-z0-9]", "", regex=True)
+    hit = (norm == a_name) if a_name else pd.Series(False, index=links.index)
+    if a_ref:
+        hit = hit | links["ref"].apply(lambda r: bool(a_ref & norm_ref(r)))
+    surf = links[hit.fillna(False)]
     return surf[~surf["facility_type"].isin(["motorway", "motorway_link"])]
 
 
 def _ramp_adjacency(links, surface_link_ids: set) -> dict:
-    """Undirected adjacency over ramp/connector links + the anchor's own links."""
+    """Undirected adjacency over ramp/connector links + the anchor's own links.
+
+    Filters to just those links first so it touches a few thousand rows, not the
+    whole network.
+    """
+    mask = links["facility_type"].astype("string").str.endswith("_link").fillna(False) \
+        | links["link_id"].isin(surface_link_ids)
+    sub = links[mask]
     adj = collections.defaultdict(list)
-    for _, r in links.iterrows():
-        if is_link_class(r["facility_type"]) or r["link_id"] in surface_link_ids:
-            adj[r["from_node_id"]].append(r["to_node_id"])
-            adj[r["to_node_id"]].append(r["from_node_id"])
+    for a, b in zip(sub["from_node_id"].to_numpy(), sub["to_node_id"].to_numpy()):
+        adj[a].append(b)
+        adj[b].append(a)
     return adj
 
 

@@ -18,7 +18,7 @@ import struct
 import numpy as np
 import pandas as pd
 
-from gmnspy.select._geojson import _coords_for_link
+from gmnspy.map.geo_resolver import _parse_linestring_points
 
 __all__ = ["pack_network", "unpack_network", "network_attrs"]
 
@@ -46,20 +46,31 @@ def _node_coords(nodes):
 
 
 def _link_paths(links, nx: dict, ny: dict):
-    """Flat positions + startIndices + ids for every link (PathLayer binary)."""
+    """Flat positions + startIndices + ids for every link (PathLayer binary).
+
+    Column arrays + index loop (no per-row Series) so it scales; the WKT parse
+    is the only inherent per-link cost, and straight from/to is the fallback.
+    """
+    geoms = links["geometry"].to_numpy() if "geometry" in links.columns else [None] * len(links)
+    fn = links["from_node_id"].to_numpy()
+    tn = links["to_node_id"].to_numpy()
     positions: list[float] = []
     start_indices: list[int] = [0]
-    ids: list[float] = []
-    for _, row in links.iterrows():
-        coords = _coords_for_link(row, nx, ny)  # WKT parse, else straight fallback
-        for x, y in coords:
-            positions.append(float(x))
-            positions.append(float(y))
+    for i in range(len(links)):
+        g = geoms[i]
+        pts = _parse_linestring_points(g) if isinstance(g, str) else []
+        if len(pts) >= 2:
+            for x, y in pts:
+                positions.append(x)
+                positions.append(y)
+        else:
+            u, v = fn[i], tn[i]
+            if u in nx and v in nx:
+                positions.extend((float(nx[u]), float(ny[u]), float(nx[v]), float(ny[v])))
         start_indices.append(len(positions) // 2)
-        ids.append(float(row["link_id"]))
     return (np.asarray(positions, dtype="<f4"),
             np.asarray(start_indices, dtype="<u4"),
-            np.asarray(ids, dtype="<f8"))
+            links["link_id"].to_numpy().astype("<f8"))
 
 
 def _node_points(nodes):
