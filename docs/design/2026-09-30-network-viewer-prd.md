@@ -154,6 +154,18 @@ basemap**, fed by typed arrays derived cheaply from GeoParquet.
 - **Time dimension generally:** TOD attributes (GMNS `*_tod` tables), volumes by period,
   animated flows. The viewer should reserve a time-control concept.
 
+- **Editing (eventual — explicitly NOT near-term):** the viewer stays view+select for the
+  foreseeable future, but the long-term direction is in-viewer editing (attributes, geometry,
+  add/remove links & nodes) feeding the ProjectCard/edit track. Architectural implication now:
+  the viewer already produces validated **selections/fragments**, which are exactly the input an
+  edit layer would consume — so "select → edit → re-render" is a natural later extension, and
+  the render path (binary attributes, restyle-on-buffer-update) already supports live redraw
+  after a change. We do not build editing now; we just avoid precluding it.
+- **NL interaction beyond selection:** today NL → structured *selection*. Later we'll want NL
+  for styling ("color links by lanes"), filtering/query ("links where speed < 30"), navigation,
+  and eventually editing — all as validated structured actions the viewer executes. Interaction
+  model under review (see §12).
+
 These future modes influence the tech approach now: a **per-feature-class layer registry**, a
 **time-aware data/animation path**, and a **data model that treats "a layer" abstractly**
 (geometry source + attribute table + style spec + optional time), not "roads, hard-coded."
@@ -269,3 +281,13 @@ with offline shape-cutting.)*
   multimodal street taxonomy. https://www.conveyal.com/analysis
 - **QGIS diff conventions** — green=added / red=removed / amber=modified (Mergin Maps changes
   viewer; LayerDiffViewer). Establishes the diff palette + separate-layer-per-change pattern.
+
+**Under review (2nd prior-art pass — GUI/UX + parquet viz + NL interaction):**
+- **Overture Maps explorer** (https://explore.overturemaps.org/) — GeoParquet + duckdb ecosystem;
+  closest match to our storage stance for "render whole network from GeoParquet fast."
+- **conveyal/transitive.js** — schematic/stylized transit rendering ideas (dated tech).
+- **GUI/UX capability review:** CARTO, Conveyal (analysis + scenario editor), Mapbox (GL JS /
+  Studio), Felt (https://felt.com/about — approachable, collaborative map GUI).
+- **NL interaction approaches:** Monarcha.ai (https://monarcha.ai/) and Felt AI — reviewing the
+  interaction model (NL → structured map/query/style/edit actions) to inform our NL layer;
+  goal is approach, not a commercial-product build.
