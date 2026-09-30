@@ -23,6 +23,22 @@
            font-weight:600; cursor:pointer; }
   button:disabled { opacity:.5; }
   #map { position:relative; width:100%; height:100%; }
+  #controls { position:absolute; top:12px; right:12px; z-index:2; width:190px; padding:12px;
+              background:rgba(23,26,33,.92); border:1px solid var(--edge); border-radius:10px;
+              color:var(--ink); font-size:12.5px; backdrop-filter:blur(3px); }
+  #controls .ctl-row { display:flex; align-items:center; gap:8px; margin-bottom:10px; }
+  #controls label { color:var(--muted); }
+  #controls select { flex:1; background:#0c0e12; color:var(--ink); border:1px solid var(--edge);
+                     border-radius:6px; padding:4px 6px; font-size:12.5px; }
+  #controls .ctl-layers { display:grid; grid-template-columns:1fr 1fr; gap:4px 10px; margin-bottom:10px;
+                          padding-top:8px; border-top:1px solid var(--edge); }
+  #controls .ctl-layers label { color:var(--ink); display:flex; align-items:center; gap:6px; cursor:pointer; }
+  #legend:empty { display:none; }
+  #legend { padding-top:8px; border-top:1px solid var(--edge); }
+  .lg-item { display:flex; align-items:center; gap:7px; margin:3px 0; color:var(--ink); }
+  .lg-sw { width:14px; height:10px; border-radius:2px; flex:none; }
+  .lg-grad { height:10px; border-radius:2px; margin:4px 0 2px; }
+  .lg-scale { display:flex; justify-content:space-between; color:var(--muted); font-size:11px; }
   #side { background:var(--panel); border-left:1px solid var(--edge); padding:16px; overflow:auto; }
   .status { display:inline-block; padding:3px 10px; border-radius:999px; font-size:12px; font-weight:600; }
   .status.resolved { background:rgba(53,196,106,.15); color:var(--from); }
@@ -45,7 +61,25 @@
     <button id="go">Select</button>
     <span id="count"></span>
   </header>
-  <div id="map"></div>
+  <div id="map">
+    <div id="controls">
+      <div class="ctl-row">
+        <label for="colorby">Color by</label>
+        <select id="colorby">
+          <option value="none">None</option>
+          <option value="facility_type">Facility type</option>
+          <option value="lanes"># Lanes</option>
+        </select>
+      </div>
+      <div class="ctl-layers">
+        <label><input type="checkbox" id="tg-links" checked> Links</label>
+        <label><input type="checkbox" id="tg-nodes" checked> Nodes</label>
+        <label><input type="checkbox" id="tg-labels" checked> Labels</label>
+        <label><input type="checkbox" id="tg-selection" checked> Selection</label>
+      </div>
+      <div id="legend"></div>
+    </div>
+  </div>
   <aside id="side">
     <div id="status-wrap"><span class="empty">Network loaded. Hover a link to inspect; type an utterance to select.</span></div>
     <div class="label">Anchors</div>
@@ -61,6 +95,43 @@
 // is provided by the server at runtime from env, never baked into this file).
 let map = null, overlay = null;
 let NET = null, ATTRS = null, ID2IDX = new Map();
+let LANE_RANGE = [1, 1];
+const CUR = { linkIds: [], anchors: [] };            // current selection
+const STYLE = { colorBy: "none", show: { links: true, nodes: true, labels: true, selection: true } };
+
+const FT_PALETTE = {                                  // facility_type -> RGB (readable on light)
+  motorway: [214, 69, 65], motorway_link: [214, 69, 65], trunk: [232, 119, 34], trunk_link: [232, 119, 34],
+  primary: [240, 171, 0], primary_link: [240, 171, 0], secondary: [90, 160, 70], secondary_link: [90, 160, 70],
+  tertiary: [60, 150, 140], tertiary_link: [60, 150, 140], residential: [120, 130, 160],
+  service: [175, 182, 194], unclassified: [150, 150, 165], trunk_link_: [232, 119, 34],
+};
+const FT_DEFAULT = [110, 122, 150];
+const FT_LEGEND_ORDER = ["motorway", "trunk", "primary", "secondary", "tertiary", "residential", "service", "unclassified"];
+const LANE_STOPS = [[255, 237, 160], [254, 178, 76], [240, 59, 32]];   // YlOrRd
+
+function laneRamp(t) {
+  const x = Math.max(0, Math.min(1, t)) * (LANE_STOPS.length - 1);
+  const i = Math.min(LANE_STOPS.length - 2, Math.floor(x)), f = x - i;
+  const a = LANE_STOPS[i], b = LANE_STOPS[i + 1];
+  return [0, 1, 2].map(k => Math.round(a[k] + (b[k] - a[k]) * f));
+}
+function linkColorRGB(i) {
+  if (STYLE.colorBy === "facility_type") return FT_PALETTE[ATTRS.facility_type[i]] || FT_DEFAULT;
+  if (STYLE.colorBy === "lanes") {
+    const [mn, mx] = LANE_RANGE;
+    return laneRamp(mx > mn ? (NET.linkLanes[i] - mn) / (mx - mn) : 0.5);
+  }
+  return [46, 64, 110];
+}
+function buildLinkColors() {                           // per-VERTEX RGBA (deck binary needs per-vertex)
+  const n = NET.linkStart[NET.L.count], c = new Uint8Array(n * 4);
+  for (let i = 0; i < NET.L.count; i++) {
+    const [r, g, b] = linkColorRGB(i);
+    for (let v = NET.linkStart[i]; v < NET.linkStart[i + 1]; v++) { c[v*4]=r; c[v*4+1]=g; c[v*4+2]=b; c[v*4+3]=220; }
+  }
+  NET.linkColors = c;
+}
+function refresh() { if (NET) render(CUR.linkIds, CUR.anchors); }
 
 async function init() {
   const cfg = await fetch("/api/config").then(r => r.json());
@@ -93,11 +164,15 @@ async function loadNetwork() {
     const w = widthForLanes(linkLanes[i]);
     for (let v = linkStart[i]; v < linkStart[i + 1]; v++) linkWidths[v] = w;
   }
-  NET = { L, N, linkPositions, linkStart, linkIds, linkLanes, linkWidths, nodePositions };
+  NET = { L, N, linkPositions, linkStart, linkIds, linkLanes, linkWidths, nodePositions, linkColors: null };
   ATTRS = attrs;
   for (let i = 0; i < linkIds.length; i++) ID2IDX.set(linkIds[i], i);
+  LANE_RANGE = [Math.min(...linkLanes), Math.max(...linkLanes)];
   document.getElementById("count").textContent = `${L.count.toLocaleString()} links · ${N.count.toLocaleString()} nodes`;
-  render([], []);
+  buildLinkColors();
+  wireControls();
+  renderLegend();
+  refresh();
   fitToNetwork(nodePositions);
 }
 
@@ -106,24 +181,26 @@ function widthForLanes(lanes) {           // lanes -> pixel width; freeways pop
 }
 
 function baseLayers() {
-  const { L, N, linkPositions, linkStart, linkWidths, nodePositions } = NET;
-  return [
-    new deck.ScatterplotLayer({ id: "nodes",
-      data: { length: N.count, attributes: { getPosition: { value: nodePositions, size: 2 } } },
-      getRadius: 1.8, radiusUnits: "pixels", radiusMinPixels: 1,
-      getFillColor: [70, 90, 120, 130], pickable: false }),
-    new deck.PathLayer({ id: "links", _pathType: "open",
-      data: { length: L.count, startIndices: linkStart,
-              attributes: { getPath: { value: linkPositions, size: 2 },
-                            getWidth: { value: linkWidths, size: 1 } } },
-      getColor: [46, 64, 110, 220], widthUnits: "pixels", widthMinPixels: 1,
-      capRounded: true, jointRounded: true, pickable: true, autoHighlight: true,
-      highlightColor: [255, 140, 59, 235] }),
-  ];
+  const { L, N, linkPositions, linkStart, linkWidths, linkColors, nodePositions } = NET;
+  const layers = [];
+  if (STYLE.show.nodes) layers.push(new deck.ScatterplotLayer({ id: "nodes",
+    data: { length: N.count, attributes: { getPosition: { value: nodePositions, size: 2 } } },
+    getRadius: 1.8, radiusUnits: "pixels", radiusMinPixels: 1,
+    getFillColor: [70, 90, 120, 130], pickable: false }));
+  if (STYLE.show.links) layers.push(new deck.PathLayer({ id: "links", _pathType: "open",
+    data: { length: L.count, startIndices: linkStart,
+            attributes: { getPath: { value: linkPositions, size: 2 },
+                          getWidth: { value: linkWidths, size: 1 },
+                          getColor: { value: linkColors, size: 4 } } },
+    widthUnits: "pixels", widthMinPixels: 1,
+    capRounded: true, jointRounded: true, pickable: true, autoHighlight: true,
+    highlightColor: [255, 140, 59, 235] }));
+  return layers;
 }
 
 function selectionLayers(linkIds, anchors) {
   const layers = [];
+  if (!STYLE.show.selection) return layers;
   if (linkIds && linkIds.length) {
     const { linkPositions, linkStart } = NET;
     const positions = []; const startIndices = [0]; const widths = [];
@@ -155,6 +232,42 @@ function render(linkIds, anchors) {
   overlay.setProps({ layers: [...baseLayers(), ...selectionLayers(linkIds, anchors)] });
 }
 
+const rgb = c => `rgb(${c[0]},${c[1]},${c[2]})`;
+function renderLegend() {
+  const el = document.getElementById("legend");
+  if (STYLE.colorBy === "facility_type") {
+    const present = new Set(ATTRS.facility_type);
+    const items = FT_LEGEND_ORDER.filter(f => present.has(f));
+    el.innerHTML = items.map(f => `<div class="lg-item"><span class="lg-sw" style="background:${rgb(FT_PALETTE[f] || FT_DEFAULT)}"></span>${f}</div>`).join("");
+  } else if (STYLE.colorBy === "lanes") {
+    const [mn, mx] = LANE_RANGE;
+    const grad = `linear-gradient(90deg, ${rgb(LANE_STOPS[0])}, ${rgb(LANE_STOPS[1])}, ${rgb(LANE_STOPS[2])})`;
+    el.innerHTML = `<div class="lg-item" style="margin-bottom:2px">lanes</div>` +
+      `<div class="lg-grad" style="background:${grad}"></div>` +
+      `<div class="lg-scale"><span>${mn}</span><span>${mx}</span></div>`;
+  } else { el.innerHTML = ""; }
+}
+
+function toggleLabels(show) {                            // works for vector (symbol) + esri (raster 'labels')
+  if (!map || !map.getStyle) return;
+  for (const lyr of map.getStyle().layers || []) {
+    if (lyr.type === "symbol" || lyr.id === "labels")
+      map.setLayoutProperty(lyr.id, "visibility", show ? "visible" : "none");
+  }
+}
+
+function wireControls() {
+  const cb = document.getElementById("colorby");
+  cb.value = STYLE.colorBy;
+  cb.onchange = () => { STYLE.colorBy = cb.value; buildLinkColors(); renderLegend(); refresh(); };
+  const bind = (id, key, after) => {
+    const el = document.getElementById(id); el.checked = STYLE.show[key];
+    el.onchange = () => { STYLE.show[key] = el.checked; (after || refresh)(); };
+  };
+  bind("tg-links", "links"); bind("tg-nodes", "nodes"); bind("tg-selection", "selection");
+  bind("tg-labels", "labels", () => toggleLabels(STYLE.show.labels));
+}
+
 function getTooltip({ layer, index }) {
   if (!layer || layer.id !== "links" || index == null || index < 0 || !ATTRS) return null;
   const id = ATTRS.link_id[index], nm = ATTRS.name[index], rf = ATTRS.ref[index], ft = ATTRS.facility_type[index];
@@ -175,7 +288,8 @@ async function runSelect() {
   const btn = document.getElementById("go"); btn.disabled = true;
   try {
     const j = await (await fetch("/api/select?utterance=" + encodeURIComponent(q))).json();
-    render(j.link_ids || [], j.anchors || []);
+    CUR.linkIds = j.link_ids || []; CUR.anchors = j.anchors || [];
+    refresh();
     if ((j.link_ids || []).length) {
       const b = new maplibregl.LngLatBounds();
       for (const id of j.link_ids) { const i = ID2IDX.get(id); if (i == null) continue;
