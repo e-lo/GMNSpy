@@ -83,14 +83,16 @@ def resolve_anchor(anchor: str, role: str, links, interchanges: Interchanges) ->
 
     surf = _surface_links(links, anchor)
     if surf.empty:
-        return AnchorMatch(anchor, None, [], 0.0, "unresolved", "anchor street not found")
+        return AnchorMatch(anchor, None, [], 0.0, "unresolved",
+                           f"anchor {anchor!r} not found as a street/route in this network")
 
     seeds = set(surf["from_node_id"]) | set(surf["to_node_id"])
     adj = _ramp_adjacency(links, set(surf["link_id"]))
     reached = bounded_bfs(adj, seeds, targets, _MAX_RAMP_HOPS)
     if not reached:
         return AnchorMatch(anchor, None, [], 0.0, "unresolved",
-                           f"no ramp path to a {detail_kind} node on the carriageway")
+                           f"anchor {anchor!r} found, but no ramp path to a {detail_kind} "
+                           f"node on the {role}-direction carriageway")
 
     reached.sort(key=lambda x: x[1])
     best_node, hops = reached[0]
