@@ -15,6 +15,11 @@ from typing import Iterable
 _CARDINAL = {"EB": 90.0, "WB": 270.0, "NB": 0.0, "SB": 180.0}
 
 
+def to_py(value):
+    """Coerce a numpy scalar id to a native Python int/str; pass others through."""
+    return value.item() if hasattr(value, "item") else value
+
+
 def norm_ref(value) -> set[str]:
     """Normalize an OSM/GMNS ref into a set of comparable tokens.
 

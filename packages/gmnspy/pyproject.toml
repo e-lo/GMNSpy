@@ -127,8 +127,9 @@ include = [
     "gmnspy/spec/**/*.json",
     "gmnspy/spec/**/VERSION",
     "gmnspy/spec/**/README.md",
-    # GMNS selection profile schema (gmnspy.select.emit).
+    # GMNS selection profile schema (gmnspy.select.emit) + web-app template.
     "gmnspy/select/schema/*.json",
+    "gmnspy/select/templates/*.html",
     # Maintained OSM->GMNS tag-mapping + network-filter data (gmnspy.osm).
     "gmnspy/osm/mappings/*.yaml",
     # Bundled example networks (Leavenworth, WA; see

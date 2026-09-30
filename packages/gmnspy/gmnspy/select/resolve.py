@@ -20,6 +20,7 @@ from ._support import (
     matches_direction,
     norm_name,
     norm_ref,
+    to_py,
 )
 from .intent import SelectionIntent
 from .result import SelectionResult
@@ -92,6 +93,8 @@ def resolve_frames(intent: SelectionIntent, links, nodes) -> SelectionResult:
                                diagnostics=diags + ["no directed path between resolved anchor nodes"])
 
     link_ids, node_path = path
+    link_ids = [to_py(i) for i in link_ids]
+    node_path = [to_py(n) for n in node_path]
     status = "resolved"
     if from_m.candidates or to_m.candidates:
         status = "ambiguous"

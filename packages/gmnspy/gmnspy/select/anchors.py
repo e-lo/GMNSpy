@@ -14,7 +14,7 @@ from __future__ import annotations
 import collections
 from dataclasses import dataclass
 
-from ._support import bounded_bfs, is_link_class, norm_name, norm_ref
+from ._support import bounded_bfs, is_link_class, norm_name, norm_ref, to_py
 from .result import AnchorMatch
 
 __all__ = ["Interchanges", "classify_interchanges", "resolve_anchor"]
@@ -94,7 +94,7 @@ def resolve_anchor(anchor: str, role: str, links, interchanges: Interchanges) ->
 
     reached.sort(key=lambda x: x[1])
     best_node, hops = reached[0]
-    candidates = [n for n, _ in reached[1:]]
+    candidates = [to_py(n) for n, _ in reached[1:]]
     confidence = 1.0 / (1 + hops)
-    return AnchorMatch(anchor, best_node, candidates, confidence, kind,
+    return AnchorMatch(anchor, to_py(best_node), candidates, confidence, kind,
                        f"{detail_kind} node, {hops} ramp hop(s)")
