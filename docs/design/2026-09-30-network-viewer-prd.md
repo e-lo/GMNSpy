@@ -189,11 +189,12 @@ These future modes influence the tech approach now: a **per-feature-class layer 
   goal.
 - **Layers: built-in deck.gl `LineLayer`/`PathLayer` + the built-in `PathStyleExtension`
   (`getOffset`) for directional offset — prefer this over a custom shader.** SimWrapper
-  subclasses the layer and injects its own offset shader (`LineOffsetLayer`), but a hand-rolled
-  `getShaders()` override is a recurring maintenance cost across deck.gl majors. Use the
-  extension's signed per-link `getOffset` (a binary attribute) first; drop to a SimWrapper-style
-  custom shader only for per-vertex/width-coupled offset the extension can't express — and if so,
-  **offset the picking pass too** so clicks match what users see. `ScatterplotLayer`/`IconLayer`
+  subclasses the layer and injects its own offset shader (`LineOffsetLayer`), but that is a
+  recurring maintenance cost across deck.gl majors **and SimWrapper is GPL-3.0, so we cannot copy
+  its shader/layer code into Apache-2.0 GMNSpy** (§13). Use the extension's signed per-link
+  `getOffset` (a binary attribute, MIT) first; if we ever need offset behavior the extension can't
+  express, write our **own** offset shader from scratch (referencing SimWrapper only for the idea)
+  and **offset the picking pass too** so clicks match what users see. `ScatterplotLayer`/`IconLayer`
   for nodes/stops; `TripsLayer` for transit animation; aggregation layers for density.
 - **Data path: GeoParquet → typed arrays is a cheap gather, not heavy processing.**
   - *Straight* links render from **node coordinates** (`from`/`to` → source/dest `Float32Array`)
@@ -273,6 +274,7 @@ with offline shape-cutting.)*
 
 - **SimWrapper** — the reference architecture (deck.gl + MapLibre + workers; `LineOffsetLayer`
   offset shader; per-dataset layer symbology). https://github.com/simwrapper/simwrapper
+  **⚠ GPL-3.0 — architecture/ideas reference ONLY; do not copy its source (see §13).**
 - **deck.gl** — `PathStyleExtension` (`getOffset`), `TripsLayer`, `pickMultipleObjects`
   (overlapping-object picking). https://deck.gl/docs
 - **Kyle Barron, "All Transit"** — GTFS → `TripsLayer` shape-cutting + timestamp interpolation.
@@ -291,3 +293,52 @@ with offline shape-cutting.)*
 - **NL interaction approaches:** Monarcha.ai (https://monarcha.ai/) and Felt AI — reviewing the
   interaction model (NL → structured map/query/style/edit actions) to inform our NL layer;
   goal is approach, not a commercial-product build.
+
+## 13. License & legal considerations
+
+**GMNSpy is Apache-2.0** (permissive). Rule of thumb: we may depend on, bundle, and even copy code
+from **permissive** licenses (MIT / BSD-2 / BSD-3 / Apache-2.0) with proper attribution; we must
+**not copy source from copyleft** projects (GPL / AGPL / LGPL-with-static-linking) into GMNSpy, as
+that can force relicensing. **Functionality, UX patterns, and APIs are not copyrightable** — we can
+freely learn from any tool (including commercial ones); the line is *copying code or assets*.
+
+**Tech-stack libraries — all verified permissive & Apache-2.0-compatible:**
+
+| Library | License | Use |
+|---|---|---|
+| deck.gl, @deck.gl/* | MIT | ✅ depend/use |
+| MapLibre GL JS | BSD-3-Clause | ✅ depend/use (the open fork — **not** Mapbox GL JS v2+) |
+| luma.gl | MIT | ✅ (via deck.gl) |
+| @geoarrow/deck.gl-layers | MIT | ✅ |
+| parquet-wasm, geoarrow-rs | Apache-2.0 | ✅ |
+| lonboard | MIT | ✅ (notebook path) |
+| PMTiles (protomaps) | BSD-3 (spec CC0) | ✅ |
+| tippecanoe (felt) | BSD-2 | ✅ tile build |
+| tylertoo | Apache-2.0 | ✅ tile build |
+| DuckDB / duckdb-wasm | MIT | ✅ |
+| transitive.js, conveyal/r5, analysis-ui | MIT | ✅ (mostly ideas anyway) |
+
+**Restrictions to honor:**
+- **SimWrapper is GPL-3.0.** Reference for architecture/ideas only. **Do not copy** its shaders,
+  layers, or any source into GMNSpy. Our offset uses MIT `PathStyleExtension`; any custom shader we
+  write from scratch. (This is why the §8 recommendation is what it is.)
+- **Mapbox GL JS v2+ is proprietary** (Mapbox BSL / commercial terms). Do not use it or its code —
+  we use **MapLibre** (BSD-3). Mapbox's expression spec/Studio are inspiration, not code to copy.
+- **Basemap tiles are a *service*, not a code license.** `tile.openstreetmap.org` (used in the
+  prototype) is fine for dev under the OSMF tile-usage policy but **prohibits heavy/production use**;
+  a real deployment needs a proper basemap source (self-hosted tiles, or MapTiler/Stadia/Carto/
+  Protomaps under their terms). Always show attribution (© OpenStreetMap contributors).
+- **Network *data* licenses.** GMNS networks built from OSM (`osm2gmns` / `gmnspy.osm.build`) carry
+  **ODbL** obligations — attribution + share-alike on derived databases; our bundled fixtures
+  already state ODbL. **Overture** data is CDLA-Permissive-2.0 for most themes and **ODbL** for
+  OSM-derived transportation — attribution required; check per-theme before redistributing.
+- **Commercial products reviewed for approach** (CARTO, Felt, Mapbox Studio, Monarcha): borrow
+  *concepts/UX* only. Do **not** copy proprietary code, assets, or verbatim proprietary grammars —
+  e.g. Felt's "Style Language" is Felt's; we design our **own** declarative style spec inspired by
+  the idea. Felt's MCP tool catalog informs our action-schema *approach*, not any copied schema.
+- **AI/NL layer:** no third-party license implicated by the *approach* (validated structured intent
+  + tool-use); the action schema and prompts are our own. Keep it LLM-provider-pluggable.
+
+**Net:** the recommended architecture (MapLibre + deck.gl + GeoArrow/GeoParquet + DuckDB, optional
+PMTiles) is entirely permissive and clean for an Apache-2.0 project. The only copyleft in view is
+SimWrapper, handled by treating it as an ideas reference and not copying its code.
