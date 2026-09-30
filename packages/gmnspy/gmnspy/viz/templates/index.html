@@ -28,10 +28,14 @@
 
   /* top-right controls */
   #map-btns { position:absolute; top:12px; right:12px; z-index:3; display:flex; gap:6px; }
-  .iconbtn { width:34px; height:34px; padding:0; display:flex; align-items:center; justify-content:center;
+  .iconbtn { position:relative; width:34px; height:34px; padding:0; display:flex; align-items:center; justify-content:center;
              background:rgba(23,26,33,.92); color:var(--ink); border:1px solid var(--edge); border-radius:8px;
              font-size:16px; cursor:pointer; backdrop-filter:blur(3px); }
   .iconbtn.on { background:var(--accent); color:#11151a; border-color:var(--accent); }
+  .iconbtn[data-tip]:hover::after { content:attr(data-tip); position:absolute; top:50%; right:calc(100% + 8px);
+             transform:translateY(-50%); white-space:nowrap; background:#11151a; color:var(--ink);
+             border:1px solid var(--edge); padding:4px 8px; border-radius:6px; font-size:12px;
+             pointer-events:none; z-index:5; }
   .panel { position:absolute; top:54px; right:12px; z-index:3; width:224px; padding:12px;
            background:rgba(23,26,33,.95); border:1px solid var(--edge); border-radius:10px; color:var(--ink);
            font-size:12.5px; backdrop-filter:blur(3px); display:none; }
@@ -92,10 +96,10 @@
   </header>
   <div id="map">
     <div id="map-btns">
-      <button class="iconbtn" id="btn-fitnet" title="Zoom to full network">&#9974;</button>
-      <button class="iconbtn" id="btn-fitsel" title="Zoom to selection">&#9673;</button>
-      <button class="iconbtn" id="btn-layers" title="Layers">&#9635;</button>
-      <button class="iconbtn" id="btn-settings" title="Settings">&#9881;</button>
+      <button class="iconbtn" id="btn-fitnet" data-tip="Zoom to full network" aria-label="Zoom to full network">&#9974;</button>
+      <button class="iconbtn" id="btn-fitsel" data-tip="Zoom to selection" aria-label="Zoom to selection">&#9673;</button>
+      <button class="iconbtn" id="btn-layers" data-tip="Layers" aria-label="Layers">&#9635;</button>
+      <button class="iconbtn" id="btn-settings" data-tip="Settings" aria-label="Settings">&#9881;</button>
     </div>
 
     <div class="panel" id="layers-panel">
