@@ -97,20 +97,35 @@ basemap**, fed by typed arrays derived cheaply from GeoParquet.
 - Directed links (two carriageways, or opposing one-way links on one alignment) are drawn with
   a **lateral offset by direction** so both are visible and individually clickable.
 - Optional arrowheads / direction indicators.
+- **Offset must apply to picking too:** an offset shifts pixels, not the underlying geometry, so
+  a naive click can select the un-offset centerline or the wrong direction. Whatever offset
+  mechanism we use must offset the pick pass as well (or compensate with hit-radius + cycle).
 
 ### 5.7 Overlapping / stacked features
 - Geometrically overlapping links (tunnel under a street, double-decker bridge, stacked
   freeway+arterial) must be **disambiguable and selectable** — the user can reach the one they
-  mean. (Technique TBD from renderer survey — candidates: lateral offset, z/elevation 2.5D,
-  click-to-cycle through stacked hits, layer/mode filtering.)
+  mean. Layered approach (all compatible with binary attributes):
+  1. **Lateral offset** (§5.6) handles the common two-way / side-by-side case.
+  2. **Vertical z / elevation (2.5D)** from a grade-separation attribute (`z_coord` / layer /
+     grade tag) separates tunnel-below / bridge-above under a pitched camera.
+  3. **Click-to-cycle** through all features under the cursor (multipass picking) for exactly
+     coincident geometry where offset/z aren't enough.
+  4. **Layer/mode filtering** (§5.2) as the cheapest disambiguation — isolate a class so stacks
+     thin out.
+- Picking must map a tessellated path segment back to its **source link id**, not an instance id.
 
 ### 5.8 Network diff / comparison (later phase, design now)
 - Load two networks (versions or scenarios); compute and render:
   - **added / removed** links & nodes (distinct styles);
   - **changed** links (attribute deltas) with a way to see which attributes changed;
   - unchanged as context (muted).
-- Toggle between "A", "B", and "diff" views. Diff sets precomputed (server-side) and rendered
-  as styled membership layers.
+- Toggle between "A", "B", and "diff" views, plus **overlay-with-filters** and a **swipe /
+  side-by-side** mode.
+- Conventional GIS diff semantics: **green = added, red = removed, amber = modified**;
+  changed-attribute magnitude as a diverging ramp on the "modified" layer.
+- **Diff is a data step, not a rendering trick:** join A/B GeoParquet on `link_id`/`node_id` →
+  a `status` column + changed-attribute deltas (offline/server-side); the viewer just renders
+  three toggleable membership layers. Keeps QA/QC reproducible and engine-agnostic.
 - Serves both QA/QC (did my edit do only what I intended?) and scenario comparison.
 
 ### 5.9 Selection / search integration
@@ -127,9 +142,15 @@ basemap**, fed by typed arrays derived cheaply from GeoParquet.
 - **Multimodal layers:** sidewalks, bike paths, trails, transit *facilities* — each a feature
   class with its own layer definition + style; the layer registry must accept them without
   core changes.
-- **Transit service (GTFS):** routes, stops, headway/frequency styling, and **vehicle
-  animation along schedules** (a time dimension). Implies a time slider and a trips/animation
-  layer. Data path: GTFS (stops/shapes/trips/stop_times) → renderable geometry + time.
+- **Transit service (GTFS):** two layers — (a) a static routes+stops layer (PathLayer +
+  Scatterplot/Icon) styled by mode and by **headway/frequency** (from aggregated `stop_times`/
+  `frequencies`); (b) an **animated-vehicle** layer (deck.gl `TripsLayer`) driven by a
+  **time slider** (`currentTime`, `trailLength`). The GTFS→geometry+time transform (cut each
+  `shape` at successive stop distances via linear referencing, interpolate timestamps along the
+  coordinates between stop times → per-trip `[lng, lat, t]` paths) is **precomputed offline in
+  Python** (shapely / gtfs-lib) and stored binary; the browser only animates. Reference recipe:
+  Kyle Barron "All Transit"; Conveyal's route data model (alignments, frequencies, dwell,
+  speeds) for the attributes to carry.
 - **Time dimension generally:** TOD attributes (GMNS `*_tod` tables), volumes by period,
   animated flows. The viewer should reserve a time-control concept.
 
@@ -150,17 +171,18 @@ These future modes influence the tech approach now: a **per-feature-class layer 
 
 ## 8. Tech considerations (informed by SimWrapper; NOT final)
 
-> A survey of other road/transit renderers (overlapping features, offset, GTFS, diff) is in
-> flight; findings will refine §5.7, §5.6, §5.8, and §6.
-
 - **Renderer: MapLibre (basemap) + deck.gl (network), interleaved via `@deck.gl/mapbox`.**
   This is SimWrapper's exact stack and the standard pairing (deck.gl has no basemap; MapLibre
   has no fast big-network layer). One renderer for partial + full satisfies the consistency
   goal.
-- **Layers: built-in deck.gl `LineLayer`/`PathLayer`, subclassed to inject a vertex-shader
-  offset for directionality** — exactly SimWrapper's `LineOffsetLayer`/`PathOffsetLayer`
-  pattern (override `getShaders()`), *not* a from-scratch primitive layer. `ScatterplotLayer`
-  for nodes; `TripsLayer` for future transit animation; aggregation layers for density.
+- **Layers: built-in deck.gl `LineLayer`/`PathLayer` + the built-in `PathStyleExtension`
+  (`getOffset`) for directional offset — prefer this over a custom shader.** SimWrapper
+  subclasses the layer and injects its own offset shader (`LineOffsetLayer`), but a hand-rolled
+  `getShaders()` override is a recurring maintenance cost across deck.gl majors. Use the
+  extension's signed per-link `getOffset` (a binary attribute) first; drop to a SimWrapper-style
+  custom shader only for per-vertex/width-coupled offset the extension can't express — and if so,
+  **offset the picking pass too** so clicks match what users see. `ScatterplotLayer`/`IconLayer`
+  for nodes/stops; `TripsLayer` for transit animation; aggregation layers for density.
 - **Data path: GeoParquet → typed arrays is a cheap gather, not heavy processing.**
   - *Straight* links render from **node coordinates** (`from`/`to` → source/dest `Float32Array`)
     with **no geometry parsing** — the fastest, most seamless path from Parquet.
@@ -178,10 +200,16 @@ These future modes influence the tech approach now: a **per-feature-class layer 
 - **Styling:** color/width are **GPU attribute buffers**; restyle = recompute one buffer, not a
   reload. Categorical/continuous/membership all map to per-feature color/width arrays computed
   from a column + a scale (d3-scale).
-- **Overlapping/stacked:** directional lateral offset handles opposing links; true vertical
-  stacks (tunnel/double-decker) likely need z/elevation and/or click-to-cycle — pending survey.
-- **Diff:** precompute membership/delta sets server-side; render as styled layers over muted
-  context; no special renderer needed.
+- **Overlapping/stacked:** lateral offset (extension) for two-way; per-vertex **z/elevation**
+  from a grade-separation attribute for tunnel/bridge under a pitched view; **`pickMultipleObjects`
+  click-to-cycle** for exactly coincident links; layer/mode filtering as the cheap fallback.
+- **Diff:** precompute a `status` column + attribute deltas server-side (A/B join on id); render
+  three membership layers (green/red/amber) over muted context; overlay+filter and swipe modes.
+  No special renderer needed.
+- **Cross-cutting principle:** offsets, z, diff `status`, trip timestamps, and headway are all
+  **per-feature scalar/vector attributes** — precompute offline (Python/GeoParquet), pass as
+  binary, never per-feature JS in the browser. Prefer **stock deck.gl layers + extensions** over
+  custom shaders; push heavy transforms (WKT parse, shape-cutting, diff join) to the backend.
 - **Scale path:** whole network resident as typed arrays (~1–2M links, memory-bound) is the
   default (SimWrapper-style). Escape hatches that keep the *same* deck.gl layer: server-side
   **bbox streaming** (send only viewport links) and, only if truly needed, **PMTiles** vector
@@ -221,6 +249,23 @@ interactive role):
 - Straight-vs-polyline default: render links straight (node-to-node) for speed, with true
   geometry as an opt-in layer? For most GMNS links straight is visually fine and fastest.
 - Server-built binary vs in-browser parquet-wasm/GeoArrow — which as the primary path?
-- Overlapping-stack UX: offset, z-elevation, or click-cycle as the default? (survey pending)
 - Does the viewer live in `gmnspy.viz`, or extend `gmnspy.map`? (Naming/consolidation.)
 - Diff granularity: attribute-level deltas vs link-level added/removed/changed only, for P3.
+
+*(Resolved by the renderer survey: use `PathStyleExtension.getOffset` for directional offset,
+not a custom shader; overlap default = offset + z + `pickMultipleObjects` cycle; diff = green/
+red/amber membership layers off a precomputed `status` column; GTFS = static layer + `TripsLayer`
+with offline shape-cutting.)*
+
+## 12. Prior art / references
+
+- **SimWrapper** — the reference architecture (deck.gl + MapLibre + workers; `LineOffsetLayer`
+  offset shader; per-dataset layer symbology). https://github.com/simwrapper/simwrapper
+- **deck.gl** — `PathStyleExtension` (`getOffset`), `TripsLayer`, `pickMultipleObjects`
+  (overlapping-object picking). https://deck.gl/docs
+- **Kyle Barron, "All Transit"** — GTFS → `TripsLayer` shape-cutting + timestamp interpolation.
+  https://kylebarron.dev/blog/all-transit/
+- **Conveyal Analysis / r5** — transit route data model (frequencies, dwell, alignments) and a
+  multimodal street taxonomy. https://www.conveyal.com/analysis
+- **QGIS diff conventions** — green=added / red=removed / amber=modified (Mergin Maps changes
+  viewer; LayerDiffViewer). Establishes the diff palette + separate-layer-per-change pattern.
