@@ -12,7 +12,7 @@ from typing import Any
 
 import pandas as pd
 
-from gmnspy._wkt import _parse_linestring_points  # tiny WKT LINESTRING parser
+from gmnspy._wkt import linestring_points  # WKT/WKB LINESTRING coords
 
 __all__ = ["links_to_geojson", "node_lonlat"]
 
@@ -35,7 +35,7 @@ def node_lonlat(nodes, node_id) -> tuple[float, float]:
 
 def _coords_for_link(row, nx: dict, ny: dict) -> list[list[float]]:
     geom = row.get("geometry")
-    pts = _parse_linestring_points(geom) if isinstance(geom, str) else []
+    pts = linestring_points(geom)
     if len(pts) >= 2:
         return [[x, y] for x, y in pts]
     u, v = row["from_node_id"], row["to_node_id"]  # fallback: straight segment
