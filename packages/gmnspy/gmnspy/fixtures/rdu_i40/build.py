@@ -10,14 +10,14 @@ from pathlib import Path
 
 import pandas as pd
 from gmnspy.osm.build import build_network_from_osm
-from datagrove.engines.pandas_engine import PandasEngine
+from datagrove.engines.ibis_engine import IbisEngine
 from gmnspy.select._support import norm_ref
 
 OUT = Path("packages/gmnspy/gmnspy/fixtures/rdu_i40")
 bbox = (-78.850, 35.855, -78.760, 35.895)  # proven: I-40 stretch w/ S Miami / Page / Airport
 HOPS = 4
 
-net = build_network_from_osm(bbox, network_type="drive", extra_tags=["ref"], engine=PandasEngine())
+net = build_network_from_osm(bbox, network_type="drive", extra_tags=["ref"], engine=IbisEngine())
 tp = lambda t: t.to_pandas() if hasattr(t, "to_pandas") else t
 links, nodes = tp(net.links), tp(net.nodes)
 for c in ["destination", "junction"]:

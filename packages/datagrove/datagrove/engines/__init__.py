@@ -1,22 +1,18 @@
-"""Engine abstraction (ibis/duckdb default; polars; pandas) for lazy + eager dataframe ops.
+"""Compute engine (DuckDB via ibis) for lazy + eager table ops.
+
+**DuckDB is the single compute engine.** pandas / polars / pyarrow are
+input/output *formats* (see :meth:`Engine.to_pandas` / :meth:`Engine.to_polars`
+and the Arrow input path), not compute backends — matching ibis's own move to
+drop its non-SQL execution backends in 10.0.
 
 The public surface is small:
 
-- ``Engine`` — the structural protocol every backend implements.
-- ``EngineNotAvailableError`` — raised when a backend is missing or
-  its optional deps are not installed.
+- ``Engine`` — the structural protocol the engine implements.
+- ``EngineNotAvailableError`` — raised when a backend dependency is missing.
 - ``register_engine`` / ``get_engine`` / ``set_default_engine`` /
-  ``list_engines`` — the in-process registry.
+  ``list_engines`` — the in-process registry (one engine).
 
-The default engine is **ibis** (duckdb backend). It is auto-registered
-at import time. Optional engines (``polars``, ``pandas``) are
-auto-registered only if their dependency is importable, so this
-module's import never hard-requires the optional extras.
-
-Concrete engine implementations live in sibling modules
-(``ibis_engine.py``, ``polars_engine.py``, ``pandas_engine.py``). Real
-implementations land in tasks 1.3 / 1.4 / 1.5; for task 1.2 they are
-stubs that raise ``NotImplementedError``.
+The engine implementation lives in ``ibis_engine.py`` (ibis on duckdb).
 """
 
 from __future__ import annotations
@@ -87,6 +83,8 @@ def register_engine(engine: Engine, *, default: bool = False) -> None:
         ...     def count(self, expr): return 0
         ...     def head(self, expr, n): return expr
         ...     def select(self, expr, columns): return expr
+        ...     def order_by(self, expr, cols, descending=False): return expr
+        ...     def limit(self, expr, n, offset=0): return expr
         >>> fake = _DoctestEngine()
         >>> try:
         ...     register_engine(fake)
@@ -117,8 +115,8 @@ def get_engine(name: str | None = None) -> Engine:
     """Return the registered engine for ``name``, or the default if ``None``.
 
     Args:
-        name: The engine name (``"ibis"`` / ``"polars"`` / ``"pandas"``
-            / a custom registration). ``None`` returns the default.
+        name: The engine name (``"ibis"`` / ``"duckdb"`` — the one compute
+            engine). ``None`` returns the default.
 
     Returns:
         The registered engine instance.
@@ -127,15 +125,15 @@ def get_engine(name: str | None = None) -> Engine:
         EngineNotAvailableError: If the registry is empty, or the
             requested name is not registered. The message lists the
             currently-registered engine names so the caller can correct
-            the typo or install the missing extra.
+            the typo.
 
     Examples:
-        Look up the auto-registered default (typically ``ibis``):
+        Look up the auto-registered default (``ibis`` on duckdb):
 
         >>> from datagrove.engines import get_engine
         >>> default = get_engine()
-        >>> default.name in {"ibis", "polars", "pandas"}
-        True
+        >>> default.name
+        'ibis'
 
         Looking up a name that is not registered raises a clear error:
 
@@ -158,8 +156,8 @@ def get_engine(name: str | None = None) -> Engine:
         available = ", ".join(sorted(_REGISTRY)) or "(none)"
         raise EngineNotAvailableError(
             f"engine {key!r} is not registered (available: {available}). "
-            f"For optional engines, install the relevant extra: "
-            f"`pip install datagrove[polars]` or `pip install datagrove[pandas]`."
+            f"DuckDB is the only compute engine; pandas/polars/arrow are I/O "
+            f"formats (Table.to_pandas()/to_polars())."
         )
     return _REGISTRY[key]
 
@@ -200,6 +198,8 @@ def set_default_engine(name: str) -> None:
         ...     def count(self, expr): return 0
         ...     def head(self, expr, n): return expr
         ...     def select(self, expr, columns): return expr
+        ...     def order_by(self, expr, cols, descending=False): return expr
+        ...     def limit(self, expr, n, offset=0): return expr
         >>> previous = _eng._DEFAULT
         >>> try:
         ...     register_engine(_DoctestEngine())
@@ -243,30 +243,12 @@ def list_engines() -> list[str]:
 # impls in 1.3 / 1.4 / 1.5).
 # ---------------------------------------------------------------------------
 
-try:  # pragma: no cover - exercised by registry tests
-    from .ibis_engine import IbisEngine
+# DuckDB (via ibis) is the single compute engine. pandas / polars / pyarrow
+# are input/output *formats* (see Engine.to_pandas / to_polars and the Arrow
+# input path), not compute backends.
+from .ibis_engine import IbisEngine
 
-    register_engine(IbisEngine(), default=True)
-except ImportError:  # pragma: no cover - only fires in a broken install
-    pass
-
-try:  # pragma: no cover - exercised conditionally
-    import polars as _polars  # noqa: F401
-
-    from .polars_engine import PolarsEngine
-
-    register_engine(PolarsEngine())
-except ImportError:  # pragma: no cover - polars is optional
-    pass
-
-try:  # pragma: no cover - exercised conditionally
-    import pandas as _pandas  # noqa: F401
-
-    from .pandas_engine import PandasEngine
-
-    register_engine(PandasEngine())
-except ImportError:  # pragma: no cover - pandas is optional
-    pass
+register_engine(IbisEngine(), default=True)
 
 
 # ---------------------------------------------------------------------------
@@ -275,42 +257,36 @@ except ImportError:  # pragma: no cover - pandas is optional
 
 
 def resolve_engine(name: str | None) -> Engine:
-    """Return an :class:`Engine` for ``name`` (or the default when ``name`` is None).
+    """Return the compute :class:`Engine` (DuckDB via ibis).
 
-    User-facing helper for CLI / config / MCP flag parsing. Accepts
-    one of ``"ibis"`` / ``"pandas"`` / ``"polars"`` (case-insensitive).
-    ``None`` returns the registered default (typically ibis).
-
-    This wraps :func:`get_engine` with a single concession: unknown
-    names raise :class:`ValueError` with a list of known engines, so
-    CLI wrappers can convert that to ``typer.BadParameter`` without
-    re-deriving the message.
+    DuckDB is the single compute engine; pandas / polars / pyarrow are I/O
+    *formats*, not compute backends. ``None``, ``"ibis"`` and ``"duckdb"`` all
+    return the one engine; any other name raises :class:`ValueError`.
 
     Args:
-        name: Engine name to resolve. ``None`` returns the default.
+        name: ``None`` / ``"ibis"`` / ``"duckdb"``.
 
     Returns:
-        A registered :class:`Engine` instance.
+        The registered DuckDB engine.
 
     Raises:
-        ValueError: If ``name`` doesn't match a known engine.
+        ValueError: If ``name`` is not one of the accepted values.
 
     Examples:
         >>> from datagrove.engines import resolve_engine
-        >>> eng = resolve_engine(None)  # default (typically IbisEngine)
-        >>> isinstance(eng, Engine)
+        >>> isinstance(resolve_engine(None), Engine)
         True
-        >>> eng_p = resolve_engine("pandas")
-        >>> type(eng_p).__name__
-        'PandasEngine'
     """
     if name is None:
         return get_engine()
     key = name.strip().lower()
-    if key not in {"ibis", "pandas", "polars"}:
-        known = ", ".join(sorted({"ibis", "pandas", "polars"}))
-        raise ValueError(f"unknown engine {name!r}; expected one of: {known}")
-    return get_engine(key)
+    if key not in {"ibis", "duckdb"}:
+        raise ValueError(
+            f"unknown engine {name!r}; DuckDB is the only compute engine "
+            "(use 'ibis'/'duckdb', or None). pandas/polars/arrow are output "
+            "formats via Table.to_pandas()/to_polars()."
+        )
+    return get_engine()
 
 
 __all__ = [

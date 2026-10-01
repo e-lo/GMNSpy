@@ -14,7 +14,7 @@ from __future__ import annotations
 import re
 
 import pandas as pd
-from datagrove.engines.pandas_engine import PandasEngine
+from datagrove.engines.ibis_engine import IbisEngine
 from datagrove.reports import Category, Issue, Severity, ValidationReport
 from gmnspy import Network
 from gmnspy.fixtures import leavenworth
@@ -52,12 +52,12 @@ def _osm_network(tmp_path) -> Network:
     csv_dir.mkdir()
     link.to_csv(csv_dir / "link.csv", index=False)
     node.to_csv(csv_dir / "node.csv", index=False)
-    return Network.from_source(csv_dir, engine=PandasEngine())
+    return Network.from_source(csv_dir, engine=IbisEngine())
 
 
 def _leavenworth_network() -> Network:
     """The bundled non-OSM CSV fixture."""
-    return Network.from_source(leavenworth.csv_dir(), engine=PandasEngine())
+    return Network.from_source(leavenworth.csv_dir(), engine=IbisEngine())
 
 
 # ---------------------------------------------------------------------------
@@ -164,7 +164,7 @@ def test_underlay_uses_geometry_table_when_no_inline_geometry(tmp_path):
     link.to_csv(csv_dir / "link.csv", index=False)
     node.to_csv(csv_dir / "node.csv", index=False)
     geometry.to_csv(csv_dir / "geometry.csv", index=False)
-    net = Network.from_source(csv_dir, engine=PandasEngine())
+    net = Network.from_source(csv_dir, engine=IbisEngine())
 
     html = render_network_html(net)
     payload_match = re.search(r"\[\"[a-zA-Z0-9_-]+\"\] = (\{.*?\});", html, re.S)
@@ -233,7 +233,7 @@ def test_props_skip_long_or_internal_columns(tmp_path):
     csv_dir.mkdir()
     link.to_csv(csv_dir / "link.csv", index=False)
     node.to_csv(csv_dir / "node.csv", index=False)
-    net = Network.from_source(csv_dir, engine=PandasEngine())
+    net = Network.from_source(csv_dir, engine=IbisEngine())
 
     html = render_network_html(net)
     payload_match = re.search(r"\[\"[a-zA-Z0-9_-]+\"\] = (\{.*?\});", html, re.S)
@@ -347,7 +347,7 @@ def test_link_issue_on_non_osm_network_has_no_osm_link(tmp_path):
     csv_dir.mkdir()
     link.to_csv(csv_dir / "link.csv", index=False)
     node.to_csv(csv_dir / "node.csv", index=False)
-    net = Network.from_source(csv_dir, engine=PandasEngine())
+    net = Network.from_source(csv_dir, engine=IbisEngine())
     issue = Issue(
         severity=Severity.WARNING,
         category=Category.SCHEMA,

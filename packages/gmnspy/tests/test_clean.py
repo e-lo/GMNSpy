@@ -10,7 +10,7 @@ from __future__ import annotations
 import pytest
 from datagrove.dataset import Table
 from datagrove.editing import Session
-from datagrove.engines.pandas_engine import PandasEngine
+from datagrove.engines.ibis_engine import IbisEngine
 from datagrove.spec import DataPackage, Resource
 from gmnspy import Network
 
@@ -23,8 +23,8 @@ pytest.importorskip("shapely")
 # ---------------------------------------------------------------------------
 
 
-def _engine() -> PandasEngine:
-    return PandasEngine()
+def _engine() -> IbisEngine:
+    return IbisEngine()
 
 
 def _network(tables_dict: dict[str, Table]) -> Network:

@@ -19,7 +19,7 @@ pytest.importorskip("scipy")  # build_indexes' graph slot returns a GMNSGraph
 pyarrow = pytest.importorskip("pyarrow")
 
 from datagrove.dataset import Table  # noqa: E402
-from datagrove.engines.pandas_engine import PandasEngine  # noqa: E402
+from datagrove.engines.ibis_engine import IbisEngine  # noqa: E402
 from gmnspy.fixtures import leavenworth  # noqa: E402
 from gmnspy.indexes import (  # noqa: E402
     SpatialIndex,
@@ -33,7 +33,7 @@ from gmnspy.indexes.cache import load_cached, save_cached  # noqa: E402
 # ---------------------------------------------------------------------------
 
 
-def _read_csv_table(name: str, engine: PandasEngine) -> Table:
+def _read_csv_table(name: str, engine: IbisEngine) -> Table:
     """Read a Leavenworth CSV into a Table backed by ``engine``."""
     import pandas as pd
 
@@ -43,12 +43,12 @@ def _read_csv_table(name: str, engine: PandasEngine) -> Table:
 
 
 @pytest.fixture
-def engine() -> PandasEngine:
-    return PandasEngine()
+def engine() -> IbisEngine:
+    return IbisEngine()
 
 
 @pytest.fixture
-def links_with_geom(engine: PandasEngine) -> Table:
+def links_with_geom(engine: IbisEngine) -> Table:
     """``link`` table joined to ``geometry`` so it carries a WKT ``geometry`` column."""
     import pandas as pd
 
@@ -60,7 +60,7 @@ def links_with_geom(engine: PandasEngine) -> Table:
 
 
 @pytest.fixture
-def nodes_table(engine: PandasEngine) -> Table:
+def nodes_table(engine: IbisEngine) -> Table:
     return _read_csv_table("node", engine)
 
 
@@ -195,10 +195,9 @@ def test_indexes_build_under_ibis_engine() -> None:
     """
     import pandas as pd
     import pyarrow as pa
-    from datagrove.engines.ibis_engine import IbisEngine
 
     ibis_eng = IbisEngine()
-    pandas_eng = PandasEngine()
+    pandas_eng = IbisEngine()
 
     links_df = pd.read_csv(leavenworth.csv_dir() / "link.csv")
     geom_df = pd.read_csv(leavenworth.csv_dir() / "geometry.csv")

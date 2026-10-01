@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import pandas as pd
 import pytest
-from datagrove.engines.pandas_engine import PandasEngine
+from datagrove.engines.ibis_engine import IbisEngine
 from datagrove.reports import Category, Issue, Severity
 from gmnspy import Network
 from gmnspy.osm.edit import issue_osm_edit_url, osm_edit_url
@@ -120,7 +120,7 @@ def _osm_network(tmp_path) -> Network:
     csv_dir.mkdir()
     link.to_csv(csv_dir / "link.csv", index=False)
     node.to_csv(csv_dir / "node.csv", index=False)
-    return Network.from_source(csv_dir, engine=PandasEngine())
+    return Network.from_source(csv_dir, engine=IbisEngine())
 
 
 def test_issue_osm_edit_url_link_with_osm_way_id(tmp_path):
@@ -178,7 +178,7 @@ def test_issue_osm_edit_url_node_on_osm_network(tmp_path):
     csv_dir.mkdir()
     link.to_csv(csv_dir / "link.csv", index=False)
     node.to_csv(csv_dir / "node.csv", index=False)
-    net = Network.from_source(csv_dir, engine=PandasEngine())
+    net = Network.from_source(csv_dir, engine=IbisEngine())
 
     issue = Issue(
         severity=Severity.WARNING,
@@ -213,7 +213,7 @@ def test_issue_osm_edit_url_non_osm_network_returns_none(tmp_path):
     csv_dir.mkdir()
     link.to_csv(csv_dir / "link.csv", index=False)
     node.to_csv(csv_dir / "node.csv", index=False)
-    net = Network.from_source(csv_dir, engine=PandasEngine())
+    net = Network.from_source(csv_dir, engine=IbisEngine())
     issue = Issue(
         severity=Severity.WARNING,
         category=Category.SCHEMA,

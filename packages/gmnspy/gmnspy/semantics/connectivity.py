@@ -13,8 +13,8 @@ topological connection rather than being dropped.
 Examples:
     >>> from gmnspy import Network
     >>> from gmnspy.fixtures import leavenworth
-    >>> from datagrove.engines.pandas_engine import PandasEngine
-    >>> net = Network.from_source(leavenworth.csv_dir(), engine=PandasEngine())
+    >>> from datagrove.engines.ibis_engine import IbisEngine
+    >>> net = Network.from_source(leavenworth.csv_dir(), engine=IbisEngine())
     >>> from gmnspy.semantics import is_connected
     >>> is_connected(net)
     True
@@ -68,8 +68,8 @@ def is_connected(net: Network) -> bool:
     Examples:
         >>> from gmnspy import Network
         >>> from gmnspy.fixtures import leavenworth
-        >>> from datagrove.engines.pandas_engine import PandasEngine
-        >>> net = Network.from_source(leavenworth.csv_dir(), engine=PandasEngine())
+        >>> from datagrove.engines.ibis_engine import IbisEngine
+        >>> net = Network.from_source(leavenworth.csv_dir(), engine=IbisEngine())
         >>> is_connected(net)
         True
     """
@@ -86,8 +86,8 @@ def connected_components(net: Network) -> list[set[int]]:
     Examples:
         >>> from gmnspy import Network
         >>> from gmnspy.fixtures import leavenworth
-        >>> from datagrove.engines.pandas_engine import PandasEngine
-        >>> net = Network.from_source(leavenworth.csv_dir(), engine=PandasEngine())
+        >>> from datagrove.engines.ibis_engine import IbisEngine
+        >>> net = Network.from_source(leavenworth.csv_dir(), engine=IbisEngine())
         >>> comps = connected_components(net)
         >>> len(comps) >= 1
         True
@@ -126,8 +126,8 @@ def unreachable_from(net: Network, source_node_id: int) -> set[int]:
     Examples:
         >>> from gmnspy import Network
         >>> from gmnspy.fixtures import leavenworth
-        >>> from datagrove.engines.pandas_engine import PandasEngine
-        >>> net = Network.from_source(leavenworth.csv_dir(), engine=PandasEngine())
+        >>> from datagrove.engines.ibis_engine import IbisEngine
+        >>> net = Network.from_source(leavenworth.csv_dir(), engine=IbisEngine())
         >>> # Pick any node, query — Leavenworth is bidirectional so the
         >>> # unreachable set is typically empty.
         >>> seed = next(iter(largest_component(net)))

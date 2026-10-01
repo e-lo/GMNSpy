@@ -19,7 +19,7 @@ from datagrove.dataset import (
     Table,
 )
 from datagrove.engines.ibis_engine import IbisEngine
-from datagrove.engines.pandas_engine import PandasEngine
+from datagrove.engines.ibis_engine import IbisEngine
 from datagrove.spec.loader import load_package
 from gmnspy.fixtures import leavenworth
 
@@ -33,11 +33,10 @@ def _make_engine(name: str):
         return IbisEngine()
     if name == "polars":
         pytest.importorskip("polars", reason="polars optional extra not installed")
-        from datagrove.engines.polars_engine import PolarsEngine
 
-        return PolarsEngine()
+        return IbisEngine()
     if name == "pandas":
-        return PandasEngine()
+        return IbisEngine()
     raise AssertionError(f"unknown engine name: {name!r}")
 
 
@@ -53,7 +52,7 @@ def _gmns_datapackage() -> Path:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("engine_name", ["ibis", "pandas"])
+@pytest.mark.parametrize("engine_name", ["ibis"])
 def test_package_from_leavenworth_csv_dir(engine_name: str) -> None:
     pkg = Package.from_source(
         leavenworth.csv_dir(),
@@ -68,7 +67,7 @@ def test_package_from_leavenworth_csv_dir(engine_name: str) -> None:
     assert pkg.source is not None and "csv" in pkg.source
 
 
-@pytest.mark.parametrize("engine_name", ["ibis", "pandas"])
+@pytest.mark.parametrize("engine_name", ["ibis"])
 def test_package_from_leavenworth_parquet_dir(engine_name: str) -> None:
     pkg = Package.from_source(
         leavenworth.parquet_dir(),
@@ -81,7 +80,7 @@ def test_package_from_leavenworth_parquet_dir(engine_name: str) -> None:
     assert pkg["link"].format == "parquet"
 
 
-@pytest.mark.parametrize("engine_name", ["ibis", "pandas"])
+@pytest.mark.parametrize("engine_name", ["ibis"])
 def test_package_from_leavenworth_duckdb(engine_name: str) -> None:
     pkg = Package.from_source(
         leavenworth.duckdb_path(),
@@ -97,7 +96,7 @@ def test_package_from_source_partial_load() -> None:
     """Passing ``tables=`` limits the load to a subset."""
     pkg = Package.from_source(
         leavenworth.csv_dir(),
-        engine=PandasEngine(),
+        engine=IbisEngine(),
         spec=_gmns_datapackage(),
         tables=["link", "node"],
     )
@@ -112,7 +111,7 @@ def test_package_from_source_partial_load() -> None:
 def test_package_dict_access() -> None:
     pkg = Package.from_source(
         leavenworth.csv_dir(),
-        engine=PandasEngine(),
+        engine=IbisEngine(),
         spec=_gmns_datapackage(),
         tables=["link", "node"],
     )
@@ -139,7 +138,7 @@ def test_package_dict_access() -> None:
 def test_package_validate_runs_all_passes() -> None:
     pkg = Package.from_source(
         leavenworth.csv_dir(),
-        engine=PandasEngine(),
+        engine=IbisEngine(),
         spec=_gmns_datapackage(),
         tables=["link", "node"],
     )
@@ -155,7 +154,7 @@ def test_package_validate_skip_individual_passes() -> None:
     """``schema=False`` skips the per-table schema rules."""
     pkg = Package.from_source(
         leavenworth.csv_dir(),
-        engine=PandasEngine(),
+        engine=IbisEngine(),
         spec=_gmns_datapackage(),
         tables=["link", "node"],
     )
@@ -179,7 +178,7 @@ def test_package_validate_skip_individual_passes() -> None:
 def test_package_scope_by_tables_subset() -> None:
     pkg = Package.from_source(
         leavenworth.csv_dir(),
-        engine=PandasEngine(),
+        engine=IbisEngine(),
         spec=_gmns_datapackage(),
     )
     sub = pkg.scope(tables=["link", "node"])
@@ -192,7 +191,7 @@ def test_package_scope_by_tables_subset() -> None:
 def test_package_scope_by_columns() -> None:
     pkg = Package.from_source(
         leavenworth.csv_dir(),
-        engine=PandasEngine(),
+        engine=IbisEngine(),
         spec=_gmns_datapackage(),
         tables=["link", "node"],
     )
@@ -211,13 +210,13 @@ def test_package_scope_by_columns() -> None:
 def test_package_write_roundtrip(tmp_path: Path) -> None:
     pkg = Package.from_source(
         leavenworth.csv_dir(),
-        engine=PandasEngine(),
+        engine=IbisEngine(),
         spec=_gmns_datapackage(),
         tables=["link", "node"],
     )
     dest = tmp_path / "out.gmns"
     pkg.write(dest, format="parquet")
-    pkg2 = Package.from_source(dest, engine=PandasEngine(), spec=_gmns_datapackage())
+    pkg2 = Package.from_source(dest, engine=IbisEngine(), spec=_gmns_datapackage())
     assert "link" in pkg2
     assert "node" in pkg2
     assert pkg2["link"].count() == pkg["link"].count()
@@ -226,7 +225,7 @@ def test_package_write_roundtrip(tmp_path: Path) -> None:
 def test_package_write_overwrite_protection(tmp_path: Path) -> None:
     pkg = Package.from_source(
         leavenworth.csv_dir(),
-        engine=PandasEngine(),
+        engine=IbisEngine(),
         spec=_gmns_datapackage(),
         tables=["link", "node"],
     )
@@ -241,7 +240,7 @@ def test_package_write_overwrite_protection(tmp_path: Path) -> None:
 def test_package_write_on_dirty_emits_warning(tmp_path: Path) -> None:
     pkg = Package.from_source(
         leavenworth.csv_dir(),
-        engine=PandasEngine(),
+        engine=IbisEngine(),
         spec=_gmns_datapackage(),
         tables=["link", "node"],
     )
@@ -256,7 +255,7 @@ def test_package_write_on_dirty_emits_warning(tmp_path: Path) -> None:
 def test_package_write_strict_sync_raises_on_dirty(tmp_path: Path) -> None:
     pkg = Package.from_source(
         leavenworth.csv_dir(),
-        engine=PandasEngine(),
+        engine=IbisEngine(),
         spec=_gmns_datapackage(),
         tables=["link", "node"],
     )
@@ -274,7 +273,7 @@ def test_package_write_strict_sync_raises_on_dirty(tmp_path: Path) -> None:
 def test_package_add_remove_table() -> None:
     pkg = Package.from_source(
         leavenworth.csv_dir(),
-        engine=PandasEngine(),
+        engine=IbisEngine(),
         spec=_gmns_datapackage(),
         tables=["link"],
     )
@@ -290,7 +289,7 @@ def test_package_add_remove_table() -> None:
 def test_package_repr_html_returns_non_empty_string() -> None:
     pkg = Package.from_source(
         leavenworth.csv_dir(),
-        engine=PandasEngine(),
+        engine=IbisEngine(),
         spec=_gmns_datapackage(),
         tables=["link", "node"],
     )
@@ -303,7 +302,7 @@ def test_package_dirty_tracker_optional(tmp_path: Path) -> None:
     """Package works without DirtyTracker — sync_state validation no-ops."""
     pkg = Package.from_source(
         leavenworth.csv_dir(),
-        engine=PandasEngine(),
+        engine=IbisEngine(),
         spec=_gmns_datapackage(),
         tables=["link", "node"],
     )
@@ -332,7 +331,7 @@ def test_validate_stamps_dirty_tracker_after_clean_fk_pass() -> None:
     tracker = DirtyTracker()
     pkg = Package.from_source(
         leavenworth.csv_dir(),
-        engine=PandasEngine(),
+        engine=IbisEngine(),
         spec=_gmns_datapackage(),
         tables=["link", "node"],
     )
@@ -358,7 +357,7 @@ def test_validate_does_not_stamp_broken_fk() -> None:
 
     Negative side of the I1 fix.
     """
-    from datagrove.engines.pandas_engine import PandasEngine as _PE
+    from datagrove.engines.ibis_engine import IbisEngine as _PE
     from datagrove.spec.loader import load_package as _load
     from datagrove.validation.sync_state import DirtyTracker
 
@@ -431,7 +430,7 @@ def test_package_write_raises_format_not_detected_on_unknown_extension(tmp_path:
 
     pkg = Package.from_source(
         leavenworth.csv_dir(),
-        engine=PandasEngine(),
+        engine=IbisEngine(),
         spec=_gmns_datapackage(),
         tables=["link"],
     )
@@ -455,7 +454,7 @@ def test_top_level_reexport_of_package_and_table() -> None:
 
 def test_from_tables_constructor() -> None:
     """Package can be built from an already-prepared mapping of Tables."""
-    e = PandasEngine()
+    e = IbisEngine()
     link = Table(name="link", expr=e.from_records([{"link_id": 1}]), engine=e)
     node = Table(name="node", expr=e.from_records([{"node_id": 1}]), engine=e)
     pkg = load_package(

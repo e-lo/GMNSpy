@@ -24,7 +24,7 @@ Design intent:
 
 The default applier runs through the pandas engine — i.e. the returned
 ``ApplyResult.net`` always backs its mutated tables with
-:class:`~datagrove.engines.pandas_engine.PandasEngine`. Other engines'
+:class:`~datagrove.engines.ibis_engine.IbisEngine`. Other engines'
 lazy expressions aren't mutated in place; that's a future concern.
 """
 
@@ -386,7 +386,7 @@ def apply_edits(net: Network, log: EditLog) -> ApplyResult:
     5. Write ``to_value`` into the cell.
 
     The returned ``ApplyResult.net`` is a fresh :class:`~gmnspy.network.Network`
-    backed by :class:`~datagrove.engines.pandas_engine.PandasEngine` for
+    backed by :class:`~datagrove.engines.ibis_engine.IbisEngine` for
     EVERY table — mutated tables carry the edited DataFrames, untouched
     tables are materialised snapshots of their source expressions. All
     tables share a single engine so ``net.write(dest)`` sees a
@@ -410,7 +410,7 @@ def apply_edits(net: Network, log: EditLog) -> ApplyResult:
     try:
         import pandas as pd
         from datagrove.dataset import Table
-        from datagrove.engines.pandas_engine import PandasEngine
+        from datagrove.engines.ibis_engine import IbisEngine
     except ImportError as e:  # pragma: no cover - defensive
         raise ImportError("gmnspy.map.edits.apply_edits requires pandas + datagrove (transitive).") from e
 
@@ -461,7 +461,7 @@ def apply_edits(net: Network, log: EditLog) -> ApplyResult:
     # Mutated tables carry their new DataFrame; untouched tables get
     # materialised via to_pandas() so write() dispatches consistently
     # instead of hitting a pandas-vs-ibis-vs-duckdb mixed state.
-    new_engine = PandasEngine()
+    new_engine = IbisEngine()
     new_tables: dict[str, Table] = {}
     for name, existing in net.tables.items():
         df = mutated[name] if name in mutated else existing.to_pandas()

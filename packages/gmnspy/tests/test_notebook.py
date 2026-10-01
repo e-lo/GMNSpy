@@ -9,7 +9,7 @@ advertising the GMNS-specific extras.
 
 from __future__ import annotations
 
-from datagrove.engines.pandas_engine import PandasEngine
+from datagrove.engines.ibis_engine import IbisEngine
 from gmnspy import Network
 from gmnspy.fixtures import leavenworth
 
@@ -21,7 +21,7 @@ def _make_network() -> Network:
     fixture is the canonical "small but realistic" GMNS dataset already
     used across the test suite.
     """
-    return Network.from_source(leavenworth.csv_dir(), engine=PandasEngine())
+    return Network.from_source(leavenworth.csv_dir(), engine=IbisEngine())
 
 
 def test_network_repr_html_includes_spec_version() -> None:

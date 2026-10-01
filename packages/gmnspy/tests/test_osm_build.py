@@ -5,7 +5,7 @@ The pipeline test injects a fake HTTP session (no network).
 
 from __future__ import annotations
 
-from datagrove.engines.pandas_engine import PandasEngine
+from datagrove.engines.ibis_engine import IbisEngine
 from gmnspy.osm import build
 
 
@@ -81,24 +81,24 @@ _LINK_RECS = [
 
 class TestNetworkFromRecords:
     def test_builds_network_with_named_accessors(self):
-        net = build.network_from_records(_NODE_RECS, _LINK_RECS, engine=PandasEngine())
+        net = build.network_from_records(_NODE_RECS, _LINK_RECS, engine=IbisEngine())
         assert net.spec_version == "0.97"
         assert net.nodes.count() == 2
         assert net.links.count() == 2
 
     def test_links_reference_existing_nodes(self):
-        net = build.network_from_records(_NODE_RECS, _LINK_RECS, engine=PandasEngine())
+        net = build.network_from_records(_NODE_RECS, _LINK_RECS, engine=IbisEngine())
         node_ids = set(net.nodes.to_pandas()["node_id"])
         links = net.links.to_pandas()
         assert set(links["from_node_id"]) <= node_ids
         assert set(links["to_node_id"]) <= node_ids
 
     def test_provenance_columns_preserved(self):
-        net = build.network_from_records(_NODE_RECS, _LINK_RECS, engine=PandasEngine())
+        net = build.network_from_records(_NODE_RECS, _LINK_RECS, engine=IbisEngine())
         assert "osm_way_id" in net.links.to_pandas().columns
 
     def test_engine_override_respected(self):
-        net = build.network_from_records(_NODE_RECS, _LINK_RECS, engine=PandasEngine())
+        net = build.network_from_records(_NODE_RECS, _LINK_RECS, engine=IbisEngine())
         assert net.engine.name == "pandas"
 
 
@@ -107,7 +107,7 @@ class TestBuildNetworkFromOsm:
         sess = _FakeSession([_FakeResponse(200, _two_node_street_payload())])
         net = build.build_network_from_osm(
             (-71.1, 41.9, -70.9, 42.1),
-            engine=PandasEngine(),
+            engine=IbisEngine(),
             session=sess,
             sleep=lambda *_: None,
         )

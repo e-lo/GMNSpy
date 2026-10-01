@@ -22,6 +22,7 @@ import shutil
 from pathlib import Path
 
 import pytest
+from datagrove.engines.ibis_engine import IbisEngine
 from gmnspy.cli.app import app
 from gmnspy.fixtures import leavenworth
 from typer.testing import CliRunner
@@ -98,10 +99,9 @@ def test_clean_simplify_writes_to_dest(tmp_path: Path):
     # Dest exists and is loadable as a package.
     assert dest.exists()
     # Round-trip through the loader to confirm the on-disk package is valid.
-    from datagrove.engines.pandas_engine import PandasEngine
     from gmnspy import Network
 
-    net = Network.from_source(dest, engine=PandasEngine())
+    net = Network.from_source(dest, engine=IbisEngine())
     assert net.links.count() > 0
     assert net.nodes.count() > 0
 

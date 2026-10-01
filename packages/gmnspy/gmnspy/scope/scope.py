@@ -205,9 +205,9 @@ class NetworkScope:
         >>> _ = pytest.importorskip("scipy")
         >>> from gmnspy import Network
         >>> from gmnspy.fixtures import leavenworth
-        >>> from datagrove.engines.pandas_engine import PandasEngine
+        >>> from datagrove.engines.ibis_engine import IbisEngine
         >>> from gmnspy.scope import from_nodes
-        >>> net = Network.from_source(leavenworth.csv_dir(), engine=PandasEngine())
+        >>> net = Network.from_source(leavenworth.csv_dir(), engine=IbisEngine())
         >>> scope = from_nodes(net, [1, 2], path_between=True)
         >>> isinstance(scope, NetworkScope)
         True
@@ -399,8 +399,8 @@ def from_nodes(
         >>> _ = pytest.importorskip("scipy")
         >>> from gmnspy import Network
         >>> from gmnspy.fixtures import leavenworth
-        >>> from datagrove.engines.pandas_engine import PandasEngine
-        >>> net = Network.from_source(leavenworth.csv_dir(), engine=PandasEngine())
+        >>> from datagrove.engines.ibis_engine import IbisEngine
+        >>> net = Network.from_source(leavenworth.csv_dir(), engine=IbisEngine())
         >>> scope = from_nodes(net, [1, 2, 3], path_between=False)
         >>> 1 in scope.node_ids
         True
@@ -444,8 +444,8 @@ def from_node(
         >>> _ = pytest.importorskip("scipy")
         >>> from gmnspy import Network
         >>> from gmnspy.fixtures import leavenworth
-        >>> from datagrove.engines.pandas_engine import PandasEngine
-        >>> net = Network.from_source(leavenworth.csv_dir(), engine=PandasEngine())
+        >>> from datagrove.engines.ibis_engine import IbisEngine
+        >>> net = Network.from_source(leavenworth.csv_dir(), engine=IbisEngine())
         >>> scope = from_node(net, 1, network_buffer="200m")
         >>> 1 in scope.node_ids
         True

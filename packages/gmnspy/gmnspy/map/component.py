@@ -89,9 +89,9 @@ class NetworkMap:
 
             >>> from gmnspy import Network
             >>> from gmnspy.fixtures import leavenworth
-            >>> from datagrove.engines.pandas_engine import PandasEngine
+            >>> from datagrove.engines.ibis_engine import IbisEngine
             >>> from gmnspy.map import NetworkMap
-            >>> net = Network.from_source(leavenworth.csv_dir(), engine=PandasEngine())
+            >>> net = Network.from_source(leavenworth.csv_dir(), engine=IbisEngine())
             >>> html = NetworkMap(net, title="Leavenworth").to_html()
             >>> html.lstrip().startswith("<!DOCTYPE html>")
             True

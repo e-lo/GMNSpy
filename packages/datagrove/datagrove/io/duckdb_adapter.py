@@ -155,9 +155,9 @@ class DuckdbAdapter:
 
         Read a specific table via any engine (here pandas)::
 
-            >>> from datagrove.engines.pandas_engine import PandasEngine
+            >>> from datagrove.engines.ibis_engine import IbisEngine
             >>> a = DuckdbAdapter()
-            >>> engine = PandasEngine()
+            >>> engine = IbisEngine()
             >>> df = engine.to_pandas(
             ...     a.read(sample.duckdb_path(), engine=engine, table="book")
             ... )
@@ -282,14 +282,14 @@ class DuckdbAdapter:
             InvalidEngineCallError: If ``table=`` is not provided.
 
         Examples:
-            >>> from datagrove.engines.pandas_engine import PandasEngine
+            >>> from datagrove.engines.ibis_engine import IbisEngine
             >>> from datagrove.io.duckdb_adapter import DuckdbAdapter
             >>> from datagrove.fixtures import sample
-            >>> e = PandasEngine()
+            >>> e = IbisEngine()
             >>> df = DuckdbAdapter().read(
             ...     sample.duckdb_path(), engine=e, table="book"
             ... )
-            >>> len(df) > 0
+            >>> df.count().to_pyarrow().as_py() > 0
             True
         """
         table = kwargs.pop("table", None)
@@ -338,9 +338,9 @@ class DuckdbAdapter:
 
         Examples:
             >>> import tempfile, pathlib
-            >>> from datagrove.engines.pandas_engine import PandasEngine
+            >>> from datagrove.engines.ibis_engine import IbisEngine
             >>> from datagrove.io.duckdb_adapter import DuckdbAdapter
-            >>> e = PandasEngine()
+            >>> e = IbisEngine()
             >>> df = e.scan({"data": [{"x": 1}, {"x": 2}]})
             >>> with tempfile.TemporaryDirectory() as tmp:
             ...     out = pathlib.Path(tmp) / "out.duckdb"

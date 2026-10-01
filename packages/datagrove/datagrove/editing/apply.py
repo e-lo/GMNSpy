@@ -278,8 +278,8 @@ def apply_edit(package: Package, edit: Edit, *, session_id: str | None = None) -
         >>> from datagrove.dataset import Package, Table
         >>> from datagrove.editing import Edit
         >>> from datagrove.editing.apply import apply_edit
-        >>> from datagrove.engines.pandas_engine import PandasEngine
-        >>> e = PandasEngine()
+        >>> from datagrove.engines.ibis_engine import IbisEngine
+        >>> e = IbisEngine()
         >>> pkg = Package.from_tables({"x": Table(name="x", expr=e.from_records([{"a": 1}]), engine=e)})
         >>> r = apply_edit(pkg, Edit(op="add_rows", table="x", payload={"rows": [{"a": 2}]}))
         >>> r.diff.rows_added, pkg["x"].count()

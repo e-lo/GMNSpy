@@ -100,9 +100,9 @@ class Table:
     Examples:
         Construct directly from in-memory records via an engine::
 
-            >>> from datagrove.engines.pandas_engine import PandasEngine
+            >>> from datagrove.engines.ibis_engine import IbisEngine
             >>> from datagrove.dataset import Table
-            >>> e = PandasEngine()
+            >>> e = IbisEngine()
             >>> expr = e.from_records([{"a": 1}, {"a": 2}, {"a": 3}])
             >>> t = Table(name="t", expr=expr, engine=e)
             >>> t.count()
@@ -141,9 +141,9 @@ class Table:
             the original :class:`Table` is unchanged.
 
         Examples:
-            >>> from datagrove.engines.pandas_engine import PandasEngine
+            >>> from datagrove.engines.ibis_engine import IbisEngine
             >>> from datagrove.dataset import Table
-            >>> e = PandasEngine()
+            >>> e = IbisEngine()
             >>> expr = e.from_records([{"a": 1}, {"a": 2}, {"a": 3}])
             >>> t = Table(name="t", expr=expr, engine=e)
             >>> t2 = t.filter(lambda df: df[df["a"] > 1])
@@ -165,9 +165,9 @@ class Table:
             A new :class:`Table` carrying only the projected columns.
 
         Examples:
-            >>> from datagrove.engines.pandas_engine import PandasEngine
+            >>> from datagrove.engines.ibis_engine import IbisEngine
             >>> from datagrove.dataset import Table
-            >>> e = PandasEngine()
+            >>> e = IbisEngine()
             >>> expr = e.from_records([{"a": 1, "b": 2}])
             >>> Table(name="t", expr=expr, engine=e).select("a").columns()
             ['a']
@@ -188,9 +188,9 @@ class Table:
             A new :class:`Table` whose expression is the head.
 
         Examples:
-            >>> from datagrove.engines.pandas_engine import PandasEngine
+            >>> from datagrove.engines.ibis_engine import IbisEngine
             >>> from datagrove.dataset import Table
-            >>> e = PandasEngine()
+            >>> e = IbisEngine()
             >>> expr = e.from_records([{"a": i} for i in range(10)])
             >>> Table(name="t", expr=expr, engine=e).head(3).count()
             3
@@ -214,9 +214,9 @@ class Table:
             A new :class:`Table`; the original is unchanged.
 
         Examples:
-            >>> from datagrove.engines.pandas_engine import PandasEngine
+            >>> from datagrove.engines.ibis_engine import IbisEngine
             >>> from datagrove.dataset import Table
-            >>> e = PandasEngine()
+            >>> e = IbisEngine()
             >>> t = Table(name="t", expr=e.from_records([{"a": 3}, {"a": 1}, {"a": 2}]), engine=e)
             >>> t.order_by("a").to_pandas()["a"].tolist()
             [1, 2, 3]
@@ -238,9 +238,9 @@ class Table:
             A new :class:`Table`; the original is unchanged.
 
         Examples:
-            >>> from datagrove.engines.pandas_engine import PandasEngine
+            >>> from datagrove.engines.ibis_engine import IbisEngine
             >>> from datagrove.dataset import Table
-            >>> e = PandasEngine()
+            >>> e = IbisEngine()
             >>> t = Table(name="t", expr=e.from_records([{"a": i} for i in range(5)]), engine=e)
             >>> t.limit(2, offset=2).to_pandas()["a"].tolist()
             [2, 3]
@@ -261,9 +261,9 @@ class Table:
         materialised frame). No table is materialised just to count it.
 
         Examples:
-            >>> from datagrove.engines.pandas_engine import PandasEngine
+            >>> from datagrove.engines.ibis_engine import IbisEngine
             >>> from datagrove.dataset import Table
-            >>> e = PandasEngine()
+            >>> e = IbisEngine()
             >>> Table(name="t", expr=e.from_records([{"a": 1}]), engine=e).count()
             1
         """
@@ -279,9 +279,9 @@ class Table:
         full contract.
 
         Examples:
-            >>> from datagrove.engines.pandas_engine import PandasEngine
+            >>> from datagrove.engines.ibis_engine import IbisEngine
             >>> from datagrove.dataset import Table
-            >>> e = PandasEngine()
+            >>> e = IbisEngine()
             >>> t = Table(name="t", expr=e.from_records([{"a": 1}]), engine=e)
             >>> t.to_pandas()["a"].tolist()
             [1]
@@ -298,9 +298,9 @@ class Table:
         Examples:
             >>> import pytest
             >>> _ = pytest.importorskip("polars")
-            >>> from datagrove.engines.pandas_engine import PandasEngine
+            >>> from datagrove.engines.ibis_engine import IbisEngine
             >>> from datagrove.dataset import Table
-            >>> e = PandasEngine()
+            >>> e = IbisEngine()
             >>> t = Table(name="t", expr=e.from_records([{"a": 1}]), engine=e)
             >>> t.to_polars().shape[0]
             1
@@ -316,9 +316,9 @@ class Table:
         (pandas is already eager).
 
         Examples:
-            >>> from datagrove.engines.pandas_engine import PandasEngine
+            >>> from datagrove.engines.ibis_engine import IbisEngine
             >>> from datagrove.dataset import Table
-            >>> e = PandasEngine()
+            >>> e = IbisEngine()
             >>> t = Table(name="t", expr=e.from_records([{"a": 1}]), engine=e)
             >>> out = t.collect()
             >>> out is not t
@@ -339,9 +339,9 @@ class Table:
         :attr:`dirty` before the next write.
 
         Examples:
-            >>> from datagrove.engines.pandas_engine import PandasEngine
+            >>> from datagrove.engines.ibis_engine import IbisEngine
             >>> from datagrove.dataset import Table
-            >>> e = PandasEngine()
+            >>> e = IbisEngine()
             >>> t = Table(name="t", expr=e.from_records([{"a": 1}]), engine=e)
             >>> t.invalidate()
             >>> t.dirty
@@ -362,9 +362,9 @@ class Table:
         No row materialisation runs.
 
         Examples:
-            >>> from datagrove.engines.pandas_engine import PandasEngine
+            >>> from datagrove.engines.ibis_engine import IbisEngine
             >>> from datagrove.dataset import Table
-            >>> e = PandasEngine()
+            >>> e = IbisEngine()
             >>> Table(name="t", expr=e.from_records([{"a": 1, "b": 2}]), engine=e).columns()
             ['a', 'b']
         """
@@ -391,9 +391,9 @@ class Table:
         :func:`datagrove.notebook.card`.
 
         Examples:
-            >>> from datagrove.engines.pandas_engine import PandasEngine
+            >>> from datagrove.engines.ibis_engine import IbisEngine
             >>> from datagrove.dataset import Table
-            >>> e = PandasEngine()
+            >>> e = IbisEngine()
             >>> html = Table(name="t", expr=e.from_records([{"a": 1}]), engine=e)._repr_html_()
             >>> html.startswith("<div")
             True

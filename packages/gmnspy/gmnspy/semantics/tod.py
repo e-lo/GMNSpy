@@ -63,9 +63,9 @@ def resolve_link_attrs_at(net: Network, time_set_id: str | int | None = None) ->
     Examples:
         >>> from gmnspy import Network
         >>> from gmnspy.fixtures import leavenworth
-        >>> from datagrove.engines.pandas_engine import PandasEngine
+        >>> from datagrove.engines.ibis_engine import IbisEngine
         >>> from gmnspy.semantics import resolve_link_attrs_at
-        >>> net = Network.from_source(leavenworth.csv_dir(), engine=PandasEngine())
+        >>> net = Network.from_source(leavenworth.csv_dir(), engine=IbisEngine())
         >>> base = resolve_link_attrs_at(net, None)
         >>> base.column_names == [c for c in net.links.columns()]
         True
@@ -136,9 +136,9 @@ def tod_coverage(net: Network) -> dict[str, list]:
     Examples:
         >>> from gmnspy import Network
         >>> from gmnspy.fixtures import leavenworth
-        >>> from datagrove.engines.pandas_engine import PandasEngine
+        >>> from datagrove.engines.ibis_engine import IbisEngine
         >>> from gmnspy.semantics import tod_coverage
-        >>> net = Network.from_source(leavenworth.csv_dir(), engine=PandasEngine())
+        >>> net = Network.from_source(leavenworth.csv_dir(), engine=IbisEngine())
         >>> coverage = tod_coverage(net)
         >>> "link_tod" in coverage  # Leavenworth has one link_tod row.
         True

@@ -467,11 +467,11 @@ def check_foreign_keys(
     Examples:
         Clean single-FK package:
 
-        >>> from datagrove.engines.pandas_engine import PandasEngine
+        >>> from datagrove.engines.ibis_engine import IbisEngine
         >>> from datagrove.spec.model import (
         ...     DataPackage, Resource, Schema, Field, ForeignKey, ForeignKeyReference,
         ... )
-        >>> e = PandasEngine()
+        >>> e = IbisEngine()
         >>> link = e.scan({"data": [{"link_id": 1, "from_node_id": 1}]})
         >>> node = e.scan({"data": [{"node_id": 1}]})
         >>> pkg = DataPackage(name="x", resources=[

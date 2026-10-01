@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import pandas as pd
 import pytest
-from datagrove.engines.pandas_engine import PandasEngine
+from datagrove.engines.ibis_engine import IbisEngine
 from datagrove.reports import Category, Issue, Severity
 from gmnspy import Network
 from gmnspy.map.geo_resolver import GeoResolver
@@ -49,7 +49,7 @@ def _make_network(tmp_path, *, with_geometry: bool, with_osm: bool = False) -> N
     csv_dir.mkdir()
     link.to_csv(csv_dir / "link.csv", index=False)
     node.to_csv(csv_dir / "node.csv", index=False)
-    return Network.from_source(csv_dir, engine=PandasEngine())
+    return Network.from_source(csv_dir, engine=IbisEngine())
 
 
 # ---------------------------------------------------------------------------
@@ -174,7 +174,7 @@ def test_link_row_geometry_via_geometry_table_fk(tmp_path):
     link.to_csv(csv_dir / "link.csv", index=False)
     node.to_csv(csv_dir / "node.csv", index=False)
     geometry.to_csv(csv_dir / "geometry.csv", index=False)
-    net = Network.from_source(csv_dir, engine=PandasEngine())
+    net = Network.from_source(csv_dir, engine=IbisEngine())
 
     resolver = GeoResolver(net)
     issue = Issue(

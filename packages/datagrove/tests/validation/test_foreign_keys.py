@@ -25,7 +25,7 @@ from typing import Any
 
 import pytest
 from datagrove.engines.ibis_engine import IbisEngine
-from datagrove.engines.pandas_engine import PandasEngine
+from datagrove.engines.ibis_engine import IbisEngine
 from datagrove.spec.loader import load_package
 from datagrove.spec.model import (
     Constraints,
@@ -61,11 +61,11 @@ def _engine_for(name: str):
     if name == "ibis":
         return IbisEngine()
     if name == "polars":  # pragma: no cover - exercised only when polars installed
-        from datagrove.engines.polars_engine import PolarsEngine as _PE
+        from datagrove.engines.ibis_engine import IbisEngine as _PE
 
         return _PE()
     if name == "pandas":
-        return PandasEngine()
+        return IbisEngine()
     raise AssertionError(f"unknown engine: {name}")  # pragma: no cover
 
 
@@ -151,7 +151,7 @@ def leavenworth_tables_pandas(leavenworth_package: DataPackage):
     :func:`check_foreign_keys`. Uses :func:`_load_rows` so the cross-engine
     behaviour is hit indirectly via the per-engine parametrised tests.
     """
-    engine = PandasEngine()
+    engine = IbisEngine()
     tables: dict[str, Any] = {}
     csv_dir = leavenworth.csv_dir()
     for res in leavenworth_package.resources:
@@ -307,7 +307,7 @@ class TestUnverifiable:
 class TestTargetFieldMissing:
     def test_target_field_missing(self):
         """An FK pointing at a non-existent target field becomes fk.target_field_missing."""
-        engine = PandasEngine()
+        engine = IbisEngine()
         try:
             src = engine.scan({"data": [{"id": 1, "ref": 1}]})
             tgt = engine.scan({"data": [{"id": 1}]})  # has "id", NOT "missing_col"
@@ -340,7 +340,7 @@ class TestTargetFieldMissing:
 class TestCompositeFK:
     def test_composite_fk_passes(self):
         """A 2-column FK with every tuple present in the target is clean."""
-        engine = PandasEngine()
+        engine = IbisEngine()
         try:
             src = engine.scan({"data": [{"a": 1, "b": 2}, {"a": 3, "b": 4}]})
             tgt = engine.scan({"data": [{"x": 1, "y": 2}, {"x": 3, "y": 4}, {"x": 5, "y": 6}]})
@@ -362,7 +362,7 @@ class TestCompositeFK:
 
     def test_composite_fk_fails_on_mismatched_tuple(self):
         """A row whose (a, b) doesn't match any target (x, y) raises one issue."""
-        engine = PandasEngine()
+        engine = IbisEngine()
         try:
             src = engine.scan({"data": [{"a": 1, "b": 2}, {"a": 9, "b": 9}]})
             tgt = engine.scan({"data": [{"x": 1, "y": 2}]})
@@ -395,7 +395,7 @@ class TestCompositeFK:
 class TestSameTableFK:
     def test_same_table_fk_passes(self):
         """parent_id -> id, every parent points to an existing row → clean."""
-        engine = PandasEngine()
+        engine = IbisEngine()
         try:
             tbl = engine.scan(
                 {
@@ -424,7 +424,7 @@ class TestSameTableFK:
 
     def test_same_table_fk_fails_on_missing_parent(self):
         """An orphan parent_id is reported even when source == target."""
-        engine = PandasEngine()
+        engine = IbisEngine()
         try:
             tbl = engine.scan(
                 {
@@ -462,7 +462,7 @@ class TestSameTableFK:
 class TestBoundedEnumeration:
     def test_bounded_enumeration(self):
         """500 violations collapse into MAX_ROW_ISSUES row issues + 1 summary."""
-        engine = PandasEngine()
+        engine = IbisEngine()
         try:
             # 500 source rows, each pointing at a missing target value.
             src_rows = [{"id": i, "ref": 1_000_000 + i} for i in range(500)]
@@ -520,7 +520,7 @@ class TestIssueContracts:
 
     def test_messages_include_value_and_target(self):
         """missing_target message names the source value AND target table.field."""
-        engine = PandasEngine()
+        engine = IbisEngine()
         try:
             src = engine.scan({"data": [{"id": 1, "ref": 42}]})
             tgt = engine.scan({"data": [{"key": 1}]})
@@ -545,7 +545,7 @@ class TestIssueContracts:
 
     def test_fix_hint_present_for_missing_target(self):
         """ERROR-level fk.missing_target issues include a fix_hint."""
-        engine = PandasEngine()
+        engine = IbisEngine()
         try:
             src = engine.scan({"data": [{"id": 1, "ref": 42}]})
             tgt = engine.scan({"data": [{"key": 1}]})
@@ -583,7 +583,7 @@ class TestV03Regression:
         catch the genuine missing-target separately. The structural
         guard is "never coerce a Series to a bool".
         """
-        engine = PandasEngine()
+        engine = IbisEngine()
         try:
             src = engine.scan(
                 {
@@ -642,7 +642,7 @@ class TestV03Regression:
 class TestReportAccumulation:
     def test_check_foreign_keys_appends_to_existing_report(self, leavenworth_package):
         """An incoming report is mutated and returned (same identity)."""
-        engine = PandasEngine()
+        engine = IbisEngine()
         csv_dir = leavenworth.csv_dir()
         try:
             link_rows = _load_rows(csv_dir / "link.csv")

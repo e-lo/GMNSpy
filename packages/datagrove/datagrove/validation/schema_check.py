@@ -728,9 +728,9 @@ def check_schema(
         if one was passed.
 
     Examples:
-        >>> from datagrove.engines.pandas_engine import PandasEngine
+        >>> from datagrove.engines.ibis_engine import IbisEngine
         >>> from datagrove.spec.model import Schema, Field, Constraints
-        >>> e = PandasEngine()
+        >>> e = IbisEngine()
         >>> expr = e.from_records([{"id": 1}, {"id": 2}])
         >>> s = Schema(fields=[Field(name="id", type="any",
         ...     constraints=Constraints(required=True, unique=True))])

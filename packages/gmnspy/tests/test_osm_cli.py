@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 
-from datagrove.engines.pandas_engine import PandasEngine
+from datagrove.engines.ibis_engine import IbisEngine
 from gmnspy.cli.app import app
 from gmnspy.osm import network_from_records
 from typer.testing import CliRunner
@@ -52,7 +52,7 @@ _LINK_RECS = [
 
 
 def _fake_network(*_args, **_kwargs):
-    return network_from_records(_NODE_RECS, _LINK_RECS, engine=PandasEngine())
+    return network_from_records(_NODE_RECS, _LINK_RECS, engine=IbisEngine())
 
 
 def test_build_bbox_writes_network(tmp_path, monkeypatch):

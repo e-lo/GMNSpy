@@ -243,7 +243,7 @@ def test_to_polars_returns_polars_dataframe(engine: IbisEngine, link_csv: Path):
 
 
 def test_to_polars_without_polars_raises_engine_not_available(engine: IbisEngine, link_csv: Path, monkeypatch):
-    """Parity with PandasEngine: missing polars must raise EngineNotAvailableError.
+    """Parity with IbisEngine: missing polars must raise EngineNotAvailableError.
 
     Per ``Engine`` protocol §9 ("structured exceptions"), the right
     failure mode for "an optional engine extra isn't installed" is the

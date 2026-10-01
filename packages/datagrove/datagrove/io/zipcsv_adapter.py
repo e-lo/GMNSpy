@@ -271,7 +271,7 @@ class ZipCsvAdapter:
             >>> with zipfile.ZipFile(p, "w") as z:
             ...     z.writestr("only.csv", body)
             >>> # table= is required even for a single-csv zip
-            >>> e = get_engine("pandas")
+            >>> e = get_engine()
             >>> expr = ZipCsvAdapter().read(p, engine=e, table="only")
             >>> e.to_pandas(expr).shape
             (1, 2)
@@ -358,13 +358,14 @@ class ZipCsvAdapter:
 
         Examples:
             >>> from datagrove.engines import get_engine
-            >>> import pandas as pd, pathlib, tempfile, zipfile
+            >>> import pathlib, tempfile, zipfile
             >>> d = pathlib.Path(tempfile.mkdtemp())
             >>> dest = d / "out.csv.zip"
+            >>> e = get_engine()
             >>> ZipCsvAdapter().write(
-            ...     pd.DataFrame({"a": [1, 2]}),
+            ...     e.from_records({"a": [1, 2]}),
             ...     dest,
-            ...     engine=get_engine("pandas"),
+            ...     engine=e,
             ...     table="data",
             ... )
             >>> with zipfile.ZipFile(dest) as z:

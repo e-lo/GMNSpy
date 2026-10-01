@@ -139,8 +139,8 @@ class Network(Package):
 
             >>> from gmnspy import Network
             >>> from gmnspy.fixtures import leavenworth
-            >>> from datagrove.engines.pandas_engine import PandasEngine
-            >>> net = Network.from_source(leavenworth.csv_dir(), engine=PandasEngine())
+            >>> from datagrove.engines.ibis_engine import IbisEngine
+            >>> net = Network.from_source(leavenworth.csv_dir(), engine=IbisEngine())
             >>> net.links.name
             'link'
             >>> net.nodes.name
@@ -207,8 +207,8 @@ class Network(Package):
         Examples:
             >>> from gmnspy import Network
             >>> from gmnspy.fixtures import leavenworth
-            >>> from datagrove.engines.pandas_engine import PandasEngine
-            >>> net = Network.from_source(leavenworth.csv_dir(), engine=PandasEngine())
+            >>> from datagrove.engines.ibis_engine import IbisEngine
+            >>> net = Network.from_source(leavenworth.csv_dir(), engine=IbisEngine())
             >>> "link" in net
             True
             >>> net.spec_version
@@ -265,8 +265,8 @@ class Network(Package):
             >>> _ = pytest.importorskip("scipy")
             >>> from gmnspy import Network
             >>> from gmnspy.fixtures import leavenworth
-            >>> from datagrove.engines.pandas_engine import PandasEngine
-            >>> net = Network.from_source(leavenworth.csv_dir(), engine=PandasEngine())
+            >>> from datagrove.engines.ibis_engine import IbisEngine
+            >>> net = Network.from_source(leavenworth.csv_dir(), engine=IbisEngine())
             >>> net.build_indexes(spatial=True, graph=True) is net
             True
         """
@@ -322,8 +322,8 @@ class Network(Package):
             >>> _ = pytest.importorskip("scipy")
             >>> from gmnspy import Network
             >>> from gmnspy.fixtures import leavenworth
-            >>> from datagrove.engines.pandas_engine import PandasEngine
-            >>> net = Network.from_source(leavenworth.csv_dir(), engine=PandasEngine())
+            >>> from datagrove.engines.ibis_engine import IbisEngine
+            >>> net = Network.from_source(leavenworth.csv_dir(), engine=IbisEngine())
             >>> scoped = net.scope.from_nodes([1, 2, 3], path_between=False)
             >>> 1 in scoped.node_ids
             True
@@ -358,8 +358,8 @@ class Network(Package):
         Examples:
             >>> from gmnspy import Network
             >>> from gmnspy.fixtures import leavenworth
-            >>> from datagrove.engines.pandas_engine import PandasEngine
-            >>> net = Network.from_source(leavenworth.csv_dir(), engine=PandasEngine())
+            >>> from datagrove.engines.ibis_engine import IbisEngine
+            >>> net = Network.from_source(leavenworth.csv_dir(), engine=IbisEngine())
             >>> html = net._repr_html_()
             >>> html.startswith("<div")
             True
@@ -418,8 +418,8 @@ class Network(Package):
         Examples:
             >>> from gmnspy import Network
             >>> from gmnspy.fixtures import leavenworth
-            >>> from datagrove.engines.pandas_engine import PandasEngine
-            >>> net = Network.from_source(leavenworth.csv_dir(), engine=PandasEngine())
+            >>> from datagrove.engines.ibis_engine import IbisEngine
+            >>> net = Network.from_source(leavenworth.csv_dir(), engine=IbisEngine())
             >>> report = net.validate(foreign_keys=False, sync_state=False)
             >>> report.spec_version == net.spec_version
             True
@@ -469,8 +469,8 @@ class Network(Package):
         Examples:
             >>> from gmnspy import Network
             >>> from gmnspy.fixtures import leavenworth
-            >>> from datagrove.engines.pandas_engine import PandasEngine
-            >>> Network.from_source(leavenworth.csv_dir(), engine=PandasEngine()).links.name
+            >>> from datagrove.engines.ibis_engine import IbisEngine
+            >>> Network.from_source(leavenworth.csv_dir(), engine=IbisEngine()).links.name
             'link'
         """
         t = self._get_table("links")

@@ -123,9 +123,9 @@ class Batch:
     Examples:
         >>> from datagrove.dataset import Package, Table
         >>> from datagrove.editing import Edit
-        >>> from datagrove.engines.pandas_engine import PandasEngine
+        >>> from datagrove.engines.ibis_engine import IbisEngine
         >>> from datagrove.operations import Batch
-        >>> e = PandasEngine()
+        >>> e = IbisEngine()
         >>> pkg = Package.from_tables(
         ...     {"t": Table(name="t", expr=e.from_records([{"id": 1}]), engine=e)}
         ... )
@@ -182,9 +182,9 @@ class Batch:
         Examples:
             >>> from datagrove.dataset import Package, Table
             >>> from datagrove.editing import Edit
-            >>> from datagrove.engines.pandas_engine import PandasEngine
+            >>> from datagrove.engines.ibis_engine import IbisEngine
             >>> from datagrove.operations import Batch
-            >>> e = PandasEngine()
+            >>> e = IbisEngine()
             >>> pkg = Package.from_tables(
             ...     {"t": Table(name="t", expr=e.from_records([{"id": 1}]), engine=e)}
             ... )

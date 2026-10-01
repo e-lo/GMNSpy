@@ -27,7 +27,7 @@ from pathlib import Path
 
 import pytest
 from datagrove.engines.ibis_engine import IbisEngine
-from datagrove.engines.pandas_engine import PandasEngine
+from datagrove.engines.ibis_engine import IbisEngine
 from datagrove.spec.loader import load_schema
 from datagrove.spec.model import Constraints, Field, Schema
 from datagrove.validation import Category, Severity, ValidationReport
@@ -82,11 +82,11 @@ def _engine_for(name: str):
     if name == "ibis":
         return IbisEngine()
     if name == "polars":  # pragma: no cover - exercised only when polars installed
-        from datagrove.engines.polars_engine import PolarsEngine as _PE
+        from datagrove.engines.ibis_engine import IbisEngine as _PE
 
         return _PE()
     if name == "pandas":
-        return PandasEngine()
+        return IbisEngine()
     raise AssertionError(f"unknown engine: {name}")  # pragma: no cover
 
 
