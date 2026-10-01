@@ -1,6 +1,21 @@
 # Option B implementation plan — DuckDB-one-engine consolidation
 
-Status: **plan / ready to execute** · Date: 2026-10-01 · Depends on: `2026-10-01-engine-strategy-reevaluation.md` (decision)
+Status: **IMPLEMENTED** (2026-10-01, branch `refactor/duckdb-one-engine`) · Depends on: `2026-10-01-engine-strategy-reevaluation.md` (decision)
+
+> **Done.** DuckDB (via ibis) is now the single compute engine; `engines/pandas_engine.py`
+> and `engines/polars_engine.py` are deleted along with the cross-engine parity suite.
+> pandas/polars/pyarrow are I/O formats (input via `from_arrow`/`from_records`, output via
+> `to_pandas`/`to_polars`). All `PandasEngine()`/`PolarsEngine()` usages across source + tests
+> were rewired to the one engine; frames paired with the engine now build an ibis expr via
+> `from_arrow(pa.Table.from_pandas(...))`. `test_format_interop.py` pins the I/O contract.
+> Docs (concepts/engines.md et al.) and CLI `--engine` help updated. Full suite green at
+> baseline (only pre-existing pyarrow `hive_partitioning`/`cast_null` + missing-`openpyxl`
+> env-drift failures remain). **No back-compat kept** (library is pre-release).
+>
+> **Deliberately deferred (cleanup, non-functional):** stripping the now-dead non-ibis
+> round-trip arms in `validation/_ibis`, `dataset/view.py`, `dataset/filter.py`,
+> `editing/apply.py` (they're unreachable but harmless); removing the vestigial `--engine`
+> flags entirely (kept, help text corrected); the `ibis>=9,<10` pin.
 
 Goal: collapse datagrove's three-engine compute abstraction to **one compute engine (ibis-on-DuckDB)**,
 with **pandas / polars / pyarrow as input/output formats only**. Keep the ibis expression API. This is
