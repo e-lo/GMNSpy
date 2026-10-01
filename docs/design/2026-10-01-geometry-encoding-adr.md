@@ -36,11 +36,21 @@ coordinates — once per viewer load, once per binary-buffer pack, again for any
    - the viewer reads coordinates from WKB/GeoArrow, not regex.
    `ST_AsText` is used only where something genuinely needs WKT (CSV write, a WKT-only consumer).
 
-4. **Boundary formats:**
-   - **Inside the engine:** DuckDB `GEOMETRY` (enables spatial pushdown).
-   - **Arrow / `to_pandas` boundary:** **WKB bytes** (portable; geopandas `from_wkb`; ~½ the size of WKT).
-   - **Viewer / transport:** **GeoArrow** (native coordinate arrays, zero-parse) — *staged for later*, since
-     DuckDB↔GeoArrow support is still maturing; start by reading coords from WKB.
+4. **Canonical representation = WKB bytes (decided 2026-10-01: full binary in memory).**
+   - **In memory + in DuckDB tables + `to_pandas()`:** the `geometry` column is **WKB `bytes`** (a BLOB).
+     Spatial ops decode on the fly with `ST_GeomFromWKB(geometry)` (replacing today's `ST_GeomFromText`
+     wrap — same cost, on binary). This avoids the DuckDB-`GEOMETRY`-type → Arrow materialization problem:
+     a BLOB column round-trips to Arrow binary cleanly.
+   - **On disk:** WKT (CSV) via `ST_AsText`; WKB/GeoParquet (Parquet) directly (already WKB).
+   - **Ingest from CSV (WKT):** `ST_AsWKB(ST_GeomFromText(geometry))` once at scan → WKB.
+   - **Viewer / transport:** GeoArrow (native coord arrays) is a *later* targeted optimization; for now the
+     viewer decodes WKB coords via a dep-free `struct` reader in `gmnspy._wkt`.
+   - **Consumer migration (required by this decision):** the shapely family swaps `from_wkt`→`from_wkb`;
+     the dep-free regex family (`viz/buffers`, `select/_geojson`, `map/geo_resolver`) uses a new
+     `gmnspy._wkt` dispatcher that handles **both** `str` (WKT) and `bytes` (WKB) — and the
+     `isinstance(g, str)` silent-fallback guards are removed so WKB cannot be silently dropped.
+     `clean` reads WKB→shapely→writes WKB; `semantics.assemble_link_geometry` emits WKB (not a
+     `geometry_wkt` string). Their WKT-asserting tests are rewritten against WKB.
 
 5. **CRS:** honor `crs` from config (default `EPSG:4326`), record it in GeoParquet, and round-trip it.
    gmnspy stays lon/lat-centric but no longer *assumes* 4326.
