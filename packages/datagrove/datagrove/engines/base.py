@@ -497,6 +497,39 @@ class Engine(Protocol):
         """
         ...
 
+    def order_by(self, expr: TableExpr, columns: list[str], descending: bool = False) -> TableExpr:
+        """Return a new lazy expression sorted by ``columns``.
+
+        ibis emits ``ORDER BY`` (``expr.order_by``); polars ``expr.sort``;
+        pandas ``sort_values`` (stable). ``descending`` applies to all
+        columns. With :meth:`limit` this is the server-side paging path.
+
+        Args:
+            expr: Engine-native expression.
+            columns: Column names to sort by, in priority order.
+            descending: Sort descending instead of ascending.
+
+        Returns:
+            A new engine-native expression of the same type as ``expr``.
+        """
+        ...
+
+    def limit(self, expr: TableExpr, n: int, offset: int = 0) -> TableExpr:
+        """Return a new lazy expression of ``n`` rows starting at ``offset``.
+
+        ibis emits ``LIMIT n OFFSET offset``; polars ``expr.slice``; pandas
+        positional ``iloc``. Pairs with :meth:`order_by` for stable paging.
+
+        Args:
+            expr: Engine-native expression.
+            n: Maximum rows to keep.
+            offset: Leading rows to skip.
+
+        Returns:
+            A new engine-native expression of the same type as ``expr``.
+        """
+        ...
+
     def to_pandas(self, expr: TableExpr) -> pd.DataFrame:
         """Materialize ``expr`` and return it as a ``pandas.DataFrame``.
 

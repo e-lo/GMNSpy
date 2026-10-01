@@ -24,9 +24,10 @@ Resolution priority (first match wins):
 
 from __future__ import annotations
 
-import re
 from itertools import pairwise
 from typing import TYPE_CHECKING
+
+from gmnspy._wkt import _parse_linestring_points
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     import pandas as pd
@@ -36,8 +37,6 @@ if TYPE_CHECKING:  # pragma: no cover - typing only
 
 __all__ = ["GeoResolver"]
 
-
-_WKT_POINT_RE = re.compile(r"(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)")
 
 # Columns to hide from hover tooltips. Long-form WKT and FK-only identifiers
 # (``geometry_id``, ``osm_node_ids``) make tooltips unreadable; coordinate
@@ -92,19 +91,6 @@ def _to_json_primitive(val) -> object | None:
     if isinstance(val, (bool, int, float, str)):
         return val
     return str(val)
-
-
-def _parse_linestring_points(wkt: str) -> list[tuple[float, float]]:
-    """Parse a ``LINESTRING (x y, x y, ...)`` WKT to a list of ``(lon, lat)``.
-
-    Handhewn — the format is tiny and shapely is a heavy C-extension dep
-    to drag in just for a midpoint. Accepts a leading ``LINESTRING`` /
-    ``LINESTRING M`` / ``LINESTRING Z`` token (case-insensitive) and any
-    surrounding whitespace. Returns an empty list when no coords parse.
-    """
-    if not isinstance(wkt, str):
-        return []
-    return [(float(x), float(y)) for x, y in _WKT_POINT_RE.findall(wkt)]
 
 
 def _polyline_midpoint(points: list[tuple[float, float]]) -> tuple[float, float] | None:

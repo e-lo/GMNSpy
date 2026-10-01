@@ -64,6 +64,13 @@ server = [
 mcp = [
     "mcp>=1.0",
 ]
+nl = [
+    # Natural-language selection (gmnspy.select): jsonschema validates the
+    # emitted selection fragment; anthropic powers the ClaudeParser (the
+    # StubParser + resolver need neither). Requires [graph] for path search.
+    "jsonschema>=4.0",
+    "anthropic>=0.40",
+]
 notebook = [
     "ipywidgets>=8.1",
     "anywidget>=0.9",
@@ -78,7 +85,7 @@ reports = [
     "pyyaml>=6",    # edit-log load/dump (gmnspy.map.edits)
 ]
 all = [
-    "gmnspy[clean,server,mcp,notebook,osm,graph,reports]",
+    "gmnspy[clean,server,mcp,notebook,osm,graph,reports,nl]",
 ]
 dev-fixtures = [
     # Only required to *rebuild* bundled example fixtures (e.g. Leavenworth).
@@ -120,6 +127,10 @@ include = [
     "gmnspy/spec/**/*.json",
     "gmnspy/spec/**/VERSION",
     "gmnspy/spec/**/README.md",
+    # GMNS selection profile schema (gmnspy.select.emit) + web-app template.
+    "gmnspy/select/schema/*.json",
+    "gmnspy/select/templates/*.html",
+    "gmnspy/viz/templates/*.html",
     # Maintained OSM->GMNS tag-mapping + network-filter data (gmnspy.osm).
     "gmnspy/osm/mappings/*.yaml",
     # Bundled example networks (Leavenworth, WA; see

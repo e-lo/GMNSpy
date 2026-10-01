@@ -155,3 +155,8 @@ packages/*/docs/ai/api-index.json
 /net.html
 /out/
 
+
+# session scratch artifacts (not part of the library)
+bench_network.py
+build_rdu.py
+scratch-networks/

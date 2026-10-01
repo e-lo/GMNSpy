@@ -197,6 +197,56 @@ class Table:
         """
         return self._derived(self.engine.head(self.expr, n))
 
+    def order_by(self, *columns: str, descending: bool = False) -> Table:
+        """Return a new :class:`Table` sorted by ``columns``.
+
+        Lazy — the engine builds an ORDER BY expression (ibis/polars) or
+        sorts the frame (pandas). With :meth:`limit` this is the
+        server-side paging primitive the viewer's data-table view uses, so
+        a single page is fetched without materialising the whole table.
+
+        Args:
+            *columns: Column names to sort by, in priority order.
+            descending: Sort descending instead of ascending (applies to
+                all ``columns``).
+
+        Returns:
+            A new :class:`Table`; the original is unchanged.
+
+        Examples:
+            >>> from datagrove.engines.pandas_engine import PandasEngine
+            >>> from datagrove.dataset import Table
+            >>> e = PandasEngine()
+            >>> t = Table(name="t", expr=e.from_records([{"a": 3}, {"a": 1}, {"a": 2}]), engine=e)
+            >>> t.order_by("a").to_pandas()["a"].tolist()
+            [1, 2, 3]
+        """
+        return self._derived(self.engine.order_by(self.expr, list(columns), descending))
+
+    def limit(self, n: int, offset: int = 0) -> Table:
+        """Return a new :class:`Table` of ``n`` rows starting at ``offset``.
+
+        Lazy — ibis emits ``LIMIT n OFFSET offset``, polars ``.slice``,
+        pandas positional ``.iloc``. Compose with :meth:`order_by` for
+        stable server-side paging.
+
+        Args:
+            n: Maximum number of rows to keep.
+            offset: Number of leading rows to skip (default 0).
+
+        Returns:
+            A new :class:`Table`; the original is unchanged.
+
+        Examples:
+            >>> from datagrove.engines.pandas_engine import PandasEngine
+            >>> from datagrove.dataset import Table
+            >>> e = PandasEngine()
+            >>> t = Table(name="t", expr=e.from_records([{"a": i} for i in range(5)]), engine=e)
+            >>> t.limit(2, offset=2).to_pandas()["a"].tolist()
+            [2, 3]
+        """
+        return self._derived(self.engine.limit(self.expr, n, offset))
+
     # ------------------------------------------------------------------
     # Materialisation
     # ------------------------------------------------------------------

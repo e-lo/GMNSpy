@@ -85,6 +85,12 @@ class FakeEngine:
     def select(self, expr, columns):
         return expr
 
+    def order_by(self, expr, columns, descending=False):
+        return expr
+
+    def limit(self, expr, n, offset=0):
+        return expr
+
 
 @pytest.fixture(autouse=True)
 def _restore_registry():

@@ -480,6 +480,14 @@ class PandasEngine:
         """Return ``expr[columns]`` — pandas column-list indexing."""
         return expr[columns]
 
+    def order_by(self, expr: pd.DataFrame, columns: list[str], descending: bool = False) -> pd.DataFrame:
+        """Return ``expr.sort_values(...)`` — stable sort (pandas is eager)."""
+        return expr.sort_values(list(columns), ascending=not descending, kind="stable")
+
+    def limit(self, expr: pd.DataFrame, n: int, offset: int = 0) -> pd.DataFrame:
+        """Return ``expr.iloc[offset:offset + n]`` — positional slice."""
+        return expr.iloc[offset : offset + n]
+
 
 # ---------------------------------------------------------------------------
 # Helpers (module-level — small, single-consumer, but worth a name)

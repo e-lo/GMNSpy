@@ -30,9 +30,11 @@ from .commands import (
     mcp,
     quality,
     scope,
+    select,
     server,
     spec,
     validate,
+    viz,
 )
 
 __all__ = ["app"]
@@ -69,6 +71,8 @@ def _build_gmnspy_app() -> typer.Typer:
     scope.register(gmnspy_app)
     index.register(gmnspy_app)
     build.register(gmnspy_app)
+    select.register(gmnspy_app)
+    viz.register(gmnspy_app)
     return gmnspy_app
 
 

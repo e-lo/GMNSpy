@@ -104,7 +104,7 @@ def register_engine(engine: Engine, *, default: bool = False) -> None:
             "read_csv/read_parquet/read_duckdb_table/from_records/from_arrow and "
             "write_csv/write_parquet/write_duckdb_table, plus cast_schema, "
             "scan, write, materialize, to_pandas, to_polars, "
-            "and the lazy-introspection methods columns/count/head/select)"
+            "and the lazy-introspection methods columns/count/head/select/order_by/limit)"
         )
     if not getattr(engine, "name", None):
         raise ValueError("Engine.name must be a non-empty string")
