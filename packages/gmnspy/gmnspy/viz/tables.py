@@ -11,14 +11,21 @@ names (no injection surface) and maps cleanly onto the engine-agnostic datagrove
 ``Table.filter`` the day the viewer is handed a lazy ``Network`` instead of
 materialized frames.
 """
+
 from __future__ import annotations
 
 from typing import Any
 
 import pandas as pd
 
-__all__ = ["table_list_entry", "table_schema", "page_table", "FilterError",
-           "GEOM_COLS", "MAX_LIMIT"]
+__all__ = [
+    "GEOM_COLS",
+    "MAX_LIMIT",
+    "FilterError",
+    "page_table",
+    "table_list_entry",
+    "table_schema",
+]
 
 #: WKT geometry columns are huge; excluded from grid payloads (shown on the map).
 GEOM_COLS = {"geometry", "geom", "wkt"}
@@ -80,7 +87,7 @@ def columns_of(src: Any) -> list[str]:
 
 
 def rowcount_of(src: Any) -> int:
-    return int(len(src)) if _is_frame(src) else int(src.count())
+    return len(src) if _is_frame(src) else int(src.count())
 
 
 def _schema_frame(src: Any) -> pd.DataFrame:
@@ -93,16 +100,23 @@ def _schema_frame(src: Any) -> pd.DataFrame:
 
 
 def table_list_entry(name: str, src: Any) -> dict:
+    """One ``/api/tables`` entry: name, row count, column names."""
     return {"name": name, "rows": rowcount_of(src), "columns": columns_of(src)}
 
 
 def table_schema(name: str, src: Any) -> dict:
+    """Column schema (name/dtype/kind) + primary key + row count for a table."""
     cols = columns_of(src)
     sample = _schema_frame(src)
-    out = [{"name": c, "dtype": str(sample[c].dtype) if c in sample else "object",
-            "kind": _column_kind(sample[c]) if c in sample else "str"} for c in cols]
-    return {"name": name, "rows": rowcount_of(src), "primary_key": primary_key(name, cols),
-            "columns": out}
+    out = [
+        {
+            "name": c,
+            "dtype": str(sample[c].dtype) if c in sample else "object",
+            "kind": _column_kind(sample[c]) if c in sample else "str",
+        }
+        for c in cols
+    ]
+    return {"name": name, "rows": rowcount_of(src), "primary_key": primary_key(name, cols), "columns": out}
 
 
 def _apply_filter(df: pd.DataFrame, spec: list[dict]) -> pd.DataFrame:
@@ -126,9 +140,17 @@ def _rows_payload(page: pd.DataFrame, total: int, offset: int, limit: int) -> di
     return {"columns": cols, "rows": rows, "total": total, "offset": offset, "limit": limit}
 
 
-def page_table(source: Any, *, offset: int = 0, limit: int = 100, sort: str | None = None,
-               direction: str = "asc", filter_spec: list[dict] | None = None,
-               ids: list | None = None, pk: str | None = None) -> dict:
+def page_table(
+    source: Any,
+    *,
+    offset: int = 0,
+    limit: int = 100,
+    sort: str | None = None,
+    direction: str = "asc",
+    filter_spec: list[dict] | None = None,
+    ids: list | None = None,
+    pk: str | None = None,
+) -> dict:
     """Return one page of ``source`` as compact column/row arrays (geometry excluded).
 
     ``source`` is a pandas ``DataFrame`` (sliced in memory) or a lazy datagrove
@@ -145,17 +167,25 @@ def page_table(source: Any, *, offset: int = 0, limit: int = 100, sort: str | No
         df = df[df[pk].isin(ids)]
     if filter_spec:
         df = _apply_filter(df, filter_spec)
-    total = int(len(df))
+    total = len(df)
     if sort:
         if sort not in df.columns:
             raise FilterError(f"unknown sort column {sort!r}")
         df = df.sort_values(sort, ascending=(direction != "desc"), kind="stable")
     offset, limit = _clamp(offset, limit)
-    return _rows_payload(df.iloc[offset:offset + limit], total, offset, limit)
+    return _rows_payload(df.iloc[offset : offset + limit], total, offset, limit)
 
 
-def _page_lazy(table: Any, offset: int, limit: int, sort: str | None, direction: str,
-               filter_spec: list[dict] | None, ids: list | None, pk: str | None) -> dict:
+def _page_lazy(
+    table: Any,
+    offset: int,
+    limit: int,
+    sort: str | None,
+    direction: str,
+    filter_spec: list[dict] | None,
+    ids: list | None,
+    pk: str | None,
+) -> dict:
     """Paging over a lazy datagrove ``Table`` — pushes down to the engine."""
     from datagrove.dataset.filter import FilterSpecError, filter_rows
 
@@ -173,6 +203,6 @@ def _page_lazy(table: Any, offset: int, limit: int, sort: str | None, direction:
             raise FilterError(f"unknown sort column {sort!r}")
         table = table.order_by(sort, descending=(direction == "desc"))
     offset, limit = _clamp(offset, limit)
-    keep = [c for c in cols_all if c not in GEOM_COLS]          # drop WKT before materialising
+    keep = [c for c in cols_all if c not in GEOM_COLS]  # drop WKT before materialising
     page = table.select(*keep).limit(limit, offset).to_pandas()
     return _rows_payload(page, total, offset, limit)

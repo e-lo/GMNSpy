@@ -1,17 +1,16 @@
 """Tests for gmnspy.viz.buffers — Parquet frames -> packed binary + attrs."""
+
 from importlib import resources
 
 import pandas as pd
 import pytest
-
-from gmnspy.viz.buffers import pack_network, unpack_network, network_attrs
+from gmnspy.viz.buffers import network_attrs, pack_network, unpack_network
 
 
 @pytest.fixture(scope="module")
 def rdu():
     base = resources.files("gmnspy.fixtures.rdu_i40").joinpath("parquet")
-    return (pd.read_parquet(base.joinpath("link.parquet")),
-            pd.read_parquet(base.joinpath("node.parquet")))
+    return (pd.read_parquet(base.joinpath("link.parquet")), pd.read_parquet(base.joinpath("node.parquet")))
 
 
 def test_pack_unpack_roundtrip_counts(rdu):
@@ -53,10 +52,10 @@ def test_lanes_present_and_freeway_thicker(rdu):
     links, nodes = rdu
     net = unpack_network(pack_network(links, nodes))
     lanes = net["links"]["lanes"]
-    assert len(lanes) == len(links) and all(l >= 1 for l in lanes)
+    assert len(lanes) == len(links) and all(x >= 1 for x in lanes)
     # motorway links should default to more lanes than residential when untagged
     ids = net["links"]["ids"]
-    ft = dict(zip(links["link_id"], links["facility_type"]))
+    ft = dict(zip(links["link_id"], links["facility_type"], strict=False))
     mot = [lanes[i] for i, lid in enumerate(ids) if ft.get(lid) == "motorway"]
     res = [lanes[i] for i, lid in enumerate(ids) if ft.get(lid) == "residential"]
     if mot and res:
@@ -64,7 +63,7 @@ def test_lanes_present_and_freeway_thicker(rdu):
 
 
 def test_network_attrs_index_aligned(rdu):
-    links, nodes = rdu
+    links, _nodes = rdu
     attrs = network_attrs(links)
     assert attrs["link_id"] == list(links["link_id"])
     assert len(attrs["name"]) == len(links)

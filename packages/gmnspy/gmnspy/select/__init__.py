@@ -4,6 +4,7 @@ Pipeline: ``parse`` (utterance -> :class:`SelectionIntent`) -> ``resolve``
 (intent + network -> :class:`SelectionResult`) -> ``emit`` (result ->
 validated GMNS selection fragment). Selection only; no edit is applied.
 """
+
 from __future__ import annotations
 
 from .emit import to_fragment, to_projectcard, validate_fragment
@@ -13,16 +14,16 @@ from .resolve import resolve, resolve_frames
 from .result import AnchorMatch, SelectionResult
 
 __all__ = [
-    "Facility",
-    "SelectionIntent",
     "DIRECTIONS",
-    "Parser",
-    "StubParser",
+    "AnchorMatch",
     "ClaudeParser",
+    "Facility",
+    "Parser",
+    "SelectionIntent",
+    "SelectionResult",
+    "StubParser",
     "resolve",
     "resolve_frames",
-    "SelectionResult",
-    "AnchorMatch",
     "to_fragment",
     "to_projectcard",
     "validate_fragment",

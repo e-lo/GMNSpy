@@ -4,6 +4,7 @@ Parses an utterance into a structured intent, resolves it against a network,
 and emits a validated GMNS selection fragment (or the ambiguity/not-found
 diagnostics). Selection only — no edit is applied.
 """
+
 from __future__ import annotations
 
 import json
@@ -14,10 +15,10 @@ from datagrove.cli.render import render_dict
 
 from gmnspy import Network
 
-from .._helpers import resolve_engine
 from ...select.emit import to_fragment
 from ...select.parse import ClaudeParser, StubParser
 from ...select.resolve import resolve
+from .._helpers import resolve_engine
 
 __all__ = ["register"]
 
@@ -55,7 +56,6 @@ def register(app: typer.Typer) -> None:
             fragment["_status"] = "ambiguous"
             fragment["_diagnostics"] = result.diagnostics
         _emit(fragment, json_out)
-
 
     @app.command(name="select-serve")
     def select_serve(

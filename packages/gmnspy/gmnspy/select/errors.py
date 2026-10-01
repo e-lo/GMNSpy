@@ -1,7 +1,8 @@
 """Typed errors for the natural-language selection pipeline."""
+
 from __future__ import annotations
 
-__all__ = ["SelectError", "IntentError", "FacilityNotFound", "AnchorNotFound", "NoPathError"]
+__all__ = ["AnchorNotFound", "FacilityNotFound", "IntentError", "NoPathError", "SelectError"]
 
 
 class SelectError(Exception):

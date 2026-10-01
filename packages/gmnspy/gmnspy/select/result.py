@@ -4,13 +4,14 @@
 ``not_found`` are normal returns (they feed the future clarify/map step), not
 exceptions.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 
 from .intent import SelectionIntent
 
-__all__ = ["AnchorMatch", "SelectionResult", "STATUSES"]
+__all__ = ["STATUSES", "AnchorMatch", "SelectionResult"]
 
 #: Valid SelectionResult.status values.
 STATUSES = frozenset({"resolved", "ambiguous", "not_found"})
@@ -51,5 +52,6 @@ class SelectionResult:
     diagnostics: list = field(default_factory=list)
 
     def __post_init__(self) -> None:
+        """Validate the status is one of :data:`STATUSES`."""
         if self.status not in STATUSES:
             raise ValueError(f"status {self.status!r} not one of {sorted(STATUSES)}")

@@ -486,7 +486,7 @@ class PandasEngine:
 
     def limit(self, expr: pd.DataFrame, n: int, offset: int = 0) -> pd.DataFrame:
         """Return ``expr.iloc[offset:offset + n]`` — positional slice."""
-        return expr.iloc[offset:offset + n]
+        return expr.iloc[offset : offset + n]
 
 
 # ---------------------------------------------------------------------------

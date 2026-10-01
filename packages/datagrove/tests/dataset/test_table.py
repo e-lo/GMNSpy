@@ -204,7 +204,7 @@ def test_table_order_by_descending(engine_name: str) -> None:
 
 @pytest.mark.parametrize("engine_name", ["ibis", "polars", "pandas"])
 def test_table_limit_with_offset_pages(engine_name: str) -> None:
-    t = _unordered_table(engine_name).order_by("a")   # [1,2,3]
+    t = _unordered_table(engine_name).order_by("a")  # [1,2,3]
     assert t.limit(2).to_pandas()["a"].tolist() == [1, 2]
     assert t.limit(2, offset=1).to_pandas()["a"].tolist() == [2, 3]
 

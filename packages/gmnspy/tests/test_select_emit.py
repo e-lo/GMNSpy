@@ -1,10 +1,10 @@
 """Tests for gmnspy.select.emit — SelectionResult -> validated fragment dict."""
-import pytest
 
-from gmnspy.select.intent import Facility, SelectionIntent
-from gmnspy.select.result import AnchorMatch, SelectionResult
+import pytest
 from gmnspy.select.emit import to_fragment, to_projectcard, validate_fragment
 from gmnspy.select.errors import SelectError
+from gmnspy.select.intent import Facility, SelectionIntent
+from gmnspy.select.result import AnchorMatch, SelectionResult
 
 
 def _resolved():
@@ -48,8 +48,13 @@ def test_projectcard_adapter_maps_keys():
 def test_emit_requires_resolved_status():
     r = _resolved()
     unresolved = SelectionResult(
-        status="ambiguous", intent=r.intent, link_ids=[], node_path=[],
-        from_match=None, to_match=None, diagnostics=["two candidates for Airport Boulevard"],
+        status="ambiguous",
+        intent=r.intent,
+        link_ids=[],
+        node_path=[],
+        from_match=None,
+        to_match=None,
+        diagnostics=["two candidates for Airport Boulevard"],
     )
     with pytest.raises(SelectError):
         to_fragment(unresolved)
@@ -57,14 +62,21 @@ def test_emit_requires_resolved_status():
 
 # --- query-form emit (re-resolvable ProjectCard-style selection) ---
 
+
 def _resolved_result(intent, link_ids=(1, 2, 3)):
-    return SelectionResult(status="resolved", intent=intent, link_ids=list(link_ids),
-                           node_path=[], from_match=None, to_match=None, diagnostics=[])
+    return SelectionResult(
+        status="resolved",
+        intent=intent,
+        link_ids=list(link_ids),
+        node_path=[],
+        from_match=None,
+        to_match=None,
+        diagnostics=[],
+    )
 
 
 def test_query_form_facility_emits_name_and_ref():
-    intent = SelectionIntent(facility=Facility(name="Page Road", ref="SR 1234"),
-                             utterance="all of Page Road")
+    intent = SelectionIntent(facility=Facility(name="Page Road", ref="SR 1234"), utterance="all of Page Road")
     frag = to_fragment(_resolved_result(intent), form="query")
     assert frag["links"]["name"] == ["Page Road"]
     assert frag["links"]["ref"] == ["SR 1234"]
@@ -79,11 +91,10 @@ def test_query_form_select_all():
 
 
 def test_query_form_carries_conditions_and_modes():
-    intent = SelectionIntent(facility=Facility(ref="I 40"),
-                             conditions={"lanes": [2]}, modes=["drive"])
+    intent = SelectionIntent(facility=Facility(ref="I 40"), conditions={"lanes": [2]}, modes=["drive"])
     frag = to_fragment(_resolved_result(intent), form="query")
     assert frag["links"]["ref"] == ["I 40"]
-    assert frag["links"]["lanes"] == [2]        # condition emitted as extra field
+    assert frag["links"]["lanes"] == [2]  # condition emitted as extra field
     assert frag["links"]["modes"] == ["drive"]
     validate_fragment(frag)
 
@@ -96,12 +107,20 @@ def test_query_form_explicit_link_ids():
 
 
 def test_query_form_carries_segment_anchors():
-    intent = SelectionIntent(facility=Facility(ref="I 40", direction="EB"),
-                             from_anchor="South Miami Boulevard", to_anchor="Airport Boulevard")
-    r = SelectionResult(status="resolved", intent=intent, link_ids=[1], node_path=[],
-                        from_match=AnchorMatch("South Miami Boulevard", 111, [], 1.0, "gore", ""),
-                        to_match=AnchorMatch("Airport Boulevard", 222, [], 1.0, "merge", ""),
-                        diagnostics=[])
+    intent = SelectionIntent(
+        facility=Facility(ref="I 40", direction="EB"),
+        from_anchor="South Miami Boulevard",
+        to_anchor="Airport Boulevard",
+    )
+    r = SelectionResult(
+        status="resolved",
+        intent=intent,
+        link_ids=[1],
+        node_path=[],
+        from_match=AnchorMatch("South Miami Boulevard", 111, [], 1.0, "gore", ""),
+        to_match=AnchorMatch("Airport Boulevard", 222, [], 1.0, "merge", ""),
+        diagnostics=[],
+    )
     frag = to_fragment(r, form="query")
     assert frag["links"]["ref"] == ["I 40"]
     assert frag["from"]["node_id"] == 111 and frag["to"]["node_id"] == 222

@@ -4,6 +4,7 @@ Loads a network once and serves the viewer web app: the whole (sub)network
 rendered from binary typed-arrays, hover-to-inspect links, and NL selection
 highlighting. Requires the ``[server]`` extra.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -69,6 +70,8 @@ def register(app: typer.Typer) -> None:
         nodes = _as_pandas(net.nodes)
         extra = _extra_tables(net)
         extra_note = f", +{len(extra)} table(s): {', '.join(extra)}" if extra else ""
-        typer.echo(f"gmnspy viz on http://{host}:{port}  ({len(links)} links, {len(nodes)} nodes{extra_note}; basemap={basemap})")
-        uvicorn.run(build_app(links, nodes, provider=provider, basemap=basemap, tables=extra),
-                    host=host, port=port)
+        typer.echo(
+            f"gmnspy viz on http://{host}:{port}  "
+            f"({len(links)} links, {len(nodes)} nodes{extra_note}; basemap={basemap})"
+        )
+        uvicorn.run(build_app(links, nodes, provider=provider, basemap=basemap, tables=extra), host=host, port=port)

@@ -4,9 +4,11 @@ Uses each link's WKT ``geometry`` when present; falls back to a straight
 segment between its from/to node coordinates. Reuses the hand-rolled WKT
 parser from :mod:`gmnspy.map.geo_resolver` (no shapely dependency).
 """
+
 from __future__ import annotations
 
-from typing import Any, Iterable
+from collections.abc import Iterable
+from typing import Any
 
 import pandas as pd
 
@@ -54,8 +56,8 @@ def links_to_geojson(links, link_ids: Iterable | None = None, nodes=None) -> dic
     """
     nx = ny = {}
     if nodes is not None:
-        nx = dict(zip(nodes["node_id"], nodes["x_coord"]))
-        ny = dict(zip(nodes["node_id"], nodes["y_coord"]))
+        nx = dict(zip(nodes["node_id"], nodes["x_coord"], strict=False))
+        ny = dict(zip(nodes["node_id"], nodes["y_coord"], strict=False))
 
     if link_ids is not None:
         by_id = {r["link_id"]: r for _, r in links.iterrows()}
@@ -68,14 +70,16 @@ def links_to_geojson(links, link_ids: Iterable | None = None, nodes=None) -> dic
         coords = _coords_for_link(row, nx, ny)
         if len(coords) < 2:
             continue
-        features.append({
-            "type": "Feature",
-            "geometry": {"type": "LineString", "coordinates": coords},
-            "properties": {
-                "link_id": _json_scalar(row["link_id"]),
-                "facility_type": _json_scalar(row.get("facility_type")),
-                "name": _json_scalar(row.get("name")),
-                "ref": _json_scalar(row.get("ref")),
-            },
-        })
+        features.append(
+            {
+                "type": "Feature",
+                "geometry": {"type": "LineString", "coordinates": coords},
+                "properties": {
+                    "link_id": _json_scalar(row["link_id"]),
+                    "facility_type": _json_scalar(row.get("facility_type")),
+                    "name": _json_scalar(row.get("name")),
+                    "ref": _json_scalar(row.get("ref")),
+                },
+            }
+        )
     return {"type": "FeatureCollection", "features": features}

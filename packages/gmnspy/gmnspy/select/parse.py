@@ -11,6 +11,7 @@ Provider-agnostic seam:
 
 Both satisfy the :class:`Parser` protocol, so other providers slot in later.
 """
+
 from __future__ import annotations
 
 import re
@@ -19,11 +20,17 @@ from typing import Any, Protocol, runtime_checkable
 from .errors import IntentError
 from .intent import Facility, SelectionIntent
 
-__all__ = ["Parser", "StubParser", "ClaudeParser", "INTENT_TOOL"]
+__all__ = ["INTENT_TOOL", "ClaudeParser", "Parser", "StubParser"]
 
 _DIR_WORDS = {
-    "eb": "EB", "eastbound": "EB", "wb": "WB", "westbound": "WB",
-    "nb": "NB", "northbound": "NB", "sb": "SB", "southbound": "SB",
+    "eb": "EB",
+    "eastbound": "EB",
+    "wb": "WB",
+    "westbound": "WB",
+    "nb": "NB",
+    "northbound": "NB",
+    "sb": "SB",
+    "southbound": "SB",
 }
 # route ref like "I-40", "US 1", "NC 54", "SR-147"
 _REF_RE = re.compile(r"^(?:I|US|SR|NC|CR|SH|CA|TX)[-\s]?\d+$", re.IGNORECASE)
@@ -31,7 +38,11 @@ _REF_RE = re.compile(r"^(?:I|US|SR|NC|CR|SH|CA|TX)[-\s]?\d+$", re.IGNORECASE)
 
 @runtime_checkable
 class Parser(Protocol):
-    def parse(self, utterance: str) -> SelectionIntent: ...
+    """Protocol for utterance -> SelectionIntent parsers."""
+
+    def parse(self, utterance: str) -> SelectionIntent:
+        """Parse an utterance into a validated :class:`SelectionIntent`."""
+        ...
 
 
 def _facility_from_text(text: str) -> Facility:
@@ -47,6 +58,7 @@ class StubParser:
     """Deterministic parser for the constrained grammar (offline/testing)."""
 
     def parse(self, utterance: str) -> SelectionIntent:
+        """Parse the constrained grammar into a :class:`SelectionIntent`."""
         text = utterance.strip()
         # optional segment: "<facility> [dir] between A and B" OR "... from A to B";
         # with no segment clause the whole facility is selected.
@@ -69,7 +81,9 @@ class StubParser:
         facility = _facility_from_text(head)
         return SelectionIntent(
             facility=Facility(ref=facility.ref, name=facility.name, direction=direction),
-            from_anchor=from_anchor, to_anchor=to_anchor, utterance=utterance,
+            from_anchor=from_anchor,
+            to_anchor=to_anchor,
+            utterance=utterance,
         )
 
     @staticmethod
@@ -87,7 +101,7 @@ INTENT_TOOL: dict[str, Any] = {
         "selector: a facility (by name and/or ref), select_all, or explicit link_ids. Add "
         "from_anchor/to_anchor ONLY when the user wants a segment between two points; omit "
         "them to select the whole facility. Use conditions for attribute filters (e.g. "
-        "\"where there are 2 lanes\" -> {\"lanes\": [2]}). Never invent link or node ids "
+        '"where there are 2 lanes" -> {"lanes": [2]}). Never invent link or node ids '
         "unless the user gave them explicitly."
     ),
     "input_schema": {
@@ -104,9 +118,20 @@ INTENT_TOOL: dict[str, Any] = {
             "from_anchor": {"type": "string", "description": "Upstream cross-street/interchange (segment start)."},
             "to_anchor": {"type": "string", "description": "Downstream cross-street/interchange (segment end)."},
             "select_all": {"type": "boolean", "description": "Select every link (then narrowed by conditions/modes)."},
-            "link_ids": {"type": "array", "items": {"type": "integer"}, "description": "Explicit link ids, only if the user gave them."},
-            "modes": {"type": "array", "items": {"type": "string"}, "description": "e.g. ['drive','bike','walk','transit']."},
-            "conditions": {"type": "object", "description": "Attribute AND-filters, {column: value | [values]}, e.g. {\"lanes\": [2,3]}."},
+            "link_ids": {
+                "type": "array",
+                "items": {"type": "integer"},
+                "description": "Explicit link ids, only if the user gave them.",
+            },
+            "modes": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "e.g. ['drive','bike','walk','transit'].",
+            },
+            "conditions": {
+                "type": "object",
+                "description": 'Attribute AND-filters, {column: value | [values]}, e.g. {"lanes": [2,3]}.',
+            },
         },
     },
 }
@@ -116,6 +141,7 @@ class ClaudeParser:
     """Parse via the Anthropic Messages API using tool-use structured output."""
 
     def __init__(self, client: Any = None, model: str = "claude-sonnet-5") -> None:
+        """Hold the Anthropic client and model id (lazily constructed)."""
         if client is None:  # pragma: no cover - exercised only with a real key
             import anthropic  # lazy: optional dependency
 
@@ -124,6 +150,7 @@ class ClaudeParser:
         self._model = model
 
     def parse(self, utterance: str) -> SelectionIntent:
+        """Parse via Anthropic tool-use structured output."""
         resp = self._client.messages.create(
             model=self._model,
             max_tokens=512,
@@ -133,13 +160,20 @@ class ClaudeParser:
         )
         payload = self._extract_tool_input(resp)
         fac = payload.get("facility") or {}
-        facility = (Facility(ref=fac.get("ref"), name=fac.get("name"), direction=fac.get("direction"))
-                    if (fac.get("ref") or fac.get("name")) else None)
+        facility = (
+            Facility(ref=fac.get("ref"), name=fac.get("name"), direction=fac.get("direction"))
+            if (fac.get("ref") or fac.get("name"))
+            else None
+        )
         return SelectionIntent(
             facility=facility,
-            from_anchor=payload.get("from_anchor"), to_anchor=payload.get("to_anchor"),
-            select_all=bool(payload.get("select_all", False)), link_ids=payload.get("link_ids"),
-            modes=payload.get("modes"), conditions=payload.get("conditions") or {}, utterance=utterance,
+            from_anchor=payload.get("from_anchor"),
+            to_anchor=payload.get("to_anchor"),
+            select_all=bool(payload.get("select_all", False)),
+            link_ids=payload.get("link_ids"),
+            modes=payload.get("modes"),
+            conditions=payload.get("conditions") or {},
+            utterance=utterance,
         )
 
     @staticmethod

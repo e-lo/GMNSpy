@@ -5,12 +5,13 @@ everything within N graph-hops of the I-40 mainline so ramp->surface->mainline
 connectivity at each interchange is intact, while dropping the far residential
 sprawl. Carries `ref` (required to identify I-40).
 """
+
 import collections
 from pathlib import Path
 
-import pandas as pd
-from gmnspy.osm.build import build_network_from_osm
 from datagrove.engines.pandas_engine import PandasEngine
+
+from gmnspy.osm.build import build_network_from_osm
 from gmnspy.select._support import norm_ref
 
 OUT = Path("packages/gmnspy/gmnspy/fixtures/rdu_i40")
@@ -18,7 +19,13 @@ bbox = (-78.850, 35.855, -78.760, 35.895)  # proven: I-40 stretch w/ S Miami / P
 HOPS = 4
 
 net = build_network_from_osm(bbox, network_type="drive", extra_tags=["ref"], engine=PandasEngine())
-tp = lambda t: t.to_pandas() if hasattr(t, "to_pandas") else t
+
+
+def tp(t):
+    """Materialise a table-like object to pandas (pass-through if already a frame)."""
+    return t.to_pandas() if hasattr(t, "to_pandas") else t
+
+
 links, nodes = tp(net.links), tp(net.nodes)
 for c in ["destination", "junction"]:
     if c in links.columns:
@@ -41,7 +48,8 @@ for _ in range(HOPS):
     for n in frontier:
         for m in adj[n]:
             if m not in keep:
-                keep.add(m); nxt.add(m)
+                keep.add(m)
+                nxt.add(m)
     frontier = nxt
 
 links = links[links.from_node_id.isin(keep) & links.to_node_id.isin(keep)].reset_index(drop=True)
