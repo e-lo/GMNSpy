@@ -94,7 +94,7 @@ to duckdb and (b) the upstream (Ibis) is actively retreating from. Pure cost, no
 - **Cons:** still depends on Ibis (a heavy dep) even though we'd only use its duckdb backend; the
   `ibis>=9,<10` pin (the `create_table`/`from_records` codegen break) remains until we move to 10+.
 
-### C. DuckDB-native — **drop Ibis entirely** (longer-term option)
+### C. DuckDB-native — **drop Ibis entirely** (evaluated and NOT pursued — see Decision)
 - Use DuckDB's Python **relational API** (`rel.filter().order().limit().aggregate()`) and/or
   parameterized SQL in one sanctioned module; frames via replacement scans + `.df()/.pl()/.arrow()`.
 - **Pros:** leanest deps (drops Ibis + its transitive weight — aligns with the repo's "hand-roll thin
@@ -138,7 +138,9 @@ The one strategic question that decides B-vs-eventually-C:
   duckdb-native removes a big dependency and the ibis-version pin. But do it only after B, as its own
   project, because it's the ~2,500-LOC ibis-expression port.
 
-Either way, **B is the immediate move** and it doesn't foreclose C.
+Either way, **B is the immediate move**. (Update: after evaluating DuckDB's Python API, C is dropped —
+ibis-on-duckdb is the chainable-expression wrapper we want and its duckdb backend is not deprecated. See
+the Decision section.)
 
 ## Migration sketch for B (phased, low-risk)
 
@@ -175,14 +177,27 @@ beyond selecting output format) so downstream callers don't break hard.
   duckdb query (filter+sort+limit+count pushed down, page-only materialization) for *every* input,
   removing the pandas-vs-lazy branch in `viz/tables.py`.
 
-## Decision (made 2026-10-01)
-**Local DuckDB/Parquet only** — warehouse portability is *not* a goal. Therefore:
-- **Do Option B now** (one compute engine = DuckDB; pandas/polars/arrow as I/O formats; Ibis retained
-  as the expression layer, duckdb backend only) — mostly deletion, gmnspy barely moves.
-- **Track Option C** (drop Ibis entirely; go DuckDB-native via the relational API / sanctioned SQL) as
-  a deliberately-deferred lean-deps follow-up, to be revisited **after** B lands and the real
-  single-backend Ibis dependency cost is visible. C aligns with the repo's "hand-roll thin wrappers over
-  heavy deps" value and removes the `ibis<10` pin, but it's the ~2,500-LOC ibis-expression port, so it is
-  not part of this change.
+## Decision (made 2026-10-01; refined after checking DuckDB's Python API)
+**Local DuckDB/Parquet only, and stay on Ibis-on-DuckDB permanently. Option B is the whole change;
+Option C is dropped (parked, not tracked).**
+
+- **Do Option B** (one compute engine = DuckDB; pandas/polars/arrow as I/O formats; Ibis retained as the
+  expression layer, duckdb backend only) — mostly deletion, gmnspy barely moves, and it does **not touch
+  the ibis expression API** we rely on.
+- **Option C (drop Ibis → DuckDB-native) is NOT pursued.** Rationale, after evaluating DuckDB's Python
+  API directly: DuckDB's Relational API is chainable but its expressions are largely **SQL strings**
+  (`rel.filter("lanes >= 3").project("…")`); the native **Expression API** (`duckdb.ColumnExpression`)
+  is only partial and DuckDB has an open workstream to reach dataframe-library parity
+  ([duckdb#12134](https://github.com/duckdb/duckdb/discussions/12134)). Our validation / FK / filter /
+  spatial code builds predicates **programmatically**, which is exactly where ibis's composable,
+  type-aware expression algebra pays off. **ibis-on-duckdb _is_ the chainable-Python-expression wrapper
+  over DuckDB** — there is no better native one yet.
+- **Crucially, our ibis usage carries no deprecation risk:** Ibis removed the *pandas/dask* execution
+  backends; **DuckDB is Ibis's flagship backend** and is being invested in. We confine ourselves to it.
+- The lean-deps value is satisfied by *scoping* ibis to one backend, not by reimplementing its expression
+  algebra over DuckDB's half-finished one. Warehouse portability (Postgres/BigQuery/…) comes along as a
+  free latent bonus, not a goal.
+- Loose end to resolve during B: the `ibis>=9,<10` pin (create_table/from_records codegen break). Prefer
+  reading parquet via DuckDB directly and using ibis for *expressions*, which de-risks moving to ibis 10+.
 
 This is a datagrove-wide refactor and should ride its own branch, not `feat/nl-selection`.
