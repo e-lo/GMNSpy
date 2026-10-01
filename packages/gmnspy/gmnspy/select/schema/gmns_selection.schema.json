@@ -9,16 +9,22 @@
   "properties": {
     "links": {
       "type": "object",
-      "description": "Resolved link selection (select_links profile).",
-      "required": ["link_id"],
+      "description": "Link selection (select_links profile): resolved (link_id) or query (all/name/ref) form; extra keys are attribute AND-conditions.",
       "additionalProperties": true,
+      "anyOf": [
+        {"required": ["link_id"]},
+        {"required": ["name"]},
+        {"required": ["ref"]},
+        {"required": ["all"]}
+      ],
       "properties": {
-        "link_id": {
-          "type": "array",
-          "minItems": 1,
-          "items": {"type": ["integer", "string"]},
-          "description": "Ordered GMNS link_id values along the facility."
-        }
+        "link_id": {"type": "array", "minItems": 1, "items": {"type": ["integer", "string"]},
+                    "description": "Ordered GMNS link_id values (resolved form)."},
+        "name": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+        "ref": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+        "all": {"type": "boolean"},
+        "modes": {"type": "array", "items": {"type": "string"}},
+        "ignore_missing": {"type": "boolean"}
       }
     },
     "from": {"$ref": "#/$defs/nodeRef"},

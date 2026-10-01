@@ -1,11 +1,16 @@
 """Emit a resolved SelectionResult as a validated GMNS selection fragment.
 
-The v1 artifact is a *fragment* (a ``facility`` object), keyed by GMNS-native
-``link_id`` / ``node_id`` and validated against
-``schema/gmns_selection.schema.json``. :func:`to_projectcard` adapts it to
-ProjectCard's ``model_link_id`` / ``model_node_id`` for interop/export; the
-fragment drops into a ProjectCard change's ``facility`` slot when the (later)
-edit feature exists.
+Two forms, both valid ProjectCard-style facility selections:
+
+* ``form="resolved"`` (default) — the concrete resolved link ids
+  (``links.link_id``), portable and unambiguous.
+* ``form="query"`` — the re-resolvable *query* (``all`` / ``name`` / ``ref`` /
+  explicit ids, plus ``modes`` and attribute conditions as extra fields),
+  mirroring ProjectCard ``select_links``.
+
+Both carry the resolved segment ``from``/``to`` node ids when present. The
+fragment is keyed by GMNS-native ``link_id``/``node_id``; :func:`to_projectcard`
+adapts to ProjectCard's ``model_link_id``/``model_node_id``.
 """
 from __future__ import annotations
 
@@ -21,6 +26,8 @@ from .result import SelectionResult
 
 __all__ = ["to_fragment", "validate_fragment", "to_projectcard", "load_schema"]
 
+_EMITTABLE = {"resolved"}
+
 
 @lru_cache(maxsize=1)
 def load_schema() -> dict:
@@ -29,15 +36,44 @@ def load_schema() -> dict:
     return json.loads(text)
 
 
-def to_fragment(result: SelectionResult) -> dict[str, Any]:
-    """Build the GMNS-native selection fragment from a *resolved* result.
+def _query_links(intent, id_key: str) -> dict[str, Any]:
+    """Build a ProjectCard-style ``links`` query object from the intent."""
+    links: dict[str, Any] = {}
+    if intent.select_all:
+        links["all"] = True
+    elif intent.link_ids:
+        links[id_key] = list(intent.link_ids)
+    elif intent.facility is not None:
+        if intent.facility.names():
+            links["name"] = list(intent.facility.names())
+        if intent.facility.refs():
+            links["ref"] = list(intent.facility.refs())
+    if intent.modes:
+        links["modes"] = list(intent.modes)
+    for col, val in (intent.conditions or {}).items():   # extra attribute AND-conditions
+        links[col] = val
+    if not intent.ignore_missing:
+        links["ignore_missing"] = False
+    return links
 
+
+def to_fragment(result: SelectionResult, *, form: str = "resolved") -> dict[str, Any]:
+    """Build the GMNS-native selection fragment from a resolved result.
+
+    Args:
+        form: ``"resolved"`` (concrete ``links.link_id``) or ``"query"``
+            (``all``/``name``/``ref`` + modes + conditions, re-resolvable).
     Raises:
-        SelectError: if ``result.status`` is not ``"resolved"``.
+        SelectError: if the result is not emittable (not resolved/ambiguous).
     """
-    if result.status != "resolved":
-        raise SelectError(f"cannot emit a fragment from status {result.status!r}; expected 'resolved'")
-    frag: dict[str, Any] = {"links": {"link_id": list(result.link_ids)}}
+    if result.status not in _EMITTABLE:
+        raise SelectError(f"cannot emit a fragment from status {result.status!r}")
+    if form == "query":
+        frag: dict[str, Any] = {"links": _query_links(result.intent, "link_id")}
+    elif form == "resolved":
+        frag = {"links": {"link_id": list(result.link_ids)}}
+    else:
+        raise SelectError(f"unknown emit form {form!r}; expected 'resolved' or 'query'")
     if result.from_match and result.from_match.node_id is not None:
         frag["from"] = {"node_id": result.from_match.node_id}
     if result.to_match and result.to_match.node_id is not None:
@@ -52,12 +88,20 @@ def validate_fragment(fragment: dict) -> None:
     jsonschema.validate(fragment, load_schema())
 
 
-def to_projectcard(result: SelectionResult) -> dict[str, Any]:
-    """Adapt the GMNS fragment to a ProjectCard roadway-selection facility object."""
-    frag = to_fragment(result)
-    pc: dict[str, Any] = {"links": {"model_link_id": frag["links"]["link_id"]}}
-    if "from" in frag:
-        pc["from"] = {"model_node_id": frag["from"]["node_id"]}
-    if "to" in frag:
-        pc["to"] = {"model_node_id": frag["to"]["node_id"]}
+def to_projectcard(result: SelectionResult, *, form: str = "resolved") -> dict[str, Any]:
+    """Adapt to a ProjectCard roadway-selection facility object.
+
+    Resolved form maps ``link_id``/``node_id`` to ``model_link_id``/
+    ``model_node_id``; query form emits ProjectCard's native ``select_links``
+    fields (``all``/``name``/``ref``/``modes`` + conditions) directly.
+    """
+    if form == "query":
+        pc: dict[str, Any] = {"links": _query_links(result.intent, "model_link_id")}
+    else:
+        frag = to_fragment(result, form="resolved")
+        pc = {"links": {"model_link_id": frag["links"]["link_id"]}}
+    if result.from_match and result.from_match.node_id is not None:
+        pc["from"] = {"model_node_id": result.from_match.node_id}
+    if result.to_match and result.to_match.node_id is not None:
+        pc["to"] = {"model_node_id": result.to_match.node_id}
     return pc
