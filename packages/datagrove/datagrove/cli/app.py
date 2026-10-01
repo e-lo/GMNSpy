@@ -108,7 +108,7 @@ def build_app() -> typer.Typer:
         engine: str = typer.Option(
             None,
             "--engine",
-            help="Engine: ibis/pandas/polars. Default: ibis.",
+            help="Engine: DuckDB (the only compute engine).",
         ),
         json_out: bool = typer.Option(False, "--json", help="Emit JSON on stdout."),
         yes: bool = typer.Option(False, "--yes", "-y", help="Auto-approve gated ops."),

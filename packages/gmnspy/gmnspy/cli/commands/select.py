@@ -30,7 +30,7 @@ def register(app: typer.Typer) -> None:
         utterance: str = typer.Argument(..., help='e.g. "I-40 EB between Harrison Ave and NC 54".'),
         source: Path = typer.Argument(..., help="Path/URL to a GMNS network."),
         provider: str = typer.Option("stub", "--provider", help="Parser: stub | claude."),
-        engine: str = typer.Option(None, "--engine", help="ibis/pandas/polars (default: ibis)."),
+        engine: str = typer.Option(None, "--engine", help="Compute engine (DuckDB is the only one; kept for compatibility)."),
         json_out: bool = typer.Option(False, "--json", help="Emit JSON on stdout."),
     ) -> None:
         """Resolve a natural-language selection to GMNS link/node ids.
@@ -61,7 +61,7 @@ def register(app: typer.Typer) -> None:
     def select_serve(
         source: Path = typer.Argument(..., help="Path/URL to a GMNS network."),
         provider: str = typer.Option("stub", "--provider", help="Parser: stub | claude."),
-        engine: str = typer.Option(None, "--engine", help="ibis/pandas/polars (default: ibis)."),
+        engine: str = typer.Option(None, "--engine", help="Compute engine (DuckDB is the only one; kept for compatibility)."),
         host: str = typer.Option("127.0.0.1", "--host", help="Bind host."),
         port: int = typer.Option(8848, "--port", help="Bind port."),
     ) -> None:

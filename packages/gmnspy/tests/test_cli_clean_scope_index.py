@@ -65,8 +65,6 @@ def test_clean_simplify_dry_run_does_not_write(tmp_path: Path):
             "remove-orphans",  # use a no-geometry op; simplify needs a geometry column
             "--json",
             "--dry-run",
-            "--engine",
-            "pandas",
             str(src),
         ],
     )
@@ -88,8 +86,6 @@ def test_clean_simplify_writes_to_dest(tmp_path: Path):
             "--json",
             "--dest",
             str(dest),
-            "--engine",
-            "pandas",
             str(src),
         ],
     )
@@ -116,8 +112,6 @@ def test_clean_remove_orphans_json_emits_summary(tmp_path: Path):
             "remove-orphans",
             "--json",
             "--dry-run",
-            "--engine",
-            "pandas",
             str(src),
         ],
     )

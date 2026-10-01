@@ -165,20 +165,16 @@ place:
   convenience over `datagrove.io.get_adapter(fmt).write`.
 
 This means a new format (xlsx, geoparquet, …) is added by writing one
-`FormatAdapter` plus a `read_<format>` primitive on each engine that
-supports it — no central dispatch needs editing. Engines that don't
-support a primitive (e.g. `PolarsEngine.write_duckdb_table`, which
-would need SQL DDL) raise `EngineNotAvailableError` and point the
-caller at the engine that does (typically `IbisEngine`).
+`FormatAdapter` plus a `read_<format>` primitive on the DuckDB engine —
+no central dispatch needs editing.
 
-The cross-engine dtype parity test
-(`packages/datagrove/tests/engines/test_cross_engine_dtype_parity.py`)
-locks both the dispatch-path output (`engine.scan`) and the
-direct-primitive output (`engine.read_csv` / `read_parquet` /
-`read_duckdb_table`) to the same dtypes, so the two layers can't
-silently disagree. A regression test in the same file pins that
-`Engine.scan()` stays a thin delegator (≤10 top-level statements) so
-no future contributor can re-grow the per-format if/elif inside it.
+The format-interop test
+(`packages/datagrove/tests/dataset/test_format_interop.py`) locks the
+input/output contract: pandas / polars / pyarrow in and out round-trip
+through DuckDB with the nullable dtype family preserved. A regression
+test pins that `Engine.scan()` stays a thin delegator (≤10 top-level
+statements) so no future contributor can re-grow the per-format
+if/elif inside it.
 
 ### 6.2 Memory-efficient scoping
 

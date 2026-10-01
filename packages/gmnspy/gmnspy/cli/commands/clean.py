@@ -44,7 +44,7 @@ def register(app: typer.Typer) -> None:
         ),
         mode: str = typer.Option("redundant_only", "--mode", help="redundant_only or douglas_peucker."),
         tolerance: float = typer.Option(0.0, "--tolerance", help="Tolerance in CRS units (douglas_peucker only)."),
-        engine: str = typer.Option(None, "--engine", help="ibis/pandas/polars (default: ibis)."),
+        engine: str = typer.Option(None, "--engine", help="Compute engine (DuckDB is the only one; kept for compatibility)."),
         dry_run: bool = typer.Option(False, "--dry-run", help="Print what would change; do not write."),
         json_out: bool = typer.Option(False, "--json", help="Emit JSON on stdout."),
     ) -> None:
@@ -76,7 +76,7 @@ def register(app: typer.Typer) -> None:
             None, "--dest", help="Where to write the modified network. Default: overwrite source."
         ),
         threshold_m: float = typer.Option(5.0, "--threshold-m", help="Distance threshold in node CRS units."),
-        engine: str = typer.Option(None, "--engine", help="ibis/pandas/polars (default: ibis)."),
+        engine: str = typer.Option(None, "--engine", help="Compute engine (DuckDB is the only one; kept for compatibility)."),
         dry_run: bool = typer.Option(False, "--dry-run", help="Print what would change; do not write."),
         json_out: bool = typer.Option(False, "--json", help="Emit JSON on stdout."),
     ) -> None:
@@ -107,7 +107,7 @@ def register(app: typer.Typer) -> None:
         dest: Path = typer.Option(
             None, "--dest", help="Where to write the modified network. Default: overwrite source."
         ),
-        engine: str = typer.Option(None, "--engine", help="ibis/pandas/polars (default: ibis)."),
+        engine: str = typer.Option(None, "--engine", help="Compute engine (DuckDB is the only one; kept for compatibility)."),
         dry_run: bool = typer.Option(False, "--dry-run", help="Print what would change; do not write."),
         json_out: bool = typer.Option(False, "--json", help="Emit JSON on stdout."),
     ) -> None:
@@ -139,7 +139,7 @@ def register(app: typer.Typer) -> None:
             None, "--dest", help="Where to write the modified network. Default: overwrite source."
         ),
         geodesic: bool = typer.Option(False, "--geodesic", help="Compute haversine length in meters (WGS84)."),
-        engine: str = typer.Option(None, "--engine", help="ibis/pandas/polars (default: ibis)."),
+        engine: str = typer.Option(None, "--engine", help="Compute engine (DuckDB is the only one; kept for compatibility)."),
         dry_run: bool = typer.Option(False, "--dry-run", help="Print what would change; do not write."),
         json_out: bool = typer.Option(False, "--json", help="Emit JSON on stdout."),
     ) -> None:

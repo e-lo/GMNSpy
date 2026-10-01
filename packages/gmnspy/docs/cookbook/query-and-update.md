@@ -216,7 +216,7 @@ A `Session(net, log_path="edits.parquet")` persists the audit log to disk alongs
 
 ## See also
 
-* [Engines: ibis vs pandas vs polars](https://e-lo.github.io/GMNSpy/datagrove/concepts/engines/) — why lazy-by-default, and when to switch engines.
+* [The compute engine (DuckDB) and dataframe formats](https://e-lo.github.io/GMNSpy/datagrove/concepts/engines/) — why lazy-by-default, and getting data in/out as pandas/polars/Arrow.
 * [Edit with rollback](edit-with-rollback.md) — the geometry-aware `gmnspy.clean` ops on top of these primitives.
 * [Scope from seed nodes](scope-from-nodes.md) — FK-aware subsetting that returns a whole sub-network.
 * [ibis docs](https://ibis-project.org/) — the full expression API (`mutate`, window functions, `case`, …).

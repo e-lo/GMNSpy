@@ -76,7 +76,7 @@ def register(app: typer.Typer) -> None:
         network_type: str = typer.Option("drive", "--network-type", help="drive / walk / bike / all."),
         extra_tags: str = typer.Option(None, "--extra-tags", help="Comma-separated extra OSM tags to carry."),
         source: str = typer.Option("osm", "--source", help="Data source (only 'osm' today)."),
-        engine: str = typer.Option(None, "--engine", help="ibis / pandas / polars (default: ibis)."),
+        engine: str = typer.Option(None, "--engine", help="Compute engine (DuckDB is the only one; kept for compatibility)."),
         spec_version: str = typer.Option(None, "--spec-version", help="GMNS spec version (default: latest)."),
         out_format: str = typer.Option(None, "--format", help="Output format: csv / parquet / duckdb / zip."),
         json_out: bool = typer.Option(False, "--json", help="Emit a JSON summary on stdout."),

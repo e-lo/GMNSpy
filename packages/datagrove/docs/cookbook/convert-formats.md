@@ -156,8 +156,7 @@ See [Read from S3](read-from-s3.md) for credential handling.
 
 ## Pitfalls
 
-* **DuckDB SQL DDL via PolarsEngine is not supported.** The polars engine doesn't speak DuckDB's `CREATE TABLE` dialect, so writing to `.duckdb` requires the default ibis engine. Pick `--engine ibis` or omit `--engine`.
-* **Null-typed columns can fail strict-write backends.** If a column is 100% null in the source CSV, the ibis/duckdb engine may reject the write. Workarounds: `--engine pandas`, or open the source, fill the column with a typed default, and write. Tracked in [#163](https://github.com/e-lo/GMNSpy/issues/163).
+* **Null-typed columns can fail strict-write backends.** If a column is 100% null in the source CSV, DuckDB may reject the write. Workaround: open the source, fill the column with a typed default, and write. Tracked in [#163](https://github.com/e-lo/GMNSpy/issues/163).
 * **Extension inference is case-sensitive.** `out.PARQUET` won't be recognised as parquet — pass `--format parquet`.
 * **Converting *to* CSV loses dtypes.** Re-reading the CSV without a schema (no GMNS spec match) infers columns afresh. Round-trip safety relies on the schema being re-applied at load time, which happens automatically for GMNS-shaped directories.
 * **DuckDB files lock per-process.** Two Python processes can't open the same `.duckdb` file in write mode at once. For shared use, write parquet instead; for one-writer-many-readers, ensure the writer closes the connection (the Engine does this when the `Network` is garbage-collected or `net.close()` is called).

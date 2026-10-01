@@ -53,7 +53,7 @@ Two sections: **GMNS domain** terms come from the spec itself and apply to any G
 
 **EditResult** — the value returned by every `gmnspy.clean` op. Carries the diff per affected table, the log entry for the operation, and a `_repr_html_` visual summary for notebook rendering. Integrated with `datagrove.editing.Session` for rollback.
 
-**Engine** — the materialisation backend. `IbisEngine` is default (lazy expressions over DuckDB); `PandasEngine` and `PolarsEngine` are alternatives. Per-call override: `Network.from_source(path)`. See the engine ABC at `datagrove.engines`.
+**Engine** — the compute backend. datagrove has one: `IbisEngine` (lazy expressions over DuckDB). pandas / polars / pyarrow are I/O *formats* (`.to_pandas()` / `.to_polars()`), not compute engines. See `datagrove.engines`.
 
 **GMNSPY_AUTO_INDEX_THRESHOLD** — see *Auto-build threshold*.
 
