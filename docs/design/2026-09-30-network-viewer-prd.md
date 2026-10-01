@@ -154,6 +154,26 @@ basemap**, fed by typed arrays derived cheaply from GeoParquet.
 - **Time dimension generally:** TOD attributes (GMNS `*_tod` tables), volumes by period,
   animated flows. The viewer should reserve a time-control concept.
 
+- **Zoom-driven GMNS sub-table layers (map rendering, not just the table view):** the
+  non-default GMNS tables become *map* layers gated by zoom, each with its own representation.
+  Default off; toggled per layer (layer registry). Target behavior (user-specified, 2026-10-01):
+  - **Zones** — visible at **almost any zoom** (polygons/centroids; the one sub-table that reads
+    at regional scale).
+  - **Turning movements, segments, lanes, segment_lanes** — **high (close-in) zoom only**, where
+    there's room to draw them: movements as per-approach arrows at the intersection node; lanes /
+    segment_lanes as parallel offset ribbons along the link; segments as sub-link extents.
+  - **Signals** — an **abstract glyph at medium & close zoom** (a signal marker at the node), not
+    a literal depiction; **click → panel** of the signal family's data (phases, timing, `signal_*`
+    tables). Follows the same click-to-detail path links already use.
+  - **TOD (`*_tod`)** — not a geometry layer; at **medium & close zoom annotate the owning link**
+    ("this link has time-of-day values"), and surface the actual TOD rows **on link click** (and
+    later a time slider — ties into "Time dimension generally" above).
+  Implication: the layer registry entry needs a **zoom range** (minzoom/maxzoom) and a
+  **representation kind** (glyph / arrow / offset-ribbon / polygon / link-annotation), and the
+  click-detail panel must dispatch by feature class (link / node / signal / zone). Data already
+  flows in lazily via the G1 table provider; these are *rendering* layers on top of it. The map
+  binary (`buffers.py`) is link+node today — sub-table geometry would pack similarly, zoom-gated.
+
 - **Editing (eventual — explicitly NOT near-term):** the viewer stays view+select for the
   foreseeable future, but the long-term direction is in-viewer editing (attributes, geometry,
   add/remove links & nodes) feeding the ProjectCard/edit track. Architectural implication now:

@@ -14,10 +14,18 @@ Status: **Phase 0 + Phase 1 BUILT** (+ early Phase-2 cross-linking) · Date: 202
 > `fitSelection` on the map + fill the detail panel; click a node row → anchor +
 > flyTo; a "Filter to map selection" toggle passes `CUR.linkIds`/anchor node ids as
 > `ids`. Tests: `test_viz_tables.py` (11) + 8 endpoint tests in `test_viz_server.py`.
+> **G1 + G2 now DONE (2026-10-01).** Engine push-down is wired: `datagrove.Table`
+> gained `order_by`/`limit(offset)` (all engines) and `dataset.filter.filter_rows`
+> (ibis-first attribute filter, no raw SQL); `viz.tables.page_table` accepts a lazy
+> `Table` and pushes filter/sort/page/count to the engine (duckdb over parquet
+> materialises only the one page), with the pandas-frame path kept as fallback. The
+> viz CLI now passes the large child tables (lanes/segments/zones/movements/link_tod)
+> as lazy Tables; link/node stay pandas for the map binary. Proven at parity with the
+> pandas path on the ibis/duckdb engine.
 > Still to do: shared `SELECTION` store + bidirectional hover (full Phase 2), the
 > structured query builder / guarded SQL console (Phase 3), draggable split divider,
-> and push-down via a lazy datagrove `Table` provider (G2) when the viewer is handed
-> a `Network` instead of materialized frames.
+> and the zoom-driven GMNS sub-table *map* layers (turning movements/segments/lanes/
+> zones/signals/TOD) — see the viewer PRD §6 "Zoom-driven GMNS sub-table layers".
 
 Goal: let a user flip between the deck.gl map and the underlying GMNS tables
 (`link`, `node`, `lane`, `segment`, …), inspect / sort / filter large tables,
