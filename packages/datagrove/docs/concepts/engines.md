@@ -185,12 +185,10 @@ Per-call override on every public entry point that accepts an engine:
 
 <!-- doctest: skip -->
 ```python
-from datagrove.engines.pandas_engine import PandasEngine
-from datagrove.engines.polars_engine import PolarsEngine
 
-pkg = Package.from_source(path, engine=PandasEngine())
+pkg = Package.from_source(path)
 # or
-pkg = Package.from_source(path, engine=PolarsEngine())
+pkg = Package.from_source(path)
 ```
 
 For CLI users: `--engine ibis|pandas|polars` is wired on every command that materialises (`convert`, `bench`, `clean.*`).

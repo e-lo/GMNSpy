@@ -2,6 +2,8 @@
 from importlib import resources
 
 import pandas as pd
+
+import pyarrow as pa
 import pytest
 from datagrove.engines.ibis_engine import IbisEngine
 
@@ -88,7 +90,7 @@ def _ibis_link_table():
     base = resources.files("gmnspy.fixtures.rdu_i40").joinpath("parquet")
     df = pd.read_parquet(base.joinpath("link.parquet"))
     e = IbisEngine()
-    return Table(name="link", expr=e.from_records(df.to_dict("list")), engine=e), df
+    return Table(name="link", expr=e.from_arrow(pa.Table.from_pandas(df, preserve_index=False)), engine=e), df
 
 
 def test_page_table_lazy_matches_pandas():

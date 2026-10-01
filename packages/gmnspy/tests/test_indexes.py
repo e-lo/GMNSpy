@@ -18,6 +18,7 @@ shapely = pytest.importorskip("shapely")
 pytest.importorskip("scipy")  # build_indexes' graph slot returns a GMNSGraph
 pyarrow = pytest.importorskip("pyarrow")
 
+import pyarrow as pa  # noqa: E402
 from datagrove.dataset import Table  # noqa: E402
 from datagrove.engines.ibis_engine import IbisEngine  # noqa: E402
 from gmnspy.fixtures import leavenworth  # noqa: E402
@@ -38,7 +39,7 @@ def _read_csv_table(name: str, engine: IbisEngine) -> Table:
     import pandas as pd
 
     df = pd.read_csv(leavenworth.csv_dir() / f"{name}.csv")
-    expr = engine.from_records(df.to_dict(orient="records"))
+    expr = engine.from_arrow(pa.Table.from_pandas(df, preserve_index=False))
     return Table(name=name, expr=expr, engine=engine)
 
 
@@ -55,7 +56,7 @@ def links_with_geom(engine: IbisEngine) -> Table:
     links_df = pd.read_csv(leavenworth.csv_dir() / "link.csv")
     geom_df = pd.read_csv(leavenworth.csv_dir() / "geometry.csv")
     merged = links_df.merge(geom_df, on="geometry_id", how="left")
-    expr = engine.from_records(merged.to_dict(orient="records"))
+    expr = engine.from_arrow(pa.Table.from_pandas(merged, preserve_index=False))
     return Table(name="link", expr=expr, engine=engine)
 
 

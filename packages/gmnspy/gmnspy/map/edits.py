@@ -409,6 +409,7 @@ def apply_edits(net: Network, log: EditLog) -> ApplyResult:
     """
     try:
         import pandas as pd
+        import pyarrow as pa
         from datagrove.dataset import Table
         from datagrove.engines.ibis_engine import IbisEngine
     except ImportError as e:  # pragma: no cover - defensive
@@ -467,7 +468,7 @@ def apply_edits(net: Network, log: EditLog) -> ApplyResult:
         df = mutated[name] if name in mutated else existing.to_pandas()
         new_tables[name] = Table(
             name=name,
-            expr=df,
+            expr=new_engine.from_arrow(pa.Table.from_pandas(df, preserve_index=False)),
             engine=new_engine,
             schema=existing.schema,
             source=existing.source,

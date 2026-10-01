@@ -114,7 +114,7 @@ def read(
         >>> from gmnspy.fixtures import leavenworth
         >>> net = gmnspy.read(leavenworth.csv_dir())
         >>> net.links.count()
-        214
+        339
     """
     return Network.from_source(
         source,

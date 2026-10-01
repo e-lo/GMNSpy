@@ -99,7 +99,7 @@ class TestNetworkFromRecords:
 
     def test_engine_override_respected(self):
         net = build.network_from_records(_NODE_RECS, _LINK_RECS, engine=IbisEngine())
-        assert net.engine.name == "pandas"
+        assert net.engine.name == "ibis"
 
 
 class TestBuildNetworkFromOsm:

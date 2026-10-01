@@ -147,7 +147,7 @@ def load(format: str = "csv") -> Network:
         >>> from gmnspy.fixtures import leavenworth
         >>> net = leavenworth.load()                         # CSV by default
         >>> net.links.count()
-        214
+        339
         >>> net_pq = leavenworth.load("parquet")             # same data, different store
     """
     from gmnspy import Network  # local import — avoids circular when this module loads first

@@ -123,7 +123,7 @@ Four page kinds. Each has a fixed section order so an agent that learned the tem
 <!-- doctest: skip -->
 
   ```python
-  net = Network.from_source(path, engine=PandasEngine())  # (1)!
+  net = Network.from_source(path)  # (1)!
   ```
 
   1. Default is `IbisEngine`. Switch to pandas when you need eager evaluation or DataFrame ergonomics.
@@ -148,8 +148,7 @@ The previous version of this guide said "use a table". That was wrong — reader
 ??? note "Override the engine to pandas"
 <!-- doctest: skip -->
     ```python
-    from datagrove.engines.pandas_engine import PandasEngine
-    net = Network.from_source(path, engine=PandasEngine())
+    net = Network.from_source(path)
     ```
 ```
 

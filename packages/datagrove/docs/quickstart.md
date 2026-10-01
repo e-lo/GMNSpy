@@ -148,10 +148,8 @@ Each accordion below is one alternative to the defaults used above. The first (m
     Default is `IbisEngine` (lazy, DuckDB-backed). Switch to pandas for eager DataFrame ergonomics, or polars when you want fast in-memory analytics.
 
     ```python
-    from datagrove.engines.pandas_engine import PandasEngine
-    # from datagrove.engines.polars_engine import PolarsEngine
 
-    pkg = Package.from_source(path, spec=spec, engine=PandasEngine())
+    pkg = Package.from_source(path, spec=spec)
     ```
 
 ??? note "Read from S3 with credentials"
