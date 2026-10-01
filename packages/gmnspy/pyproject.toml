@@ -71,6 +71,14 @@ nl = [
     "jsonschema>=4.0",
     "anthropic>=0.40",
 ]
+bench = [
+    # Benchmark harness (gmnspy.bench): wall/CPU time + Python-heap peak come
+    # from the stdlib; psutil is the one small dep, for cross-platform process
+    # RSS (the only metric that sees DuckDB's out-of-heap arena). The harness
+    # degrades to RSS=None without it. Selection/viz benchmarks also want the
+    # [nl] / core viz paths; OSM-create wants [osm].
+    "psutil>=5.9",
+]
 notebook = [
     "ipywidgets>=8.1",
     "anywidget>=0.9",
@@ -85,7 +93,7 @@ reports = [
     "pyyaml>=6",    # edit-log load/dump (gmnspy.map.edits)
 ]
 all = [
-    "gmnspy[clean,server,mcp,notebook,osm,graph,reports,nl]",
+    "gmnspy[clean,server,mcp,notebook,osm,graph,reports,nl,bench]",
 ]
 dev-fixtures = [
     # Only required to *rebuild* bundled example fixtures (e.g. Leavenworth).

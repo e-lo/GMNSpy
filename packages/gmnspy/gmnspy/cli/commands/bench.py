@@ -71,3 +71,65 @@ def register(app: typer.Typer) -> None:
             "phases": timings,
         }
         render_dict(data, json_out=json_out, title=f"bench: {source}")
+
+    @app.command(name="bench-suite")
+    def bench_suite(
+        sizes: str = typer.Option("S,M", "--sizes", help="Size tiers to sweep (comma-separated: S,M,L)."),
+        operations: str = typer.Option(
+            "network_create,selection,viz_pack",
+            "--operations",
+            help="Operation families to run (comma-separated).",
+        ),
+        out_format: str = typer.Option("json", "--format", help="Output format: json | csv | md."),
+        output: Path = typer.Option(None, "--output", "-o", help="Write to this file instead of stdout."),
+        repeats: int = typer.Option(3, "--repeats", help="Macro timing repeats (reported as median + min)."),
+        warm_repeats: int = typer.Option(20, "--warm-repeats", help="Repeats for the warm selection number."),
+        run_osm: bool = typer.Option(False, "--run-osm", help="Include live OSM builds (hits Overpass)."),
+        fixtures: Path = typer.Option(None, "--fixtures", help="Override path to a fixtures.toml."),
+        commit: str = typer.Option(None, "--commit", help="Git SHA to stamp into the env block."),
+    ) -> None:
+        """Run the DuckDB-path benchmark suite (create / selection / viz-pack).
+
+        Sweeps the requested size tiers over the three operation families from
+        the benchmarking-suite scope, capturing wall-time and peak memory, and
+        emits one structured document. DuckDB (via ibis) is the single compute
+        engine; pandas / polars / pyarrow are I/O formats, so there is no engine
+        axis — the suite measures the DuckDB path and the binary store format.
+
+        ``--format json`` (default) emits the canonical regression document;
+        ``csv`` flattens the results; ``md`` renders the advertising table with
+        an environment stamp and the standing honesty caveats. Fixture
+        definitions live in ``benchmarks/fixtures.toml``; the L tier is resolved
+        from the ``GMNSPY_BENCH_LARGE`` / ``GMNSPY_BENCH_LARGE_BBOX`` env vars
+        (never committed).
+        """
+        # Imported here (not at module top) so `gmnspy bench` stays importable
+        # without the suite's optional-feature deps, and so the import-linter
+        # `gmnspy.cli -> gmnspy.osm` contract holds (the suite reaches osm via a
+        # dynamic import, invisible to the static-import scan).
+        from gmnspy.bench import report, suite
+
+        document = suite.run_suite(
+            sizes=tuple(s.strip().upper() for s in sizes.split(",") if s.strip()),
+            operations=tuple(op.strip() for op in operations.split(",") if op.strip()),
+            repeats=repeats,
+            warm_repeats=warm_repeats,
+            run_osm=run_osm,
+            fixtures_path=str(fixtures) if fixtures else None,
+            commit=commit,
+        )
+
+        renderers = {
+            "json": lambda doc: report.render_json(doc),
+            "csv": lambda doc: report.render_csv(doc["results"]),
+            "md": lambda doc: report.render_markdown(doc),
+        }
+        if out_format not in renderers:
+            raise typer.BadParameter(f"unknown --format {out_format!r}; expected json | csv | md")
+        rendered = renderers[out_format](document)
+
+        if output is not None:
+            output.write_text(rendered, encoding="utf-8")
+            typer.secho(f"wrote {out_format} results to {output}", fg="green", err=True)
+        else:
+            typer.echo(rendered)
