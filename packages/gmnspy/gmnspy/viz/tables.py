@@ -70,14 +70,39 @@ def primary_key(name: str, columns: list[str]) -> str | None:
     return next((c for c in columns if c.endswith("_id")), None)
 
 
-def table_list_entry(name: str, df: pd.DataFrame) -> dict:
-    return {"name": name, "rows": int(len(df)), "columns": list(df.columns)}
+def _is_frame(src: Any) -> bool:
+    """A source is pandas (eager) when it's a DataFrame; otherwise a lazy datagrove Table."""
+    return isinstance(src, pd.DataFrame)
 
 
-def table_schema(name: str, df: pd.DataFrame) -> dict:
-    cols = [{"name": c, "dtype": str(df[c].dtype), "kind": _column_kind(df[c])} for c in df.columns]
-    return {"name": name, "rows": int(len(df)), "primary_key": primary_key(name, list(df.columns)),
-            "columns": cols}
+def columns_of(src: Any) -> list[str]:
+    return list(src.columns) if _is_frame(src) else list(src.columns())
+
+
+def rowcount_of(src: Any) -> int:
+    return int(len(src)) if _is_frame(src) else int(src.count())
+
+
+def _schema_frame(src: Any) -> pd.DataFrame:
+    """A tiny frame carrying each column's dtype for kind classification.
+
+    For a lazy Table this materialises only one row (pushed to the engine), so
+    classification never pulls a large table into memory.
+    """
+    return src if _is_frame(src) else src.limit(1).to_pandas()
+
+
+def table_list_entry(name: str, src: Any) -> dict:
+    return {"name": name, "rows": rowcount_of(src), "columns": columns_of(src)}
+
+
+def table_schema(name: str, src: Any) -> dict:
+    cols = columns_of(src)
+    sample = _schema_frame(src)
+    out = [{"name": c, "dtype": str(sample[c].dtype) if c in sample else "object",
+            "kind": _column_kind(sample[c]) if c in sample else "str"} for c in cols]
+    return {"name": name, "rows": rowcount_of(src), "primary_key": primary_key(name, cols),
+            "columns": out}
 
 
 def _apply_filter(df: pd.DataFrame, spec: list[dict]) -> pd.DataFrame:
@@ -91,14 +116,31 @@ def _apply_filter(df: pd.DataFrame, spec: list[dict]) -> pd.DataFrame:
     return df
 
 
-def page_table(df: pd.DataFrame, *, offset: int = 0, limit: int = 100, sort: str | None = None,
+def _clamp(offset: int, limit: int) -> tuple[int, int]:
+    return max(0, int(offset)), max(1, min(int(limit), MAX_LIMIT))
+
+
+def _rows_payload(page: pd.DataFrame, total: int, offset: int, limit: int) -> dict:
+    cols = [c for c in page.columns if c not in GEOM_COLS]
+    rows = [[_scalar(v) for v in rec] for rec in page[cols].itertuples(index=False, name=None)]
+    return {"columns": cols, "rows": rows, "total": total, "offset": offset, "limit": limit}
+
+
+def page_table(source: Any, *, offset: int = 0, limit: int = 100, sort: str | None = None,
                direction: str = "asc", filter_spec: list[dict] | None = None,
                ids: list | None = None, pk: str | None = None) -> dict:
-    """Return one page of ``df`` as compact column/row arrays (geometry excluded).
+    """Return one page of ``source`` as compact column/row arrays (geometry excluded).
+
+    ``source`` is a pandas ``DataFrame`` (sliced in memory) or a lazy datagrove
+    ``Table`` (filter/sort/page/count pushed to the engine — duckdb over parquet
+    materialises only the one page). Same response shape either way.
 
     Raises:
         FilterError: unknown filter column/operator, or unknown sort column.
     """
+    if not _is_frame(source):
+        return _page_lazy(source, offset, limit, sort, direction, filter_spec, ids, pk)
+    df = source
     if ids and pk and pk in df.columns:
         df = df[df[pk].isin(ids)]
     if filter_spec:
@@ -108,9 +150,29 @@ def page_table(df: pd.DataFrame, *, offset: int = 0, limit: int = 100, sort: str
         if sort not in df.columns:
             raise FilterError(f"unknown sort column {sort!r}")
         df = df.sort_values(sort, ascending=(direction != "desc"), kind="stable")
-    limit = max(1, min(int(limit), MAX_LIMIT))
-    offset = max(0, int(offset))
-    page = df.iloc[offset:offset + limit]
-    cols = [c for c in page.columns if c not in GEOM_COLS]
-    rows = [[_scalar(v) for v in rec] for rec in page[cols].itertuples(index=False, name=None)]
-    return {"columns": cols, "rows": rows, "total": total, "offset": offset, "limit": limit}
+    offset, limit = _clamp(offset, limit)
+    return _rows_payload(df.iloc[offset:offset + limit], total, offset, limit)
+
+
+def _page_lazy(table: Any, offset: int, limit: int, sort: str | None, direction: str,
+               filter_spec: list[dict] | None, ids: list | None, pk: str | None) -> dict:
+    """Paging over a lazy datagrove ``Table`` — pushes down to the engine."""
+    from datagrove.dataset.filter import FilterSpecError, filter_rows
+
+    cols_all = list(table.columns())
+    try:
+        if ids and pk and pk in cols_all:
+            table = filter_rows(table, [{"col": pk, "op": "in", "val": list(ids)}])
+        if filter_spec:
+            table = filter_rows(table, filter_spec)
+    except FilterSpecError as exc:
+        raise FilterError(str(exc)) from exc
+    total = int(table.count())
+    if sort:
+        if sort not in cols_all:
+            raise FilterError(f"unknown sort column {sort!r}")
+        table = table.order_by(sort, descending=(direction == "desc"))
+    offset, limit = _clamp(offset, limit)
+    keep = [c for c in cols_all if c not in GEOM_COLS]          # drop WKT before materialising
+    page = table.select(*keep).limit(limit, offset).to_pandas()
+    return _rows_payload(page, total, offset, limit)

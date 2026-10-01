@@ -1,4 +1,6 @@
 """Unit tests for gmnspy.viz.tables — paged/sorted/filtered GMNS table access."""
+from importlib import resources
+
 import pandas as pd
 import pytest
 
@@ -75,3 +77,47 @@ def test_limit_clamped(df):
 def test_null_scalars_serialize(df):
     p = page_table(df, sort="link_id")
     assert p["rows"][3][p["columns"].index("lanes")] is None   # NaN -> None, JSON-safe
+
+
+# --- lazy datagrove Table path (G1): engine push-down, pandas-parity ---
+
+def _ibis_link_table():
+    """A lazy datagrove Table over the fixture links, on the ibis/duckdb engine."""
+    from datagrove.dataset import Table
+    from datagrove.engines.ibis_engine import IbisEngine
+    base = resources.files("gmnspy.fixtures.rdu_i40").joinpath("parquet")
+    df = pd.read_parquet(base.joinpath("link.parquet"))
+    e = IbisEngine()
+    return Table(name="link", expr=e.from_records(df.to_dict("list")), engine=e), df
+
+
+def test_page_table_lazy_matches_pandas():
+    t, df = _ibis_link_table()
+    spec = [{"col": "facility_type", "op": "eq", "val": "motorway"}]
+    lazy = page_table(t, limit=5, sort="lanes", direction="desc", filter_spec=spec)
+    eager = page_table(df, limit=5, sort="lanes", direction="desc", filter_spec=spec)
+    assert lazy["total"] == eager["total"] > 0
+    assert "geometry" not in lazy["columns"]          # WKT dropped before materialising
+    li = lazy["columns"].index("lanes")
+    lv = [r[li] for r in lazy["rows"] if r[li] is not None]
+    assert lv == sorted(lv, reverse=True)
+
+
+def test_page_table_lazy_ids_crossfilter():
+    t, df = _ibis_link_table()
+    ids = [int(i) for i in df["link_id"].iloc[:3]]
+    assert page_table(t, ids=ids, pk="link_id", limit=500)["total"] == 3
+
+
+def test_page_table_lazy_bad_filter_raises():
+    t, _ = _ibis_link_table()
+    with pytest.raises(FilterError):
+        page_table(t, filter_spec=[{"col": "nonsuch", "op": "eq", "val": 1}])
+
+
+def test_table_schema_on_lazy_table():
+    t, _ = _ibis_link_table()
+    sch = table_schema("link", t)
+    kinds = {c["name"]: c["kind"] for c in sch["columns"]}
+    assert kinds["lanes"] == "num" and kinds["facility_type"] == "str"
+    assert sch["primary_key"] == "link_id" and sch["rows"] > 50

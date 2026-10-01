@@ -25,19 +25,21 @@ def _as_pandas(table):
 
 
 def _extra_tables(net) -> dict:
-    """Materialize any additional GMNS tables the network carries (best-effort).
+    """Additional GMNS tables the network carries, kept **lazy** (best-effort).
 
-    Keyed by singular GMNS table name (``lane``, ``segment``, …) to match the
-    data-table view's primary-key convention.
+    Returns the datagrove ``Table`` objects (not materialized) so the data-table
+    view pages/sorts/filters them through the engine — on duckdb a large
+    ``lane``/``segment_lane`` table never fully crosses into memory. Keyed by
+    singular GMNS name (``lane``, ``segment``, …) for the pk convention.
     """
     out = {}
     for accessor in _EXTRA_TABLES:
         try:
-            df = _as_pandas(getattr(net, accessor))
+            tbl = getattr(net, accessor)
+            if tbl is not None and tbl.count() > 0:
+                out[accessor[:-1] if accessor.endswith("s") else accessor] = tbl
         except (AttributeError, KeyError, ValueError, FileNotFoundError):
             continue
-        if df is not None and len(df):
-            out[accessor[:-1] if accessor.endswith("s") else accessor] = df
     return out
 
 

@@ -23,7 +23,8 @@ from gmnspy.select.resolve import resolve_frames
 from gmnspy.select.emit import to_fragment
 
 from .buffers import network_attrs, pack_network
-from .tables import FilterError, page_table, table_list_entry, table_schema, primary_key
+from .tables import (FilterError, columns_of, page_table, primary_key,
+                     table_list_entry, table_schema)
 
 __all__ = ["build_app"]
 
@@ -210,7 +211,7 @@ def build_app(links, nodes, *, provider: str = "stub", parser=None, basemap: str
         try:
             payload = page_table(df, offset=offset, limit=limit, sort=sort, direction=dir,
                                  filter_spec=spec, ids=id_list,
-                                 pk=primary_key(name, list(df.columns)))
+                                 pk=primary_key(name, columns_of(df)))
         except FilterError as exc:
             return JSONResponse({"error": str(exc)}, status_code=400)
         return JSONResponse({"name": name, **payload})
