@@ -454,6 +454,14 @@ class PolarsEngine:
         """Return ``expr.select(columns)`` — lazy projection."""
         return expr.select(columns)
 
+    def order_by(self, expr: pl.LazyFrame, columns: list[str], descending: bool = False) -> pl.LazyFrame:
+        """Return ``expr.sort(...)`` — lazy ORDER BY in the polars plan."""
+        return expr.sort(list(columns), descending=descending)
+
+    def limit(self, expr: pl.LazyFrame, n: int, offset: int = 0) -> pl.LazyFrame:
+        """Return ``expr.slice(offset, n)`` — lazy OFFSET/LIMIT."""
+        return expr.slice(offset, n)
+
 
 # ---------------------------------------------------------------------------
 # Helpers (module-level — symmetric with ibis_engine + pandas_engine)

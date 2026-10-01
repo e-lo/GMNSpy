@@ -176,6 +176,47 @@ def test_table_count_does_not_materialise_via_to_pandas(engine_name: str, monkey
 
 
 # ---------------------------------------------------------------------------
+# Ordering + paging (order_by / limit) — the server-side grid primitives
+# ---------------------------------------------------------------------------
+
+
+def _unordered_table(engine_name: str) -> Table:
+    """Three rows deliberately out of ``a``-order: a=[3,1,2]."""
+    engine = _make_engine(engine_name)
+    expr = engine.from_records([{"a": 3, "b": "z"}, {"a": 1, "b": "x"}, {"a": 2, "b": "y"}])
+    return Table(name="t", expr=expr, engine=engine)
+
+
+@pytest.mark.parametrize("engine_name", ["ibis", "polars", "pandas"])
+def test_table_order_by_ascending(engine_name: str) -> None:
+    t = _unordered_table(engine_name)
+    t2 = t.order_by("a")
+    assert isinstance(t2, Table) and t2 is not t
+    assert t2.to_pandas()["a"].tolist() == [1, 2, 3]
+    assert t.to_pandas()["a"].tolist() == [3, 1, 2]  # original unchanged
+
+
+@pytest.mark.parametrize("engine_name", ["ibis", "polars", "pandas"])
+def test_table_order_by_descending(engine_name: str) -> None:
+    t = _unordered_table(engine_name)
+    assert t.order_by("a", descending=True).to_pandas()["a"].tolist() == [3, 2, 1]
+
+
+@pytest.mark.parametrize("engine_name", ["ibis", "polars", "pandas"])
+def test_table_limit_with_offset_pages(engine_name: str) -> None:
+    t = _unordered_table(engine_name).order_by("a")   # [1,2,3]
+    assert t.limit(2).to_pandas()["a"].tolist() == [1, 2]
+    assert t.limit(2, offset=1).to_pandas()["a"].tolist() == [2, 3]
+
+
+@pytest.mark.parametrize("engine_name", ["ibis", "polars", "pandas"])
+def test_table_limit_returns_new_table(engine_name: str) -> None:
+    t = _unordered_table(engine_name)
+    t2 = t.limit(1)
+    assert isinstance(t2, Table) and t2 is not t
+
+
+# ---------------------------------------------------------------------------
 # Materialisation
 # ---------------------------------------------------------------------------
 

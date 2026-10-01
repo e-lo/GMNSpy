@@ -605,6 +605,15 @@ class IbisEngine:
         """Return ``expr.select(*columns)`` — lazy projection."""
         return expr.select(*columns)
 
+    def order_by(self, expr: ir.Table, columns: list[str], descending: bool = False) -> ir.Table:
+        """Return ``expr.order_by(...)`` — lazy ORDER BY pushed to duckdb."""
+        keys = [ibis.desc(c) if descending else ibis.asc(c) for c in columns]
+        return expr.order_by(keys)
+
+    def limit(self, expr: ir.Table, n: int, offset: int = 0) -> ir.Table:
+        """Return ``expr.limit(n, offset=offset)`` — lazy LIMIT/OFFSET."""
+        return expr.limit(n, offset=offset)
+
     # ------------------------------------------------------------------
     # lifecycle
     # ------------------------------------------------------------------
