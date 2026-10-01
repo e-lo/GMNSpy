@@ -32,7 +32,6 @@ from datagrove.dataset.view import (
 )
 from datagrove.engines.errors import EngineNotAvailableError
 from datagrove.engines.ibis_engine import IbisEngine
-from datagrove.engines.ibis_engine import IbisEngine
 from gmnspy.fixtures import leavenworth
 
 # Downtown Leavenworth bbox (chosen to be tight enough to filter out

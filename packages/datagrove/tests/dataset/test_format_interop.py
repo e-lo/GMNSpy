@@ -6,12 +6,12 @@ come back in the requested format with the cross-engine **nullable dtype** contr
 (`Int64` / `Float64` / `string` / `boolean`). It replaces the cross-*compute*-engine
 parity suite with an input/output-format guarantee on the one compute engine.
 """
+
 from __future__ import annotations
 
 import pandas as pd
 import pyarrow as pa
 import pytest
-
 from datagrove.dataset import Table
 from datagrove.engines.ibis_engine import IbisEngine
 
@@ -26,7 +26,7 @@ def test_arrow_in_duckdb_compute_pandas_out_nullable_dtypes():
     t = _table(e.from_arrow(at), e)
     # compute happens in duckdb (ibis predicate), not in pandas
     kept = t.filter(lambda x: x.filter(x.a >= 2)).to_pandas()
-    assert kept["a"].tolist() == [2, 3]                       # NULL row excluded by >= 2
+    assert kept["a"].tolist() == [2, 3]  # NULL row excluded by >= 2
     # output-converter contract: nullable int, not float64-with-NaN
     full = t.to_pandas()
     assert str(full["a"].dtype) == "Int64"

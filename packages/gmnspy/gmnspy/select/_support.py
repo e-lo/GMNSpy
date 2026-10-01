@@ -4,13 +4,14 @@ The graph ops here run on the *post-filter* subnet (a few hundred edges), so a
 hand-rolled BFS/Dijkstra is cheap and engine-independent. Kept isolated so a
 future refactor can delegate to :mod:`gmnspy.graph` if warranted.
 """
+
 from __future__ import annotations
 
 import collections
 import heapq
 import math
 import re
-from typing import Iterable
+from collections.abc import Iterable
 
 _CARDINAL = {"EB": 90.0, "WB": 270.0, "NB": 0.0, "SB": 180.0}
 
@@ -72,8 +73,10 @@ def link_length(nx: dict, ny: dict, row) -> float:
 
 
 def bounded_bfs(adj: dict, seeds: Iterable, targets: set, max_hops: int) -> list[tuple]:
-    """Undirected BFS from ``seeds`` returning ``(node, hops)`` for every node in
-    ``targets`` reached within ``max_hops``, nearest first."""
+    """Undirected BFS from ``seeds``, nearest first.
+
+    Returns ``(node, hops)`` for every node in ``targets`` reached within ``max_hops``.
+    """
     seen = set(seeds)
     queue = collections.deque((n, 0) for n in seeds)
     found = []
@@ -84,7 +87,7 @@ def bounded_bfs(adj: dict, seeds: Iterable, targets: set, max_hops: int) -> list
             continue
         if hops >= max_hops:
             continue
-        for nbr in adj.get(node, ()):  # noqa: SIM118
+        for nbr in adj.get(node, ()):
             if nbr not in seen:
                 seen.add(nbr)
                 queue.append((nbr, hops + 1))
@@ -105,7 +108,7 @@ def dijkstra_links(directed_adj: dict, src, dst) -> tuple[list, list] | None:
             break
         if d > dist.get(u, math.inf):
             continue
-        for v, w, lid in directed_adj.get(u, ()):  # noqa: SIM118
+        for v, w, lid in directed_adj.get(u, ()):
             nd = d + w
             if nd < dist.get(v, math.inf):
                 dist[v] = nd

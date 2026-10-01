@@ -1,9 +1,9 @@
 """ProjectCard-parity selection modes: all / whole-facility / conditions / ids."""
+
 from importlib import resources
 
 import pandas as pd
 import pytest
-
 from gmnspy.select.intent import Facility, SelectionIntent
 from gmnspy.select.resolve import resolve_frames
 
@@ -11,8 +11,7 @@ from gmnspy.select.resolve import resolve_frames
 @pytest.fixture(scope="module")
 def rdu():
     base = resources.files("gmnspy.fixtures.rdu_i40").joinpath("parquet")
-    return (pd.read_parquet(base.joinpath("link.parquet")),
-            pd.read_parquet(base.joinpath("node.parquet")))
+    return (pd.read_parquet(base.joinpath("link.parquet")), pd.read_parquet(base.joinpath("node.parquet")))
 
 
 def test_select_all(rdu):
@@ -43,7 +42,7 @@ def test_facility_with_attribute_condition(rdu):
     whole = resolve_frames(SelectionIntent(facility=Facility(ref="I 40")), links, nodes)
     four = resolve_frames(SelectionIntent(facility=Facility(ref="I 40"), conditions={"lanes": [4]}), links, nodes)
     assert four.status == "resolved"
-    assert set(four.link_ids) < set(whole.link_ids)           # strict subset
+    assert set(four.link_ids) < set(whole.link_ids)  # strict subset
     sel = links[links.link_id.isin(four.link_ids)]
     assert (sel.lanes == 4).all()
 
@@ -64,8 +63,11 @@ def test_facility_name_list_or_matched(rdu):
 
 def test_surface_facility_freeway_anchor_via_ramps(rdu):
     links, nodes = rdu
-    r = resolve_frames(SelectionIntent(facility=Facility(name="Page Road"),
-                                       from_anchor="I 40", to_anchor="Emperor Boulevard"), links, nodes)
+    r = resolve_frames(
+        SelectionIntent(facility=Facility(name="Page Road"), from_anchor="I 40", to_anchor="Emperor Boulevard"),
+        links,
+        nodes,
+    )
     assert r.status in {"resolved", "ambiguous"} and r.link_ids
     assert r.from_match.kind == "ramp" and r.to_match.kind == "intersection"
 
@@ -79,28 +81,38 @@ def test_explicit_link_ids(rdu):
 
 def test_surface_arterial_segment_at_grade(rdu):
     links, nodes = rdu
-    r = resolve_frames(SelectionIntent(facility=Facility(name="Page Road"),
-                                       from_anchor="Emperor Boulevard", to_anchor="Top Golf Way"),
-                       links, nodes)
+    r = resolve_frames(
+        SelectionIntent(facility=Facility(name="Page Road"), from_anchor="Emperor Boulevard", to_anchor="Top Golf Way"),
+        links,
+        nodes,
+    )
     assert r.status in {"resolved", "ambiguous"}
     assert r.link_ids
     sel = links[links.link_id.isin(r.link_ids)]
-    assert (sel.name == "Page Road").all()          # the segment runs along Page Road
+    assert (sel.name == "Page Road").all()  # the segment runs along Page Road
     assert r.from_match.kind == "intersection" and r.to_match.kind == "intersection"
 
 
 def test_surface_anchor_not_found_names_it(rdu):
     links, nodes = rdu
-    r = resolve_frames(SelectionIntent(facility=Facility(name="Page Road"),
-                                       from_anchor="Nonexistent Rd", to_anchor="Top Golf Way"),
-                       links, nodes)
+    r = resolve_frames(
+        SelectionIntent(facility=Facility(name="Page Road"), from_anchor="Nonexistent Rd", to_anchor="Top Golf Way"),
+        links,
+        nodes,
+    )
     assert r.status == "not_found"
     assert any("Nonexistent Rd" in d for d in r.diagnostics)
 
 
 def test_freeway_segment_still_works(rdu):
     links, nodes = rdu
-    r = resolve_frames(SelectionIntent(facility=Facility(ref="I 40", direction="EB"),
-                                       from_anchor="South Miami Boulevard", to_anchor="Airport Boulevard"),
-                       links, nodes)
+    r = resolve_frames(
+        SelectionIntent(
+            facility=Facility(ref="I 40", direction="EB"),
+            from_anchor="South Miami Boulevard",
+            to_anchor="Airport Boulevard",
+        ),
+        links,
+        nodes,
+    )
     assert r.status == "resolved" and r.link_ids[0] == 5021

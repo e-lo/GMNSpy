@@ -9,6 +9,7 @@ an anchor resolves to a mainline node via the *gore/merge* rule:
 both on the requested-direction carriageway. Surface arterials resolve to a
 directly-incident named node. Anchors match on both ``name`` and ``ref``.
 """
+
 from __future__ import annotations
 
 import collections
@@ -16,7 +17,7 @@ from dataclasses import dataclass
 
 import pandas as pd
 
-from ._support import bounded_bfs, is_link_class, norm_name, norm_ref, to_py
+from ._support import bounded_bfs, norm_name, norm_ref, to_py
 from .result import AnchorMatch
 
 __all__ = ["Interchanges", "classify_interchanges", "resolve_anchor", "resolve_surface_anchor"]
@@ -28,7 +29,7 @@ _MAX_RAMP_HOPS = 8
 class Interchanges:
     """Mainline attach nodes on the requested carriageway, by ramp orientation."""
 
-    gore: set   # off-ramp diverge nodes (traffic leaves mainline here)
+    gore: set  # off-ramp diverge nodes (traffic leaves mainline here)
     merge: set  # on-ramp merge nodes (traffic joins mainline here)
 
 
@@ -71,11 +72,12 @@ def _ramp_adjacency(links, surface_link_ids: set) -> dict:
     Filters to just those links first so it touches a few thousand rows, not the
     whole network.
     """
-    mask = links["facility_type"].astype("string").str.endswith("_link").fillna(False) \
-        | links["link_id"].isin(surface_link_ids)
+    mask = links["facility_type"].astype("string").str.endswith("_link").fillna(False) | links["link_id"].isin(
+        surface_link_ids
+    )
     sub = links[mask]
     adj = collections.defaultdict(list)
-    for a, b in zip(sub["from_node_id"].to_numpy(), sub["to_node_id"].to_numpy()):
+    for a, b in zip(sub["from_node_id"].to_numpy(), sub["to_node_id"].to_numpy(), strict=False):
         adj[a].append(b)
         adj[b].append(a)
     return adj
@@ -94,23 +96,30 @@ def resolve_anchor(anchor: str, role: str, links, interchanges: Interchanges) ->
 
     surf = _surface_links(links, anchor)
     if surf.empty:
-        return AnchorMatch(anchor, None, [], 0.0, "unresolved",
-                           f"anchor {anchor!r} not found as a street/route in this network")
+        return AnchorMatch(
+            anchor, None, [], 0.0, "unresolved", f"anchor {anchor!r} not found as a street/route in this network"
+        )
 
     seeds = set(surf["from_node_id"]) | set(surf["to_node_id"])
     adj = _ramp_adjacency(links, set(surf["link_id"]))
     reached = bounded_bfs(adj, seeds, targets, _MAX_RAMP_HOPS)
     if not reached:
-        return AnchorMatch(anchor, None, [], 0.0, "unresolved",
-                           f"anchor {anchor!r} found, but no ramp path to a {detail_kind} "
-                           f"node on the {role}-direction carriageway")
+        return AnchorMatch(
+            anchor,
+            None,
+            [],
+            0.0,
+            "unresolved",
+            f"anchor {anchor!r} found, but no ramp path to a {detail_kind} node on the {role}-direction carriageway",
+        )
 
     reached.sort(key=lambda x: x[1])
     best_node, hops = reached[0]
     candidates = [to_py(n) for n, _ in reached[1:]]
     confidence = 1.0 / (1 + hops)
-    return AnchorMatch(anchor, to_py(best_node), candidates, confidence, kind,
-                       f"{detail_kind} node, {hops} ramp hop(s)")
+    return AnchorMatch(
+        anchor, to_py(best_node), candidates, confidence, kind, f"{detail_kind} node, {hops} ramp hop(s)"
+    )
 
 
 def _anchor_links(links, anchor: str):
@@ -134,29 +143,44 @@ def resolve_surface_anchor(anchor: str, facility_nodes: set, links) -> AnchorMat
     """
     anchor_links = _anchor_links(links, anchor)
     if anchor_links.empty:
-        return AnchorMatch(anchor, None, [], 0.0, "unresolved",
-                           f"anchor {anchor!r} not found as a street/route in this network")
+        return AnchorMatch(
+            anchor, None, [], 0.0, "unresolved", f"anchor {anchor!r} not found as a street/route in this network"
+        )
     anchor_nodes = set(anchor_links["from_node_id"]) | set(anchor_links["to_node_id"])
 
     direct = sorted(facility_nodes & anchor_nodes)
     if direct:
-        return AnchorMatch(anchor, to_py(direct[0]), [to_py(n) for n in direct[1:]], 1.0,
-                           "intersection", f"at-grade intersection with {anchor!r}")
+        return AnchorMatch(
+            anchor,
+            to_py(direct[0]),
+            [to_py(n) for n in direct[1:]],
+            1.0,
+            "intersection",
+            f"at-grade intersection with {anchor!r}",
+        )
 
     # freeway/ramp fallback: adjacency over ramps + the anchor's own links
     anchor_ids = set(anchor_links["link_id"])
-    mask = links["facility_type"].astype("string").str.endswith("_link").fillna(False) \
-        | links["link_id"].isin(anchor_ids)
+    mask = links["facility_type"].astype("string").str.endswith("_link").fillna(False) | links["link_id"].isin(
+        anchor_ids
+    )
     sub = links[mask]
     adj = collections.defaultdict(list)
-    for a, b in zip(sub["from_node_id"].to_numpy(), sub["to_node_id"].to_numpy()):
+    for a, b in zip(sub["from_node_id"].to_numpy(), sub["to_node_id"].to_numpy(), strict=False):
         adj[a].append(b)
         adj[b].append(a)
     reached = bounded_bfs(adj, anchor_nodes, facility_nodes, _MAX_RAMP_HOPS)
     if reached:
         reached.sort(key=lambda x: x[1])
         node, hops = reached[0]
-        return AnchorMatch(anchor, to_py(node), [to_py(n) for n, _ in reached[1:]], 1.0 / (1 + hops),
-                           "ramp", f"reached facility via {anchor!r} ramps ({hops} hop(s))")
-    return AnchorMatch(anchor, None, [], 0.0, "unresolved",
-                       f"anchor {anchor!r} found, but no connection to the facility")
+        return AnchorMatch(
+            anchor,
+            to_py(node),
+            [to_py(n) for n, _ in reached[1:]],
+            1.0 / (1 + hops),
+            "ramp",
+            f"reached facility via {anchor!r} ramps ({hops} hop(s))",
+        )
+    return AnchorMatch(
+        anchor, None, [], 0.0, "unresolved", f"anchor {anchor!r} found, but no connection to the facility"
+    )

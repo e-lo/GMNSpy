@@ -19,7 +19,6 @@ from datagrove.dataset import (
     Table,
 )
 from datagrove.engines.ibis_engine import IbisEngine
-from datagrove.engines.ibis_engine import IbisEngine
 from datagrove.spec.loader import load_package
 from gmnspy.fixtures import leavenworth
 

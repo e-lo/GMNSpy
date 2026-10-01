@@ -1,8 +1,8 @@
 """Tests for gmnspy.select.intent — the structured SelectionIntent value type."""
-import pytest
 
-from gmnspy.select.intent import Facility, SelectionIntent
+import pytest
 from gmnspy.select.errors import IntentError
+from gmnspy.select.intent import Facility, SelectionIntent
 
 
 def test_valid_intent_with_ref_and_direction():
@@ -37,7 +37,5 @@ def test_blank_anchor_rejected():
 
 
 def test_direction_optional():
-    intent = SelectionIntent(
-        facility=Facility(name="Main Street"), from_anchor="1st Ave", to_anchor="5th Ave"
-    )
+    intent = SelectionIntent(facility=Facility(name="Main Street"), from_anchor="1st Ave", to_anchor="5th Ave")
     assert intent.facility.direction is None

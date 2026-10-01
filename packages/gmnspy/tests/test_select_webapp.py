@@ -1,10 +1,10 @@
 """Tests for the gmnspy.select web app backend (FastAPI endpoints)."""
+
 from importlib import resources
 
 import pandas as pd
 import pytest
 from fastapi.testclient import TestClient
-
 from gmnspy.select.webapp import build_app
 
 
@@ -30,8 +30,7 @@ def test_network_geojson(client):
 
 
 def test_select_resolved(client):
-    r = client.get("/api/select",
-                   params={"utterance": "I-40 EB between South Miami Boulevard and Airport Boulevard"})
+    r = client.get("/api/select", params={"utterance": "I-40 EB between South Miami Boulevard and Airport Boulevard"})
     assert r.status_code == 200
     j = r.json()
     assert j["status"] == "resolved"

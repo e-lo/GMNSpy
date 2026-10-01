@@ -4,6 +4,7 @@ Loads a network once and serves the viewer web app: the whole (sub)network
 rendered from binary typed-arrays, hover-to-inspect links, and NL selection
 highlighting. Requires the ``[server]`` extra.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -50,7 +51,9 @@ def register(app: typer.Typer) -> None:
     def viz(
         source: Path = typer.Argument(..., help="Path/URL to a GMNS network."),
         provider: str = typer.Option("stub", "--provider", help="NL parser: stub | claude."),
-        engine: str = typer.Option(None, "--engine", help="Compute engine (DuckDB is the only one; kept for compatibility)."),
+        engine: str = typer.Option(
+            None, "--engine", help="Compute engine (DuckDB is the only one; kept for compatibility)."
+        ),
         basemap: str = typer.Option("positron", "--basemap", help="Basemap: positron | esri (both keyless)."),
         host: str = typer.Option("127.0.0.1", "--host", help="Bind host."),
         port: int = typer.Option(8850, "--port", help="Bind port."),
@@ -69,6 +72,8 @@ def register(app: typer.Typer) -> None:
         nodes = _as_pandas(net.nodes)
         extra = _extra_tables(net)
         extra_note = f", +{len(extra)} table(s): {', '.join(extra)}" if extra else ""
-        typer.echo(f"gmnspy viz on http://{host}:{port}  ({len(links)} links, {len(nodes)} nodes{extra_note}; basemap={basemap})")
-        uvicorn.run(build_app(links, nodes, provider=provider, basemap=basemap, tables=extra),
-                    host=host, port=port)
+        typer.echo(
+            f"gmnspy viz on http://{host}:{port}  "
+            f"({len(links)} links, {len(nodes)} nodes{extra_note}; basemap={basemap})"
+        )
+        uvicorn.run(build_app(links, nodes, provider=provider, basemap=basemap, tables=extra), host=host, port=port)

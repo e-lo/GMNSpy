@@ -10,6 +10,7 @@ the header gives per-array byte lengths and the payload concatenates, in order:
 ``linkPositions f32 (flat lon,lat)``, ``linkStartIndices u32 (nLinks+1)``,
 ``linkIds f64``, ``nodePositions f32``, ``nodeIds f64``.
 """
+
 from __future__ import annotations
 
 import json
@@ -20,7 +21,7 @@ import pandas as pd
 
 from gmnspy.map.geo_resolver import _parse_linestring_points
 
-__all__ = ["pack_network", "unpack_network", "network_attrs"]
+__all__ = ["network_attrs", "pack_network", "unpack_network"]
 
 #: Fallback lane count by facility_type when `lanes` is untagged, so freeways
 #: still render thick. Ramps/links stay thin.
@@ -28,12 +29,16 @@ _LANES_DEFAULT = {"motorway": 4, "trunk": 3, "primary": 3, "secondary": 2, "tert
 
 
 def _effective_lanes(links) -> np.ndarray:
-    """Per-link lane count for width styling: `lanes` if tagged (>0), else a
-    facility_type default (ramps=1). Clamped to 1..255 as uint8."""
-    lanes = pd.to_numeric(links.get("lanes"), errors="coerce") if "lanes" in links.columns \
+    """Per-link lane count for width styling.
+
+    `lanes` if tagged (>0), else a facility_type default (ramps=1). Clamped to 1..255 as uint8.
+    """
+    lanes = (
+        pd.to_numeric(links.get("lanes"), errors="coerce")
+        if "lanes" in links.columns
         else pd.Series([np.nan] * len(links))
-    ft = links["facility_type"].astype(str) if "facility_type" in links.columns \
-        else pd.Series([""] * len(links))
+    )
+    ft = links["facility_type"].astype(str) if "facility_type" in links.columns else pd.Series([""] * len(links))
     default = ft.map(lambda f: 1 if f.endswith("_link") else _LANES_DEFAULT.get(f, 1))
     eff = lanes.fillna(0).astype(int)
     eff = eff.where(eff > 0, default)
@@ -41,8 +46,10 @@ def _effective_lanes(links) -> np.ndarray:
 
 
 def _node_coords(nodes):
-    return (dict(zip(nodes["node_id"], nodes["x_coord"])),
-            dict(zip(nodes["node_id"], nodes["y_coord"])))
+    return (
+        dict(zip(nodes["node_id"], nodes["x_coord"], strict=False)),
+        dict(zip(nodes["node_id"], nodes["y_coord"], strict=False)),
+    )
 
 
 def _link_paths(links, nx: dict, ny: dict):
@@ -68,9 +75,11 @@ def _link_paths(links, nx: dict, ny: dict):
             if u in nx and v in nx:
                 positions.extend((float(nx[u]), float(ny[u]), float(nx[v]), float(ny[v])))
         start_indices.append(len(positions) // 2)
-    return (np.asarray(positions, dtype="<f4"),
-            np.asarray(start_indices, dtype="<u4"),
-            links["link_id"].to_numpy().astype("<f8"))
+    return (
+        np.asarray(positions, dtype="<f4"),
+        np.asarray(start_indices, dtype="<u4"),
+        links["link_id"].to_numpy().astype("<f8"),
+    )
 
 
 def _node_points(nodes):
@@ -89,18 +98,19 @@ def pack_network(links, nodes) -> bytes:
     npos, nids = _node_points(nodes)
 
     header = {
-        "links": {"count": int(len(links)),
-                  "positionsBytes": int(lpos.nbytes),
-                  "startIndicesBytes": int(lstart.nbytes),
-                  "idsBytes": int(lids.nbytes),
-                  "lanesBytes": int(llanes.nbytes)},
-        "nodes": {"count": int(len(nodes)),
-                  "positionsBytes": int(npos.nbytes),
-                  "idsBytes": int(nids.nbytes)},
+        "links": {
+            "count": len(links),
+            "positionsBytes": int(lpos.nbytes),
+            "startIndicesBytes": int(lstart.nbytes),
+            "idsBytes": int(lids.nbytes),
+            "lanesBytes": int(llanes.nbytes),
+        },
+        "nodes": {"count": len(nodes), "positionsBytes": int(npos.nbytes), "idsBytes": int(nids.nbytes)},
     }
     header_bytes = json.dumps(header, separators=(",", ":")).encode("utf-8")
-    payload = b"".join([lpos.tobytes(), lstart.tobytes(), lids.tobytes(), llanes.tobytes(),
-                        npos.tobytes(), nids.tobytes()])
+    payload = b"".join(
+        [lpos.tobytes(), lstart.tobytes(), lids.tobytes(), llanes.tobytes(), npos.tobytes(), nids.tobytes()]
+    )
     return struct.pack("<I", len(header_bytes)) + header_bytes + payload
 
 
@@ -125,24 +135,27 @@ def unpack_network(blob: bytes) -> dict:
     npos = take(nd["positionsBytes"], "<f4")
     nids = take(nd["idsBytes"], "<f8")
     return {
-        "links": {"count": lk["count"], "positions": lpos.tolist(),
-                  "startIndices": lstart.tolist(), "ids": [int(i) for i in lids.tolist()],
-                  "lanes": [int(x) for x in llanes.tolist()]},
-        "nodes": {"count": nd["count"], "positions": npos.tolist(),
-                  "ids": [int(i) for i in nids.tolist()]},
+        "links": {
+            "count": lk["count"],
+            "positions": lpos.tolist(),
+            "startIndices": lstart.tolist(),
+            "ids": [int(i) for i in lids.tolist()],
+            "lanes": [int(x) for x in llanes.tolist()],
+        },
+        "nodes": {"count": nd["count"], "positions": npos.tolist(), "ids": [int(i) for i in nids.tolist()]},
     }
 
 
 def _col(links, name):
     if name not in links.columns:
         return [None] * len(links)
-    return [None if pd_isna(v) else (v.item() if hasattr(v, "item") else v)
-            for v in links[name]]
+    return [None if pd_isna(v) else (v.item() if hasattr(v, "item") else v) for v in links[name]]
 
 
 def pd_isna(v) -> bool:
     try:
         import pandas as pd
+
         return bool(pd.isna(v))
     except (TypeError, ValueError):
         return v is None

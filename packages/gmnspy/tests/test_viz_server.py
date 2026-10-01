@@ -1,12 +1,13 @@
 """Tests for the gmnspy.viz web app backend."""
+
+import json as _json
 from importlib import resources
 
 import pandas as pd
 import pytest
 from fastapi.testclient import TestClient
-
-from gmnspy.viz.server import build_app
 from gmnspy.viz.buffers import unpack_network
+from gmnspy.viz.server import build_app
 
 
 @pytest.fixture(scope="module")
@@ -30,8 +31,12 @@ def test_config_default_is_keyless_positron(client):
 
 def test_config_esri_option_is_keyless():
     from gmnspy.viz.server import build_app
-    app = build_app(pd.DataFrame({"link_id": [], "from_node_id": [], "to_node_id": [], "geometry": []}),
-                    pd.DataFrame({"node_id": [], "x_coord": [], "y_coord": []}), basemap="esri")
+
+    app = build_app(
+        pd.DataFrame({"link_id": [], "from_node_id": [], "to_node_id": [], "geometry": []}),
+        pd.DataFrame({"node_id": [], "x_coord": [], "y_coord": []}),
+        basemap="esri",
+    )
     style = TestClient(app).get("/api/config").json()["style"]
     tiles = style["sources"]["basemap"]["tiles"][0]
     assert "arcgisonline.com" in tiles and "api_key" not in tiles
@@ -54,6 +59,7 @@ def test_network_attrs(client):
 
 def test_link_detail_returns_full_row(client):
     import pandas as pd
+
     base = resources.files("gmnspy.fixtures.rdu_i40").joinpath("parquet")
     lid = int(pd.read_parquet(base.joinpath("link.parquet"))["link_id"].iloc[0])
     r = client.get(f"/api/link/{lid}")
@@ -85,9 +91,6 @@ def test_property_values_continuous_and_categorical(client):
     assert client.get("/api/property/nope").status_code == 404
 
 
-import json as _json
-
-
 def test_tables_lists_link_and_node(client):
     j = client.get("/api/tables").json()
     tables = {t["name"]: t for t in j["tables"]}
@@ -108,12 +111,11 @@ def test_table_rows_paged_excludes_geometry(client):
     j = client.get("/api/table/link/rows", params={"offset": 0, "limit": 5}).json()
     assert len(j["rows"]) == 5
     assert j["total"] > 5 and j["offset"] == 0
-    assert "geometry" not in j["columns"]          # geometry excluded from grid payload
+    assert "geometry" not in j["columns"]  # geometry excluded from grid payload
 
 
 def test_table_rows_sorted(client):
-    j = client.get("/api/table/link/rows",
-                   params={"limit": 50, "sort": "lanes", "dir": "asc"}).json()
+    j = client.get("/api/table/link/rows", params={"limit": 50, "sort": "lanes", "dir": "asc"}).json()
     li = j["columns"].index("lanes")
     vals = [r[li] for r in j["rows"] if r[li] is not None]
     assert vals == sorted(vals)
@@ -130,8 +132,7 @@ def test_table_rows_filtered(client):
 def test_table_rows_crossfilter_by_ids(client):
     base = resources.files("gmnspy.fixtures.rdu_i40").joinpath("parquet")
     ids = [int(i) for i in pd.read_parquet(base.joinpath("link.parquet"))["link_id"].iloc[:3]]
-    j = client.get("/api/table/link/rows",
-                   params={"ids": ",".join(map(str, ids)), "limit": 500}).json()
+    j = client.get("/api/table/link/rows", params={"ids": ",".join(map(str, ids)), "limit": 500}).json()
     assert j["total"] == 3
 
 
@@ -159,7 +160,7 @@ def test_fragment_query_form(client):
     base = resources.files("gmnspy.fixtures.rdu_i40").joinpath("parquet")
     ids = [int(i) for i in pd.read_parquet(base.joinpath("link.parquet"))["link_id"].iloc[:2]]
     j = client.post("/api/fragment", json={"link_ids": ids, "form": "query"}).json()
-    assert j["fragment"]["links"]["link_id"] == ids   # query form of explicit ids
+    assert j["fragment"]["links"]["link_id"] == ids  # query form of explicit ids
 
 
 def test_fragment_empty_is_rejected(client):
@@ -174,8 +175,7 @@ def test_fragment_unknown_ids_not_found(client):
 
 
 def test_select_returns_link_ids_and_anchors(client):
-    r = client.get("/api/select",
-                   params={"utterance": "I-40 EB between South Miami Boulevard and Airport Boulevard"})
+    r = client.get("/api/select", params={"utterance": "I-40 EB between South Miami Boulevard and Airport Boulevard"})
     assert r.status_code == 200
     j = r.json()
     assert j["status"] == "resolved"

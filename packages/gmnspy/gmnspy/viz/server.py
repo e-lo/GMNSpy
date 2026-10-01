@@ -6,6 +6,7 @@ the NL selection (`/api/select`, reusing :mod:`gmnspy.select`). The frontend
 (deck.gl + MapLibre) renders links + nodes from the binary and highlights a
 selection by slicing the already-loaded buffer. Requires the ``[server]`` extra.
 """
+
 from __future__ import annotations
 
 import json as _json
@@ -17,14 +18,13 @@ import pandas as pd
 from fastapi import Body, FastAPI, Query, Response
 from fastapi.responses import HTMLResponse, JSONResponse
 
+from gmnspy.select.emit import to_fragment
 from gmnspy.select.intent import SelectionIntent
 from gmnspy.select.parse import ClaudeParser, StubParser
 from gmnspy.select.resolve import resolve_frames
-from gmnspy.select.emit import to_fragment
 
 from .buffers import network_attrs, pack_network
-from .tables import (FilterError, columns_of, page_table, primary_key,
-                     table_list_entry, table_schema)
+from .tables import FilterError, columns_of, page_table, primary_key, table_list_entry, table_schema
 
 __all__ = ["build_app"]
 
@@ -63,8 +63,7 @@ def _json_scalar(v: Any) -> Any:
 
 
 #: Columns never offered as a color-by property (geometry/opaque or identity).
-_SKIP_STYLE_COLS = {"geometry", "osm_node_ids", "osm_way_id", "link_id",
-                    "from_node_id", "to_node_id"}
+_SKIP_STYLE_COLS = {"geometry", "osm_node_ids", "osm_way_id", "link_id", "from_node_id", "to_node_id"}
 _MAX_CATEGORIES = 25
 
 
@@ -77,7 +76,7 @@ def _styleable_columns(links) -> list[dict]:
         s = links[c]
         if pd.api.types.is_numeric_dtype(s):
             out.append({"name": c, "kind": "continuous"})
-        elif s.nunique(dropna=True) <= _MAX_CATEGORIES:   # skip high-cardinality (e.g. name)
+        elif s.nunique(dropna=True) <= _MAX_CATEGORIES:  # skip high-cardinality (e.g. name)
             out.append({"name": c, "kind": "categorical"})
     return out
 
@@ -89,11 +88,20 @@ def _property_payload(links, name: str) -> dict | None:
     values = [_json_scalar(v) for v in s]
     if pd.api.types.is_numeric_dtype(s):
         nn = [v for v in values if v is not None]
-        return {"name": name, "kind": "continuous", "values": values,
-                "min": min(nn) if nn else 0, "max": max(nn) if nn else 1}
+        return {
+            "name": name,
+            "kind": "continuous",
+            "values": values,
+            "min": min(nn) if nn else 0,
+            "max": max(nn) if nn else 1,
+        }
     cats = sorted({str(v) for v in values if v is not None})
-    return {"name": name, "kind": "categorical", "values": [None if v is None else str(v) for v in values],
-            "categories": cats}
+    return {
+        "name": name,
+        "kind": "categorical",
+        "values": [None if v is None else str(v) for v in values],
+        "categories": cats,
+    }
 
 
 _ESRI = "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas"
@@ -113,19 +121,34 @@ def _basemap_style(basemap: str = "positron"):
     No basemap option requires or embeds a secret.
     """
     if basemap == "esri":
-        return {"version": 8, "sources": {
-            "basemap": {"type": "raster", "tileSize": 256, "maxzoom": 16,
-                        "attribution": "Esri, © OpenStreetMap contributors",
-                        "tiles": [f"{_ESRI}/World_Light_Gray_Base/MapServer/tile/{{z}}/{{y}}/{{x}}"]},
-            "labels": {"type": "raster", "tileSize": 256, "maxzoom": 16,
-                       "tiles": [f"{_ESRI}/World_Light_Gray_Reference/MapServer/tile/{{z}}/{{y}}/{{x}}"]}},
-            "layers": [{"id": "basemap", "type": "raster", "source": "basemap"},
-                       {"id": "labels", "type": "raster", "source": "labels"}]}
+        return {
+            "version": 8,
+            "sources": {
+                "basemap": {
+                    "type": "raster",
+                    "tileSize": 256,
+                    "maxzoom": 16,
+                    "attribution": "Esri, © OpenStreetMap contributors",
+                    "tiles": [f"{_ESRI}/World_Light_Gray_Base/MapServer/tile/{{z}}/{{y}}/{{x}}"],
+                },
+                "labels": {
+                    "type": "raster",
+                    "tileSize": 256,
+                    "maxzoom": 16,
+                    "tiles": [f"{_ESRI}/World_Light_Gray_Reference/MapServer/tile/{{z}}/{{y}}/{{x}}"],
+                },
+            },
+            "layers": [
+                {"id": "basemap", "type": "raster", "source": "basemap"},
+                {"id": "labels", "type": "raster", "source": "labels"},
+            ],
+        }
     return _POSITRON_URL
 
 
-def build_app(links, nodes, *, provider: str = "stub", parser=None, basemap: str = "positron",
-              tables: dict | None = None) -> FastAPI:
+def build_app(
+    links, nodes, *, provider: str = "stub", parser=None, basemap: str = "positron", tables: dict | None = None
+) -> FastAPI:
     """Return the viewer FastAPI app over ``links``/``nodes`` frames.
 
     ``basemap`` selects the (keyless) basemap: ``"positron"`` (default) or ``"esri"``.
@@ -184,8 +207,7 @@ def build_app(links, nodes, *, provider: str = "stub", parser=None, basemap: str
         if len(row) == 0:
             return JSONResponse({"error": f"link {link_id} not found"}, status_code=404)
         rec = row.iloc[0].to_dict()
-        return JSONResponse({"link_id": _py(key),
-                             "attributes": {k: _json_scalar(v) for k, v in rec.items()}})
+        return JSONResponse({"link_id": _py(key), "attributes": {k: _json_scalar(v) for k, v in rec.items()}})
 
     @app.get("/api/tables")
     def tables_list() -> JSONResponse:
@@ -198,8 +220,15 @@ def build_app(links, nodes, *, provider: str = "stub", parser=None, basemap: str
         return JSONResponse(table_schema(name, _tables[name]))
 
     @app.get("/api/table/{name}/rows")
-    def table_rows(name: str, offset: int = 0, limit: int = 100, sort: str | None = None,
-                   dir: str = "asc", filter: str | None = None, ids: str | None = None) -> JSONResponse:
+    def table_rows(
+        name: str,
+        offset: int = 0,
+        limit: int = 100,
+        sort: str | None = None,
+        dir: str = "asc",
+        filter: str | None = None,
+        ids: str | None = None,
+    ) -> JSONResponse:
         if name not in _tables:
             return JSONResponse({"error": f"unknown table {name}"}, status_code=404)
         df = _tables[name]
@@ -209,15 +238,22 @@ def build_app(links, nodes, *, provider: str = "stub", parser=None, basemap: str
             return JSONResponse({"error": f"bad filter json: {exc}"}, status_code=400)
         id_list = _parse_ids(ids)
         try:
-            payload = page_table(df, offset=offset, limit=limit, sort=sort, direction=dir,
-                                 filter_spec=spec, ids=id_list,
-                                 pk=primary_key(name, columns_of(df)))
+            payload = page_table(
+                df,
+                offset=offset,
+                limit=limit,
+                sort=sort,
+                direction=dir,
+                filter_spec=spec,
+                ids=id_list,
+                pk=primary_key(name, columns_of(df)),
+            )
         except FilterError as exc:
             return JSONResponse({"error": str(exc)}, status_code=400)
         return JSONResponse({"name": name, **payload})
 
     @app.post("/api/fragment")
-    def fragment(payload: dict = Body(...)) -> JSONResponse:
+    def fragment(payload: dict = Body(...)) -> JSONResponse:  # noqa: B008  (FastAPI Body default)
         """Emit a validated selection fragment from interactively-picked link ids.
 
         Body: ``{"link_ids": [...], "form": "resolved"|"query"}``. Reuses the
@@ -230,27 +266,52 @@ def build_app(links, nodes, *, provider: str = "stub", parser=None, basemap: str
         form = payload.get("form", "resolved")
         result = resolve_frames(SelectionIntent(link_ids=list(ids)), links, nodes)
         frag = to_fragment(result, form=form) if result.status == "resolved" else None
-        return JSONResponse({"status": result.status, "count": len(result.link_ids),
-                             "link_ids": [_py(i) for i in result.link_ids], "fragment": frag,
-                             "diagnostics": list(result.diagnostics)})
+        return JSONResponse(
+            {
+                "status": result.status,
+                "count": len(result.link_ids),
+                "link_ids": [_py(i) for i in result.link_ids],
+                "fragment": frag,
+                "diagnostics": list(result.diagnostics),
+            }
+        )
 
     @app.get("/api/select")
     def select(utterance: str = Query(..., min_length=1)) -> dict:
         try:
             intent = _parser.parse(utterance)
         except Exception as exc:  # parse failures are a normal "not_found"
-            return {"status": "not_found", "utterance": utterance, "link_ids": [],
-                    "anchors": [], "fragment": None, "diagnostics": [f"could not parse: {exc}"]}
+            return {
+                "status": "not_found",
+                "utterance": utterance,
+                "link_ids": [],
+                "anchors": [],
+                "fragment": None,
+                "diagnostics": [f"could not parse: {exc}"],
+            }
         result = resolve_frames(intent, links, nodes)
         anchors = []
         for role, m in (("from", result.from_match), ("to", result.to_match)):
             if m and m.node_id is not None and m.node_id in node_xy:
                 lon, lat = node_xy[m.node_id]
-                anchors.append({"role": role, "node_id": _py(m.node_id), "lon": lon,
-                                "lat": lat, "kind": m.kind, "detail": m.detail})
+                anchors.append(
+                    {
+                        "role": role,
+                        "node_id": _py(m.node_id),
+                        "lon": lon,
+                        "lat": lat,
+                        "kind": m.kind,
+                        "detail": m.detail,
+                    }
+                )
         fragment = to_fragment(result) if result.status == "resolved" else None
-        return {"status": result.status, "utterance": utterance,
-                "link_ids": [_py(i) for i in result.link_ids], "anchors": anchors,
-                "fragment": fragment, "diagnostics": list(result.diagnostics)}
+        return {
+            "status": result.status,
+            "utterance": utterance,
+            "link_ids": [_py(i) for i in result.link_ids],
+            "anchors": anchors,
+            "fragment": fragment,
+            "diagnostics": list(result.diagnostics),
+        }
 
     return app

@@ -1,6 +1,7 @@
 """Tests for gmnspy.select.parse — utterance -> SelectionIntent."""
-from gmnspy.select.parse import StubParser, ClaudeParser
+
 from gmnspy.select.intent import SelectionIntent
+from gmnspy.select.parse import ClaudeParser, StubParser
 
 
 def test_stub_parses_route_direction_between():
@@ -42,11 +43,10 @@ def test_claude_parser_reads_tool_use_input():
     class _Block:
         type = "tool_use"
         name = "emit_selection_intent"
-        input = {"facility": {"ref": "I 40", "direction": "EB"},
-                 "from_anchor": "A Street", "to_anchor": "B Street"}
+        input = {"facility": {"ref": "I 40", "direction": "EB"}, "from_anchor": "A Street", "to_anchor": "B Street"}  # noqa: RUF012
 
     class _Resp:
-        content = [_Block()]
+        content = [_Block()]  # noqa: RUF012
 
     class _Messages:
         def create(self, **kwargs):

@@ -12,6 +12,7 @@ Both carry the resolved segment ``from``/``to`` node ids when present. The
 fragment is keyed by GMNS-native ``link_id``/``node_id``; :func:`to_projectcard`
 adapts to ProjectCard's ``model_link_id``/``model_node_id``.
 """
+
 from __future__ import annotations
 
 import json
@@ -24,7 +25,7 @@ import jsonschema
 from .errors import SelectError
 from .result import SelectionResult
 
-__all__ = ["to_fragment", "validate_fragment", "to_projectcard", "load_schema"]
+__all__ = ["load_schema", "to_fragment", "to_projectcard", "validate_fragment"]
 
 _EMITTABLE = {"resolved"}
 
@@ -50,7 +51,7 @@ def _query_links(intent, id_key: str) -> dict[str, Any]:
             links["ref"] = list(intent.facility.refs())
     if intent.modes:
         links["modes"] = list(intent.modes)
-    for col, val in (intent.conditions or {}).items():   # extra attribute AND-conditions
+    for col, val in (intent.conditions or {}).items():  # extra attribute AND-conditions
         links[col] = val
     if not intent.ignore_missing:
         links["ignore_missing"] = False
@@ -61,8 +62,10 @@ def to_fragment(result: SelectionResult, *, form: str = "resolved") -> dict[str,
     """Build the GMNS-native selection fragment from a resolved result.
 
     Args:
+        result: The resolved selection to emit.
         form: ``"resolved"`` (concrete ``links.link_id``) or ``"query"``
             (``all``/``name``/``ref`` + modes + conditions, re-resolvable).
+
     Raises:
         SelectError: if the result is not emittable (not resolved/ambiguous).
     """

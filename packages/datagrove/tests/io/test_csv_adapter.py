@@ -17,7 +17,6 @@ from pathlib import Path
 
 import pytest
 from datagrove.engines.ibis_engine import IbisEngine
-from datagrove.engines.ibis_engine import IbisEngine
 from datagrove.io import FormatAdapter, dispatch, list_adapters
 from datagrove.io.csv_adapter import CsvAdapter
 from gmnspy.fixtures import leavenworth

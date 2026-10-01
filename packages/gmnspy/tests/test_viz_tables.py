@@ -1,25 +1,25 @@
 """Unit tests for gmnspy.viz.tables — paged/sorted/filtered GMNS table access."""
+
 from importlib import resources
 
 import pandas as pd
-
 import pyarrow as pa
 import pytest
 from datagrove.engines.ibis_engine import IbisEngine
-
-from gmnspy.viz.tables import (FilterError, MAX_LIMIT, page_table, primary_key,
-                               table_schema)
+from gmnspy.viz.tables import MAX_LIMIT, FilterError, page_table, primary_key, table_schema
 
 
 @pytest.fixture
 def df():
-    return pd.DataFrame({
-        "link_id": [1, 2, 3, 4],
-        "lanes": [2, 4, 4, None],
-        "facility_type": ["motorway", "primary", "motorway", "service"],
-        "name": ["I 40", "Page Road", "I 40", None],
-        "geometry": ["LINESTRING(0 0,1 1)"] * 4,
-    })
+    return pd.DataFrame(
+        {
+            "link_id": [1, 2, 3, 4],
+            "lanes": [2, 4, 4, None],
+            "facility_type": ["motorway", "primary", "motorway", "service"],
+            "name": ["I 40", "Page Road", "I 40", None],
+            "geometry": ["LINESTRING(0 0,1 1)"] * 4,
+        }
+    )
 
 
 def test_primary_key_prefers_table_name():
@@ -45,8 +45,10 @@ def test_sort_desc(df):
 
 
 def test_filter_eq_and_gte(df):
-    p = page_table(df, filter_spec=[{"col": "facility_type", "op": "eq", "val": "motorway"},
-                                    {"col": "lanes", "op": "gte", "val": 3}])
+    p = page_table(
+        df,
+        filter_spec=[{"col": "facility_type", "op": "eq", "val": "motorway"}, {"col": "lanes", "op": "gte", "val": 3}],
+    )
     assert p["total"] == 1 and p["rows"][0][p["columns"].index("link_id")] == 3
 
 
@@ -79,14 +81,16 @@ def test_limit_clamped(df):
 
 def test_null_scalars_serialize(df):
     p = page_table(df, sort="link_id")
-    assert p["rows"][3][p["columns"].index("lanes")] is None   # NaN -> None, JSON-safe
+    assert p["rows"][3][p["columns"].index("lanes")] is None  # NaN -> None, JSON-safe
 
 
 # --- lazy datagrove Table path (G1): engine push-down, pandas-parity ---
 
+
 def _ibis_link_table():
     """A lazy datagrove Table over the fixture links, on the ibis/duckdb engine."""
     from datagrove.dataset import Table
+
     base = resources.files("gmnspy.fixtures.rdu_i40").joinpath("parquet")
     df = pd.read_parquet(base.joinpath("link.parquet"))
     e = IbisEngine()
@@ -99,7 +103,7 @@ def test_page_table_lazy_matches_pandas():
     lazy = page_table(t, limit=5, sort="lanes", direction="desc", filter_spec=spec)
     eager = page_table(df, limit=5, sort="lanes", direction="desc", filter_spec=spec)
     assert lazy["total"] == eager["total"] > 0
-    assert "geometry" not in lazy["columns"]          # WKT dropped before materialising
+    assert "geometry" not in lazy["columns"]  # WKT dropped before materialising
     li = lazy["columns"].index("lanes")
     lv = [r[li] for r in lazy["rows"] if r[li] is not None]
     assert lv == sorted(lv, reverse=True)

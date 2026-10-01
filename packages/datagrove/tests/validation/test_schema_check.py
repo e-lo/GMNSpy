@@ -27,7 +27,6 @@ from pathlib import Path
 
 import pytest
 from datagrove.engines.ibis_engine import IbisEngine
-from datagrove.engines.ibis_engine import IbisEngine
 from datagrove.spec.loader import load_schema
 from datagrove.spec.model import Constraints, Field, Schema
 from datagrove.validation import Category, Severity, ValidationReport

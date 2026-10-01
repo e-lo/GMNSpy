@@ -4,6 +4,7 @@ Parses an utterance into a structured intent, resolves it against a network,
 and emits a validated GMNS selection fragment (or the ambiguity/not-found
 diagnostics). Selection only — no edit is applied.
 """
+
 from __future__ import annotations
 
 import json
@@ -14,10 +15,10 @@ from datagrove.cli.render import render_dict
 
 from gmnspy import Network
 
-from .._helpers import resolve_engine
 from ...select.emit import to_fragment
 from ...select.parse import ClaudeParser, StubParser
 from ...select.resolve import resolve
+from .._helpers import resolve_engine
 
 __all__ = ["register"]
 
@@ -30,7 +31,9 @@ def register(app: typer.Typer) -> None:
         utterance: str = typer.Argument(..., help='e.g. "I-40 EB between Harrison Ave and NC 54".'),
         source: Path = typer.Argument(..., help="Path/URL to a GMNS network."),
         provider: str = typer.Option("stub", "--provider", help="Parser: stub | claude."),
-        engine: str = typer.Option(None, "--engine", help="Compute engine (DuckDB is the only one; kept for compatibility)."),
+        engine: str = typer.Option(
+            None, "--engine", help="Compute engine (DuckDB is the only one; kept for compatibility)."
+        ),
         json_out: bool = typer.Option(False, "--json", help="Emit JSON on stdout."),
     ) -> None:
         """Resolve a natural-language selection to GMNS link/node ids.
@@ -56,12 +59,13 @@ def register(app: typer.Typer) -> None:
             fragment["_diagnostics"] = result.diagnostics
         _emit(fragment, json_out)
 
-
     @app.command(name="select-serve")
     def select_serve(
         source: Path = typer.Argument(..., help="Path/URL to a GMNS network."),
         provider: str = typer.Option("stub", "--provider", help="Parser: stub | claude."),
-        engine: str = typer.Option(None, "--engine", help="Compute engine (DuckDB is the only one; kept for compatibility)."),
+        engine: str = typer.Option(
+            None, "--engine", help="Compute engine (DuckDB is the only one; kept for compatibility)."
+        ),
         host: str = typer.Option("127.0.0.1", "--host", help="Bind host."),
         port: int = typer.Option(8848, "--port", help="Bind port."),
     ) -> None:

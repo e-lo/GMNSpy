@@ -5,12 +5,12 @@ scopes): lazy on a duckdb-backed ibis Table, pyarrow round-trip for other
 engines. Parametrised across ibis + pandas (polars via importorskip) to pin
 cross-engine parity of the ``[{col, op, val}]`` predicate language.
 """
+
 from __future__ import annotations
 
 import pytest
 from datagrove.dataset import Table
 from datagrove.dataset.filter import FilterSpecError, filter_rows
-from datagrove.engines.ibis_engine import IbisEngine
 from datagrove.engines.ibis_engine import IbisEngine
 
 _ROWS = [
@@ -49,7 +49,7 @@ def test_eq(engine_name):
 @pytest.mark.parametrize("engine_name", ["ibis"])
 def test_gte_excludes_null(engine_name):
     t = filter_rows(_table(engine_name), [{"col": "lanes", "op": "gte", "val": 4}])
-    assert t.count() == 2   # 4 and 6; null-lane row excluded
+    assert t.count() == 2  # 4 and 6; null-lane row excluded
 
 
 @pytest.mark.parametrize("engine_name", ["ibis"])
@@ -71,8 +71,9 @@ def test_notnull(engine_name):
 
 @pytest.mark.parametrize("engine_name", ["ibis"])
 def test_conditions_are_anded(engine_name):
-    t = filter_rows(_table(engine_name),
-                    [{"col": "ft", "op": "eq", "val": "motorway"}, {"col": "lanes", "op": "gte", "val": 5}])
+    t = filter_rows(
+        _table(engine_name), [{"col": "ft", "op": "eq", "val": "motorway"}, {"col": "lanes", "op": "gte", "val": 5}]
+    )
     assert t.count() == 1 and _fts(t) == ["motorway"]
 
 

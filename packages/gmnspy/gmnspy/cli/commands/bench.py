@@ -20,7 +20,9 @@ def register(app: typer.Typer) -> None:
     @app.command(name="bench")
     def bench(
         source: Path = typer.Argument(..., help="Path/URL to a GMNS network."),
-        engine: str = typer.Option(None, "--engine", help="Compute engine (DuckDB is the only one; kept for compatibility)."),
+        engine: str = typer.Option(
+            None, "--engine", help="Compute engine (DuckDB is the only one; kept for compatibility)."
+        ),
         json_out: bool = typer.Option(False, "--json", help="Emit JSON on stdout."),
     ) -> None:
         """Run read/validate/connectivity benchmarks; print timings.

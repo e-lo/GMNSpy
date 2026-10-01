@@ -27,7 +27,6 @@ from typing import Any
 
 import pytest
 from datagrove.engines.ibis_engine import IbisEngine
-from datagrove.engines.ibis_engine import IbisEngine
 from datagrove.validation import Category, Severity, ValidationReport
 from datagrove.validation.sync_state import (
     DirtyTracker,

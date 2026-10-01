@@ -14,6 +14,7 @@ strategy as the spatial scopes in :mod:`datagrove.dataset.view`:
 This is the predicate layer behind the viewer's data-table filters, so a
 million-row GMNS table filters in the engine rather than in Python.
 """
+
 from __future__ import annotations
 
 import functools
@@ -26,7 +27,7 @@ from datagrove.validation._ibis import to_ibis
 
 from .table import Table
 
-__all__ = ["filter_rows", "FilterSpecError"]
+__all__ = ["FilterSpecError", "filter_rows"]
 
 
 class FilterSpecError(ValueError):
@@ -94,8 +95,8 @@ def filter_rows(table: Table, conditions: list[dict]) -> Table:
     """
     if not conditions:
         return table
-    if _ibis_backend_of(table) is not None:        # ibis/duckdb: stay lazy, push down
+    if _ibis_backend_of(table) is not None:  # ibis/duckdb: stay lazy, push down
         return table._derived(table.expr.filter(_predicate(table.expr, conditions)))
-    ibis_table = to_ibis(table.expr)               # pandas/polars: memtable round-trip
+    ibis_table = to_ibis(table.expr)  # pandas/polars: memtable round-trip
     filtered = ibis_table.filter(_predicate(ibis_table, conditions))
     return table._derived(table.engine.from_arrow(filtered.to_pyarrow()))

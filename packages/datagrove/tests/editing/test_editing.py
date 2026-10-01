@@ -35,7 +35,6 @@ from datagrove.editing import (
 )
 from datagrove.editing.apply import apply_edit
 from datagrove.engines.ibis_engine import IbisEngine
-from datagrove.engines.ibis_engine import IbisEngine
 from datagrove.validation.sync_state import DirtyTracker
 
 

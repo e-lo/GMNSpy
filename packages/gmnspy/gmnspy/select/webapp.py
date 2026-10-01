@@ -6,6 +6,7 @@ nodes marked. Backend is a thin FastAPI app over the resolver — the network is
 loaded once and served as GeoJSON (localhost; render, not transfer, is the cost
 MapLibre removes). Requires the ``[server]`` + ``[nl]`` extras.
 """
+
 from __future__ import annotations
 
 from functools import lru_cache
@@ -34,8 +35,16 @@ def _anchor_payload(nodes, result: SelectionResult) -> list[dict]:
     for role, match in (("from", result.from_match), ("to", result.to_match)):
         if match and match.node_id is not None:
             lon, lat = node_lonlat(nodes, match.node_id)
-            out.append({"role": role, "node_id": _py(match.node_id), "lon": lon,
-                        "lat": lat, "kind": match.kind, "detail": match.detail})
+            out.append(
+                {
+                    "role": role,
+                    "node_id": _py(match.node_id),
+                    "lon": lon,
+                    "lat": lat,
+                    "kind": match.kind,
+                    "detail": match.detail,
+                }
+            )
     return out
 
 
@@ -66,9 +75,14 @@ def build_app(links, nodes, *, provider: str = "stub", parser=None) -> FastAPI:
         try:
             intent = _parser.parse(utterance)
         except IntentError as exc:
-            return {"status": "not_found", "utterance": utterance, "fragment": None,
-                    "selected": {"type": "FeatureCollection", "features": []},
-                    "anchors": [], "diagnostics": [f"could not parse: {exc}"]}
+            return {
+                "status": "not_found",
+                "utterance": utterance,
+                "fragment": None,
+                "selected": {"type": "FeatureCollection", "features": []},
+                "anchors": [],
+                "diagnostics": [f"could not parse: {exc}"],
+            }
         result = resolve_frames(intent, links, nodes)
         payload: dict[str, Any] = {
             "status": result.status,
@@ -82,9 +96,11 @@ def build_app(links, nodes, *, provider: str = "stub", parser=None) -> FastAPI:
         }
         if result.link_ids:
             payload["selected"] = links_to_geojson(links, link_ids=result.link_ids, nodes=nodes)
-            payload["fragment"] = (to_fragment(result) if result.status == "resolved"
-                                   else {"links": {"link_id": [_py(i) for i in result.link_ids]},
-                                         "_status": result.status})
+            payload["fragment"] = (
+                to_fragment(result)
+                if result.status == "resolved"
+                else {"links": {"link_id": [_py(i) for i in result.link_ids]}, "_status": result.status}
+            )
         else:
             payload["selected"] = {"type": "FeatureCollection", "features": []}
             payload["fragment"] = None

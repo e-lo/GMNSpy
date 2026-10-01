@@ -246,7 +246,7 @@ def list_engines() -> list[str]:
 # DuckDB (via ibis) is the single compute engine. pandas / polars / pyarrow
 # are input/output *formats* (see Engine.to_pandas / to_polars and the Arrow
 # input path), not compute backends.
-from .ibis_engine import IbisEngine
+from .ibis_engine import IbisEngine  # noqa: E402  (deferred: after registry fns, avoids circular import)
 
 register_engine(IbisEngine(), default=True)
 

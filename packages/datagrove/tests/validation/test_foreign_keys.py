@@ -25,7 +25,6 @@ from typing import Any
 
 import pytest
 from datagrove.engines.ibis_engine import IbisEngine
-from datagrove.engines.ibis_engine import IbisEngine
 from datagrove.spec.loader import load_package
 from datagrove.spec.model import (
     Constraints,

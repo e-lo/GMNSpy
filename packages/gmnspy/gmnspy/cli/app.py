@@ -31,10 +31,10 @@ from .commands import (
     quality,
     scope,
     select,
-    viz,
     server,
     spec,
     validate,
+    viz,
 )
 
 __all__ = ["app"]

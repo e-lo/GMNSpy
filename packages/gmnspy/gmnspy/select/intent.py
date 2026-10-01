@@ -14,6 +14,7 @@ The LLM (or stub) produces a :class:`SelectionIntent`; it never produces ids
 directly except the explicit ``link_ids`` passthrough. Resolution happens in
 :mod:`gmnspy.select.resolve`.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -21,7 +22,7 @@ from typing import Any
 
 from .errors import IntentError
 
-__all__ = ["Facility", "SelectionIntent", "DIRECTIONS"]
+__all__ = ["DIRECTIONS", "Facility", "SelectionIntent"]
 
 #: Recognised travel directions on a facility.
 DIRECTIONS = frozenset({"EB", "WB", "NB", "SB"})
@@ -49,9 +50,11 @@ class Facility:
     direction: str | None = None
 
     def refs(self) -> tuple:
+        """Route refs as a tuple (empty when unset)."""
         return _as_tuple(self.ref)
 
     def names(self) -> tuple:
+        """Street names as a tuple (empty when unset)."""
         return _as_tuple(self.name)
 
 
@@ -84,6 +87,7 @@ class SelectionIntent:
     utterance: str | None = None
 
     def __post_init__(self) -> None:
+        """Validate that at least one primary selector is present."""
         has_facility = bool(self.facility and (self.facility.refs() or self.facility.names()))
         has_ids = bool(self.link_ids)
         if not (has_facility or has_ids or self.select_all):

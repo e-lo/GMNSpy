@@ -1,9 +1,9 @@
 """Resolver tests against the committed rdu_i40 fixture (real I-40 interchanges)."""
+
 from importlib import resources
 
 import pandas as pd
 import pytest
-
 from gmnspy.select.intent import Facility, SelectionIntent
 from gmnspy.select.resolve import resolve_frames
 
@@ -19,7 +19,8 @@ def rdu():
 def _intent(direction, a, b):
     return SelectionIntent(
         facility=Facility(ref="I 40", direction=direction),
-        from_anchor=a, to_anchor=b,
+        from_anchor=a,
+        to_anchor=b,
         utterance=f"I-40 {direction} between {a} and {b}",
     )
 
@@ -52,10 +53,15 @@ def test_direction_reverses_path(rdu):
 
 def test_unknown_facility_not_found(rdu):
     links, nodes = rdu
-    r = resolve_frames(_intent("EB", "South Miami Boulevard", "Airport Boulevard")
-                       .__class__(facility=Facility(ref="I 999", direction="EB"),
-                                  from_anchor="South Miami Boulevard", to_anchor="Airport Boulevard"),
-                       links, nodes)
+    r = resolve_frames(
+        _intent("EB", "South Miami Boulevard", "Airport Boulevard").__class__(
+            facility=Facility(ref="I 999", direction="EB"),
+            from_anchor="South Miami Boulevard",
+            to_anchor="Airport Boulevard",
+        ),
+        links,
+        nodes,
+    )
     assert r.status == "not_found"
 
 

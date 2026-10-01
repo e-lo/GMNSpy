@@ -7,6 +7,7 @@ ProjectCard-select-links parity. Pipeline (engine-agnostic; pandas frames):
   4. segment or whole — if from/to anchors: shortest path along the facility
      (freeway gore/merge); else the whole filtered set
 """
+
 from __future__ import annotations
 
 import collections
@@ -26,14 +27,16 @@ from ._support import (
 from .intent import SelectionIntent
 from .result import SelectionResult
 
-__all__ = ["resolve_frames", "resolve"]
+__all__ = ["resolve", "resolve_frames"]
 
 _FREEWAY_TYPES = ("motorway", "trunk")
 
 
 def _node_coords(nodes):
-    return (dict(zip(nodes["node_id"], nodes["x_coord"])),
-            dict(zip(nodes["node_id"], nodes["y_coord"])))
+    return (
+        dict(zip(nodes["node_id"], nodes["x_coord"], strict=False)),
+        dict(zip(nodes["node_id"], nodes["y_coord"], strict=False)),
+    )
 
 
 def _facility_links(links, facility):
@@ -57,8 +60,11 @@ def _facility_links(links, facility):
 def _filter_direction(mainline, direction, nx, ny):
     if direction is None:
         return mainline
-    keep = [row.link_id for row in mainline.itertuples()
-            if matches_direction(bearing_deg(nx, ny, row.from_node_id, row.to_node_id), direction)]
+    keep = [
+        row.link_id
+        for row in mainline.itertuples()
+        if matches_direction(bearing_deg(nx, ny, row.from_node_id, row.to_node_id), direction)
+    ]
     return mainline[mainline["link_id"].isin(keep)]
 
 
@@ -69,25 +75,24 @@ def _apply_conditions(base, conditions: dict):
         if col not in base.columns:
             missing.append(col)
             continue
-        if isinstance(val, (list, tuple, set)):
-            base = base[base[col].isin(list(val))]
-        else:
-            base = base[base[col] == val]
+        base = base[base[col].isin(list(val))] if isinstance(val, (list, tuple, set)) else base[base[col] == val]
     return base, missing
 
 
 def _apply_modes(base, modes):
-    """Best-effort mode filter (GMNS mode modelling varies). Filters on an
-    ``allowed_uses``/``modes`` column when present; otherwise a no-op carried
-    through to the emitted selection for ProjectCard fidelity."""
+    """Best-effort mode filter (GMNS mode modelling varies).
+
+    Filters on an ``allowed_uses``/``modes`` column when present; otherwise a
+    no-op carried through to the emitted selection for ProjectCard fidelity.
+    """
     if not modes:
         return base, False
     for col in ("allowed_uses", "modes"):
         if col in base.columns:
             want = set(modes)
-            keep = base[col].apply(lambda v: bool(want & set(str(v).replace(",", " ").split())))
+            keep = base[col].apply(lambda v, want=want: bool(want & set(str(v).replace(",", " ").split())))
             return base[keep], True
-    return base, False   # no mode data — selection unfiltered (modes still emitted)
+    return base, False  # no mode data — selection unfiltered (modes still emitted)
 
 
 def _base_selection(intent, links):
@@ -96,7 +101,8 @@ def _base_selection(intent, links):
     if intent.select_all:
         return links, "all links"
     return _facility_links(links, intent.facility), "facility " + repr(
-        list(intent.facility.refs()) + list(intent.facility.names()))
+        list(intent.facility.refs()) + list(intent.facility.names())
+    )
 
 
 def _whole(intent, base, diags):
@@ -106,21 +112,28 @@ def _whole(intent, base, diags):
 
 
 def _row_len(nx, ny, row):
-    return link_length(nx, ny, {"length": getattr(row, "length", None),
-                                "from_node_id": row.from_node_id, "to_node_id": row.to_node_id})
+    return link_length(
+        nx, ny, {"length": getattr(row, "length", None), "from_node_id": row.from_node_id, "to_node_id": row.to_node_id}
+    )
 
 
 def _result_from_path(intent, base, from_m, to_m, path, diags, *, cand_note):
     if path is None:
-        return SelectionResult("not_found", intent, from_match=from_m, to_match=to_m,
-                               diagnostics=diags + ["no path between resolved anchor nodes"])
+        return SelectionResult(
+            "not_found",
+            intent,
+            from_match=from_m,
+            to_match=to_m,
+            diagnostics=[*diags, "no path between resolved anchor nodes"],
+        )
     link_ids = [to_py(i) for i in path[0]]
     node_path = [to_py(n) for n in path[1]]
     status = "ambiguous" if (from_m.candidates or to_m.candidates) else "resolved"
     if status == "ambiguous":
-        diags = diags + [cand_note]
-    return SelectionResult(status, intent, link_ids=link_ids, node_path=node_path,
-                           from_match=from_m, to_match=to_m, diagnostics=diags)
+        diags = [*diags, cand_note]
+    return SelectionResult(
+        status, intent, link_ids=link_ids, node_path=node_path, from_match=from_m, to_match=to_m, diagnostics=diags
+    )
 
 
 def _freeway_segment(intent, base, links, nx, ny, diags):
@@ -131,14 +144,21 @@ def _freeway_segment(intent, base, links, nx, ny, diags):
     interchanges = _anchors.classify_interchanges(links, directed_nodes, mainline_nodes)
     from_m = _anchors.resolve_anchor(intent.from_anchor, "from", links, interchanges)
     to_m = _anchors.resolve_anchor(intent.to_anchor, "to", links, interchanges)
-    diags = diags + [from_m.detail, to_m.detail]
+    diags = [*diags, from_m.detail, to_m.detail]
     if from_m.node_id is None or to_m.node_id is None:
         return SelectionResult("not_found", intent, from_match=from_m, to_match=to_m, diagnostics=diags)
     adj = collections.defaultdict(list)
     for row in base.itertuples():
         adj[row.from_node_id].append((row.to_node_id, _row_len(nx, ny, row), row.link_id))
-    return _result_from_path(intent, base, from_m, to_m, dijkstra_links(adj, from_m.node_id, to_m.node_id),
-                             diags, cand_note="multiple interchange candidates; picked nearest (see candidates)")
+    return _result_from_path(
+        intent,
+        base,
+        from_m,
+        to_m,
+        dijkstra_links(adj, from_m.node_id, to_m.node_id),
+        diags,
+        cand_note="multiple interchange candidates; picked nearest (see candidates)",
+    )
 
 
 def _surface_segment(intent, base, links, nx, ny, diags):
@@ -146,16 +166,23 @@ def _surface_segment(intent, base, links, nx, ny, diags):
     facility_nodes = set(base["from_node_id"]) | set(base["to_node_id"])
     from_m = _anchors.resolve_surface_anchor(intent.from_anchor, facility_nodes, links)
     to_m = _anchors.resolve_surface_anchor(intent.to_anchor, facility_nodes, links)
-    diags = diags + [from_m.detail, to_m.detail]
+    diags = [*diags, from_m.detail, to_m.detail]
     if from_m.node_id is None or to_m.node_id is None:
         return SelectionResult("not_found", intent, from_match=from_m, to_match=to_m, diagnostics=diags)
-    adj = collections.defaultdict(list)      # undirected: surface streets are usually two-way
+    adj = collections.defaultdict(list)  # undirected: surface streets are usually two-way
     for row in base.itertuples():
         w = _row_len(nx, ny, row)
         adj[row.from_node_id].append((row.to_node_id, w, row.link_id))
         adj[row.to_node_id].append((row.from_node_id, w, row.link_id))
-    return _result_from_path(intent, base, from_m, to_m, dijkstra_links(adj, from_m.node_id, to_m.node_id),
-                             diags, cand_note="multiple intersection candidates; picked nearest (see candidates)")
+    return _result_from_path(
+        intent,
+        base,
+        from_m,
+        to_m,
+        dijkstra_links(adj, from_m.node_id, to_m.node_id),
+        diags,
+        cand_note="multiple intersection candidates; picked nearest (see candidates)",
+    )
 
 
 def resolve_frames(intent: SelectionIntent, links, nodes) -> SelectionResult:
@@ -172,8 +199,9 @@ def resolve_frames(intent: SelectionIntent, links, nodes) -> SelectionResult:
     if direction:
         base = _filter_direction(base, direction, nx, ny)
         if base.empty:
-            return SelectionResult("not_found", intent,
-                                   diagnostics=[f"facility found but no links in direction {direction!r}"])
+            return SelectionResult(
+                "not_found", intent, diagnostics=[f"facility found but no links in direction {direction!r}"]
+            )
 
     # 3. modes + attribute conditions (AND)
     base, missing_cols = _apply_conditions(base, intent.conditions)
@@ -182,7 +210,7 @@ def resolve_frames(intent: SelectionIntent, links, nodes) -> SelectionResult:
     if missing_cols:
         diags.append(f"ignored conditions on unknown column(s): {missing_cols}")
     if base.empty:
-        return SelectionResult("not_found", intent, diagnostics=diags + ["no links after filters"])
+        return SelectionResult("not_found", intent, diagnostics=[*diags, "no links after filters"])
 
     # 4. whole-facility / all  vs  segment (from/to)
     if not (intent.from_anchor and intent.to_anchor):
@@ -196,6 +224,7 @@ def resolve_frames(intent: SelectionIntent, links, nodes) -> SelectionResult:
 
 def resolve(intent: SelectionIntent, net) -> SelectionResult:
     """Resolve against a gmnspy Network (materializes link/node tables)."""
+
     def _pd(table):
         return table.to_pandas() if hasattr(table, "to_pandas") else table.execute()
 

@@ -26,7 +26,6 @@ from __future__ import annotations
 import pytest
 from datagrove.dataset import Table
 from datagrove.engines.ibis_engine import IbisEngine
-from datagrove.engines.ibis_engine import IbisEngine
 from datagrove.reports import ValidationReport
 from gmnspy.fixtures import leavenworth
 
