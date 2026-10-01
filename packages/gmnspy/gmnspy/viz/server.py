@@ -8,6 +8,7 @@ selection by slicing the already-loaded buffer. Requires the ``[server]`` extra.
 """
 from __future__ import annotations
 
+import json as _json
 from functools import lru_cache
 from importlib import resources
 from typing import Any
@@ -22,6 +23,7 @@ from gmnspy.select.resolve import resolve_frames
 from gmnspy.select.emit import to_fragment
 
 from .buffers import network_attrs, pack_network
+from .tables import FilterError, page_table, table_list_entry, table_schema, primary_key
 
 __all__ = ["build_app"]
 
@@ -32,6 +34,22 @@ def _page() -> str:
 
 def _py(v: Any) -> Any:
     return getattr(v, "item", lambda: v)()
+
+
+def _parse_ids(ids: str | None) -> list | None:
+    """Parse a comma-separated ``ids`` querystring into ints (fallback: strings)."""
+    if not ids:
+        return None
+    out = []
+    for tok in ids.split(","):
+        tok = tok.strip()
+        if not tok:
+            continue
+        try:
+            out.append(int(tok))
+        except ValueError:
+            out.append(tok)
+    return out or None
 
 
 def _json_scalar(v: Any) -> Any:
@@ -105,15 +123,19 @@ def _basemap_style(basemap: str = "positron"):
     return _POSITRON_URL
 
 
-def build_app(links, nodes, *, provider: str = "stub", parser=None, basemap: str = "positron") -> FastAPI:
+def build_app(links, nodes, *, provider: str = "stub", parser=None, basemap: str = "positron",
+              tables: dict | None = None) -> FastAPI:
     """Return the viewer FastAPI app over ``links``/``nodes`` frames.
 
     ``basemap`` selects the (keyless) basemap: ``"positron"`` (default) or ``"esri"``.
+    ``tables`` optionally maps extra GMNS table names to frames for the data-table
+    view; ``link``/``node`` default to ``links``/``nodes``.
     """
     app = FastAPI(title="gmnspy viz")
     _style = _basemap_style(basemap)
     _parser = parser or (ClaudeParser() if provider == "claude" else StubParser())
     node_xy = {r.node_id: (float(r.x_coord), float(r.y_coord)) for r in nodes.itertuples()}
+    _tables: dict[str, Any] = {"link": links, "node": nodes, **(tables or {})}
 
     @lru_cache(maxsize=1)
     def _bin() -> bytes:
@@ -163,6 +185,35 @@ def build_app(links, nodes, *, provider: str = "stub", parser=None, basemap: str
         rec = row.iloc[0].to_dict()
         return JSONResponse({"link_id": _py(key),
                              "attributes": {k: _json_scalar(v) for k, v in rec.items()}})
+
+    @app.get("/api/tables")
+    def tables_list() -> JSONResponse:
+        return JSONResponse({"tables": [table_list_entry(n, df) for n, df in _tables.items()]})
+
+    @app.get("/api/table/{name}/schema")
+    def table_schema_ep(name: str) -> JSONResponse:
+        if name not in _tables:
+            return JSONResponse({"error": f"unknown table {name}"}, status_code=404)
+        return JSONResponse(table_schema(name, _tables[name]))
+
+    @app.get("/api/table/{name}/rows")
+    def table_rows(name: str, offset: int = 0, limit: int = 100, sort: str | None = None,
+                   dir: str = "asc", filter: str | None = None, ids: str | None = None) -> JSONResponse:
+        if name not in _tables:
+            return JSONResponse({"error": f"unknown table {name}"}, status_code=404)
+        df = _tables[name]
+        try:
+            spec = _json.loads(filter) if filter else None
+        except _json.JSONDecodeError as exc:
+            return JSONResponse({"error": f"bad filter json: {exc}"}, status_code=400)
+        id_list = _parse_ids(ids)
+        try:
+            payload = page_table(df, offset=offset, limit=limit, sort=sort, direction=dir,
+                                 filter_spec=spec, ids=id_list,
+                                 pk=primary_key(name, list(df.columns)))
+        except FilterError as exc:
+            return JSONResponse({"error": str(exc)}, status_code=400)
+        return JSONResponse({"name": name, **payload})
 
     @app.post("/api/fragment")
     def fragment(payload: dict = Body(...)) -> JSONResponse:

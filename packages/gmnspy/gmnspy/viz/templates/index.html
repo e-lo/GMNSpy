@@ -17,6 +17,50 @@
   header { grid-column:1 / -1; display:flex; gap:10px; align-items:center; padding:12px 16px;
            background:var(--panel); border-bottom:1px solid var(--edge); }
   header h1 { font-size:14px; font-weight:600; margin:0 12px 0 0; color:var(--muted); }
+
+  /* view-mode segmented control */
+  #viewmode { display:flex; border:1px solid var(--edge); border-radius:8px; overflow:hidden; flex:none; }
+  #viewmode button { padding:8px 12px; background:#0c0e12; color:var(--muted); border:0; border-radius:0;
+                     font-weight:600; font-size:12.5px; }
+  #viewmode button.on { background:var(--accent); color:#11151a; }
+
+  /* stage holds map + table pane; mode decides which show */
+  #stage { position:relative; display:flex; flex-direction:column; min-height:0; min-width:0; }
+  #stage[data-mode="map"] #tablepane { display:none; }
+  #stage[data-mode="table"] #map { display:none; }
+  #stage[data-mode="table"] #tablepane { flex:1; }
+  #stage[data-mode="split"] #map { flex:1 1 55%; }
+  #stage[data-mode="split"] #tablepane { flex:1 1 45%; border-top:2px solid var(--edge); }
+  #map { flex:1; }
+
+  /* data-table pane */
+  #tablepane { display:flex; min-height:0; min-width:0; background:var(--bg); }
+  #tbl-rail { width:150px; flex:none; border-right:1px solid var(--edge); overflow:auto; padding:8px 0; background:var(--panel); }
+  .tbl-item { padding:7px 12px; cursor:pointer; font-size:12.5px; display:flex; justify-content:space-between; gap:6px; }
+  .tbl-item:hover { background:#20242e; }
+  .tbl-item.on { background:#20242e; color:var(--accent); border-left:2px solid var(--accent); padding-left:10px; }
+  .tbl-item .rc { color:var(--muted); font-size:11px; }
+  #tbl-main { flex:1; display:flex; flex-direction:column; min-width:0; min-height:0; }
+  #tbl-bar { display:flex; align-items:center; gap:10px; padding:8px 12px; border-bottom:1px solid var(--edge);
+             font-size:12.5px; color:var(--muted); }
+  #tbl-bar .tname { color:var(--ink); font-weight:600; }
+  #tbl-grid-wrap { flex:1; overflow:auto; }
+  #tbl-grid { border-collapse:collapse; width:100%; font-size:12px; }
+  #tbl-grid th { position:sticky; top:0; background:var(--panel); border-bottom:1px solid var(--edge);
+                 padding:6px 9px; text-align:left; white-space:nowrap; z-index:1; }
+  #tbl-grid th .cn { cursor:pointer; user-select:none; }
+  #tbl-grid th .cn:hover { color:var(--accent); }
+  #tbl-grid th .ar { color:var(--accent); margin-left:3px; }
+  #tbl-grid th input { width:100%; margin-top:4px; background:#0c0e12; color:var(--ink); border:1px solid var(--edge);
+                       border-radius:5px; padding:2px 5px; font-size:11px; }
+  #tbl-grid td { padding:4px 9px; border-bottom:1px solid #20242e; white-space:nowrap; max-width:240px;
+                 overflow:hidden; text-overflow:ellipsis; }
+  #tbl-grid tr.data:hover { background:#20242e; cursor:pointer; }
+  #tbl-grid tr.data.sel { background:rgba(255,140,59,.14); }
+  #tbl-pager { display:flex; align-items:center; gap:10px; padding:7px 12px; border-top:1px solid var(--edge);
+               font-size:12px; color:var(--muted); }
+  #tbl-pager button { padding:4px 10px; font-size:12px; background:#20242e; color:var(--ink); }
+  #tbl-pager button:disabled { opacity:.4; }
   #utterance { flex:1; padding:9px 12px; border:1px solid var(--edge); border-radius:8px;
                background:#0c0e12; color:var(--ink); font-size:14px; }
   button { padding:9px 16px; border:0; border-radius:8px; background:var(--accent); color:#11151a;
@@ -101,10 +145,16 @@
 <div id="app">
   <header>
     <h1>gmnspy · viz</h1>
+    <div id="viewmode">
+      <button data-mode="map" class="on">Map</button>
+      <button data-mode="split">Split</button>
+      <button data-mode="table">Table</button>
+    </div>
     <input id="utterance" placeholder='e.g. "I-40 EB between South Miami Boulevard and Airport Boulevard"' />
     <button id="go">Select</button>
     <span id="count"></span>
   </header>
+  <div id="stage" data-mode="map">
   <div id="map">
     <div id="map-btns">
       <button class="iconbtn" id="btn-pick" data-tip="Pick links (click; shift-drag box)" aria-label="Pick links">&#9647;</button>
@@ -146,6 +196,18 @@
     <div id="legend"></div>
     <div id="boxsel"></div>
   </div>
+  <div id="tablepane">
+    <div id="tbl-rail"></div>
+    <div id="tbl-main">
+      <div id="tbl-bar"><span class="tname" id="tbl-name">—</span><span id="tbl-total"></span>
+        <label class="sw" style="margin-left:auto"><input type="checkbox" id="tbl-tosel"><span></span></label>
+        <span>Filter to map selection</span></div>
+      <div id="tbl-grid-wrap"><table id="tbl-grid"></table></div>
+      <div id="tbl-pager"><button id="tbl-prev">&#8592; Prev</button>
+        <span id="tbl-range">—</span><button id="tbl-next">Next &#8594;</button></div>
+    </div>
+  </div>
+  </div>
   <aside id="side">
     <div id="status-wrap"><span class="empty">Click a link for details; hover to inspect; type an utterance to select.</span></div>
     <div class="label">Picked links <span id="pick-count" class="pcount">0</span></div>
@@ -170,7 +232,7 @@
 <script>
 // ---- state ----
 let map = null, overlay = null;
-let NET = null, ATTRS = null, ID2IDX = new Map(), PROP = null;
+let NET = null, ATTRS = null, ID2IDX = new Map(), NODEID2IDX = new Map(), PROP = null;
 const CUR = { linkIds: [], anchors: [] };
 const PICK = new Set();           // interactively picked link_ids
 let pickMode = false;
@@ -221,6 +283,7 @@ async function init() {
   map.on("load", loadNetwork);
   wirePanels();
   wireBoxSelect();
+  wireTableView();
 }
 
 function take(buf, off, bytes, Ctor) { return new Ctor(buf.slice(off, off + bytes)); }
@@ -239,6 +302,8 @@ async function loadNetwork() {
   const linkIds = take(buf, off, L.idsBytes, Float64Array); off += L.idsBytes;
   const linkLanes = take(buf, off, L.lanesBytes, Uint8Array); off += L.lanesBytes;
   const nodePositions = take(buf, off, N.positionsBytes, Float32Array); off += N.positionsBytes;
+  const nodeIds = take(buf, off, N.idsBytes, Float64Array); off += N.idsBytes;
+  for (let i = 0; i < nodeIds.length; i++) NODEID2IDX.set(nodeIds[i], i);
   const numVerts = linkStart[L.count];
   const linkWidths = new Float32Array(numVerts);
   for (let i = 0; i < L.count; i++) { const w = widthForLanes(linkLanes[i]);
@@ -453,6 +518,129 @@ function wireBoxSelect() {
   };
   mapEl.addEventListener("pointerup", finish);
   mapEl.addEventListener("pointerleave", e => { if (start) finish(e); });
+}
+
+// ---- data-table view ----
+const TBL = { loaded: false, name: null, schema: null, offset: 0, limit: 100,
+              sort: null, dir: "asc", filters: {}, total: 0, toSel: false };
+let _tblTimer = null;
+
+function setViewMode(mode) {
+  document.getElementById("stage").dataset.mode = mode;
+  for (const b of document.querySelectorAll("#viewmode button")) b.classList.toggle("on", b.dataset.mode === mode);
+  try { localStorage.setItem("gmnspy.viewmode", mode); } catch (e) {}
+  if (mode !== "map" && !TBL.loaded) loadTables();
+  if (map) setTimeout(() => map.resize(), 60);   // canvas resized after layout
+}
+
+async function loadTables() {
+  TBL.loaded = true;
+  const j = await fetch("/api/tables").then(r => r.json());
+  const rail = document.getElementById("tbl-rail");
+  rail.innerHTML = "";
+  for (const t of j.tables) {
+    const el = document.createElement("div"); el.className = "tbl-item"; el.dataset.name = t.name;
+    el.innerHTML = `<span>${t.name}</span><span class="rc">${t.rows.toLocaleString()}</span>`;
+    el.onclick = () => selectTable(t.name);
+    rail.appendChild(el);
+  }
+  if (j.tables.length) selectTable(TBL.name || j.tables[0].name);
+}
+
+async function selectTable(name) {
+  TBL.name = name; TBL.offset = 0; TBL.sort = null; TBL.dir = "asc"; TBL.filters = {};
+  for (const el of document.querySelectorAll(".tbl-item")) el.classList.toggle("on", el.dataset.name === name);
+  TBL.schema = await fetch(`/api/table/${encodeURIComponent(name)}/schema`).then(r => r.json());
+  document.getElementById("tbl-name").textContent = name;
+  buildGridHeader();
+  loadRows();
+}
+
+function gridColumns() { return TBL.schema.columns.filter(c => c.kind !== "geom"); }
+
+function buildGridHeader() {
+  const cols = gridColumns();
+  const ar = c => TBL.sort === c ? `<span class="ar">${TBL.dir === "asc" ? "▲" : "▼"}</span>` : "";
+  const th = cols.map(c => `<th><span class="cn" data-col="${c.name}">${c.name}${ar(c.name)}</span>` +
+    `<input data-fcol="${c.name}" placeholder="filter" value="${TBL.filters[c.name] || ""}"></th>`).join("");
+  document.getElementById("tbl-grid").innerHTML = `<thead><tr>${th}</tr></thead><tbody id="tbl-body"></tbody>`;
+  for (const el of document.querySelectorAll("#tbl-grid .cn")) el.onclick = () => toggleSort(el.dataset.col);
+  for (const el of document.querySelectorAll("#tbl-grid input[data-fcol]"))
+    el.oninput = () => { clearTimeout(_tblTimer); _tblTimer = setTimeout(() => {
+      const v = el.value.trim(); v ? TBL.filters[el.dataset.fcol] = v : delete TBL.filters[el.dataset.fcol];
+      TBL.offset = 0; loadRows(); }, 250); };
+}
+
+function toggleSort(col) {
+  if (TBL.sort === col) TBL.dir = TBL.dir === "asc" ? "desc" : "asc"; else { TBL.sort = col; TBL.dir = "asc"; }
+  TBL.offset = 0; buildGridHeader(); loadRows();
+}
+
+function filterSpec() {
+  return Object.entries(TBL.filters).map(([col, val]) => ({ col, op: "contains", val }));
+}
+function selIdsForTable() {
+  const pk = TBL.schema && TBL.schema.primary_key;
+  if (!pk) return null;
+  if (pk === "link_id") return CUR.linkIds;
+  if (pk === "node_id") return CUR.anchors.map(a => a.node_id);
+  return null;
+}
+
+async function loadRows() {
+  const p = new URLSearchParams({ offset: TBL.offset, limit: TBL.limit });
+  if (TBL.sort) { p.set("sort", TBL.sort); p.set("dir", TBL.dir); }
+  const spec = filterSpec(); if (spec.length) p.set("filter", JSON.stringify(spec));
+  if (TBL.toSel) { const ids = selIdsForTable(); if (ids && ids.length) p.set("ids", ids.join(",")); }
+  const j = await fetch(`/api/table/${encodeURIComponent(TBL.name)}/rows?` + p).then(r => r.json());
+  TBL.total = j.total;
+  renderRows(j.columns, j.rows);
+  document.getElementById("tbl-total").textContent = `· ${j.total.toLocaleString()} row(s)`;
+  const to = Math.min(TBL.offset + TBL.limit, j.total);
+  document.getElementById("tbl-range").textContent = j.total ? `${TBL.offset + 1}–${to} of ${j.total.toLocaleString()}` : "0";
+  document.getElementById("tbl-prev").disabled = TBL.offset <= 0;
+  document.getElementById("tbl-next").disabled = to >= j.total;
+}
+
+function renderRows(cols, rows) {
+  const pk = TBL.schema.primary_key, pkIdx = cols.indexOf(pk);
+  const selIds = new Set((selIdsForTable() || []).map(String));
+  const body = document.getElementById("tbl-body");
+  body.innerHTML = rows.map(r => {
+    const pv = pkIdx >= 0 ? r[pkIdx] : null;
+    const sel = pv != null && selIds.has(String(pv)) ? " sel" : "";
+    const tds = r.map(v => `<td>${v === null ? '<span class="empty">·</span>' : String(v)}</td>`).join("");
+    return `<tr class="data${sel}" data-pk="${pv == null ? "" : pv}">${tds}</tr>`;
+  }).join("");
+  for (const tr of body.querySelectorAll("tr.data")) tr.onclick = () => tableRowClick(tr.dataset.pk);
+}
+
+function tableRowClick(pkVal) {
+  if (pkVal === "" || !TBL.schema) return;
+  const pk = TBL.schema.primary_key;
+  const idNum = Number(pkVal), id = Number.isNaN(idNum) ? pkVal : idNum;
+  if (pk === "link_id" && ID2IDX.has(id)) {
+    CUR.linkIds = [id]; refresh(); fitSelection();
+    fetch("/api/link/" + encodeURIComponent(id)).then(r => r.json())
+      .then(j => renderDetails(id, j.attributes || {})).catch(() => {});
+  } else if (pk === "node_id") {
+    highlightNode(id);
+  }
+}
+
+function highlightNode(nodeId) {       // drop a transient anchor-style marker on a node
+  const i = NET && NODEID2IDX.get(nodeId); if (i == null) return;
+  const lon = NET.nodePositions[i * 2], lat = NET.nodePositions[i * 2 + 1];
+  CUR.anchors = [{ role: "from", node_id: nodeId, lon, lat, kind: "node", detail: "table row" }];
+  refresh(); map.flyTo({ center: [lon, lat], zoom: Math.max(map.getZoom(), 15), duration: 500 });
+}
+
+function wireTableView() {
+  for (const b of document.querySelectorAll("#viewmode button")) b.onclick = () => setViewMode(b.dataset.mode);
+  document.getElementById("tbl-prev").onclick = () => { if (TBL.offset > 0) { TBL.offset = Math.max(0, TBL.offset - TBL.limit); loadRows(); } };
+  document.getElementById("tbl-next").onclick = () => { if (TBL.offset + TBL.limit < TBL.total) { TBL.offset += TBL.limit; loadRows(); } };
+  document.getElementById("tbl-tosel").onchange = e => { TBL.toSel = e.target.checked; TBL.offset = 0; loadRows(); };
+  try { const m = localStorage.getItem("gmnspy.viewmode"); if (m) setViewMode(m); } catch (e) {}
 }
 
 // ---- controls ----

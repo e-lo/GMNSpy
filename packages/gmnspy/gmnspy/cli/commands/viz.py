@@ -16,6 +16,30 @@ from .._helpers import resolve_engine
 
 __all__ = ["register"]
 
+#: Other canonical GMNS tables to expose in the data-table view when present.
+_EXTRA_TABLES = ("lanes", "segments", "segment_lanes", "zones", "movements", "link_tod")
+
+
+def _as_pandas(table):
+    return table.to_pandas() if hasattr(table, "to_pandas") else table.execute()
+
+
+def _extra_tables(net) -> dict:
+    """Materialize any additional GMNS tables the network carries (best-effort).
+
+    Keyed by singular GMNS table name (``lane``, ``segment``, …) to match the
+    data-table view's primary-key convention.
+    """
+    out = {}
+    for accessor in _EXTRA_TABLES:
+        try:
+            df = _as_pandas(getattr(net, accessor))
+        except (AttributeError, KeyError, ValueError, FileNotFoundError):
+            continue
+        if df is not None and len(df):
+            out[accessor[:-1] if accessor.endswith("s") else accessor] = df
+    return out
+
 
 def register(app: typer.Typer) -> None:
     """Register the ``viz`` command on ``app``."""
@@ -39,7 +63,10 @@ def register(app: typer.Typer) -> None:
         from ...viz.server import build_app
 
         net = Network.from_source(source, engine=resolve_engine(engine))
-        links = net.links.to_pandas() if hasattr(net.links, "to_pandas") else net.links.execute()
-        nodes = net.nodes.to_pandas() if hasattr(net.nodes, "to_pandas") else net.nodes.execute()
-        typer.echo(f"gmnspy viz on http://{host}:{port}  ({len(links)} links, {len(nodes)} nodes; basemap={basemap})")
-        uvicorn.run(build_app(links, nodes, provider=provider, basemap=basemap), host=host, port=port)
+        links = _as_pandas(net.links)
+        nodes = _as_pandas(net.nodes)
+        extra = _extra_tables(net)
+        extra_note = f", +{len(extra)} table(s): {', '.join(extra)}" if extra else ""
+        typer.echo(f"gmnspy viz on http://{host}:{port}  ({len(links)} links, {len(nodes)} nodes{extra_note}; basemap={basemap})")
+        uvicorn.run(build_app(links, nodes, provider=provider, basemap=basemap, tables=extra),
+                    host=host, port=port)

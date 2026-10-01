@@ -1,6 +1,23 @@
 # Data-table exploration view — scoping doc
 
-Status: **design only / proposed** · Date: 2026-09-30 · Owner: viz
+Status: **Phase 0 + Phase 1 BUILT** (+ early Phase-2 cross-linking) · Date: 2026-09-30 · Owner: viz
+
+> **Implemented (2026-10-01).** Server-side paged/sorted/filtered table access
+> (`gmnspy/viz/tables.py`, no raw SQL — passes `lint_no_sql`) behind new endpoints
+> `/api/tables`, `/api/table/{name}/schema`, `/api/table/{name}/rows`
+> (offset/limit/sort/dir/filter/ids). `build_app(..., tables=…)` takes extra GMNS
+> frames; `gmnspy viz` auto-exposes lanes/segments/zones/movements/link_tod when
+> present. Frontend: header **Map / Split / Table** segmented control (persisted in
+> `localStorage`), left rail of tables with row counts, a hand-rolled paged grid
+> (sortable headers, per-column `contains` filters, Prev/Next pager, geometry
+> excluded). **Cross-linking (Phase 2 start):** click a link row → highlight +
+> `fitSelection` on the map + fill the detail panel; click a node row → anchor +
+> flyTo; a "Filter to map selection" toggle passes `CUR.linkIds`/anchor node ids as
+> `ids`. Tests: `test_viz_tables.py` (11) + 8 endpoint tests in `test_viz_server.py`.
+> Still to do: shared `SELECTION` store + bidirectional hover (full Phase 2), the
+> structured query builder / guarded SQL console (Phase 3), draggable split divider,
+> and push-down via a lazy datagrove `Table` provider (G2) when the viewer is handed
+> a `Network` instead of materialized frames.
 
 Goal: let a user flip between the deck.gl map and the underlying GMNS tables
 (`link`, `node`, `lane`, `segment`, …), inspect / sort / filter large tables,

@@ -85,6 +85,65 @@ def test_property_values_continuous_and_categorical(client):
     assert client.get("/api/property/nope").status_code == 404
 
 
+import json as _json
+
+
+def test_tables_lists_link_and_node(client):
+    j = client.get("/api/tables").json()
+    tables = {t["name"]: t for t in j["tables"]}
+    assert "link" in tables and "node" in tables
+    assert tables["link"]["rows"] > 50
+    assert "facility_type" in tables["link"]["columns"]
+
+
+def test_table_schema_classifies_and_names_pk(client):
+    j = client.get("/api/table/link/schema").json()
+    assert j["primary_key"] == "link_id" and j["rows"] > 50
+    kinds = {c["name"]: c["kind"] for c in j["columns"]}
+    assert kinds["lanes"] == "num" and kinds["facility_type"] == "str"
+    assert kinds.get("geometry") == "geom"
+
+
+def test_table_rows_paged_excludes_geometry(client):
+    j = client.get("/api/table/link/rows", params={"offset": 0, "limit": 5}).json()
+    assert len(j["rows"]) == 5
+    assert j["total"] > 5 and j["offset"] == 0
+    assert "geometry" not in j["columns"]          # geometry excluded from grid payload
+
+
+def test_table_rows_sorted(client):
+    j = client.get("/api/table/link/rows",
+                   params={"limit": 50, "sort": "lanes", "dir": "asc"}).json()
+    li = j["columns"].index("lanes")
+    vals = [r[li] for r in j["rows"] if r[li] is not None]
+    assert vals == sorted(vals)
+
+
+def test_table_rows_filtered(client):
+    spec = _json.dumps([{"col": "facility_type", "op": "eq", "val": "motorway"}])
+    j = client.get("/api/table/link/rows", params={"limit": 500, "filter": spec}).json()
+    fi = j["columns"].index("facility_type")
+    assert j["total"] > 0
+    assert all(r[fi] == "motorway" for r in j["rows"])
+
+
+def test_table_rows_crossfilter_by_ids(client):
+    base = resources.files("gmnspy.fixtures.rdu_i40").joinpath("parquet")
+    ids = [int(i) for i in pd.read_parquet(base.joinpath("link.parquet"))["link_id"].iloc[:3]]
+    j = client.get("/api/table/link/rows",
+                   params={"ids": ",".join(map(str, ids)), "limit": 500}).json()
+    assert j["total"] == 3
+
+
+def test_table_rows_unknown_table_404(client):
+    assert client.get("/api/table/nope/rows").status_code == 404
+
+
+def test_table_rows_bad_filter_column_400(client):
+    spec = _json.dumps([{"col": "nonsuch", "op": "eq", "val": 1}])
+    assert client.get("/api/table/link/rows", params={"filter": spec}).status_code == 400
+
+
 def test_fragment_from_picked_link_ids(client):
     base = resources.files("gmnspy.fixtures.rdu_i40").joinpath("parquet")
     ids = [int(i) for i in pd.read_parquet(base.joinpath("link.parquet"))["link_id"].iloc[:3]]
