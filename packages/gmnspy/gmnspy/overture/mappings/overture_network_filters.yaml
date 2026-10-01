@@ -1,0 +1,54 @@
+# Allowed Overture segment `class` values per network_type (maintained data).
+#
+# The DuckDB read keeps only road-subtype segments whose `class` is in the list
+# for the requested network_type (the predicate is pushed into read_parquet so
+# footways aren't transferred for a `drive` build). `all` is special-cased: an
+# empty list means "no class restriction — accept any class" (see
+# attrs.accepts_class).
+#
+# Class vocabulary follows the Overture roads guide:
+# https://docs.overturemaps.org/guides/transportation/roads/
+#
+# Phase 1 filters on class only (matches the OSM source's behaviour); travel-mode
+# access rules (access_restrictions[].when.mode) are a Phase 2 refinement.
+
+drive:
+  - motorway
+  - trunk
+  - primary
+  - secondary
+  - tertiary
+  - unclassified
+  - residential
+  - living_street
+  - service
+
+walk:
+  - footway
+  - sidewalk
+  - crosswalk
+  - path
+  - steps
+  - pedestrian
+  - living_street
+  - residential
+  - unclassified
+  - tertiary
+  - secondary
+  - primary
+  - service
+
+bike:
+  - cycleway
+  - path
+  - track
+  - living_street
+  - residential
+  - unclassified
+  - tertiary
+  - secondary
+  - primary
+  - service
+
+# Empty list => accept any class value (no class filter pushed to the read).
+all: []
