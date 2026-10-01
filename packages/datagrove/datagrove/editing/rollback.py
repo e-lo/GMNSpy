@@ -58,8 +58,8 @@ def rollback(
         >>> import tempfile, pathlib
         >>> from datagrove.dataset import Package, Table
         >>> from datagrove.editing import Edit, Session, rollback
-        >>> from datagrove.engines.pandas_engine import PandasEngine
-        >>> e = PandasEngine()
+        >>> from datagrove.engines.ibis_engine import IbisEngine
+        >>> e = IbisEngine()
         >>> pkg = Package.from_tables({"x": Table(name="x", expr=e.from_records([{"a": 1}]), engine=e)})
         >>> with tempfile.TemporaryDirectory() as tmp:
         ...     log = pathlib.Path(tmp) / "history.parquet"

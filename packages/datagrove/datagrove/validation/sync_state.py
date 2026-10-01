@@ -88,9 +88,9 @@ because there was no hash record to compare against. The
 stale FK MUST surface an Issue, not silently pass.
 
 Examples:
-    >>> from datagrove.engines.pandas_engine import PandasEngine
+    >>> from datagrove.engines.ibis_engine import IbisEngine
     >>> from datagrove.validation.sync_state import DirtyTracker
-    >>> e = PandasEngine()
+    >>> e = IbisEngine()
     >>> link = e.scan({"data": [{"link_id": 1, "from_node_id": 1}]})
     >>> tracker = DirtyTracker()
     >>> stamp = tracker.stamp_table("link", link, e)
@@ -244,8 +244,8 @@ def hash_table(expr: TableExpr, engine: Engine) -> str:
         Hex-encoded sha256 digest of the table's content.
 
     Examples:
-        >>> from datagrove.engines.pandas_engine import PandasEngine
-        >>> e = PandasEngine()
+        >>> from datagrove.engines.ibis_engine import IbisEngine
+        >>> e = IbisEngine()
         >>> t1 = e.scan({"data": [{"a": 1, "b": 2}, {"a": 3, "b": 4}]})
         >>> t2 = e.scan({"data": [{"a": 1, "b": 2}, {"a": 3, "b": 4}]})
         >>> hash_table(t1, e) == hash_table(t2, e)
@@ -291,8 +291,8 @@ def hash_column(expr: TableExpr, column: str, engine: Engine) -> str:
         KeyError: If ``column`` is not in the table.
 
     Examples:
-        >>> from datagrove.engines.pandas_engine import PandasEngine
-        >>> e = PandasEngine()
+        >>> from datagrove.engines.ibis_engine import IbisEngine
+        >>> e = IbisEngine()
         >>> t = e.scan({"data": [{"a": 1, "b": 2}, {"a": 1, "b": 9}]})
         >>> h_a = hash_column(t, "a", e)
         >>> h_b = hash_column(t, "b", e)
@@ -363,8 +363,8 @@ class DirtyTracker:
     engine / dataset layer in v1.0.
 
     Examples:
-        >>> from datagrove.engines.pandas_engine import PandasEngine
-        >>> e = PandasEngine()
+        >>> from datagrove.engines.ibis_engine import IbisEngine
+        >>> e = IbisEngine()
         >>> link = e.scan({"data": [{"link_id": 1, "from_node_id": 1}]})
         >>> node = e.scan({"data": [{"node_id": 1}]})
         >>> tracker = DirtyTracker()
@@ -499,8 +499,8 @@ class DirtyTracker:
         the original stamp's hashing convention.
 
         Examples:
-            >>> from datagrove.engines.pandas_engine import PandasEngine
-            >>> e = PandasEngine()
+            >>> from datagrove.engines.ibis_engine import IbisEngine
+            >>> e = IbisEngine()
             >>> link = e.scan({"data": [{"link_id": 1, "from_node_id": 1}]})
             >>> node = e.scan({"data": [{"node_id": 1}]})
             >>> tracker = DirtyTracker()
@@ -554,8 +554,8 @@ class DirtyTracker:
         ``WARNING`` by default and ``ERROR`` under ``strict=True``.
 
         Examples:
-            >>> from datagrove.engines.pandas_engine import PandasEngine
-            >>> e = PandasEngine()
+            >>> from datagrove.engines.ibis_engine import IbisEngine
+            >>> e = IbisEngine()
             >>> link = e.scan({"data": [{"link_id": 1, "from_node_id": 1}]})
             >>> node = e.scan({"data": [{"node_id": 1}]})
             >>> tracker = DirtyTracker()

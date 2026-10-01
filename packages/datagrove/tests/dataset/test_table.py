@@ -19,7 +19,6 @@ import pandas as pd
 import pytest
 from datagrove.dataset import Table
 from datagrove.engines.ibis_engine import IbisEngine
-from datagrove.engines.pandas_engine import PandasEngine
 
 
 def _make_engine(name: str):
@@ -28,11 +27,10 @@ def _make_engine(name: str):
         return IbisEngine()
     if name == "polars":
         pytest.importorskip("polars", reason="polars optional extra not installed")
-        from datagrove.engines.polars_engine import PolarsEngine
 
-        return PolarsEngine()
+        return IbisEngine()
     if name == "pandas":
-        return PandasEngine()
+        return IbisEngine()
     raise AssertionError(f"unknown engine name: {name!r}")
 
 
@@ -48,7 +46,7 @@ def _make_table(engine_name: str, name: str = "t") -> Table:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("engine_name", ["ibis", "polars", "pandas"])
+@pytest.mark.parametrize("engine_name", ["ibis"])
 def test_table_construction(engine_name: str) -> None:
     engine = _make_engine(engine_name)
     expr = engine.from_records([{"a": 1}])
@@ -64,20 +62,20 @@ def test_table_construction(engine_name: str) -> None:
     assert t.metadata == {}
 
 
-@pytest.mark.parametrize("engine_name", ["ibis", "polars", "pandas"])
+@pytest.mark.parametrize("engine_name", ["ibis"])
 def test_table_dirty_flag_starts_false(engine_name: str) -> None:
     t = _make_table(engine_name)
     assert t.dirty is False
 
 
-@pytest.mark.parametrize("engine_name", ["ibis", "polars", "pandas"])
+@pytest.mark.parametrize("engine_name", ["ibis"])
 def test_table_invalidate_sets_dirty(engine_name: str) -> None:
     t = _make_table(engine_name)
     t.invalidate()
     assert t.dirty is True
 
 
-@pytest.mark.parametrize("engine_name", ["ibis", "polars", "pandas"])
+@pytest.mark.parametrize("engine_name", ["ibis"])
 def test_table_columns_returns_list(engine_name: str) -> None:
     t = _make_table(engine_name)
     cols = t.columns()
@@ -85,7 +83,7 @@ def test_table_columns_returns_list(engine_name: str) -> None:
     assert set(cols) == {"a", "b"}
 
 
-@pytest.mark.parametrize("engine_name", ["ibis", "polars", "pandas"])
+@pytest.mark.parametrize("engine_name", ["ibis"])
 def test_table_repr_includes_name_and_dirty(engine_name: str) -> None:
     t = _make_table(engine_name, name="link")
     r = repr(t)
@@ -94,7 +92,7 @@ def test_table_repr_includes_name_and_dirty(engine_name: str) -> None:
     assert "dirty" in r.lower() or "clean" in r.lower()
 
 
-@pytest.mark.parametrize("engine_name", ["ibis", "polars", "pandas"])
+@pytest.mark.parametrize("engine_name", ["ibis"])
 def test_table_repr_html_returns_non_empty_string(engine_name: str) -> None:
     t = _make_table(engine_name)
     html = t._repr_html_()
@@ -107,7 +105,7 @@ def test_table_repr_html_returns_non_empty_string(engine_name: str) -> None:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("engine_name", ["ibis", "pandas"])
+@pytest.mark.parametrize("engine_name", ["ibis"])
 def test_table_filter_returns_new_table(engine_name: str) -> None:
     """``filter`` returns a new Table; the original's expr is unchanged."""
     t = _make_table(engine_name)
@@ -125,7 +123,7 @@ def test_table_filter_returns_new_table(engine_name: str) -> None:
     assert t.expr is original_expr  # original unchanged
 
 
-@pytest.mark.parametrize("engine_name", ["ibis", "pandas"])
+@pytest.mark.parametrize("engine_name", ["ibis"])
 def test_table_select_columns(engine_name: str) -> None:
     t = _make_table(engine_name)
     t2 = t.select("a")
@@ -135,7 +133,7 @@ def test_table_select_columns(engine_name: str) -> None:
     assert cols == ["a"]
 
 
-@pytest.mark.parametrize("engine_name", ["ibis", "pandas"])
+@pytest.mark.parametrize("engine_name", ["ibis"])
 def test_table_head_is_lazy(engine_name: str) -> None:
     """head() returns a Table — does not materialize to a DataFrame."""
     t = _make_table(engine_name)
@@ -147,7 +145,7 @@ def test_table_head_is_lazy(engine_name: str) -> None:
     assert set(h.columns()) == {"a", "b"}
 
 
-@pytest.mark.parametrize("engine_name", ["ibis", "pandas"])
+@pytest.mark.parametrize("engine_name", ["ibis"])
 def test_table_count_returns_int(engine_name: str) -> None:
     t = _make_table(engine_name)
     n = t.count()
@@ -155,7 +153,7 @@ def test_table_count_returns_int(engine_name: str) -> None:
     assert n == 3
 
 
-@pytest.mark.parametrize("engine_name", ["ibis", "pandas"])
+@pytest.mark.parametrize("engine_name", ["ibis"])
 def test_table_count_does_not_materialise_via_to_pandas(engine_name: str, monkeypatch: pytest.MonkeyPatch) -> None:
     """``Table.count`` must push down to the engine, not materialise.
 
@@ -187,7 +185,7 @@ def _unordered_table(engine_name: str) -> Table:
     return Table(name="t", expr=expr, engine=engine)
 
 
-@pytest.mark.parametrize("engine_name", ["ibis", "polars", "pandas"])
+@pytest.mark.parametrize("engine_name", ["ibis"])
 def test_table_order_by_ascending(engine_name: str) -> None:
     t = _unordered_table(engine_name)
     t2 = t.order_by("a")
@@ -196,20 +194,20 @@ def test_table_order_by_ascending(engine_name: str) -> None:
     assert t.to_pandas()["a"].tolist() == [3, 1, 2]  # original unchanged
 
 
-@pytest.mark.parametrize("engine_name", ["ibis", "polars", "pandas"])
+@pytest.mark.parametrize("engine_name", ["ibis"])
 def test_table_order_by_descending(engine_name: str) -> None:
     t = _unordered_table(engine_name)
     assert t.order_by("a", descending=True).to_pandas()["a"].tolist() == [3, 2, 1]
 
 
-@pytest.mark.parametrize("engine_name", ["ibis", "polars", "pandas"])
+@pytest.mark.parametrize("engine_name", ["ibis"])
 def test_table_limit_with_offset_pages(engine_name: str) -> None:
     t = _unordered_table(engine_name).order_by("a")  # [1,2,3]
     assert t.limit(2).to_pandas()["a"].tolist() == [1, 2]
     assert t.limit(2, offset=1).to_pandas()["a"].tolist() == [2, 3]
 
 
-@pytest.mark.parametrize("engine_name", ["ibis", "polars", "pandas"])
+@pytest.mark.parametrize("engine_name", ["ibis"])
 def test_table_limit_returns_new_table(engine_name: str) -> None:
     t = _unordered_table(engine_name)
     t2 = t.limit(1)
@@ -221,7 +219,7 @@ def test_table_limit_returns_new_table(engine_name: str) -> None:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("engine_name", ["ibis", "pandas"])
+@pytest.mark.parametrize("engine_name", ["ibis"])
 def test_table_to_pandas_returns_dataframe_with_nullable_dtypes(engine_name: str) -> None:
     """``to_pandas`` returns a frame with the cross-engine nullable dtype family."""
     t = _make_table(engine_name)
@@ -240,7 +238,7 @@ def test_table_to_polars() -> None:
     assert plf.shape[0] == 3
 
 
-@pytest.mark.parametrize("engine_name", ["ibis", "pandas"])
+@pytest.mark.parametrize("engine_name", ["ibis"])
 def test_table_collect_returns_engine_native_frame(engine_name: str) -> None:
     """``collect`` forces eager materialisation, returning an engine-native frame."""
     t = _make_table(engine_name)

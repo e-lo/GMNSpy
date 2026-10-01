@@ -273,9 +273,8 @@ Each accordion below is a one-line tweak that shows off a different facet of the
 <!-- doctest: skip -->
 
     ```python
-    from datagrove.engines.pandas_engine import PandasEngine
 
-    net = Network.from_source(leavenworth.csv_dir(), engine=PandasEngine())
+    net = Network.from_source(leavenworth.csv_dir())
     ```
 
 ??? note "Configure a custom quality threshold"

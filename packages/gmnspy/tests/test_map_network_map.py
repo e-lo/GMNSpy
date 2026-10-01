@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import pandas as pd
 import pytest
-from datagrove.engines.pandas_engine import PandasEngine
+from datagrove.engines.ibis_engine import IbisEngine
 from datagrove.reports import Category, Issue, Severity
 from gmnspy import Network
 from gmnspy.map import NetworkMap
@@ -35,7 +35,7 @@ def tiny_net(tmp_path) -> Network:
     csv.mkdir()
     link.to_csv(csv / "link.csv", index=False)
     node.to_csv(csv / "node.csv", index=False)
-    return Network.from_source(csv, engine=PandasEngine())
+    return Network.from_source(csv, engine=IbisEngine())
 
 
 # ---------------------------------------------------------------------------

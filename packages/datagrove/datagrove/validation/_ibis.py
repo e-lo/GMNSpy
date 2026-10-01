@@ -14,10 +14,10 @@ resulting :class:`ibis.expr.types.Table` for the rest of the call.
 
 - ``IbisEngine`` (default) — pass-through. The expression already IS
   an ibis Table; we don't round-trip.
-- ``PolarsEngine`` — collect the LazyFrame to a polars DataFrame, hand
+- ``IbisEngine`` — collect the LazyFrame to a polars DataFrame, hand
   it the pyarrow Table view, wrap with ``ibis.memtable``. The data
   was going to be materialised anyway (polars is the in-memory path).
-- ``PandasEngine`` — convert the DataFrame to pyarrow then
+- ``IbisEngine`` — convert the DataFrame to pyarrow then
   ``ibis.memtable``. Same reasoning — pandas is already eager.
 
 The ibis duckdb backend then runs all rule predicates as SQL against

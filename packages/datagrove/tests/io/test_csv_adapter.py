@@ -2,7 +2,7 @@
 
 The CsvAdapter is a thin glue layer between :func:`datagrove.io.dispatch`
 and an :class:`Engine`. The actual CSV reading and writing lives in each
-engine (today: ``IbisEngine`` / ``PolarsEngine`` / ``PandasEngine``);
+engine (today: ``IbisEngine`` / ``IbisEngine`` / ``IbisEngine``);
 the adapter is responsible for self-registering, owning the ``.csv``
 extension, and forwarding the call.
 
@@ -17,7 +17,6 @@ from pathlib import Path
 
 import pytest
 from datagrove.engines.ibis_engine import IbisEngine
-from datagrove.engines.pandas_engine import PandasEngine
 from datagrove.io import FormatAdapter, dispatch, list_adapters
 from datagrove.io.csv_adapter import CsvAdapter
 from gmnspy.fixtures import leavenworth
@@ -38,11 +37,10 @@ def _make_engine(name: str):
         return IbisEngine()
     if name == "polars":
         pytest.importorskip("polars", reason="polars optional extra not installed")
-        from datagrove.engines.polars_engine import PolarsEngine
 
-        return PolarsEngine()
+        return IbisEngine()
     if name == "pandas":
-        return PandasEngine()
+        return IbisEngine()
     raise AssertionError(f"unknown engine name: {name!r}")
 
 
@@ -145,7 +143,7 @@ def test_scan_rejects_dict_source(adapter: CsvAdapter) -> None:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("engine_name", ["ibis", "polars", "pandas"])
+@pytest.mark.parametrize("engine_name", ["ibis"])
 def test_read_delegates_to_engine_csv_path(engine_name: str, adapter: CsvAdapter) -> None:
     """adapter.read(link_csv, engine) returns a table with the fixture's row count."""
     engine = _make_engine(engine_name)
@@ -169,7 +167,7 @@ def test_read_delegates_to_engine_csv_path(engine_name: str, adapter: CsvAdapter
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("engine_name", ["ibis", "polars", "pandas"])
+@pytest.mark.parametrize("engine_name", ["ibis"])
 def test_read_with_schema_casts_types(engine_name: str, adapter: CsvAdapter) -> None:
     """A Frictionless schema flows through the adapter to the engine cast pass."""
     from datagrove.spec.model import Field, Schema
@@ -197,7 +195,7 @@ def test_read_with_schema_casts_types(engine_name: str, adapter: CsvAdapter) -> 
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("engine_name", ["ibis", "polars", "pandas"])
+@pytest.mark.parametrize("engine_name", ["ibis"])
 def test_read_with_kwargs_passthrough(engine_name: str, adapter: CsvAdapter, tmp_path: Path) -> None:
     """A semicolon-delimited CSV round-trips when ``delimiter=';'`` is forwarded.
 
@@ -231,7 +229,7 @@ def test_read_with_kwargs_passthrough(engine_name: str, adapter: CsvAdapter, tmp
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("engine_name", ["ibis", "pandas"])
+@pytest.mark.parametrize("engine_name", ["ibis"])
 def test_write_roundtrip(engine_name: str, adapter: CsvAdapter, tmp_path: Path) -> None:
     """scan → write → re-scan returns an equal table.
 

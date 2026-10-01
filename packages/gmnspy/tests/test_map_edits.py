@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import pandas as pd
 import pytest
-from datagrove.engines.pandas_engine import PandasEngine
+from datagrove.engines.ibis_engine import IbisEngine
 from gmnspy import Network
 from gmnspy.map.edits import Edit, EditLog, apply_edits, dump_edit_log, load_edit_log
 
@@ -40,7 +40,7 @@ def tiny_net(tmp_path) -> Network:
     csv.mkdir()
     link.to_csv(csv / "link.csv", index=False)
     node.to_csv(csv / "node.csv", index=False)
-    return Network.from_source(csv, engine=PandasEngine())
+    return Network.from_source(csv, engine=IbisEngine())
 
 
 # ---------------------------------------------------------------------------
@@ -308,8 +308,8 @@ def test_apply_edits_result_net_writes_cleanly(tiny_net, tmp_path):
 
     Regression: ``apply_edits`` used to leave un-mutated tables backed by
     the original engine (e.g. ibis+duckdb) while mutated tables used
-    PandasEngine — writing the resulting Network then blew up on the
-    engine mismatch. All tables now share a single PandasEngine.
+    IbisEngine — writing the resulting Network then blew up on the
+    engine mismatch. All tables now share a single IbisEngine.
 
     Also verifies #164: no ``OutOfSyncWarning`` on the edit-then-save
     flow through ``apply_edits`` — the rebuilt Network's tables start

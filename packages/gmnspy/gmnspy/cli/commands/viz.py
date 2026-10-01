@@ -51,7 +51,9 @@ def register(app: typer.Typer) -> None:
     def viz(
         source: Path = typer.Argument(..., help="Path/URL to a GMNS network."),
         provider: str = typer.Option("stub", "--provider", help="NL parser: stub | claude."),
-        engine: str = typer.Option(None, "--engine", help="ibis/pandas/polars (default: ibis)."),
+        engine: str = typer.Option(
+            None, "--engine", help="Compute engine (DuckDB is the only one; kept for compatibility)."
+        ),
         basemap: str = typer.Option("positron", "--basemap", help="Basemap: positron | esri (both keyless)."),
         host: str = typer.Option("127.0.0.1", "--host", help="Bind host."),
         port: int = typer.Option(8850, "--port", help="Bind port."),

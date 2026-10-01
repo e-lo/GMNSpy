@@ -49,7 +49,7 @@ def load_network_and_session_cls(source: Path, engine_name: str | None = None):
     :class:`Session` lives in datagrove, imported here so each ``clean``
     command stays one expression long.
 
-    ``engine_name`` follows the same ibis/pandas/polars resolution as
+    ``engine_name`` follows the resolves to the DuckDB engine, same as
     :func:`resolve_engine`. Callers can override the default ibis engine
     to dodge backend-specific edge cases (e.g. duckdb refusing null-typed
     columns when re-materialising via ``engine.from_records`` during a

@@ -148,10 +148,8 @@ Each accordion below is one alternative to the defaults used above. The first (m
     Default is `IbisEngine` (lazy, DuckDB-backed). Switch to pandas for eager DataFrame ergonomics, or polars when you want fast in-memory analytics.
 
     ```python
-    from datagrove.engines.pandas_engine import PandasEngine
-    # from datagrove.engines.polars_engine import PolarsEngine
 
-    pkg = Package.from_source(path, spec=spec, engine=PandasEngine())
+    pkg = Package.from_source(path, spec=spec)
     ```
 
 ??? note "Read from S3 with credentials"
@@ -188,7 +186,7 @@ Each accordion below is one alternative to the defaults used above. The first (m
 
 * **No `datapackage.json` in your directory → pass `spec=` explicitly.** CSV-only fixtures and ad-hoc directories don't carry a manifest, so `datagrove` can't infer the schema. Point `spec=` at the canonical `datapackage.json` for your data. See [Frictionless data packages](concepts/frictionless.md) for the spec-vs-data distinction.
 * **Credential cascade order matters.** Per-call `credentials=` always wins; otherwise `DATAGROVE_CRED_<host>_TOKEN` env var, then OS keyring, then `.netrc`. If you've stashed a token in two places, the higher-priority one is the one that gets used.
-* **Lazy vs eager engine behaviour.** `IbisEngine` (default) doesn't materialise until you call `.execute()` / `.to_pandas()` / `.count()`. `PandasEngine` materialises every table at load time. Use ibis for regional-scale data; switch to pandas only when you actually need the DataFrame in memory.
+* **Lazy by default.** Tables are lazy ibis expressions over DuckDB — nothing materialises until you call `.to_pandas()` / `.to_polars()` / `.count()`. Push predicates down and only pull the rows you need into Python.
 
 ## See also
 

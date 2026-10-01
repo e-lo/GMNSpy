@@ -26,12 +26,11 @@ from __future__ import annotations
 import pytest
 from datagrove.dataset import Table
 from datagrove.engines.ibis_engine import IbisEngine
-from datagrove.engines.pandas_engine import PandasEngine
 from datagrove.reports import ValidationReport
 from gmnspy.fixtures import leavenworth
 
 
-@pytest.fixture(params=[PandasEngine, IbisEngine], ids=["pandas", "ibis"])
+@pytest.fixture(params=[IbisEngine, IbisEngine], ids=["pandas", "ibis"])
 def engine(request):
     """Both engines — Network behaviour must be backend-agnostic."""
     return request.param()

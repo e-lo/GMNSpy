@@ -6,8 +6,8 @@ Importing this module self-registers a ``"csv"`` adapter into the
 no parsing logic — it forwards reads to the engine's :meth:`read_csv`
 primitive and writes to its :meth:`write_csv` primitive. Each engine
 (:class:`~datagrove.engines.ibis_engine.IbisEngine`,
-:class:`~datagrove.engines.polars_engine.PolarsEngine`,
-:class:`~datagrove.engines.pandas_engine.PandasEngine`) already owns a
+:class:`~datagrove.engines.ibis_engine.IbisEngine`,
+:class:`~datagrove.engines.ibis_engine.IbisEngine`) already owns a
 CSV reader; the adapter's job is to be the dispatch target so callers
 don't have to special-case the format on the read path.
 

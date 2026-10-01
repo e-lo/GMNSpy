@@ -17,6 +17,7 @@ were drifting across datagrove + gmnspy CLI / server / MCP:
 from __future__ import annotations
 
 import pytest
+from datagrove.engines.ibis_engine import IbisEngine
 
 # ---------------------------------------------------------------------------
 # Package.safe_count (S3, F1) — replaces three duplicate _safe_count helpers
@@ -26,9 +27,8 @@ import pytest
 def test_package_safe_count_returns_int_for_present_table():
     """`safe_count` returns the row count for a table that exists."""
     from datagrove.dataset import Package, Table
-    from datagrove.engines.pandas_engine import PandasEngine
 
-    e = PandasEngine()
+    e = IbisEngine()
     pkg = Package.from_tables({"x": Table(name="x", expr=e.from_records([{"a": 1}, {"a": 2}]), engine=e)})
     assert pkg.safe_count("x") == 2
 
@@ -36,9 +36,8 @@ def test_package_safe_count_returns_int_for_present_table():
 def test_package_safe_count_returns_none_for_absent_table():
     """`safe_count` on a missing table returns None — preview never crashes."""
     from datagrove.dataset import Package, Table
-    from datagrove.engines.pandas_engine import PandasEngine
 
-    e = PandasEngine()
+    e = IbisEngine()
     pkg = Package.from_tables({"x": Table(name="x", expr=e.from_records([{"a": 1}]), engine=e)})
     assert pkg.safe_count("absent") is None
 
@@ -46,13 +45,12 @@ def test_package_safe_count_returns_none_for_absent_table():
 def test_package_safe_count_swallows_count_exception():
     """If `table.count()` raises, `safe_count` returns None — preview-safe."""
     from datagrove.dataset import Package, Table
-    from datagrove.engines.pandas_engine import PandasEngine
 
     class _BrokenTable(Table):
         def count(self) -> int:
             raise RuntimeError("backend hiccup")
 
-    e = PandasEngine()
+    e = IbisEngine()
     bad = _BrokenTable(name="bad", expr=e.from_records([{"a": 1}]), engine=e)
     pkg = Package.from_tables({"bad": bad})
     assert pkg.safe_count("bad") is None
@@ -73,11 +71,11 @@ def test_resolve_engine_none_returns_default():
 
 
 def test_resolve_engine_names_are_case_insensitive():
-    """`resolve_engine` accepts lower/upper/mixed case."""
+    """`resolve_engine` accepts lower/upper/mixed case for the one engine."""
     from datagrove.engines import resolve_engine
 
-    for spelling in ("pandas", "PANDAS", "Pandas"):
-        assert type(resolve_engine(spelling)).__name__ == "PandasEngine"
+    for spelling in ("ibis", "IBIS", "DuckDB", "duckdb"):
+        assert type(resolve_engine(spelling)).__name__ == "IbisEngine"
 
 
 def test_resolve_engine_unknown_raises_value_error_with_known_engines():

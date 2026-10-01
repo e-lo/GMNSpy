@@ -209,7 +209,7 @@ def test_read_single_csv_zip_requires_table_kwarg(tmp_path):
     """
     adapter = ZipCsvAdapter()
     zip_path = _single_csv_zip(tmp_path)
-    engine = get_engine("pandas")
+    engine = get_engine()
 
     # Omitting table= raises the same InvalidEngineCallError the
     # multi-csv path does.
@@ -228,7 +228,7 @@ def test_read_single_csv_zip_requires_table_kwarg(tmp_path):
 def test_read_multi_csv_zip_requires_table_kwarg():
     """Multi-CSV zip without ``table=`` raises InvalidEngineCallError."""
     adapter = ZipCsvAdapter()
-    engine = get_engine("pandas")
+    engine = get_engine()
     with pytest.raises(InvalidEngineCallError) as excinfo:
         adapter.read(LEAVENWORTH_ZIP, engine=engine)
     msg = str(excinfo.value)
@@ -241,7 +241,7 @@ def test_read_multi_csv_zip_requires_table_kwarg():
 def test_read_multi_csv_zip_unknown_table_raises():
     """``table=<name>`` that isn't in the zip raises InvalidEngineCallError."""
     adapter = ZipCsvAdapter()
-    engine = get_engine("pandas")
+    engine = get_engine()
     with pytest.raises(InvalidEngineCallError) as excinfo:
         adapter.read(LEAVENWORTH_ZIP, engine=engine, table="nonexistent")
     msg = str(excinfo.value)
@@ -270,7 +270,7 @@ def test_read_member_and_name_aliases_dropped(tmp_path):
     user-visible message points at the surviving ``table=`` kwarg.
     """
     adapter = ZipCsvAdapter()
-    engine = get_engine("pandas")
+    engine = get_engine()
     zip_path = _make_zip(
         tmp_path,
         {"left.csv": b"a,b\n1,2\n", "right.csv": b"c,d\n5,6\n"},
@@ -290,7 +290,7 @@ def test_read_member_and_name_aliases_dropped(tmp_path):
 def test_read_table_kwarg_accepts_stem_or_filename(tmp_path):
     """Both ``table="node"`` and ``table="node.csv"`` resolve to the same member."""
     adapter = ZipCsvAdapter()
-    engine = get_engine("pandas")
+    engine = get_engine()
     by_stem = engine.to_pandas(adapter.read(LEAVENWORTH_ZIP, engine=engine, table="node"))
     by_fname = engine.to_pandas(adapter.read(LEAVENWORTH_ZIP, engine=engine, table="node.csv"))
     assert by_stem.shape == by_fname.shape
@@ -325,8 +325,8 @@ def test_dispatch_routes_zip_via_probe(tmp_path):
 def test_write_single_csv_into_zip_roundtrip(tmp_path):
     """Write a DataFrame as a single csv inside a zip; round-trip back equal."""
     adapter = ZipCsvAdapter()
-    engine = get_engine("pandas")
-    src = pd.DataFrame({"a": [1, 2, 3], "b": ["x", "y", "z"]})
+    engine = get_engine()
+    src = engine.from_records({"a": [1, 2, 3], "b": ["x", "y", "z"]})
     dest = tmp_path / "out.csv.zip"
     adapter.write(src, dest, engine=engine, table="data")
 
@@ -347,8 +347,8 @@ def test_write_single_csv_into_zip_roundtrip(tmp_path):
 def test_write_without_table_defaults_to_dest_stem(tmp_path):
     """If ``table=`` is omitted, the inner csv is named after the dest stem."""
     adapter = ZipCsvAdapter()
-    engine = get_engine("pandas")
-    src = pd.DataFrame({"a": [1]})
+    engine = get_engine()
+    src = engine.from_records({"a": [1]})
     dest = tmp_path / "named_after_dest.csv.zip"
     adapter.write(src, dest, engine=engine)
     with zipfile.ZipFile(dest) as z:
@@ -370,8 +370,8 @@ def test_write_refuses_existing_dest_without_overwrite(tmp_path):
     the intent visible at the call site.
     """
     adapter = ZipCsvAdapter()
-    engine = get_engine("pandas")
-    src = pd.DataFrame({"a": [1]})
+    engine = get_engine()
+    src = engine.from_records({"a": [1]})
     dest = tmp_path / "out.csv.zip"
     # First write succeeds (destination doesn't exist).
     adapter.write(src, dest, engine=engine, table="data")
@@ -386,12 +386,12 @@ def test_write_refuses_existing_dest_without_overwrite(tmp_path):
 def test_write_overwrite_true_replaces_existing_dest(tmp_path):
     """I6: passing overwrite=True clobbers the existing file."""
     adapter = ZipCsvAdapter()
-    engine = get_engine("pandas")
+    engine = get_engine()
     dest = tmp_path / "out.csv.zip"
-    adapter.write(pd.DataFrame({"a": [1]}), dest, engine=engine, table="data")
+    adapter.write(engine.from_records({"a": [1]}), dest, engine=engine, table="data")
     # Different payload + overwrite=True succeeds.
     adapter.write(
-        pd.DataFrame({"a": [2, 3, 4]}),
+        engine.from_records({"a": [2, 3, 4]}),
         dest,
         engine=engine,
         table="data",

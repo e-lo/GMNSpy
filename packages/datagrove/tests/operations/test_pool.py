@@ -20,7 +20,7 @@ from typing import TYPE_CHECKING
 import pytest
 from datagrove.dataset import Package, Table
 from datagrove.editing import Edit
-from datagrove.engines.pandas_engine import PandasEngine
+from datagrove.engines.ibis_engine import IbisEngine
 from datagrove.operations import Batch, coalesce
 
 if TYPE_CHECKING:
@@ -29,7 +29,7 @@ if TYPE_CHECKING:
 
 def _pkg(rows: list[dict] | None = None) -> Package:
     """One-table Package over the pandas engine; default 3-row fixture."""
-    eng = PandasEngine()
+    eng = IbisEngine()
     if rows is None:
         rows = [{"id": 1, "v": "a"}, {"id": 2, "v": "b"}, {"id": 3, "v": "c"}]
     t = Table(name="t", expr=eng.from_records(rows), engine=eng)
@@ -77,7 +77,7 @@ def test_coalesce_preserves_update_and_delete() -> None:
 
 def test_coalesce_replace_table_discards_prior_edits_on_same_table() -> None:
     """replace_table on table X discards any pending edits queued earlier on X."""
-    eng = PandasEngine()
+    eng = IbisEngine()
     expr = eng.from_records([{"id": 99}])
     a = Edit(op="add_rows", table="t", payload={"rows": [{"id": 1}]})
     u = Edit(op="update_rows", table="t", payload={"predicate": lambda t: True, "set": {"v": "z"}})

@@ -21,13 +21,13 @@ from datetime import datetime
 
 from datagrove.dataset import Package, Table
 from datagrove.editing import Diff, Edit, EditResult
-from datagrove.engines.pandas_engine import PandasEngine
+from datagrove.engines.ibis_engine import IbisEngine
 from datagrove.reports import Category, Severity, ValidationReport
 
 
 def _make_package() -> Package:
     """Build a tiny in-memory package with two named tables."""
-    engine = PandasEngine()
+    engine = IbisEngine()
     link = Table(
         name="link",
         expr=engine.from_records([{"id": 1, "from_node": 10}, {"id": 2, "from_node": 20}]),
@@ -71,7 +71,7 @@ def test_package_repr_html_lists_tables() -> None:
 
 def test_table_repr_html_includes_name_and_count() -> None:
     """The card lists the table name and exposes the row count."""
-    engine = PandasEngine()
+    engine = IbisEngine()
     t = Table(
         name="links",
         expr=engine.from_records([{"a": 1}, {"a": 2}, {"a": 3}]),
@@ -85,7 +85,7 @@ def test_table_repr_html_includes_name_and_count() -> None:
 
 def test_table_repr_html_shows_dirty_badge_when_dirty() -> None:
     """A dirty table renders the ``dirty`` badge; clean tables don't."""
-    engine = PandasEngine()
+    engine = IbisEngine()
     t = Table(name="t", expr=engine.from_records([{"a": 1}]), engine=engine)
     assert "dirty" not in t._repr_html_()
     t.dirty = True
@@ -95,7 +95,7 @@ def test_table_repr_html_shows_dirty_badge_when_dirty() -> None:
 
 def test_table_repr_html_truncates_long_column_list() -> None:
     """Tables with >12 columns get the ``(+N more)`` note."""
-    engine = PandasEngine()
+    engine = IbisEngine()
     cols = {f"c{i}": i for i in range(20)}
     t = Table(name="wide", expr=engine.from_records([cols]), engine=engine)
     html = t._repr_html_()
@@ -202,7 +202,7 @@ def test_edit_result_repr_html_includes_session_and_timestamp() -> None:
 
 def test_repr_html_escapes_user_input_in_table_name() -> None:
     """A hostile table name renders escaped; no raw ``<script>`` in the HTML."""
-    engine = PandasEngine()
+    engine = IbisEngine()
     t = Table(name="<script>alert(1)</script>", expr=engine.from_records([{"a": 1}]), engine=engine)
     html = t._repr_html_()
     assert "<script>" not in html
@@ -211,7 +211,7 @@ def test_repr_html_escapes_user_input_in_table_name() -> None:
 
 def test_repr_html_escapes_user_input_in_package_table_names() -> None:
     """A package whose table key contains HTML metacharacters escapes them."""
-    engine = PandasEngine()
+    engine = IbisEngine()
     t = Table(name="x<y>", expr=engine.from_records([{"a": 1}]), engine=engine)
     pkg = Package.from_tables({"x<y>": t})
     html = pkg._repr_html_()

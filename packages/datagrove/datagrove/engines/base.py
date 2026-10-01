@@ -12,8 +12,8 @@ Concrete engines (one per file in this package) implement this protocol:
 
 - ``IbisEngine`` (default; backed by duckdb) — ``TableExpr`` is
   ``ibis.expr.types.Table``.
-- ``PolarsEngine`` — ``TableExpr`` is ``polars.LazyFrame``.
-- ``PandasEngine`` — ``TableExpr`` is ``pandas.DataFrame`` (eager;
+- ``IbisEngine`` — ``TableExpr`` is ``polars.LazyFrame``.
+- ``IbisEngine`` — ``TableExpr`` is ``pandas.DataFrame`` (eager;
   pandas has no lazy mode).
 
 The protocol is **structural** (``typing.Protocol``,
@@ -116,7 +116,7 @@ class Engine(Protocol):
        ``read_duckdb_table`` / ``from_records`` / their write
        counterparts). Adapters call these directly. An engine that
        doesn't natively support a primitive (e.g.
-       :class:`~datagrove.engines.polars_engine.PolarsEngine.write_duckdb_table`)
+       :class:`~datagrove.engines.ibis_engine.IbisEngine.write_duckdb_table`)
        raises :class:`~datagrove.engines.errors.EngineNotAvailableError`
        with a clear pointer at the engine that does.
     2. **Schema casting** (``cast_schema``). Promoted from a per-engine
@@ -263,10 +263,11 @@ class Engine(Protocol):
 
         Examples:
             >>> import pyarrow as pa
-            >>> from datagrove.engines.pandas_engine import PandasEngine
+            >>> from datagrove.engines.ibis_engine import IbisEngine
             >>> tbl = pa.table({"a": [1, 2], "b": ["x", "y"]})
-            >>> expr = PandasEngine().from_arrow(tbl)
-            >>> list(expr.columns), len(expr)
+            >>> e = IbisEngine()
+            >>> expr = e.from_arrow(tbl)
+            >>> list(expr.columns), expr.count().to_pyarrow().as_py()
             (['a', 'b'], 2)
         """
         ...
@@ -323,7 +324,7 @@ class Engine(Protocol):
         """Write ``expr`` into a ``.duckdb`` file as a named table.
 
         Engines that cannot natively write duckdb without raw SQL
-        (notably :class:`~datagrove.engines.polars_engine.PolarsEngine`)
+        (notably :class:`~datagrove.engines.ibis_engine.IbisEngine`)
         raise :class:`~datagrove.engines.errors.EngineNotAvailableError`
         and point callers at :class:`~datagrove.engines.ibis_engine.IbisEngine`
         for this primitive. The architecture's "no raw SQL outside

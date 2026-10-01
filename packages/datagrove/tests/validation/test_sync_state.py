@@ -27,7 +27,6 @@ from typing import Any
 
 import pytest
 from datagrove.engines.ibis_engine import IbisEngine
-from datagrove.engines.pandas_engine import PandasEngine
 from datagrove.validation import Category, Severity, ValidationReport
 from datagrove.validation.sync_state import (
     DirtyTracker,
@@ -54,11 +53,11 @@ def _engine_for(name: str):
     if name == "ibis":
         return IbisEngine()
     if name == "polars":  # pragma: no cover - exercised only when polars installed
-        from datagrove.engines.polars_engine import PolarsEngine as _PE
+        from datagrove.engines.ibis_engine import IbisEngine as _PE
 
         return _PE()
     if name == "pandas":
-        return PandasEngine()
+        return IbisEngine()
     raise AssertionError(f"unknown engine: {name}")  # pragma: no cover
 
 
@@ -120,7 +119,7 @@ class TestHashHelpers:
         cross-engine convergence test the task spec explicitly asks for.
         """
         digests = {}
-        for engine_name in ["ibis", "pandas"] + (["polars"] if _POLARS_AVAILABLE else []):
+        for engine_name in ["ibis"] + (["polars"] if _POLARS_AVAILABLE else []):
             e = _engine_for(engine_name)
             t = _scan(e, _LINK_ROWS)
             digests[engine_name] = hash_table(t, e)
@@ -131,7 +130,7 @@ class TestHashHelpers:
     def test_hash_column_stable_across_engines(self):
         """Same cross-engine guarantee for the column-scoped helper."""
         digests = {}
-        for engine_name in ["ibis", "pandas"] + (["polars"] if _POLARS_AVAILABLE else []):
+        for engine_name in ["ibis"] + (["polars"] if _POLARS_AVAILABLE else []):
             e = _engine_for(engine_name)
             t = _scan(e, _LINK_ROWS)
             digests[engine_name] = hash_column(t, "from_node_id", e)
@@ -180,7 +179,7 @@ class TestHashHelpers:
 
     def test_hash_column_raises_on_missing_column(self):
         """KeyError, not a silent empty digest, when the column doesn't exist."""
-        e = PandasEngine()
+        e = IbisEngine()
         t = _scan(e, _LINK_ROWS)
         with pytest.raises(KeyError):
             hash_column(t, "nonexistent_column", e)
@@ -194,7 +193,7 @@ class TestHashHelpers:
 class TestTableStamps:
     def test_stamp_table_records_hash(self):
         """A fresh stamp shows up in the tracker."""
-        e = PandasEngine()
+        e = IbisEngine()
         t = _scan(e, _LINK_ROWS)
         tracker = DirtyTracker()
         stamp = tracker.stamp_table("link", t, e)
@@ -211,7 +210,7 @@ class TestTableStamps:
         unchanged data leaves the same content_hash; the
         ``computed_at`` may differ.
         """
-        e = PandasEngine()
+        e = IbisEngine()
         t = _scan(e, _LINK_ROWS)
         tracker = DirtyTracker()
         first = tracker.stamp_table("link", t, e)
@@ -234,14 +233,14 @@ class TestTableStamps:
         re-validate). Returning False is correct: the tracker has no
         opinion about a table it's never seen.
         """
-        e = PandasEngine()
+        e = IbisEngine()
         t = _scan(e, _LINK_ROWS)
         tracker = DirtyTracker()
         assert tracker.is_table_dirty("never_stamped", t, e) is False
 
     def test_is_table_dirty_false_when_unchanged(self):
         """After stamping, the same expression is not dirty."""
-        e = PandasEngine()
+        e = IbisEngine()
         t = _scan(e, _LINK_ROWS)
         tracker = DirtyTracker()
         tracker.stamp_table("link", t, e)
@@ -249,7 +248,7 @@ class TestTableStamps:
 
     def test_is_table_dirty_true_after_mutation(self):
         """Mutate the underlying data; is_table_dirty must flip to True."""
-        e = PandasEngine()
+        e = IbisEngine()
         t1 = _scan(e, _LINK_ROWS)
         tracker = DirtyTracker()
         tracker.stamp_table("link", t1, e)
@@ -266,7 +265,7 @@ class TestTableStamps:
         baseline to compare against. The intent is "force re-validate";
         the next validation pass re-stamps.
         """
-        e = PandasEngine()
+        e = IbisEngine()
         t = _scan(e, _LINK_ROWS)
         tracker = DirtyTracker()
         tracker.stamp_table("link", t, e)
@@ -282,7 +281,7 @@ class TestTableStamps:
         tracker.mark_dirty("never_existed")  # must not raise
 
     def test_known_tables_lists_stamped(self):
-        e = PandasEngine()
+        e = IbisEngine()
         t = _scan(e, _LINK_ROWS)
         tracker = DirtyTracker()
         assert tracker.known_tables() == []
@@ -315,7 +314,7 @@ class TestFKStamps:
 
     def test_stamp_fk_from_exprs_computes_hashes(self):
         """The convenience wrapper computes the hashes itself."""
-        e = PandasEngine()
+        e = IbisEngine()
         link = _scan(e, _LINK_ROWS)
         node = _scan(e, _NODE_ROWS)
         tracker = DirtyTracker()
@@ -334,7 +333,7 @@ class TestFKStamps:
 
     def test_stale_fks_empty_when_nothing_changed(self):
         """Stamp and immediately check — no drift, no stale FKs."""
-        e = PandasEngine()
+        e = IbisEngine()
         link = _scan(e, _LINK_ROWS)
         node = _scan(e, _NODE_ROWS)
         tracker = DirtyTracker()
@@ -343,7 +342,7 @@ class TestFKStamps:
 
     def test_stale_fks_detects_source_change(self):
         """Mutating the source FK column lands in the stale list."""
-        e = PandasEngine()
+        e = IbisEngine()
         link = _scan(e, _LINK_ROWS)
         node = _scan(e, _NODE_ROWS)
         tracker = DirtyTracker()
@@ -356,7 +355,7 @@ class TestFKStamps:
 
     def test_stale_fks_detects_target_change(self):
         """Mutating the target FK column lands in the stale list."""
-        e = PandasEngine()
+        e = IbisEngine()
         link = _scan(e, _LINK_ROWS)
         node = _scan(e, _NODE_ROWS)
         tracker = DirtyTracker()
@@ -369,7 +368,7 @@ class TestFKStamps:
 
     def test_stale_fks_detects_missing_table(self):
         """If a table is dropped from current_tables, the stamp is stale."""
-        e = PandasEngine()
+        e = IbisEngine()
         link = _scan(e, _LINK_ROWS)
         node = _scan(e, _NODE_ROWS)
         tracker = DirtyTracker()
@@ -380,7 +379,7 @@ class TestFKStamps:
 
     def test_stale_fks_detects_dropped_column(self):
         """A column removed from a table (but the table still present) is stale."""
-        e = PandasEngine()
+        e = IbisEngine()
         link = _scan(e, _LINK_ROWS)
         node = _scan(e, _NODE_ROWS)
         tracker = DirtyTracker()
@@ -396,9 +395,9 @@ class TestFKStamps:
         """clear_fk_stamps wipes the list."""
         tracker = DirtyTracker()
         tracker.stamp_fk("a", "x", "b", "y", source_hash="s", target_hash="t")
-        assert tracker.stale_fks({}, engine=PandasEngine()) != []  # missing tables -> stale
+        assert tracker.stale_fks({}, engine=IbisEngine()) != []  # missing tables -> stale
         tracker.clear_fk_stamps()
-        assert tracker.stale_fks({}, engine=PandasEngine()) == []
+        assert tracker.stale_fks({}, engine=IbisEngine()) == []
 
 
 # ---------------------------------------------------------------------------
@@ -409,7 +408,7 @@ class TestFKStamps:
 class TestCheckEmitsIssues:
     def test_check_emits_warning_for_stale_fk(self):
         """Default severity for a stale FK is WARNING."""
-        e = PandasEngine()
+        e = IbisEngine()
         link = _scan(e, _LINK_ROWS)
         node = _scan(e, _NODE_ROWS)
         tracker = DirtyTracker()
@@ -424,7 +423,7 @@ class TestCheckEmitsIssues:
 
     def test_check_emits_error_under_strict(self):
         """strict=True elevates sync issues to ERROR."""
-        e = PandasEngine()
+        e = IbisEngine()
         link = _scan(e, _LINK_ROWS)
         node = _scan(e, _NODE_ROWS)
         tracker = DirtyTracker()
@@ -437,7 +436,7 @@ class TestCheckEmitsIssues:
 
     def test_check_appends_to_existing_report(self):
         """If a report is passed in, sync issues are appended (not replaced)."""
-        e = PandasEngine()
+        e = IbisEngine()
         link = _scan(e, _LINK_ROWS)
         node = _scan(e, _NODE_ROWS)
         tracker = DirtyTracker()
@@ -468,7 +467,7 @@ class TestCheckEmitsIssues:
         target table, AND target field so the user knows exactly what
         to re-validate.
         """
-        e = PandasEngine()
+        e = IbisEngine()
         link = _scan(e, _LINK_ROWS)
         node = _scan(e, _NODE_ROWS)
         tracker = DirtyTracker()
@@ -483,7 +482,7 @@ class TestCheckEmitsIssues:
 
     def test_check_unverifiable_when_table_missing(self):
         """A missing source/target table emits sync.unverifiable (not fk_stale)."""
-        e = PandasEngine()
+        e = IbisEngine()
         link = _scan(e, _LINK_ROWS)
         node = _scan(e, _NODE_ROWS)
         tracker = DirtyTracker()
@@ -498,7 +497,7 @@ class TestCheckEmitsIssues:
 
     def test_check_clean_when_nothing_changed(self):
         """No drift, no issues. Report is_clean."""
-        e = PandasEngine()
+        e = IbisEngine()
         link = _scan(e, _LINK_ROWS)
         node = _scan(e, _NODE_ROWS)
         tracker = DirtyTracker()
@@ -509,7 +508,7 @@ class TestCheckEmitsIssues:
 
     def test_check_emits_fix_hint(self):
         """Issues carry the documented fix_hint."""
-        e = PandasEngine()
+        e = IbisEngine()
         link = _scan(e, _LINK_ROWS)
         node = _scan(e, _NODE_ROWS)
         tracker = DirtyTracker()
@@ -521,7 +520,7 @@ class TestCheckEmitsIssues:
 
     def test_check_extra_carries_target_info(self):
         """Issue.extra must include target_table + target_field for renderers."""
-        e = PandasEngine()
+        e = IbisEngine()
         link = _scan(e, _LINK_ROWS)
         node = _scan(e, _NODE_ROWS)
         tracker = DirtyTracker()
@@ -555,7 +554,7 @@ class TestV03Regression:
         ``sync.fk_stale`` appears in the report. Anything less is the
         v0.3 bug.
         """
-        e = PandasEngine()
+        e = IbisEngine()
         link = _scan(e, _LINK_ROWS)
         node = _scan(e, _NODE_ROWS)
         tracker = DirtyTracker()
@@ -597,7 +596,7 @@ class TestCompositeFK:
         """
         from datagrove.validation.sync_state import _column_hash_from_expr
 
-        e = PandasEngine()
+        e = IbisEngine()
         # Synthetic composite-key tables.
         src_rows = [{"a": 1, "b": "x", "id": 1}, {"a": 2, "b": "y", "id": 2}]
         tgt_rows = [{"a": 1, "b": "x", "name": "first"}, {"a": 2, "b": "y", "name": "second"}]

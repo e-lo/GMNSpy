@@ -27,7 +27,7 @@ def _grid(n: int):
 
 
 @pytest.mark.perf
-@pytest.mark.parametrize("engine_name", ["ibis", "pandas", "polars"])
+@pytest.mark.parametrize("engine_name", ["ibis"])
 def test_build_is_engine_agnostic(engine_name):
     if engine_name not in list_engines():
         pytest.skip(f"{engine_name} engine not installed")

@@ -92,7 +92,7 @@ _DEFAULT_NAV: list[dict] = [
             {
                 "title": "When to use ibis vs pandas vs polars",
                 "href": "concepts/engines.md",
-                "description": "Engine-choice decision guide; ibis pushdown vs in-memory pandas/polars.",
+                "description": "The compute engine (DuckDB) and pandas/polars/Arrow dataframe formats.",
             },
         ],
     },

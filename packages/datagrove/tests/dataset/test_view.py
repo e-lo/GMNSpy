@@ -32,7 +32,6 @@ from datagrove.dataset.view import (
 )
 from datagrove.engines.errors import EngineNotAvailableError
 from datagrove.engines.ibis_engine import IbisEngine
-from datagrove.engines.pandas_engine import PandasEngine
 from gmnspy.fixtures import leavenworth
 
 # Downtown Leavenworth bbox (chosen to be tight enough to filter out
@@ -54,7 +53,7 @@ def _make_engine(name: str):
     if name == "ibis":
         return IbisEngine()
     if name == "pandas":
-        return PandasEngine()
+        return IbisEngine()
     raise AssertionError(f"unknown engine: {name!r}")
 
 
@@ -74,7 +73,7 @@ def _geometry_table(engine_name: str):
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("engine_name", ["ibis", "pandas"])
+@pytest.mark.parametrize("engine_name", ["ibis"])
 def test_from_bbox_filters_geometry(engine_name: str) -> None:
     _, geom = _geometry_table(engine_name)
     total = geom.count()
@@ -83,7 +82,7 @@ def test_from_bbox_filters_geometry(engine_name: str) -> None:
     assert scoped.count() < total
 
 
-@pytest.mark.parametrize("engine_name", ["ibis", "pandas"])
+@pytest.mark.parametrize("engine_name", ["ibis"])
 def test_from_bbox_empty_when_far(engine_name: str) -> None:
     _, geom = _geometry_table(engine_name)
     # Mid-Atlantic — nothing in Leavenworth fits.
@@ -91,7 +90,7 @@ def test_from_bbox_empty_when_far(engine_name: str) -> None:
     assert scoped.count() == 0
 
 
-@pytest.mark.parametrize("engine_name", ["ibis", "pandas"])
+@pytest.mark.parametrize("engine_name", ["ibis"])
 def test_from_bbox_noop_when_geometry_column_absent(engine_name: str) -> None:
     """Tables without a geometry column pass through unchanged."""
     eng = _make_engine(engine_name)
@@ -119,7 +118,7 @@ def test_from_bbox_returns_new_table_does_not_mutate_source() -> None:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("engine_name", ["ibis", "pandas"])
+@pytest.mark.parametrize("engine_name", ["ibis"])
 def test_from_polygon_wkt_string(engine_name: str) -> None:
     _, geom = _geometry_table(engine_name)
     scoped = from_polygon(geom, _WKT_POLY)
@@ -141,7 +140,7 @@ def test_from_polygon_accepts_shapely_geometry() -> None:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("engine_name", ["ibis", "pandas"])
+@pytest.mark.parametrize("engine_name", ["ibis"])
 def test_from_geometry_buffer_around_point(engine_name: str) -> None:
     _, geom = _geometry_table(engine_name)
     # Tight 0.005-degree radius around a Leavenworth node.

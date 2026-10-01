@@ -22,6 +22,7 @@ from __future__ import annotations
 import re
 
 import pytest
+from datagrove.engines.ibis_engine import IbisEngine
 
 # Importing the adapter module has the side effect of self-registering it.
 # We import the module (not just the class) so the registration runs even
@@ -65,19 +66,8 @@ EXPECTED_TABLES = {
 
 
 def _engine_factories():
-    factories = []
-    from datagrove.engines.ibis_engine import IbisEngine
-    from datagrove.engines.pandas_engine import PandasEngine
-
-    factories.append(("ibis", IbisEngine))
-    factories.append(("pandas", PandasEngine))
-    try:
-        from datagrove.engines.polars_engine import PolarsEngine
-
-        factories.append(("polars", PolarsEngine))
-    except Exception:  # pragma: no cover - polars is an installed dep here
-        pass
-    return factories
+    # DuckDB is the one compute engine; pandas/polars/arrow are I/O formats.
+    return [("ibis", IbisEngine)]
 
 
 ENGINE_PARAMS = _engine_factories()
@@ -190,11 +180,10 @@ def test_scan_strips_duckdb_url_scheme() -> None:
 def test_read_requires_table_kwarg() -> None:
     """Calling read() without table= raises InvalidEngineCallError with a hint."""
     from datagrove.engines.errors import InvalidEngineCallError
-    from datagrove.engines.pandas_engine import PandasEngine
 
     a = DuckdbAdapter()
     with pytest.raises(InvalidEngineCallError) as excinfo:
-        a.read(str(LEAVENWORTH_DUCKDB), engine=PandasEngine())
+        a.read(str(LEAVENWORTH_DUCKDB), engine=IbisEngine())
     msg = str(excinfo.value)
     # The remediation hint must mention scan() so a confused caller (or AI
     # agent) knows how to discover the available tables.
@@ -274,7 +263,7 @@ def test_write_specific_table_roundtrip(engine_name, engine_cls, tmp_path) -> No
         if engine_name == "polars":
             # Confirm the documented deferral is in force; the adapter
             # correctly forwards the failure rather than masking it.
-            # Post-#134: PolarsEngine.write_duckdb_table raises
+            # Post-#134: IbisEngine.write_duckdb_table raises
             # EngineNotAvailableError (the engine literally cannot do
             # this without raw SQL — structurally not-supported, not
             # not-yet-implemented).
@@ -308,10 +297,9 @@ def test_write_specific_table_roundtrip(engine_name, engine_cls, tmp_path) -> No
 def test_write_requires_table_kwarg(tmp_path) -> None:
     """write() must also require table=, with a parallel error to read()."""
     from datagrove.engines.errors import InvalidEngineCallError
-    from datagrove.engines.pandas_engine import PandasEngine
 
     a = DuckdbAdapter()
-    engine = PandasEngine()
+    engine = IbisEngine()
     # Build a trivial expression to write.
     expr = engine.scan({"data": [{"x": 1}, {"x": 2}]})
     out_path = tmp_path / "out.duckdb"

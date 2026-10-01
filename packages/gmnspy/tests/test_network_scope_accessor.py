@@ -14,7 +14,7 @@ neither matched the documented chainable form.
 from __future__ import annotations
 
 import pytest
-from datagrove.engines.pandas_engine import PandasEngine
+from datagrove.engines.ibis_engine import IbisEngine
 from gmnspy import Network
 from gmnspy.fixtures import leavenworth
 
@@ -29,7 +29,7 @@ pytest.importorskip("shapely")
 
 def _net() -> Network:
     """Fresh Leavenworth Network — small + cheap."""
-    return Network.from_source(leavenworth.csv_dir(), engine=PandasEngine())
+    return Network.from_source(leavenworth.csv_dir(), engine=IbisEngine())
 
 
 # ---------------------------------------------------------------------------

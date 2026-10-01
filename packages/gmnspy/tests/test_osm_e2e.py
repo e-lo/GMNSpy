@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datagrove.engines.pandas_engine import PandasEngine
+from datagrove.engines.ibis_engine import IbisEngine
 from gmnspy import Network
 from gmnspy.osm import build, convert
 
@@ -32,7 +32,7 @@ def _grid(n: int):
 def test_generated_network_passes_gmns_validation():
     nodes, ways = _grid(3)
     node_recs, link_recs = convert.build_node_link_tables(nodes, ways)
-    net = build.network_from_records(node_recs, link_recs, engine=PandasEngine())
+    net = build.network_from_records(node_recs, link_recs, engine=IbisEngine())
 
     report = net.validate()
     errors = [i for i in report.issues if i.severity.value == "error"]
@@ -43,11 +43,11 @@ def test_generated_network_passes_gmns_validation():
 def test_write_csv_and_reread_round_trip(tmp_path):
     nodes, ways = _grid(3)
     node_recs, link_recs = convert.build_node_link_tables(nodes, ways)
-    net = build.network_from_records(node_recs, link_recs, engine=PandasEngine())
+    net = build.network_from_records(node_recs, link_recs, engine=IbisEngine())
 
     dest = tmp_path / "net"
     net.write(dest, format="csv", overwrite=False)
 
-    reread = Network.from_source(dest, engine=PandasEngine())
+    reread = Network.from_source(dest, engine=IbisEngine())
     assert reread.nodes.count() == net.nodes.count()
     assert reread.links.count() == net.links.count()

@@ -6,7 +6,7 @@ table — so the builder emits one to make the network self-describing.
 
 from __future__ import annotations
 
-from datagrove.engines.pandas_engine import PandasEngine
+from datagrove.engines.ibis_engine import IbisEngine
 from gmnspy.osm import build
 
 _NODE_RECS = [
@@ -32,7 +32,7 @@ _LINK_RECS = [
 
 
 def test_config_table_declares_units():
-    net = build.network_from_records(_NODE_RECS, _LINK_RECS, engine=PandasEngine())
+    net = build.network_from_records(_NODE_RECS, _LINK_RECS, engine=IbisEngine())
     assert net.config is not None
     cfg = net.config.to_pandas().iloc[0]
     assert cfg["speed"] == "mph"
@@ -42,6 +42,6 @@ def test_config_table_declares_units():
 
 
 def test_config_does_not_break_validation():
-    net = build.network_from_records(_NODE_RECS, _LINK_RECS, engine=PandasEngine())
+    net = build.network_from_records(_NODE_RECS, _LINK_RECS, engine=IbisEngine())
     errors = [i for i in net.validate().issues if i.severity.value == "error"]
     assert errors == [], errors

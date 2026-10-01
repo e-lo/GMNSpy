@@ -63,9 +63,9 @@ def assemble_link_geometry(net: Network) -> pa.Table:
     Examples:
         >>> from gmnspy import Network
         >>> from gmnspy.fixtures import leavenworth
-        >>> from datagrove.engines.pandas_engine import PandasEngine
+        >>> from datagrove.engines.ibis_engine import IbisEngine
         >>> from gmnspy.semantics import assemble_link_geometry
-        >>> net = Network.from_source(leavenworth.csv_dir(), engine=PandasEngine())
+        >>> net = Network.from_source(leavenworth.csv_dir(), engine=IbisEngine())
         >>> tbl = assemble_link_geometry(net)
         >>> set(tbl.column_names) == {"link_id", "geometry_wkt", "source"}
         True

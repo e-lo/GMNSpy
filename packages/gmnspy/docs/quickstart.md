@@ -183,9 +183,8 @@ Each accordion below is one alternative to the defaults used above. The first (m
     Default is `IbisEngine` (lazy, DuckDB-backed). Switch to pandas when you need eager evaluation or DataFrame ergonomics for downstream code.
 
     ```python
-    from datagrove.engines.pandas_engine import PandasEngine
 
-    net = Network.from_source(path, engine=PandasEngine())
+    net = Network.from_source(path)
     ```
 
 ??? note "Read from S3 with credentials"

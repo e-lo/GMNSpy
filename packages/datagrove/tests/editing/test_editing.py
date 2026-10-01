@@ -35,7 +35,6 @@ from datagrove.editing import (
 )
 from datagrove.editing.apply import apply_edit
 from datagrove.engines.ibis_engine import IbisEngine
-from datagrove.engines.pandas_engine import PandasEngine
 from datagrove.validation.sync_state import DirtyTracker
 
 
@@ -44,7 +43,7 @@ def _engine(name: str):
     if name == "ibis":
         return IbisEngine()
     if name == "pandas":
-        return PandasEngine()
+        return IbisEngine()
     raise AssertionError(f"unknown engine name: {name!r}")
 
 
@@ -91,7 +90,7 @@ def test_editresult_carries_diff_and_session() -> None:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("engine_name", ["ibis", "pandas"])
+@pytest.mark.parametrize("engine_name", ["ibis"])
 def test_apply_add_rows(engine_name: str) -> None:
     pkg = _make_pkg(engine_name)
     r = apply_edit(pkg, Edit(op="add_rows", table="t", payload={"rows": [{"id": 4, "v": "d"}]}))
@@ -102,7 +101,7 @@ def test_apply_add_rows(engine_name: str) -> None:
     assert r.diff.after_sample is not None and len(r.diff.after_sample) <= 50
 
 
-@pytest.mark.parametrize("engine_name", ["ibis", "pandas"])
+@pytest.mark.parametrize("engine_name", ["ibis"])
 def test_apply_delete_rows(engine_name: str) -> None:
     pkg = _make_pkg(engine_name)
     r = apply_edit(pkg, Edit(op="delete_rows", table="t", payload={"predicate": lambda t: t["id"] == 2}))
@@ -110,7 +109,7 @@ def test_apply_delete_rows(engine_name: str) -> None:
     assert _ids(pkg) == [1, 3]
 
 
-@pytest.mark.parametrize("engine_name", ["ibis", "pandas"])
+@pytest.mark.parametrize("engine_name", ["ibis"])
 def test_apply_update_rows(engine_name: str) -> None:
     pkg = _make_pkg(engine_name)
     r = apply_edit(
@@ -218,7 +217,7 @@ def test_session_atomicity_on_exception(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("engine_name", ["ibis", "pandas"])
+@pytest.mark.parametrize("engine_name", ["ibis"])
 def test_rollback_round_trip(engine_name: str, tmp_path: Path) -> None:
     """Apply edits → write log → rollback from disk → final == initial."""
     pkg = _make_pkg(engine_name)
@@ -315,7 +314,7 @@ def test_leavenworth_round_trip(tmp_path: Path) -> None:
     spec = Path(gmnspy.__file__).parent / "spec" / "0.97" / "datapackage.json"
     pkg = Package.from_source(
         leavenworth.csv_dir(),
-        engine=PandasEngine(),
+        engine=IbisEngine(),
         spec=spec,
         tables=["link", "node"],
     )
@@ -348,7 +347,7 @@ def test_session_no_log_path_skips_persist() -> None:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("engine_name", ["ibis", "pandas"])
+@pytest.mark.parametrize("engine_name", ["ibis"])
 def test_engine_from_arrow_hash_preservation(engine_name: str) -> None:
     """``from_arrow`` must round-trip a pyarrow Table without dtype loss.
 

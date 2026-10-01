@@ -139,10 +139,10 @@ class Package:
             >>> import tempfile, pathlib
             >>> from datagrove.fixtures import sample
             >>> from datagrove.dataset import Package
-            >>> from datagrove.engines.pandas_engine import PandasEngine
+            >>> from datagrove.engines.ibis_engine import IbisEngine
             >>> pkg = Package.from_source(
             ...     sample.csv_dir(),
-            ...     engine=PandasEngine(),
+            ...     engine=IbisEngine(),
             ...     spec=sample.DATAPACKAGE,
             ...     tables=["book", "author"],
             ... )
@@ -248,10 +248,10 @@ class Package:
         Examples:
             >>> from datagrove.fixtures import sample
             >>> from datagrove.dataset import Package
-            >>> from datagrove.engines.pandas_engine import PandasEngine
+            >>> from datagrove.engines.ibis_engine import IbisEngine
             >>> pkg = Package.from_source(
             ...     sample.csv_dir(),
-            ...     engine=PandasEngine(),
+            ...     engine=IbisEngine(),
             ...     spec=sample.DATAPACKAGE,
             ...     tables=["book"],
             ... )
@@ -348,9 +348,9 @@ class Package:
             A new :class:`Package`.
 
         Examples:
-            >>> from datagrove.engines.pandas_engine import PandasEngine
+            >>> from datagrove.engines.ibis_engine import IbisEngine
             >>> from datagrove.dataset import Package, Table
-            >>> e = PandasEngine()
+            >>> e = IbisEngine()
             >>> link = Table(name="link", expr=e.from_records([{"id": 1}]), engine=e)
             >>> p = Package.from_tables({"link": link})
             >>> "link" in p
@@ -373,9 +373,9 @@ class Package:
         """Return the :class:`Table` named ``name``.
 
         Examples:
-            >>> from datagrove.engines.pandas_engine import PandasEngine
+            >>> from datagrove.engines.ibis_engine import IbisEngine
             >>> from datagrove.dataset import Package, Table
-            >>> e = PandasEngine()
+            >>> e = IbisEngine()
             >>> t = Table(name="link", expr=e.from_records([{"id": 1}]), engine=e)
             >>> Package.from_tables({"link": t})["link"].name
             'link'
@@ -422,8 +422,8 @@ class Package:
 
         Examples:
             >>> from datagrove.dataset import Package, Table
-            >>> from datagrove.engines.pandas_engine import PandasEngine
-            >>> e = PandasEngine()
+            >>> from datagrove.engines.ibis_engine import IbisEngine
+            >>> e = IbisEngine()
             >>> pkg = Package.from_tables({"x": Table(name="x", expr=e.from_records([{"a": 1}]), engine=e)})
             >>> pkg.safe_count("x")
             1
@@ -486,10 +486,10 @@ class Package:
         Examples:
             >>> from datagrove.fixtures import sample
             >>> from datagrove.dataset import Package
-            >>> from datagrove.engines.pandas_engine import PandasEngine
+            >>> from datagrove.engines.ibis_engine import IbisEngine
             >>> pkg = Package.from_source(
             ...     sample.csv_dir(),
-            ...     engine=PandasEngine(),
+            ...     engine=IbisEngine(),
             ...     spec=sample.DATAPACKAGE,
             ...     tables=["book", "author"],
             ... )
@@ -606,10 +606,10 @@ class Package:
 
                 >>> from datagrove.fixtures import sample
                 >>> from datagrove.dataset import Package
-                >>> from datagrove.engines.pandas_engine import PandasEngine
+                >>> from datagrove.engines.ibis_engine import IbisEngine
                 >>> pkg = Package.from_source(
                 ...     sample.csv_dir(),
-                ...     engine=PandasEngine(),
+                ...     engine=IbisEngine(),
                 ...     spec=sample.DATAPACKAGE,
                 ...     tables=["book", "author"],
                 ... )
@@ -727,11 +727,11 @@ class Package:
                 >>> import tempfile, pathlib
                 >>> from datagrove.fixtures import sample
                 >>> from datagrove.dataset import Package
-                >>> from datagrove.engines.pandas_engine import PandasEngine
+                >>> from datagrove.engines.ibis_engine import IbisEngine
                 >>> with tempfile.TemporaryDirectory() as tmp:
                 ...     pkg = Package.from_source(
                 ...         sample.csv_dir(),
-                ...         engine=PandasEngine(),
+                ...         engine=IbisEngine(),
                 ...         spec=sample.DATAPACKAGE,
                 ...         tables=["book"],
                 ...     )
@@ -808,9 +808,9 @@ class Package:
         """Insert a new :class:`Table` under ``name`` (or replace an existing one).
 
         Examples:
-            >>> from datagrove.engines.pandas_engine import PandasEngine
+            >>> from datagrove.engines.ibis_engine import IbisEngine
             >>> from datagrove.dataset import Package, Table
-            >>> e = PandasEngine()
+            >>> e = IbisEngine()
             >>> p = Package.from_tables(
             ...     {"a": Table(name="a", expr=e.from_records([{"x": 1}]), engine=e)}
             ... )
@@ -824,9 +824,9 @@ class Package:
         """Remove the table named ``name``.
 
         Examples:
-            >>> from datagrove.engines.pandas_engine import PandasEngine
+            >>> from datagrove.engines.ibis_engine import IbisEngine
             >>> from datagrove.dataset import Package, Table
-            >>> e = PandasEngine()
+            >>> e = IbisEngine()
             >>> p = Package.from_tables(
             ...     {"a": Table(name="a", expr=e.from_records([{"x": 1}]), engine=e)}
             ... )
@@ -858,8 +858,8 @@ class Package:
         Examples:
             >>> from datagrove.dataset import Package, Table
             >>> from datagrove.editing import Edit
-            >>> from datagrove.engines.pandas_engine import PandasEngine
-            >>> e = PandasEngine()
+            >>> from datagrove.engines.ibis_engine import IbisEngine
+            >>> e = IbisEngine()
             >>> pkg = Package.from_tables(
             ...     {"t": Table(name="t", expr=e.from_records([{"id": 1}]), engine=e)}
             ... )
@@ -881,9 +881,9 @@ class Package:
         Convenience for :meth:`Table.invalidate` on the indexed entry.
 
         Examples:
-            >>> from datagrove.engines.pandas_engine import PandasEngine
+            >>> from datagrove.engines.ibis_engine import IbisEngine
             >>> from datagrove.dataset import Package, Table
-            >>> e = PandasEngine()
+            >>> e = IbisEngine()
             >>> t = Table(name="a", expr=e.from_records([{"x": 1}]), engine=e)
             >>> p = Package.from_tables({"a": t})
             >>> p.invalidate("a")
@@ -924,9 +924,9 @@ class Package:
         ``_repr_html_`` on the public surface shares the same look.
 
         Examples:
-            >>> from datagrove.engines.pandas_engine import PandasEngine
+            >>> from datagrove.engines.ibis_engine import IbisEngine
             >>> from datagrove.dataset import Package, Table
-            >>> e = PandasEngine()
+            >>> e = IbisEngine()
             >>> t = Table(name="a", expr=e.from_records([{"x": 1}]), engine=e)
             >>> html = Package.from_tables({"a": t})._repr_html_()
             >>> html.startswith("<div")

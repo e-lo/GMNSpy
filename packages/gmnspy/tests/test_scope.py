@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import pytest
 from datagrove.dataset import Table
-from datagrove.engines.pandas_engine import PandasEngine
+from datagrove.engines.ibis_engine import IbisEngine
 from datagrove.spec import DataPackage, Resource
 from gmnspy import Network
 from gmnspy.fixtures import leavenworth
@@ -35,9 +35,9 @@ pytest.importorskip("shapely")
 # ---------------------------------------------------------------------------
 
 
-def _engine() -> PandasEngine:
+def _engine() -> IbisEngine:
     """One engine for the scope tests — operations are engine-agnostic."""
-    return PandasEngine()
+    return IbisEngine()
 
 
 def _network(tables_dict: dict[str, Table]) -> Network:

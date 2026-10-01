@@ -19,7 +19,7 @@ from pathlib import Path
 
 import datagrove
 import pytest
-from datagrove.engines.pandas_engine import PandasEngine
+from datagrove.engines.ibis_engine import IbisEngine
 from datagrove.fixtures import sample
 
 # ---------------------------------------------------------------------------
@@ -37,7 +37,7 @@ def test_read_format_override_loads_extensionless_csv(tmp_path: Path) -> None:
     bare = tmp_path / "book_no_ext"
     shutil.copyfile(src_csv, bare)
 
-    pkg = datagrove.read(bare, format="csv", engine=PandasEngine())
+    pkg = datagrove.read(bare, format="csv", engine=IbisEngine())
     # CsvAdapter.scan returns one ResourceRef whose name comes from
     # the stem — exact name depends on adapter, just confirm we got a
     # single-table package.
@@ -53,7 +53,7 @@ def test_read_format_passthrough_to_package_from_source() -> None:
     # Use a known-good directory + explicit format; either path
     # works (directory walk doesn't need format), but verifying the
     # call succeeds is the contract we care about.
-    pkg = datagrove.read(sample.csv_dir(), format="csv", engine=PandasEngine())
+    pkg = datagrove.read(sample.csv_dir(), format="csv", engine=IbisEngine())
     assert "book" in pkg
 
 
@@ -87,7 +87,7 @@ def test_read_credentials_threaded_to_remote_adapter(monkeypatch: pytest.MonkeyP
         datagrove.read(
             "s3://fakebucket/data.csv",
             credentials={"token": "secret"},
-            engine=PandasEngine(),
+            engine=IbisEngine(),
         )
     finally:
         # belt-and-suspenders restore (monkeypatch undoes it, but be
@@ -110,7 +110,7 @@ def test_read_credentials_not_forwarded_to_local_adapters() -> None:
     pkg = datagrove.read(
         sample.csv_dir(),
         credentials={"token": "ignored-for-local"},
-        engine=PandasEngine(),
+        engine=IbisEngine(),
     )
     # If credentials had leaked into engine.read_csv this would have
     # raised; the assertion is that we got a populated package back.
@@ -127,7 +127,7 @@ def test_read_scope_filters_tables() -> None:
     pkg = datagrove.read(
         sample.csv_dir(),
         scope={"tables": ["book"]},
-        engine=PandasEngine(),
+        engine=IbisEngine(),
     )
     assert pkg.keys() == ["book"]
 
@@ -138,8 +138,8 @@ def test_read_scope_none_is_noop() -> None:
     Guards against a silent regression where ``None`` started filtering
     everything out / raising — the default has to be inert.
     """
-    pkg_default = datagrove.read(sample.csv_dir(), engine=PandasEngine())
-    pkg_none = datagrove.read(sample.csv_dir(), scope=None, engine=PandasEngine())
+    pkg_default = datagrove.read(sample.csv_dir(), engine=IbisEngine())
+    pkg_none = datagrove.read(sample.csv_dir(), scope=None, engine=IbisEngine())
     assert sorted(pkg_default.keys()) == sorted(pkg_none.keys())
 
 
@@ -148,6 +148,6 @@ def test_read_scope_columns_projection() -> None:
     pkg = datagrove.read(
         sample.csv_dir(),
         scope={"tables": ["book"], "columns": {"book": ["id"]}},
-        engine=PandasEngine(),
+        engine=IbisEngine(),
     )
     assert pkg["book"].columns() == ["id"]

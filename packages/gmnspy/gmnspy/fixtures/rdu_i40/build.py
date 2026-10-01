@@ -9,7 +9,7 @@ sprawl. Carries `ref` (required to identify I-40).
 import collections
 from pathlib import Path
 
-from datagrove.engines.pandas_engine import PandasEngine
+from datagrove.engines.ibis_engine import IbisEngine
 
 from gmnspy.osm.build import build_network_from_osm
 from gmnspy.select._support import norm_ref
@@ -18,7 +18,7 @@ OUT = Path("packages/gmnspy/gmnspy/fixtures/rdu_i40")
 bbox = (-78.850, 35.855, -78.760, 35.895)  # proven: I-40 stretch w/ S Miami / Page / Airport
 HOPS = 4
 
-net = build_network_from_osm(bbox, network_type="drive", extra_tags=["ref"], engine=PandasEngine())
+net = build_network_from_osm(bbox, network_type="drive", extra_tags=["ref"], engine=IbisEngine())
 
 
 def tp(t):

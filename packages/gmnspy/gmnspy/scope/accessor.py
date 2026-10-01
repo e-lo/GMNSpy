@@ -55,8 +55,8 @@ class NetworkScopeAccessor:
         >>> _ = pytest.importorskip("scipy")
         >>> from gmnspy import Network
         >>> from gmnspy.fixtures import leavenworth
-        >>> from datagrove.engines.pandas_engine import PandasEngine
-        >>> net = Network.from_source(leavenworth.csv_dir(), engine=PandasEngine())
+        >>> from datagrove.engines.ibis_engine import IbisEngine
+        >>> net = Network.from_source(leavenworth.csv_dir(), engine=IbisEngine())
         >>> scope = net.scope.from_nodes([1, 2, 3], path_between=False)
         >>> 1 in scope.node_ids
         True
