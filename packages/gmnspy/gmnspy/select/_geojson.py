@@ -2,7 +2,7 @@
 
 Uses each link's WKT ``geometry`` when present; falls back to a straight
 segment between its from/to node coordinates. Reuses the hand-rolled WKT
-parser from :mod:`gmnspy.map.geo_resolver` (no shapely dependency).
+parser from :mod:`gmnspy._wkt` (no shapely dependency).
 """
 
 from __future__ import annotations
@@ -12,7 +12,7 @@ from typing import Any
 
 import pandas as pd
 
-from gmnspy.map.geo_resolver import _parse_linestring_points  # tiny WKT LINESTRING parser
+from gmnspy._wkt import _parse_linestring_points  # tiny WKT LINESTRING parser
 
 __all__ = ["links_to_geojson", "node_lonlat"]
 

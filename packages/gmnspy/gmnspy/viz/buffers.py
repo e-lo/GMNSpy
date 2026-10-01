@@ -19,7 +19,7 @@ import struct
 import numpy as np
 import pandas as pd
 
-from gmnspy.map.geo_resolver import _parse_linestring_points
+from gmnspy._wkt import _parse_linestring_points
 
 __all__ = ["network_attrs", "pack_network", "unpack_network"]
 
