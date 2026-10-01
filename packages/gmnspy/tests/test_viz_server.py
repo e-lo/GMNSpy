@@ -85,6 +85,35 @@ def test_property_values_continuous_and_categorical(client):
     assert client.get("/api/property/nope").status_code == 404
 
 
+def test_fragment_from_picked_link_ids(client):
+    base = resources.files("gmnspy.fixtures.rdu_i40").joinpath("parquet")
+    ids = [int(i) for i in pd.read_parquet(base.joinpath("link.parquet"))["link_id"].iloc[:3]]
+    r = client.post("/api/fragment", json={"link_ids": ids})
+    assert r.status_code == 200
+    j = r.json()
+    assert j["status"] == "resolved"
+    assert j["fragment"]["links"]["link_id"] == ids
+    assert j["count"] == 3
+
+
+def test_fragment_query_form(client):
+    base = resources.files("gmnspy.fixtures.rdu_i40").joinpath("parquet")
+    ids = [int(i) for i in pd.read_parquet(base.joinpath("link.parquet"))["link_id"].iloc[:2]]
+    j = client.post("/api/fragment", json={"link_ids": ids, "form": "query"}).json()
+    assert j["fragment"]["links"]["link_id"] == ids   # query form of explicit ids
+
+
+def test_fragment_empty_is_rejected(client):
+    r = client.post("/api/fragment", json={"link_ids": []})
+    assert r.status_code == 400
+
+
+def test_fragment_unknown_ids_not_found(client):
+    j = client.post("/api/fragment", json={"link_ids": [999999999]}).json()
+    assert j["status"] == "not_found"
+    assert j["fragment"] is None
+
+
 def test_select_returns_link_ids_and_anchors(client):
     r = client.get("/api/select",
                    params={"utterance": "I-40 EB between South Miami Boulevard and Airport Boulevard"})

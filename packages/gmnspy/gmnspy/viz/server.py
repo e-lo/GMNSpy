@@ -13,9 +13,10 @@ from importlib import resources
 from typing import Any
 
 import pandas as pd
-from fastapi import FastAPI, Query, Response
+from fastapi import Body, FastAPI, Query, Response
 from fastapi.responses import HTMLResponse, JSONResponse
 
+from gmnspy.select.intent import SelectionIntent
 from gmnspy.select.parse import ClaudeParser, StubParser
 from gmnspy.select.resolve import resolve_frames
 from gmnspy.select.emit import to_fragment
@@ -162,6 +163,24 @@ def build_app(links, nodes, *, provider: str = "stub", parser=None, basemap: str
         rec = row.iloc[0].to_dict()
         return JSONResponse({"link_id": _py(key),
                              "attributes": {k: _json_scalar(v) for k, v in rec.items()}})
+
+    @app.post("/api/fragment")
+    def fragment(payload: dict = Body(...)) -> JSONResponse:
+        """Emit a validated selection fragment from interactively-picked link ids.
+
+        Body: ``{"link_ids": [...], "form": "resolved"|"query"}``. Reuses the
+        real resolve+emit path so a map-built selection round-trips to the same
+        ProjectCard-shaped fragment an utterance would produce.
+        """
+        ids = payload.get("link_ids") or []
+        if not ids:
+            return JSONResponse({"error": "link_ids must be a non-empty list"}, status_code=400)
+        form = payload.get("form", "resolved")
+        result = resolve_frames(SelectionIntent(link_ids=list(ids)), links, nodes)
+        frag = to_fragment(result, form=form) if result.status == "resolved" else None
+        return JSONResponse({"status": result.status, "count": len(result.link_ids),
+                             "link_ids": [_py(i) for i in result.link_ids], "fragment": frag,
+                             "diagnostics": list(result.diagnostics)})
 
     @app.get("/api/select")
     def select(utterance: str = Query(..., min_length=1)) -> dict:

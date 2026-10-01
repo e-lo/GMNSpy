@@ -9,7 +9,7 @@
 <script src="https://cdn.jsdelivr.net/npm/deck.gl@9.0.38/dist.min.js"></script>
 <style>
   :root { --bg:#0f1115; --panel:#171a21; --edge:#2a2f3a; --ink:#e6e8ec; --muted:#9aa3b2;
-          --accent:#ff8c3b; --from:#35c46a; --to:#e0524d; }
+          --accent:#ff8c3b; --from:#35c46a; --to:#e0524d; --pick:#2dd2e6; }
   * { box-sizing:border-box; }
   html,body { margin:0; height:100%; font:14px/1.45 ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
               color:var(--ink); background:var(--bg); }
@@ -84,6 +84,17 @@
   #details td.k { color:var(--muted); white-space:nowrap; }
   #details td.v { word-break:break-word; max-width:200px; }
   #details .lid { color:var(--accent); font-weight:600; margin-bottom:4px; }
+
+  /* interactive pick */
+  #map.picking { cursor:crosshair; }
+  #boxsel { position:absolute; z-index:4; border:1.5px dashed var(--pick); background:rgba(45,210,230,.12);
+            pointer-events:none; display:none; }
+  .pcount { background:var(--pick); color:#06222a; border-radius:999px; padding:1px 8px; font-size:11px;
+            font-weight:700; margin-left:4px; }
+  .iconbtn.on#btn-pick { background:var(--pick); border-color:var(--pick); color:#06222a; }
+  .mini { padding:5px 10px; font-size:12px; border-radius:7px; }
+  .mini.ghost { background:none; color:var(--muted); border:1px solid var(--edge); font-weight:500; }
+  #pick-actions { display:flex; gap:6px; margin:4px 0 6px; }
 </style>
 </head>
 <body>
@@ -96,6 +107,7 @@
   </header>
   <div id="map">
     <div id="map-btns">
+      <button class="iconbtn" id="btn-pick" data-tip="Pick links (click; shift-drag box)" aria-label="Pick links">&#9647;</button>
       <button class="iconbtn" id="btn-fitnet" data-tip="Zoom to full network" aria-label="Zoom to full network">&#9974;</button>
       <button class="iconbtn" id="btn-fitsel" data-tip="Zoom to selection" aria-label="Zoom to selection">&#9673;</button>
       <button class="iconbtn" id="btn-layers" data-tip="Layers" aria-label="Layers">&#9635;</button>
@@ -132,9 +144,19 @@
     </div>
 
     <div id="legend"></div>
+    <div id="boxsel"></div>
   </div>
   <aside id="side">
     <div id="status-wrap"><span class="empty">Click a link for details; hover to inspect; type an utterance to select.</span></div>
+    <div class="label">Picked links <span id="pick-count" class="pcount">0</span></div>
+    <div id="pick-wrap">
+      <span class="empty" id="pick-hint">Turn on <b>Pick</b> (&#9647;), then click links or shift-drag a box.</span>
+      <div id="pick-actions" style="display:none">
+        <button class="mini" id="pick-emit">Emit fragment</button>
+        <button class="mini ghost" id="pick-clear">Clear</button>
+      </div>
+      <pre id="pick-fragment" style="display:none">—</pre>
+    </div>
     <div class="label">Link details</div>
     <div id="details"><span class="empty">Click a link on the map.</span></div>
     <div class="label">Anchors</div>
@@ -150,6 +172,9 @@
 let map = null, overlay = null;
 let NET = null, ATTRS = null, ID2IDX = new Map(), PROP = null;
 const CUR = { linkIds: [], anchors: [] };
+const PICK = new Set();           // interactively picked link_ids
+let pickMode = false;
+const PICK_COLOR = [45, 210, 230];
 const STYLE = {
   colorBy: "none", ramp: "YlOrRd", offset: true, showDirection: false, showLegend: true,
   show: { links: true, nodes: true, labels: true, selection: true },
@@ -190,9 +215,12 @@ async function init() {
   map.addControl(new maplibregl.NavigationControl(), "top-left");
   overlay = new deck.MapboxOverlay({ interleaved: false, layers: [], getTooltip });
   map.addControl(overlay);
+  // keep the canvas sized to its grid cell (it can init before layout settles)
+  new ResizeObserver(() => map.resize()).observe(document.getElementById("map"));
   map.on("zoomend", () => { if (STYLE.showDirection) refresh(); });
   map.on("load", loadNetwork);
   wirePanels();
+  wireBoxSelect();
 }
 
 function take(buf, off, bytes, Ctor) { return new Ctor(buf.slice(off, off + bytes)); }
@@ -285,24 +313,37 @@ function baseLayers() {
   return layers;
 }
 
+// A highlight PathLayer over a set of link ids (shared by selection + pick).
+function idPathLayer(layerId, ids, color, extraWidth) {
+  const { linkPositions } = NET;
+  const positions = [], startIndices = [0], widths = [];
+  for (const id of ids) {
+    const i = ID2IDX.get(id); if (i == null) continue;
+    const a = NET.linkStart[i]*2, b = NET.linkStart[i+1]*2, w = widthForLanes(NET.linkLanes[i]) + extraWidth;
+    for (let k = a; k < b; k += 2) { positions.push(linkPositions[k], linkPositions[k+1]); widths.push(w); }
+    startIndices.push(positions.length / 2);
+  }
+  if (startIndices.length < 2) return null;
+  return new deck.PathLayer({ id: layerId, _pathType: "open",
+    data: { length: startIndices.length - 1, startIndices: new Uint32Array(startIndices),
+            attributes: { getPath: { value: new Float32Array(positions), size: 2 },
+                          getWidth: { value: new Float32Array(widths), size: 1 } } },
+    getColor: color, widthUnits: "pixels", widthMinPixels: 3,
+    capRounded: true, jointRounded: true, parameters: { depthTest: false } });
+}
+
+function pickLayers() {
+  if (!PICK.size) return [];
+  const l = idPathLayer("picked", PICK, [...PICK_COLOR, 255], 2.5);
+  return l ? [l] : [];
+}
+
 function selectionLayers(linkIds, anchors) {
   const layers = [];
   if (!STYLE.show.selection) return layers;
   if (linkIds && linkIds.length) {
-    const { linkPositions } = NET;
-    const positions = [], startIndices = [0], widths = [];
-    for (const id of linkIds) {
-      const i = ID2IDX.get(id); if (i == null) continue;
-      const a = NET.linkStart[i]*2, b = NET.linkStart[i+1]*2, w = widthForLanes(NET.linkLanes[i]) + 3;
-      for (let k = a; k < b; k += 2) { positions.push(linkPositions[k], linkPositions[k+1]); widths.push(w); }
-      startIndices.push(positions.length / 2);
-    }
-    layers.push(new deck.PathLayer({ id: "selection", _pathType: "open",
-      data: { length: startIndices.length - 1, startIndices: new Uint32Array(startIndices),
-              attributes: { getPath: { value: new Float32Array(positions), size: 2 },
-                            getWidth: { value: new Float32Array(widths), size: 1 } } },
-      getColor: [...STYLE.colors.selection, 255], widthUnits: "pixels", widthMinPixels: 3,
-      capRounded: true, jointRounded: true, parameters: { depthTest: false } }));
+    const l = idPathLayer("selection", linkIds, [...STYLE.colors.selection, 255], 3);
+    if (l) layers.push(l);
   }
   if (anchors && anchors.length) layers.push(new deck.ScatterplotLayer({ id: "anchors", data: anchors,
     getPosition: a => [a.lon, a.lat], getRadius: 7, radiusUnits: "pixels",
@@ -311,7 +352,7 @@ function selectionLayers(linkIds, anchors) {
   return layers;
 }
 
-function render(linkIds, anchors) { overlay.setProps({ layers: [...baseLayers(), ...selectionLayers(linkIds, anchors)] }); }
+function render(linkIds, anchors) { overlay.setProps({ layers: [...baseLayers(), ...selectionLayers(linkIds, anchors), ...pickLayers()] }); }
 function refresh() { if (NET) render(CUR.linkIds, CUR.anchors); }
 
 // ---- tooltip / click ----
@@ -324,7 +365,9 @@ function getTooltip({ layer, index }) {
 }
 async function onLinkClick(info) {
   if (!info || info.index == null || info.index < 0) return;
-  const id = ATTRS.link_id[info.index], el = document.getElementById("details");
+  const id = ATTRS.link_id[info.index];
+  if (pickMode) { togglePick(id); return; }
+  const el = document.getElementById("details");
   el.innerHTML = `<div class="lid">link ${id}</div><span class="empty">loading…</span>`;
   try { const j = await (await fetch("/api/link/" + encodeURIComponent(id))).json(); renderDetails(id, j.attributes || {}); }
   catch (e) { el.innerHTML = `<div class="lid">link ${id}</div><span class="empty">error: ${e}</span>`; }
@@ -349,6 +392,67 @@ function renderLegend() {
     html += PROP.categories.map((c, i) => `<div class="lg-item"><span class="lg-sw" style="background:${rgb(catColor(c, i))}"></span>${c}</div>`).join("");
   }
   el.innerHTML = html;
+}
+
+// ---- interactive pick ----
+function togglePick(id) { PICK.has(id) ? PICK.delete(id) : PICK.add(id); updatePick(); }
+function updatePick() {
+  document.getElementById("pick-count").textContent = PICK.size;
+  const has = PICK.size > 0;
+  document.getElementById("pick-hint").style.display = has ? "none" : "";
+  document.getElementById("pick-actions").style.display = has ? "flex" : "none";
+  if (!has) document.getElementById("pick-fragment").style.display = "none";
+  refresh();
+}
+function setPickMode(on) {
+  pickMode = on;
+  document.getElementById("btn-pick").classList.toggle("on", on);
+  document.getElementById("map").classList.toggle("picking", on);
+}
+async function emitPicked() {
+  const ids = [...PICK]; if (!ids.length) return;
+  const pre = document.getElementById("pick-fragment"); pre.style.display = "block"; pre.textContent = "emitting…";
+  try {
+    const j = await (await fetch("/api/fragment", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ link_ids: ids }) })).json();
+    pre.textContent = j.fragment ? JSON.stringify(j.fragment, null, 2) : (j.error || j.status || "no fragment");
+  } catch (e) { pre.textContent = "error: " + e; }
+}
+
+// shift-drag box select over the links layer (uses deck's region picking)
+function wireBoxSelect() {
+  const mapEl = document.getElementById("map"), box = document.getElementById("boxsel");
+  let start = null;
+  const deckInstance = () => overlay._deck || (overlay.props && overlay.props.deck) || null;
+  mapEl.addEventListener("pointerdown", e => {
+    if (!pickMode || !e.shiftKey || e.button !== 0) return;
+    e.preventDefault(); map.dragPan.disable();
+    const r = mapEl.getBoundingClientRect();
+    start = { x: e.clientX - r.left, y: e.clientY - r.top, rect: r };
+    box.style.display = "block"; box.style.left = start.x + "px"; box.style.top = start.y + "px";
+    box.style.width = "0px"; box.style.height = "0px";
+  });
+  mapEl.addEventListener("pointermove", e => {
+    if (!start) return;
+    const x = e.clientX - start.rect.left, y = e.clientY - start.rect.top;
+    box.style.left = Math.min(x, start.x) + "px"; box.style.top = Math.min(y, start.y) + "px";
+    box.style.width = Math.abs(x - start.x) + "px"; box.style.height = Math.abs(y - start.y) + "px";
+  });
+  const finish = e => {
+    if (!start) return;
+    const x = e.clientX - start.rect.left, y = e.clientY - start.rect.top;
+    const x0 = Math.min(x, start.x), y0 = Math.min(y, start.y);
+    const w = Math.abs(x - start.x), h = Math.abs(y - start.y);
+    box.style.display = "none"; map.dragPan.enable(); start = null;
+    const dk = deckInstance();
+    if (dk && w > 2 && h > 2) {
+      const picked = dk.pickObjects({ x: x0, y: y0, width: w, height: h, layerIds: ["links"] });
+      for (const p of picked) if (p.index != null && p.index >= 0) PICK.add(NET.linkIds[p.index]);
+      updatePick();
+    }
+  };
+  mapEl.addEventListener("pointerup", finish);
+  mapEl.addEventListener("pointerleave", e => { if (start) finish(e); });
 }
 
 // ---- controls ----
@@ -382,6 +486,9 @@ function wirePanels() {
   bs.onclick = () => openPanel("s"); bl.onclick = () => openPanel("l");
   document.getElementById("btn-fitnet").onclick = () => { if (NET) fitToNetwork(NET.nodePositions); };
   document.getElementById("btn-fitsel").onclick = () => fitSelection();
+  document.getElementById("btn-pick").onclick = () => setPickMode(!pickMode);
+  document.getElementById("pick-emit").onclick = emitPicked;
+  document.getElementById("pick-clear").onclick = () => { PICK.clear(); updatePick(); };
 
   document.getElementById("colorby").onchange = e => applyColorBy(e.target.value);
   document.getElementById("ramp").onchange = e => { STYLE.ramp = e.target.value; buildLinkColors(); renderLegend(); refresh(); };
