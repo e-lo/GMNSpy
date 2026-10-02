@@ -13,6 +13,7 @@ from pydantic import ValidationError
 
 from gmnspy.viz.styling import basemap_style
 
+from ..actions import parse_action
 from ..events import sse_format
 from ..session import Session
 
@@ -44,11 +45,17 @@ def core_router(session: Session) -> APIRouter:
 
     @router.post("/actions")
     def actions(body: dict = Body(...)) -> JSONResponse:  # noqa: B008  (FastAPI Body default)
+        """Apply an action. A job action (open/build) answers 202 with its job; the outcome arrives over SSE."""
         try:
-            entry = session.dispatch_recorded(body)
+            action = parse_action(body)
         except ValidationError as exc:
             detail = exc.errors(include_url=False, include_context=False)
             return JSONResponse({"error": "invalid action", "detail": jsonable_encoder(detail)}, status_code=422)
+        if action.runs_as_job:
+            job = session.submit(action)
+            payload = {"ok": True, "result": {"job_id": job.id}, "job": session.jobs.snapshot(job)}
+            return JSONResponse(jsonable_encoder(payload), status_code=202)
+        entry = session.dispatch_recorded(action)
         payload = {"ok": entry.ok, "result": entry.result, "error": entry.error, "entry": entry.to_dict()}
         return JSONResponse(jsonable_encoder(payload), status_code=200 if entry.ok else 400)
 

@@ -10,6 +10,7 @@ from fastapi.responses import HTMLResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 
 from .routes.core import core_router
+from .routes.io import io_router
 from .routes.network import network_router
 from .session import Session
 
@@ -95,6 +96,7 @@ def build_app(session: Session) -> FastAPI:
 
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
     app.include_router(core_router(session))
+    app.include_router(io_router(session))
     app.include_router(network_router(session))
 
     @app.get("/", response_class=HTMLResponse)
