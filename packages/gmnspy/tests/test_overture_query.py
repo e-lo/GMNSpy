@@ -12,6 +12,7 @@ from pathlib import Path
 import pytest
 from datagrove.engines.ibis_engine import IbisEngine
 from gmnspy.overture import query
+from gmnspy.overture.layout import is_local_snapshot
 
 FIXTURE_ROOT = str(Path(__file__).resolve().parent / "fixtures" / "overture")
 WORLD_BBOX = (-0.5, -0.5, 0.5, 0.5)
@@ -82,3 +83,13 @@ class TestFetchNetworkElements:
         # every connector referenced by a drive segment is resolvable
         referenced = {c["connector_id"] for s in segs for c in s["connectors"]}
         assert referenced <= set(conns)
+
+
+class TestLocalSnapshotLayout:
+    def test_fixture_is_a_local_snapshot(self):
+        assert is_local_snapshot(FIXTURE_ROOT)
+
+    def test_needs_both_files(self, tmp_path):
+        (tmp_path / "segment.parquet").write_bytes(b"")
+        assert not is_local_snapshot(tmp_path)
+        assert not is_local_snapshot(tmp_path / "segment.parquet")

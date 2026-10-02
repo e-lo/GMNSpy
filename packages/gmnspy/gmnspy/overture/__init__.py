@@ -10,6 +10,8 @@ already shipped with datagrove's duckdb engine) — the only added dependency is
 
 The heavy ``build`` / ``query`` paths are lazily imported (via ``__getattr__``)
 so importing this package is cheap and the import-linter boundary stays static.
+The flat local-snapshot folder layout (``segment.parquet`` + ``connector.parquet``)
+is documented in :mod:`gmnspy.overture.layout`.
 
 Attribution: Overture data is **ODbL**; derived products must credit
 "© OpenStreetMap contributors, © Overture Maps Foundation"
