@@ -191,6 +191,40 @@ The app is a single page:
   - The build runs as a job with progress, and the result opens automatically.
 - Polygon clipping and a lookup in Overture's divisions data come later; builders accept only a bbox today.
 
+#### Open / Import wizard (P1a, agreed 2026-10-02)
+
+- **Entry point:** the header's path box is replaced by an **Open / Import…** button, which opens a modal wizard, and a **Recent** dropdown next to it.
+- **Step 1, source:**
+  - GMNS on this machine → file browser.
+  - GMNS at a URL (`s3/gs/az/https`) → URL field + **Check**. It reports reachable or not, which credential source would be used (never the secret), and the tables found.
+  - Build from OSM → Area step, or a local `.osm` XML / Overpass JSON file through the file browser.
+  - Build from Overture → Area step, or local Overture GeoParquet (`segment`/`connector`) through the file browser.
+- **File browser:**
+  - Runs on the server, limited to `io.allowed_roots` (default: the home directory). This setting is now enforced, including in `OpenNetwork`.
+  - Recognised entries are tagged (GMNS dir, `.zip`, `.duckdb`, `datapackage.json`, `.osm`, `.json`, Overture parquet).
+  - Only valid targets can be chosen. Files are opened in place, never uploaded.
+- **Area step:** every tab ends in one bbox, previewed on the map.
+  - **Draw** a rectangle, with editable corners.
+  - **Coordinates:** `W,S,E,N`, or a point plus buffer in metres.
+  - **Place:** a multi-candidate Nominatim search via a new `geocode_candidates(q, limit=8)`, with outlines previewed. For OSM, the place polygon is kept.
+- **Options:**
+  - Prefilled from Settings: network type, buffer, extra tags, spec version, Overture release.
+  - **Output folder + format are required:** builds always write to disk first and then open from disk, so the result is reproducible.
+- **Estimate → approve → run:**
+  - A cheap pre-query sizes the request: Overpass `out count`, or Overture `COUNT(*)` over the bbox.
+  - A calibrated cost model (`latency + rate × elements`, built on datagrove `OperationCost`/`gate`) produces a time and an output size.
+  - Above `app.approve_above_s` (default 90 s), the action needs an explicit **Run (~N min)** click.
+  - If the pre-query itself fails, the user is told and asked before running anyway.
+- **Jobs:**
+  - Builds and large opens run as background jobs. Stages (query → convert → write → open) and progress are pushed over SSE, and each job can be cancelled.
+  - A jobs indicator sits in the header.
+  - Opening through a job also stops a long open from holding the session lock.
+- **Audit:**
+  - `OpenNetwork` and `BuildNetwork(source, area, options, output, approved)` are recorded Actions; the estimate and approval are stored with the entry.
+  - Python replay counts as approval.
+  - Browse, check, place search and estimate are read-only queries and are not recorded.
+- **Later:** `.pbf` (via an optional pyosmium extra), upload, polygon clipping for Overture, Overture divisions lookup.
+
 ### b. Inspect & Validate workspace
 - **Two-way linked selection** (`store.selection`):
   - Clicking a map feature selects and scrolls to the row.
@@ -293,7 +327,8 @@ This also fixes the stale `GMNSPY_AUTO_APPROVE` vs `DATAGROVE_AUTO_APPROVE` docs
 | Phase | Scope | Builds |
 |---|---|---|
 | P0 | Foundations | `config.py`; the `workbench/` package with Session, Registry, Action bus and SSE (background jobs arrive with Build in P1); split the front end into ES modules; port the viz features; `gmnspy app` CLI; retire `select-serve` (`gmnspy viz` becomes an alias) |
-| P1 | Open/Build + Inspect | Jobs + progress events, map↔table linking both ways, FK navigation, Settings UI |
+| P1a | Open/Import wizard | Wizard (local browser, URL check, OSM/Overture by draw/coords/place, local .osm/Overture files), estimate + approval, background jobs, always-save builds |
+| P1b | Inspect + settings |  map↔table linking both ways, FK navigation, Settings UI |
 | P2 | Validate + fix + change log | Issues triad; `gmnspy.changes` (NetworkChange, `apply_change`, DraftCard, ProjectCard export and schema validation); editor built on it; undo; export report |
 | P3 | Selection verification + NL assistant | Pinning ambiguous anchors; Style/Filter/Navigate actions |
 | P4 | Python live session | `gmnspy.app()` handle, `show`, history `to_python`, `--console` |
