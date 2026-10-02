@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import typer
 
 from .workbench import run_workbench
@@ -16,7 +14,8 @@ def register(app: typer.Typer) -> None:
 
     @app.command(name="viz")
     def viz(
-        source: Path = typer.Argument(..., help="Path/URL to a GMNS network."),
+        # str, not Path: a Path argument collapses "https://host/x" to "https:/host/x".
+        source: str = typer.Argument(..., help="Path/URL to a GMNS network."),
         provider: str = typer.Option(None, "--provider", help="NL parser: stub | claude."),
         engine: str = typer.Option(
             None, "--engine", help="Ignored: DuckDB is the only engine (kept for compatibility)."

@@ -69,6 +69,21 @@ def test_app_loopback_bind_has_no_warning(served):
     assert "no authentication" not in result.output
 
 
+def test_viz_passes_url_source_unmangled():
+    """A ``Path`` argument would collapse ``https://`` to ``https:/``; ``viz`` must take a raw string."""
+    url = "https://example.invalid/net"
+    result = runner.invoke(app, ["viz", url])
+    assert result.exit_code == 1
+    assert url in result.output
+
+
+def test_select_serve_passes_url_source_unmangled():
+    url = "https://example.invalid/net"
+    result = runner.invoke(app, ["select-serve", url])
+    assert result.exit_code == 1
+    assert url in result.output
+
+
 def test_app_resolves_relative_source_to_absolute_path(served, monkeypatch, rdu_source):
     monkeypatch.chdir(Path(rdu_source).parent)
     relative = Path(rdu_source).name
