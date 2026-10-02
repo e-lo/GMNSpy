@@ -18,9 +18,8 @@ from __future__ import annotations
 import hashlib
 from pathlib import Path
 
-import pytest
-
 import gmnspy.fixtures
+import pytest
 
 _FIXTURES_ROOT = Path(gmnspy.fixtures.__file__).parent
 
@@ -28,11 +27,7 @@ _FIXTURES_ROOT = Path(gmnspy.fixtures.__file__).parent
 def _data_files() -> list[Path]:
     """Every committed fixture *data* file (not Python, not caches)."""
     return sorted(
-        p
-        for p in _FIXTURES_ROOT.rglob("*")
-        if p.is_file()
-        and p.suffix != ".py"
-        and "__pycache__" not in p.parts
+        p for p in _FIXTURES_ROOT.rglob("*") if p.is_file() and p.suffix != ".py" and "__pycache__" not in p.parts
     )
 
 
@@ -53,9 +48,7 @@ def _fixture_data_is_read_only() -> None:
     after = _snapshot()
 
     changed = sorted(
-        str(p.relative_to(_FIXTURES_ROOT))
-        for p in set(before) | set(after)
-        if before.get(p) != after.get(p)
+        str(p.relative_to(_FIXTURES_ROOT)) for p in set(before) | set(after) if before.get(p) != after.get(p)
     )
     assert not changed, (
         "Tests mutated committed fixture data under gmnspy/fixtures; "
