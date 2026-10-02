@@ -77,6 +77,31 @@ def _parse_wkb_linestring_points(wkb: object) -> list[tuple[float, float]]:
         return []
 
 
+def linestring_wkb(points: list[tuple[float, float]] | object) -> bytes:
+    """Encode ``(x, y)`` pairs as a little-endian ISO WKB 2D ``LINESTRING``.
+
+    The symmetric counterpart to :func:`_parse_wkb_linestring_points`: dep-free
+    (stdlib ``struct``), little-endian, OGC base type ``2`` with no SRID/Z/M
+    flags — the same shape duckdb's ``ST_AsWKB`` and shapely emit, so it round-
+    trips through both. Used by :mod:`gmnspy.semantics` to synthesise a straight
+    link geometry from node endpoints without pulling in shapely or duckdb.
+
+    A degenerate input (not a sequence of ≥2 points) returns ``b""`` — a single
+    point is not a line, matching how the decoder treats unparseable geometry as
+    "no geometry" rather than raising.
+    """
+    try:
+        pts = [(float(x), float(y)) for x, y in points]  # type: ignore[union-attr]
+    except (TypeError, ValueError):
+        return b""
+    if len(pts) < 2:
+        return b""
+    out = b"\x01" + struct.pack("<I", _WKB_LINESTRING) + struct.pack("<I", len(pts))
+    for x, y in pts:
+        out += struct.pack("<dd", x, y)
+    return out
+
+
 def linestring_points(geom: object) -> list[tuple[float, float]]:
     """Return ``(x, y)`` pairs from a link geometry that may be WKT or WKB.
 
