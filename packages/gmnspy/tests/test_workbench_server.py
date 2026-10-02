@@ -4,6 +4,7 @@ import pytest
 from fastapi.testclient import TestClient
 from gmnspy.select.parse import StubParser
 from gmnspy.workbench import Session, build_app
+from gmnspy.workbench.server import _host_name
 
 UTTERANCE = "I-40 EB between South Miami Boulevard and Airport Boulevard"
 
@@ -77,3 +78,26 @@ def test_normal_request_still_works(client):
     """The TestClient's own Host header ("testserver") must stay allowed."""
     r = client.get("/")
     assert r.status_code == 200
+
+
+@pytest.mark.parametrize(
+    ("header", "expected"),
+    [
+        ("127.0.0.1:8850", "127.0.0.1"),
+        ("localhost", "localhost"),
+        ("[::1]:8850", "[::1]"),
+        ("[::1]", "[::1]"),
+        ("Evil.Example:80", "evil.example"),
+    ],
+)
+def test_host_name(header, expected):
+    assert _host_name(header) == expected
+
+
+def test_ipv6_loopback_bind_accepts_bracketed_host(tmp_path, isolated_env, rdu_source):
+    """A ``--host ::1`` bind must accept the browser's bracketed Host header."""
+    session = Session(project_dir=tmp_path, environ=isolated_env, parser=StubParser(), overrides={"app.host": "::1"})
+    session.dispatch({"type": "open_network", "source": rdu_source})
+    ipv6_client = TestClient(build_app(session))
+    assert ipv6_client.get("/", headers={"host": "[::1]:8850"}).status_code == 200
+    assert ipv6_client.get("/", headers={"host": "evil.example"}).status_code == 400
