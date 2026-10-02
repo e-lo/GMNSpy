@@ -82,6 +82,14 @@ class OvertureSettings(_Section):
     data_root: str | None = None
 
 
+class BuildSettings(_Section):
+    """Defaults the Open / Import wizard prefills for OSM and Overture builds."""
+
+    network_type: str = "drive"
+    buffer_m: float = Field(default=1000.0, gt=0)
+    extra_tags: list[str] = Field(default_factory=list)
+
+
 class RuleSettings(_Section):
     """One quality rule's config (mirrors :class:`datagrove.quality.base.RuleConfig`)."""
 
@@ -115,6 +123,7 @@ class AppSettings(_Section):
     host: str = "127.0.0.1"
     port: int = 8850
     console: bool = False
+    approve_above_s: float = Field(default=90.0, ge=0)
 
 
 class CredentialSettings(_Section):
@@ -130,6 +139,7 @@ class Settings(_Section):
     engine: EngineSettings = Field(default_factory=EngineSettings)
     osm: OSMSettings = Field(default_factory=OSMSettings)
     overture: OvertureSettings = Field(default_factory=OvertureSettings)
+    build: BuildSettings = Field(default_factory=BuildSettings)
     validation: ValidationSettings = Field(default_factory=ValidationSettings)
     select: SelectSettings = Field(default_factory=SelectSettings)
     viz: VizSettings = Field(default_factory=VizSettings)

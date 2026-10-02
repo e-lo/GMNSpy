@@ -124,3 +124,15 @@ def test_dumps_toml_round_trips_nested_tables_and_quoting():
         "validation": {"rules": {"dangling-node": {"enabled": False, "thresholds": {"max": 2.5}}, "my rule": {}}},
     }
     assert tomllib.loads(dumps_toml(data)) == data
+
+
+def test_approval_threshold_and_build_defaults(tmp_path, isolated_env):
+    s = load_settings(project_dir=tmp_path, environ=isolated_env).settings
+    assert s.app.approve_above_s == 90.0
+    assert (s.build.network_type, s.build.buffer_m, s.build.extra_tags) == ("drive", 1000.0, [])
+
+
+def test_negative_approval_threshold_rejected(tmp_path, isolated_env):
+    (tmp_path / "gmnspy.toml").write_text("[app]\napprove_above_s = -1\n")
+    with pytest.raises(SettingsError, match="approve_above_s"):
+        load_settings(project_dir=tmp_path, environ=isolated_env)
