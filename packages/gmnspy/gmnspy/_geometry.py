@@ -17,12 +17,17 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from datagrove.dataset.geometry import WKT, encode_wkb
+from datagrove.dataset.geometry import WKT, decode_wkt, encode_wkb
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from datagrove.dataset import Package
 
-__all__ = ["DEFAULT_CRS", "convert_geometry_to_wkb", "geometry_encoding"]
+__all__ = [
+    "DEFAULT_CRS",
+    "convert_geometry_to_wkb",
+    "decode_geometry_to_wkt",
+    "geometry_encoding",
+]
 
 #: CRS assumed when a GMNS package declares none (gmnspy stays lon/lat-centric).
 DEFAULT_CRS = "EPSG:4326"
@@ -64,3 +69,17 @@ def convert_geometry_to_wkb(package: Package) -> None:
         table = package.tables.get(name)
         if table is not None and "geometry" in table.columns():
             package.tables[name] = encode_wkb(table, column="geometry")
+
+
+def decode_geometry_to_wkt(package: Package) -> None:
+    """Render WKB geometry columns back to WKT in place — the inverse for CSV export.
+
+    GMNS CSV must carry WKT text (geometry ADR: WKT on disk for CSV, WKB for
+    Parquet). Callers writing a CSV container decode a throwaway copy of the
+    package so the in-memory tables stay canonical WKB. A no-op on tables without
+    a geometry column and on columns already text.
+    """
+    for name in _GEOMETRY_TABLES:
+        table = package.tables.get(name)
+        if table is not None and "geometry" in table.columns():
+            package.tables[name] = decode_wkt(table, column="geometry")

@@ -238,6 +238,39 @@ class Network(Package):
             spec_version=resolved_version,
         )
 
+    def write(  # type: ignore[override]
+        self,
+        dest: str | Path,
+        *,
+        format: str | None = None,
+        overwrite: bool = False,
+        strict_sync: bool = False,
+    ) -> None:
+        """Persist the network, encoding geometry per container (geometry ADR).
+
+        In memory geometry is canonical **WKB** bytes. Binary containers
+        (Parquet, DuckDB) store it as-is; a **CSV** target must carry **WKT**
+        text, so the geometry-bearing tables are decoded WKB→WKT first — on a
+        throwaway proxy, leaving this network's in-memory tables WKB. Delegates
+        to :meth:`datagrove.dataset.Package.write` for the actual I/O.
+        """
+        from dataclasses import replace
+
+        from datagrove.dataset.package import _infer_write_format
+
+        from gmnspy._geometry import decode_geometry_to_wkt
+
+        try:
+            target_format = format or _infer_write_format(Path(dest))
+        except Exception:
+            target_format = None  # let Package.write raise the canonical error
+        if target_format == "csv":
+            proxy = replace(self, tables=dict(self.tables))
+            decode_geometry_to_wkt(proxy)
+            Package.write(proxy, dest, format=format, overwrite=overwrite, strict_sync=strict_sync)
+            return
+        super().write(dest, format=format, overwrite=overwrite, strict_sync=strict_sync)
+
     # ------------------------------------------------------------------
     # Indexes + scope accessor — architecture §6.2 chainable surface
     # ------------------------------------------------------------------
