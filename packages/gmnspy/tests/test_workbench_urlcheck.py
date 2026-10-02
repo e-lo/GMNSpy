@@ -1,10 +1,19 @@
-"""Tests for the wizard's URL check (in-memory filesystem; never touches the network)."""
+"""Tests for the wizard's URL check (in-memory filesystem; never touches the network).
 
+One test runs a real ``http.server.ThreadingHTTPServer`` to exercise the actual fsspec HTTP
+backend's timeout plumbing (the thing a fake ``url_to_fs`` can't catch); it binds to
+``127.0.0.1`` on an ephemeral port only and talks to nothing else.
+"""
+
+import functools
+import http.server
+import threading
 import uuid
 
 import pytest
 from datagrove.io import credentials as creds_mod
 from fsspec.implementations.memory import MemoryFileSystem
+from gmnspy.workbench import urlcheck as urlcheck_mod
 from gmnspy.workbench.urlcheck import check_url
 
 
@@ -109,3 +118,76 @@ def test_slow_backend_times_out_quickly():
     assert report["reachable"] is False
     assert report["error"] == "timed out after 0.2s"
     assert elapsed < 2.0
+
+
+def test_az_url_scrubs_secrets():
+    def boom(url, **_):
+        raise OSError("fetch failed for az://acct/c/x?sv=1&sig=SECRET")
+
+    report = check_url("az://acct/c/x", url_to_fs=boom)
+    assert report["reachable"] is False
+    assert "SECRET" not in report["error"]
+    assert report["error"] == "OSError: fetch failed for az://acct/c/x"
+
+
+def test_s3_url_with_userinfo_scrubs_secrets():
+    def boom(url, **_):
+        raise OSError("s3://AKIA:key@b/k?X-Amz-Signature=SECRET")
+
+    report = check_url("s3://AKIA:key@b/k", url_to_fs=boom)
+    assert report["reachable"] is False
+    assert "AKIA" not in report["error"]
+    assert "key" not in report["error"]
+    assert "SECRET" not in report["error"]
+    assert report["error"] == "OSError: s3://b/k"
+
+
+def test_url_field_is_scrubbed_too():
+    def boom(url, **_):
+        raise OSError("boom")
+
+    report = check_url("s3://AKIA:key@b/k?X-Amz-Signature=SECRET", url_to_fs=boom)
+    assert "SECRET" not in report["url"]
+    assert "AKIA" not in report["url"]
+    assert report["url"] == "s3://b/k"
+
+
+def test_scrub_handles_malformed_ipv6_url_without_raising():
+    def boom(url, **_):
+        raise OSError("bad url https://[x in here")
+
+    report = check_url("s3://bucket/net", url_to_fs=boom)
+    assert report["reachable"] is False
+    assert "https://<redacted>" in report["error"]
+
+
+def test_check_url_never_raises_even_if_scrub_breaks(monkeypatch):
+    def exploding_scrub(_text):
+        raise RuntimeError("scrub itself is broken")
+
+    monkeypatch.setattr(urlcheck_mod, "_scrub", exploding_scrub)
+
+    def boom(url, **_):
+        raise OSError("whatever")
+
+    report = check_url("s3://bucket/net", url_to_fs=boom)
+    assert report["reachable"] is False
+    assert report["error"] is not None
+
+
+def test_real_http_server_is_reachable(tmp_path):
+    (tmp_path / "node.csv").write_text("a,b\n1,2\n")
+    handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=str(tmp_path))
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        port = server.server_address[1]
+        report = check_url(f"http://127.0.0.1:{port}/node.csv", timeout_s=10.0)
+        assert report["reachable"] is True
+        assert report["kind"] == "file"
+        assert report["error"] is None
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
