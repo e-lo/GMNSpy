@@ -4,8 +4,8 @@ import pytest
 
 pytest.importorskip("shapely")
 
-import shapely  # noqa: E402
-from gmnspy._geom import shapely_from_any  # noqa: E402
+import shapely
+from gmnspy._geom import shapely_from_any
 
 _WKT = "LINESTRING (1 2, 3 4.5, -78.8 35.9)"
 

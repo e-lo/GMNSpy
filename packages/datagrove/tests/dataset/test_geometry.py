@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import pytest
-
 from datagrove.dataset.geometry import WKB, WKT, decode_wkt, encode_wkb
 from datagrove.dataset.table import Table
 from datagrove.engines.ibis_engine import IbisEngine
