@@ -16,6 +16,7 @@ redirected to ``tmp_path``.
 from __future__ import annotations
 
 import hashlib
+import json
 from importlib import resources
 from pathlib import Path
 
@@ -64,7 +65,17 @@ def rdu_source() -> str:
     return str(resources.files("gmnspy.fixtures.rdu_i40").joinpath("parquet"))
 
 
+#: Committed test-only fixture files (tests/fixtures), e.g. the local OSM/Overture inputs.
+TEST_FIXTURES = Path(__file__).resolve().parent / "fixtures"
+
+
 @pytest.fixture
 def isolated_env(tmp_path: Path) -> dict[str, str]:
-    """An environ whose gmnspy user-config dir lives under ``tmp_path``, never the real ``~/.config``."""
-    return {"GMNSPY_CONFIG_DIR": str(tmp_path / "user")}
+    """An environ isolated from the real machine.
+
+    The gmnspy user-config dir lives under ``tmp_path`` (never the real ``~/.config``), and
+    ``io.allowed_roots`` is pinned to ``tmp_path`` plus the two read-only fixture trees, so the
+    workbench's allowed-roots policy behaves the same wherever the repo is checked out.
+    """
+    roots = [str(tmp_path.resolve()), str(_FIXTURES_ROOT.resolve()), str(TEST_FIXTURES)]
+    return {"GMNSPY_CONFIG_DIR": str(tmp_path / "user"), "GMNSPY_IO__ALLOWED_ROOTS": json.dumps(roots)}

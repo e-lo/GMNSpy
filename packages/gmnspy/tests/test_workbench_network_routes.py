@@ -14,7 +14,8 @@ BASE = "/api/n/rdu-i40/roadway"
 @pytest.fixture(scope="module")
 def client(tmp_path_factory, rdu_source):
     tmp = tmp_path_factory.mktemp("wb")
-    s = Session(project_dir=tmp, environ={"GMNSPY_CONFIG_DIR": str(tmp / "user")}, parser=StubParser())
+    env = {"GMNSPY_CONFIG_DIR": str(tmp / "user"), "GMNSPY_IO__ALLOWED_ROOTS": json.dumps([rdu_source])}
+    s = Session(project_dir=tmp, environ=env, parser=StubParser())
     s.dispatch({"type": "open_network", "source": rdu_source})
     return TestClient(build_app(s))
 
