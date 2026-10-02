@@ -1,7 +1,12 @@
 // Fetch + SSE client for the workbench API. Every state change goes through dispatch().
 async function readJSON(r) {
   const j = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(j.error || j.detail || r.statusText);
+  if (!r.ok) {
+    // FastAPI's own 422 `detail` is an array of error objects, not a string;
+    // stringify it so the toast shows something readable instead of "[object Object]".
+    const detail = typeof j.detail === "string" ? j.detail : j.detail != null ? JSON.stringify(j.detail) : undefined;
+    throw new Error(j.error || detail || r.statusText);
+  }
   return j;
 }
 
