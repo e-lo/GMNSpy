@@ -1,1 +1,110 @@
-<!DOCTYPE html><title>GMNSpy Workbench</title>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>GMNSpy Workbench</title>
+<link href="https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet" />
+<link href="/static/app.css" rel="stylesheet" />
+<script src="https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/deck.gl@9.0.38/dist.min.js"></script>
+<script type="module" src="/static/js/main.js"></script>
+</head>
+<body>
+<div id="app">
+  <header>
+    <h1>GMNSpy Workbench</h1>
+    <select id="net-select" aria-label="Active network"></select>
+    <input id="open-src" placeholder="Open network: path or URL" aria-label="Open network" />
+    <button id="open-go" class="mini">Open</button>
+    <div id="viewmode">
+      <button data-mode="map" class="on">Map</button>
+      <button data-mode="split">Split</button>
+      <button data-mode="table">Table</button>
+    </div>
+    <input id="utterance" placeholder='e.g. "I-40 EB between South Miami Boulevard and Airport Boulevard"' aria-label="Selection utterance" />
+    <button id="go">Select</button>
+    <span id="count"></span>
+  </header>
+  <div id="stage" data-mode="map">
+    <div id="map">
+      <div id="map-btns">
+        <button class="iconbtn" id="btn-pick" data-tip="Pick links (click; shift-drag box)" aria-label="Pick links">&#9647;</button>
+        <button class="iconbtn" id="btn-fitnet" data-tip="Zoom to full network" aria-label="Zoom to full network">&#9974;</button>
+        <button class="iconbtn" id="btn-fitsel" data-tip="Zoom to selection" aria-label="Zoom to selection">&#9673;</button>
+        <button class="iconbtn" id="btn-layers" data-tip="Layers" aria-label="Layers">&#9635;</button>
+        <button class="iconbtn" id="btn-settings" data-tip="Map settings" aria-label="Map settings">&#9881;</button>
+      </div>
+      <div class="panel" id="layers-panel">
+        <h4>Layers</h4>
+        <div class="row"><label class="sw"><input type="checkbox" id="tg-links"><span></span></label>
+          <span class="lbl">Links</span><input type="color" class="swatch" id="col-links"></div>
+        <div class="row"><label class="sw"><input type="checkbox" id="tg-nodes"><span></span></label>
+          <span class="lbl">Nodes</span><input type="color" class="swatch" id="col-nodes"></div>
+        <div class="row"><label class="sw"><input type="checkbox" id="tg-selection"><span></span></label>
+          <span class="lbl">Selection</span><input type="color" class="swatch" id="col-selection"></div>
+        <div class="row"><label class="sw"><input type="checkbox" id="tg-labels"><span></span></label>
+          <span class="lbl">Basemap labels</span></div>
+        <h4 style="margin-top:14px">Color links by</h4>
+        <div class="row"><select id="colorby"><option value="none">None (single color)</option></select></div>
+        <div class="row" id="ramp-row" style="display:none"><span class="lbl">Ramp</span>
+          <select id="ramp"><option>YlOrRd</option><option>Blues</option><option>Viridis</option></select></div>
+      </div>
+      <div class="panel" id="settings-panel">
+        <h4>Map settings</h4>
+        <div class="row"><span class="lbl">Offset directions</span>
+          <label class="sw"><input type="checkbox" id="tg-offset"><span></span></label></div>
+        <div class="row"><span class="lbl">Show direction</span>
+          <label class="sw"><input type="checkbox" id="tg-direction"><span></span></label></div>
+        <div class="row"><span class="lbl">Show legend</span>
+          <label class="sw"><input type="checkbox" id="tg-legend"><span></span></label></div>
+      </div>
+      <div id="legend"></div>
+      <div id="boxsel"></div>
+    </div>
+    <div id="tablepane">
+      <div id="tbl-rail"></div>
+      <div id="tbl-main">
+        <div id="tbl-bar"><span class="tname" id="tbl-name">—</span><span id="tbl-total"></span>
+          <label class="sw" style="margin-left:auto"><input type="checkbox" id="tbl-tosel"><span></span></label>
+          <span>Filter to map selection</span></div>
+        <div id="tbl-grid-wrap"><table id="tbl-grid"></table></div>
+        <div id="tbl-pager"><button id="tbl-prev">&#8592; Prev</button>
+          <span id="tbl-range">—</span><button id="tbl-next">Next &#8594;</button></div>
+      </div>
+    </div>
+  </div>
+  <aside id="side">
+    <div id="status-wrap"></div>
+    <div class="label">Picked links <span id="pick-count" class="pcount">0</span></div>
+    <div id="pick-wrap">
+      <span class="empty" id="pick-hint">Turn on <b>Pick</b> (&#9647;), then click links or shift-drag a box.</span>
+      <div id="pick-actions" style="display:none">
+        <button class="mini" id="pick-select">Select picked</button>
+        <button class="mini ghost" id="pick-clear">Clear</button>
+      </div>
+    </div>
+    <div class="label">Link details</div>
+    <div id="details"><span class="empty">Click a link on the map.</span></div>
+    <div class="label">Anchors</div>
+    <div id="anchors"><span class="empty">—</span></div>
+    <div class="label">Fragment</div>
+    <pre id="fragment">—</pre>
+    <div class="label">Diagnostics</div>
+    <div id="diag"><span class="empty">—</span></div>
+  </aside>
+  <footer id="history">
+    <span id="hist-seq">—</span>
+    <code id="hist-py">No actions yet.</code>
+    <button class="mini ghost" id="hist-copy">Copy</button>
+    <button class="mini ghost" id="hist-all">Session as Python</button>
+  </footer>
+</div>
+<div class="panel" id="hist-panel">
+  <h4>Session as Python</h4>
+  <pre id="hist-script"></pre>
+  <div class="row"><button class="mini" id="hist-copy-all">Copy all</button></div>
+</div>
+<div id="toast" role="status"></div>
+</body>
+</html>
