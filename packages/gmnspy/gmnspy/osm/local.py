@@ -8,7 +8,9 @@ Ways that reference a node missing from the file (typical where an extract cuts 
 edge) are dropped, with one warning naming how many, rather than failing the whole import.
 
 Stdlib only (``xml.etree.ElementTree.iterparse`` + ``json``): no new dependency. ``.pbf`` is not
-supported yet.
+supported yet. ``.osm`` XML is streamed with bounded memory (each top-level element is cleared
+off the tree as it's consumed); ``.json`` (Overpass JSON) exports are fully buffered in memory by
+stdlib ``json``, so prefer ``.osm`` XML for very large extracts.
 """
 
 from __future__ import annotations
@@ -29,14 +31,37 @@ logger = logging.getLogger(__name__)
 #: File suffixes :func:`read_osm_file` understands.
 SUPPORTED_SUFFIXES = (".osm", ".json")
 
+#: Markers that identify a DTD/entity declaration; real ``.osm`` exports never carry one, and
+#: entity expansion (e.g. a "billion laughs" file) is a classic XML memory-exhaustion attack.
+_DTD_MARKERS = ("<!DOCTYPE", "<!ENTITY")
+
+#: How many leading bytes of a ``.osm`` file to scan for a DTD/entity declaration.
+_DTD_SCAN_BYTES = 4096
+
+#: Direct children of ``<osm>`` that are cleared from the tree once consumed, to keep memory
+#: bounded regardless of file size.
+_TOP_LEVEL_TAGS = frozenset({"node", "way", "relation"})
+
+
+def _reject_dtd(path: Path) -> None:
+    """Raise if ``path`` declares a DTD or entity in its first few KB (no stdlib-only way to parse one safely)."""
+    with open(path, "rb") as fh:
+        head = fh.read(_DTD_SCAN_BYTES).decode("utf-8", errors="ignore")
+    if any(marker in head for marker in _DTD_MARKERS):
+        raise ValueError("DTD/entity declarations are not allowed in .osm files")
+
 
 def _parse_xml(path: Path) -> tuple[dict[int, tuple[float, float]], list[dict[str, Any]]]:
+    _reject_dtd(path)
     nodes: dict[int, tuple[float, float]] = {}
     ways: list[dict[str, Any]] = []
-    for _event, elem in ET.iterparse(path, events=("end",)):
+    context = ET.iterparse(path, events=("start", "end"))
+    _root_event, root = next(context)
+    for event, elem in context:
+        if event != "end" or elem.tag not in _TOP_LEVEL_TAGS:
+            continue
         if elem.tag == "node":
             nodes[int(elem.attrib["id"])] = (float(elem.attrib["lon"]), float(elem.attrib["lat"]))
-            elem.clear()
         elif elem.tag == "way":
             ways.append(
                 {
@@ -45,7 +70,10 @@ def _parse_xml(path: Path) -> tuple[dict[int, tuple[float, float]], list[dict[st
                     "tags": {t.attrib["k"]: t.attrib["v"] for t in elem.iter("tag")},
                 }
             )
-            elem.clear()
+        # Detach the consumed element (and every sibling processed so far) from the root so
+        # memory stays bounded by one element's worth of content, not the whole file.
+        elem.clear()
+        root.clear()
     return nodes, ways
 
 

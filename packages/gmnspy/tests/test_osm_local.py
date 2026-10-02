@@ -47,6 +47,20 @@ def test_malformed_xml(tmp_path):
         read_osm_file(bad)
 
 
+def test_rejects_dtd_entities(tmp_path):
+    bomb = tmp_path / "bomb.osm"
+    bomb.write_text(
+        '<?xml version="1.0"?>\n'
+        "<!DOCTYPE osm [\n"
+        '  <!ENTITY lol "lol">\n'
+        '  <!ENTITY lol2 "&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;">\n'
+        "]>\n"
+        '<osm><node id="1" lat="0" lon="0"/></osm>\n'
+    )
+    with pytest.raises(ValueError, match="DTD/entity declarations are not allowed"):
+        read_osm_file(bomb)
+
+
 def test_unknown_network_type():
     with pytest.raises(ValueError, match="unknown network_type"):
         read_osm_file(OSM_XML, network_type="boat")
