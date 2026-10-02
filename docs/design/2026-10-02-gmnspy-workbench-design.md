@@ -231,6 +231,12 @@ The app is a single page:
   - Clicking a row selects it and flies the map to it.
   - Box-select fills the table filter "to selection".
 - **FK navigation:** a `from_node_id` cell is a link to that node row and its map marker.
+- **Related records (P1b):** when links or nodes are highlighted or selected, rows that are related through a foreign key are tinted in a softer colour in every other table and on the map.
+  - **Which tables count as related:** FKs pointing in (`lane.link_id`, `segment.link_id`, `link_tod.link_id`, movement in/out links) and FKs pointing out (`link.from_node_id` and `to_node_id` → `node`).
+  - **Where the FKs come from:** the spec's foreign keys, the same ones validation uses, so nothing is hard-coded.
+  - **Endpoint:** a read-only `GET /api/n/{id}/{component}/related?table=&ids=`. It returns per-table counts, plus the ids on the visible page only, and is not recorded.
+  - **Cost:** one DuckDB `fk IN (...)` per related table, one hop by default, with an explicit "expand a hop" option.
+  - **UI:** count badges in the table rail, a "Filter to related" mode, and a "via <fk>" hint on related rows.
 - **Validation:**
   - Run validation plus quality checks as a job, using the rule config from Settings.
   - The **Issues panel** links issue ↔ map marker ↔ table row (filter by severity, table or code).
