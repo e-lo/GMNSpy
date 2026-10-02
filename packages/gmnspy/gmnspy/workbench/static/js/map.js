@@ -1,5 +1,5 @@
 // deck.gl-over-MapLibre network rendering, picking, and camera moves.
-import { $ } from "./dom.js";
+import { $, esc } from "./dom.js";
 import { widthForLanes } from "./netbuf.js";
 import { buildLinkColors } from "./palette.js";
 import { activeSelection, store } from "./store.js";
@@ -124,9 +124,8 @@ function getTooltip({ layer, index }) {
   const attrs = store.get().attrs;
   if (!layer || layer.id !== "links" || index == null || index < 0 || !attrs) return null;
   const id = attrs.link_id[index], nm = attrs.name[index], rf = attrs.ref[index], ft = attrs.facility_type[index];
-  const text = (v) => String(v).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
-  return { html: `<b>link ${text(id)}</b><br>${nm ? text(nm) : "<i>unnamed</i>"}${rf ? " · " + text(rf) : ""}` +
-    `<br><span style="color:#8a93a3">${ft ? text(ft) : ""}</span>`, style: TOOLTIP_STYLE };
+  return { html: `<b>link ${esc(id)}</b><br>${nm ? esc(nm) : "<i>unnamed</i>"}${rf ? " · " + esc(rf) : ""}` +
+    `<br><span style="color:#8a93a3">${ft ? esc(ft) : ""}</span>`, style: TOOLTIP_STYLE };
 }
 
 function fit(bounds, padding) { if (!bounds.isEmpty()) map.fitBounds(bounds, { padding, maxZoom: 15, duration: 500 }); }

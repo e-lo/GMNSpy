@@ -10,24 +10,28 @@ import { renderPicks, renderSelection, showLinkDetails, wireSide } from "./side.
 import { activeSelection, store } from "./store.js";
 import { onNetworkChanged, onSelectionChanged, restoreViewMode, wireTable } from "./table.js";
 
-let loadingKey = null;
+const netKeyFor = server => {
+  const h = server.networks.find(n => n.id === server.active);
+  return h ? { h, key: `${h.id}@${h.version}` } : { h: null, key: null };
+};
+const inFlight = new Set();
 
 async function loadActiveNetwork() {
   const { server, netKey } = store.get();
-  const h = server.networks.find(n => n.id === server.active);
-  const key = h ? `${h.id}@${h.version}` : null;
-  if (key === netKey || key === loadingKey) return;
+  const { h, key } = netKeyFor(server);
+  if (key === netKey || inFlight.has(key)) return;
   if (!h) { store.set({ netKey: null, net: null, attrs: null, properties: [], prop: null, marker: null }); return; }
-  loadingKey = key;
+  inFlight.add(key);
   try {
     const [buf, attrs, props] = await Promise.all([
       getBuffer(netPath(h.id, "network.bin")), getJSON(netPath(h.id, "network.attrs.json")), getJSON(netPath(h.id, "properties")),
     ]);
+    if (netKeyFor(store.get().server).key !== key) return; // superseded while fetching
     const switched = !netKey || !netKey.startsWith(`${h.id}@`);
     store.set({ netKey: key, net: decodeNetwork(buf), attrs, properties: props.properties, prop: null, marker: null });
     if (switched) fitNetwork();
   } finally {
-    loadingKey = null;
+    inFlight.delete(key);
   }
 }
 
@@ -36,7 +40,8 @@ async function loadColorProperty() {
   const name = server.style.color_by;
   if (!net || name === "none" || (prop && prop.name === name && prop.netKey === netKey)) return;
   const p = await getJSON(netPath(server.active, `property/${encodeURIComponent(name)}`));
-  store.set({ prop: { ...p, netKey } });
+  const now = store.get();
+  if (now.server.style.color_by === name && now.netKey === netKey) store.set({ prop: { ...p, netKey } });
 }
 
 async function onState(server) {
