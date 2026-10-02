@@ -19,7 +19,7 @@ import pandas as pd
 
 from gmnspy import Network
 
-__all__ = ["COMPONENTS", "Component", "NetworkHandle", "NetworkRegistry", "default_label"]
+__all__ = ["COMPONENTS", "Component", "NetworkHandle", "NetworkRegistry", "as_pandas", "default_label"]
 
 Component = Literal["roadway", "transit"]
 COMPONENTS: tuple[Component, ...] = ("roadway", "transit")
@@ -43,7 +43,8 @@ def _slug(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-") or "network"
 
 
-def _as_pandas(table: Any) -> pd.DataFrame:
+def as_pandas(table: Any) -> pd.DataFrame:
+    """Materialise an ibis/datagrove table as pandas."""
     return table.to_pandas() if hasattr(table, "to_pandas") else table.execute()
 
 
@@ -82,6 +83,12 @@ class NetworkHandle:
                 self._cache[slot] = build()
             return self._cache[slot]
 
+    def prime(self, **artifacts: Any) -> None:
+        """Seed the current version's cache with artifacts built elsewhere (e.g. frames loaded off the lock)."""
+        with self._lock:
+            for key, value in artifacts.items():
+                self._cache[(key, self.version)] = value
+
     def bump(self) -> int:
         """Mark the network mutated: increment ``version`` and drop every cached artifact."""
         with self._lock:
@@ -91,11 +98,11 @@ class NetworkHandle:
 
     def links_df(self) -> pd.DataFrame:
         """The roadway ``link`` table as pandas (cached per version)."""
-        return self.cached("links_df", lambda: _as_pandas(self.roadway.links))
+        return self.cached("links_df", lambda: as_pandas(self.roadway.links))
 
     def nodes_df(self) -> pd.DataFrame:
         """The roadway ``node`` table as pandas (cached per version)."""
-        return self.cached("nodes_df", lambda: _as_pandas(self.roadway.nodes))
+        return self.cached("nodes_df", lambda: as_pandas(self.roadway.nodes))
 
     def node_xy(self) -> dict[Any, tuple[float, float]]:
         """``node_id -> (lon, lat)`` for anchor placement (cached per version)."""

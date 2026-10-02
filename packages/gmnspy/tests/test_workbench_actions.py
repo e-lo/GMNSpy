@@ -66,3 +66,8 @@ def test_action_json_schema_lists_every_type():
     schema = action_json_schema()
     types = {v["properties"]["type"]["const"] for v in schema["$defs"].values() if "type" in v.get("properties", {})}
     assert {"open_network", "select", "style", "navigate", "set_setting"} <= types
+
+
+def test_open_network_is_a_job_action():
+    assert OpenNetwork.runs_as_job and not Select.runs_as_job and not OpenNetwork.mutates
+    assert OpenNetwork.replay_overrides == {}

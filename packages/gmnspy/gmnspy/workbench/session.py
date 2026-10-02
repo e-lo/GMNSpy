@@ -5,6 +5,12 @@ P3, the NL assistant all funnel through ``dispatch``. Each call is recorded as a
 :class:`HistoryEntry` carrying its ``to_python`` replay snippet, and publishes
 ``history`` + ``state`` events for the browser. Network *edits* are not actions
 here yet: in P2 they become ProjectCard-shaped ``NetworkChange`` objects.
+
+Actions marked ``runs_as_job`` (``OpenNetwork``, ``BuildNetwork``) do their slow
+work on a background job thread *without* the session lock; only registering the
+result (and recording history) takes the lock. :meth:`Session.submit` starts one
+and returns immediately (the HTTP path); :meth:`Session.dispatch` starts one and
+waits (Python, the CLI), so callers see the same blocking behaviour as before.
 """
 
 from __future__ import annotations
@@ -17,6 +23,7 @@ from collections.abc import Mapping
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 from gmnspy import Network
 from gmnspy.config import LoadedSettings, Settings, SettingsError, get_value, load_settings, save_setting
@@ -38,9 +45,11 @@ from .actions import (
     parse_action,
     to_python,
 )
-from .errors import ActionError, NotSupportedYet
+from .errors import ActionError, JobCancelled, NotSupportedYet, PathNotAllowed
 from .events import EventBus
-from .registry import NetworkHandle, NetworkRegistry
+from .jobs import Job, JobContext, JobRunner
+from .paths import is_url, resolve_allowed
+from .registry import NetworkHandle, NetworkRegistry, as_pandas, default_label
 from .selection import selection_payload, unparsed_payload
 
 __all__ = ["DEFAULT_STYLE", "ActionError", "HistoryEntry", "NotSupportedYet", "Session"]
@@ -86,8 +95,13 @@ class Session:
         overrides: Mapping[str, Any] | None = None,
         parser: Any = None,
         environ: Mapping[str, str] | None = None,
+        http: Any = None,
     ) -> None:
-        """Load settings (raises :class:`~gmnspy.config.SettingsError` on bad config) and start empty."""
+        """Load settings (raises :class:`~gmnspy.config.SettingsError` on bad config) and start empty.
+
+        ``http`` is the HTTP session for Overpass/Nominatim (anything with ``get``/``post`` like
+        :mod:`requests`); ``None`` means ``requests`` itself. Tests inject a fake.
+        """
         self.project_dir = project_dir
         self._environ = environ
         self._overrides: dict[str, Any] = dict(overrides or {})
@@ -100,6 +114,8 @@ class Session:
         self.history: list[HistoryEntry] = []
         self._injected_parser = parser
         self._parser = parser
+        self.http = http
+        self.jobs = JobRunner(lambda event: self.events.publish(event))  # late-bound, like every other publish
         self._lock = threading.RLock()
 
     # ------------------------------------------------------------------ public API
@@ -117,42 +133,92 @@ class Session:
         return self._parser
 
     def dispatch(self, action: Action | dict[str, Any]) -> Any:
-        """Apply ``action`` and return its result; raise :class:`ActionError` if it failed (still recorded)."""
+        """Apply ``action`` (waiting for a job action to finish) and return its result.
+
+        Raises the recorded failure's type: :class:`~gmnspy.workbench.errors.ApprovalRequired` (with
+        ``.estimate``), :class:`NotSupportedYet`, :class:`~gmnspy.workbench.errors.PathNotAllowed`,
+        :class:`~gmnspy.workbench.errors.JobCancelled`, else :class:`ActionError`.
+        """
         entry = self.dispatch_recorded(action)
-        if not entry.ok:
-            raise (NotSupportedYet if entry.error_type == "NotSupportedYet" else ActionError)(entry.error)
-        return entry.result
+        if entry.ok:
+            return entry.result
+        raise _ERROR_TYPES.get(entry.error_type or "", ActionError)(entry.error)
 
     do = dispatch
 
     def dispatch_recorded(self, action: Action | dict[str, Any]) -> HistoryEntry:
-        """Apply ``action``, record and publish it, and return the entry (never raises ``ActionError``)."""
+        """Apply ``action``, record and publish it, and return the entry (never raises ``ActionError``).
+
+        A ``runs_as_job`` action is submitted as a background job and this call waits for it.
+        """
         if isinstance(action, dict):
             action = parse_action(action)
+        if action.runs_as_job:
+            job = self.submit(action)
+            # Wait OUTSIDE the session lock: the job thread takes it in ``_register`` and ``_finish``,
+            # so waiting while holding it would deadlock. Never call this with the lock held.
+            job.wait()
+            if job.history_seq is None:  # on_finish itself failed (already logged by the runner)
+                raise RuntimeError(f"job {job.id} finished without a history entry")
+            return self.history[job.history_seq - 1]
         handler = getattr(self, f"_do_{action.type}")
         with self._lock:
             try:
                 result, ok, error, error_type = handler(action), True, None, None
             except ActionError as exc:  # includes NotSupportedYet
-                result, ok, error, error_type = None, False, str(exc), type(exc).__name__
+                result, ok, error, error_type = exc.payload, False, str(exc), type(exc).__name__
             except Exception as exc:  # boundary: an unexpected handler failure is still a recorded, user-facing error
                 logger.exception("workbench action %s failed", action.type)
                 error = f"internal error: {type(exc).__name__}: {exc}"
                 result, ok, error_type = None, False, "InternalError"
-            entry = HistoryEntry(
-                seq=len(self.history) + 1,
-                action=action.model_dump(mode="json"),
-                python=to_python(action),
+            return self._record(action, ok=ok, result=result, error=error, error_type=error_type)
+
+    def submit(self, action: Action | dict[str, Any]) -> Job:
+        """Start a ``runs_as_job`` action on a background job and return the :class:`Job` at once.
+
+        The history entry is recorded when the job finishes (so ``seq`` follows completion order).
+        """
+        if isinstance(action, dict):
+            action = parse_action(action)
+        if not action.runs_as_job:
+            raise ValueError(f"{action.type} is not a job action; use dispatch()")
+        run = getattr(self, f"_job_{action.type}")
+        label = f"open {default_label(action.source)}"
+        return self.jobs.submit(
+            action.type, label, lambda ctx: run(action, ctx), on_finish=lambda job: self._finish(action, job)
+        )
+
+    def _finish(self, action: Action, job: Job) -> None:
+        """Job callback: record the outcome as a history entry (under the lock) and link it to the job."""
+        ok = job.status == "done"
+        with self._lock:
+            entry = self._record(
+                action,
                 ok=ok,
-                error=error,
-                error_type=error_type,
-                result=copy.deepcopy(result),
-                ts=time.time(),
+                result=job.result if ok else job.payload,
+                error=job.error,
+                error_type=job.error_type,
             )
-            self.history.append(entry)
-            self.events.publish({"type": "history", "entry": entry.to_dict()})
-            if ok:
-                self.events.publish({"type": "state", "state": self.state()})
+        self.jobs.update(job, history_seq=entry.seq)
+
+    def _record(
+        self, action: Action, *, ok: bool, result: Any, error: str | None, error_type: str | None
+    ) -> HistoryEntry:
+        """Append and publish a history entry (then a ``state`` event on success). Call with the lock held."""
+        entry = HistoryEntry(
+            seq=len(self.history) + 1,
+            action=action.model_dump(mode="json"),
+            python=to_python(action),
+            ok=ok,
+            error=error,
+            error_type=error_type,
+            result=copy.deepcopy(result),
+            ts=time.time(),
+        )
+        self.history.append(entry)
+        self.events.publish({"type": "history", "entry": entry.to_dict()})
+        if ok:
+            self.events.publish({"type": "state", "state": self.state()})
         return entry
 
     def add_network(
@@ -184,7 +250,7 @@ class Session:
             "paths": {"user": str(self.loaded.user_path), "project": str(self.loaded.project_path)},
         }
 
-    # ------------------------------------------------------------------ handlers
+    # ------------------------------------------------------------------ handlers (run under the lock)
 
     def _handle(self, net_id: str | None) -> NetworkHandle:
         target = net_id or self.active
@@ -195,14 +261,37 @@ class Session:
         except KeyError as exc:
             raise ActionError(exc.args[0]) from exc
 
-    def _do_open_network(self, action: OpenNetwork) -> dict[str, Any]:
+    # -------------------------------------------------- job actions (run on a job thread, lock only to register)
+
+    def _load(self, source: str, spec_version: str) -> tuple[Network, dict[str, Any]]:
+        """Load ``source`` and materialise its link/node frames, all without the session lock."""
         try:
-            net = Network.from_source(action.source, spec_version=self.settings.io.spec_version)
-            _ = (net.links, net.nodes)  # from_source is lazy; force the required tables to surface a bad source now
+            net = Network.from_source(source, spec_version=spec_version)
+            frames = {"links_df": as_pandas(net.links), "nodes_df": as_pandas(net.nodes)}
         except Exception as exc:  # boundary: any load failure is a user-facing error, not a crash
-            raise ActionError(f"could not open {action.source}: {exc}") from exc
-        handle = self.registry.add(net, source=action.source, label=action.label, net_id=action.net_id)
-        self.active = handle.id
+            raise ActionError(f"could not open {source}: {exc}") from exc
+        return net, frames
+
+    def _register(
+        self, net: Network, frames: dict[str, Any], *, source: str, label: str | None, net_id: str | None = None
+    ) -> NetworkHandle:
+        """Add a loaded network to the registry and make it active (takes the lock briefly)."""
+        with self._lock:
+            handle = self.registry.add(net, source=source, label=label, net_id=net_id)
+            handle.prime(**frames)
+            self.active = handle.id
+        return handle
+
+    def _job_open_network(self, action: OpenNetwork, ctx: JobContext) -> dict[str, Any]:
+        settings = self.settings
+        if urlsplit(action.source).scheme.lower() == "file":
+            # A file:// URL is a local path in disguise; it must not bypass the allowed-roots check.
+            raise ActionError(f"{action.source}: file:// URLs are not supported; use a local path")
+        source = action.source if is_url(action.source) else str(resolve_allowed(action.source, settings))
+        ctx.stage("open", progress=0.1)
+        net, frames = self._load(source, settings.io.spec_version)
+        ctx.stage("register", progress=0.9)  # last cancellation checkpoint
+        handle = self._register(net, frames, source=source, label=action.label, net_id=action.net_id)
         return {"net_id": handle.id}
 
     def _do_close_network(self, action: CloseNetwork) -> None:
@@ -270,3 +359,9 @@ class Session:
         if action.key.startswith("select.") and self._injected_parser is None:
             self._parser = None  # rebuilt from the new provider/model on next use
         return {"key": action.key, "value": value, "source": loaded.sources.get(action.key)}
+
+
+#: Recorded ``error_type`` -> the exception :meth:`Session.dispatch` re-raises (anything else: ActionError).
+_ERROR_TYPES: dict[str, type[ActionError]] = {
+    cls.__name__: cls for cls in (NotSupportedYet, JobCancelled, PathNotAllowed)
+}

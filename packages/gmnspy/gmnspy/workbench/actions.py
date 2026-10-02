@@ -3,7 +3,10 @@
 Every state change in a :class:`~gmnspy.workbench.session.Session` is one of these
 pydantic models, discriminated on ``type``. The same JSON schema is what the LLM
 sees as tools (P3), so natural language yields validated Actions, never ids or
-code. ``mutates`` marks actions the assistant must draft-before-apply.
+code. ``mutates`` marks actions the assistant must draft-before-apply;
+``runs_as_job`` marks actions whose slow work runs on a background job thread
+(see :mod:`gmnspy.workbench.jobs`); ``replay_overrides`` are fields forced in
+the ``to_python`` replay snippet.
 """
 
 from __future__ import annotations
@@ -35,12 +38,15 @@ RGB = Annotated[list[Annotated[int, Field(ge=0, le=255)]], Field(min_length=3, m
 class _Action(BaseModel):
     model_config = ConfigDict(extra="forbid")
     mutates: ClassVar[bool] = False
+    runs_as_job: ClassVar[bool] = False
+    replay_overrides: ClassVar[dict[str, Any]] = {}
 
 
 class OpenNetwork(_Action):
-    """Load a GMNS network from a local path or URL and make it active."""
+    """Load a GMNS network from a local path (inside ``io.allowed_roots``) or URL and make it active."""
 
     type: Literal["open_network"] = "open_network"
+    runs_as_job: ClassVar[bool] = True
     source: str
     label: str | None = None
     net_id: str | None = None
@@ -138,7 +144,13 @@ def action_json_schema() -> dict[str, Any]:
 
 
 def to_python(action: _Action) -> str:
-    """The Python call that replays ``action`` against a live workbench handle named ``app``."""
-    fields = action.model_dump(exclude_defaults=True, exclude={"type"})
+    """The Python call that replays ``action`` against a live workbench handle named ``app``.
+
+    Top-level fields equal to their default are omitted; nested models (an ``area``) are written
+    in full, so their discriminator survives. ``replay_overrides`` are applied last.
+    """
+    defaults = {name: f.get_default(call_default_factory=True) for name, f in type(action).model_fields.items()}
+    fields = {k: v for k, v in action.model_dump(exclude={"type"}).items() if v != defaults[k]}
+    fields.update(type(action).replay_overrides)
     args = ", ".join(f"{k}={v!r}" for k, v in fields.items())
     return f"app.do({type(action).__name__}({args}))"
