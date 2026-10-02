@@ -146,7 +146,7 @@ class Table:
             >>> e = IbisEngine()
             >>> expr = e.from_records([{"a": 1}, {"a": 2}, {"a": 3}])
             >>> t = Table(name="t", expr=expr, engine=e)
-            >>> t2 = t.filter(lambda df: df[df["a"] > 1])
+            >>> t2 = t.filter(lambda df: df.filter(df["a"] > 1))
             >>> t2 is t
             False
             >>> t.count(), t2.count()

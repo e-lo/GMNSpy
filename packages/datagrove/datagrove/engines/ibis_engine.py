@@ -208,11 +208,14 @@ class IbisEngine:
             A lazy ``ibis.expr.types.Table``.
         """
         path = _as_path_str(source)
-        # Auto-enable hive partitioning for directory sources (the
-        # adapter forwards the path verbatim and asks engines to handle
-        # partitioning natively — I3).
-        if not hive_partitioning and Path(path).is_dir():
-            hive_partitioning = True
+        # Directory sources: auto-enable hive partitioning and hand duckdb an
+        # explicit recursive glob. A bare directory path raises "No files found"
+        # on some duckdb versions (<1.5); ``dir/**/*.parquet`` reliably matches the
+        # per-partition files pyarrow writes (``col=val/<uuid>-0.parquet``) on all.
+        if Path(path).is_dir():
+            if not hive_partitioning:
+                hive_partitioning = True
+            path = str(Path(path) / "**" / "*.parquet")
         if hive_partitioning:
             kwargs = {"hive_partitioning": True, **kwargs}
         table = self.con.read_parquet(path, **kwargs)
