@@ -14,8 +14,10 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from shapely import STRtree, from_wkt
+from shapely import STRtree
 from shapely.geometry import Point
+
+from gmnspy._geom import shapely_from_any
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from datagrove.dataset import Table
@@ -67,13 +69,8 @@ class SpatialIndex:
         geom_col = arrow.column("geometry").to_pylist()
         link_ids: list[int] = []
         geoms: list[Any] = []
-        for lid, wkt in zip(link_id_col, geom_col, strict=True):
-            if wkt is None:
-                continue
-            try:
-                g = from_wkt(wkt)
-            except Exception:  # pragma: no cover - shapely raises broadly
-                continue
+        for lid, geom in zip(link_id_col, geom_col, strict=True):
+            g = shapely_from_any(geom)
             if g is None or g.is_empty:
                 continue
             link_ids.append(int(lid))

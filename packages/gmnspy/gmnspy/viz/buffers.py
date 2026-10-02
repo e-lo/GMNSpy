@@ -19,7 +19,7 @@ import struct
 import numpy as np
 import pandas as pd
 
-from gmnspy._wkt import _parse_linestring_points
+from gmnspy._wkt import linestring_points
 
 __all__ = ["network_attrs", "pack_network", "unpack_network"]
 
@@ -65,7 +65,7 @@ def _link_paths(links, nx: dict, ny: dict):
     start_indices: list[int] = [0]
     for i in range(len(links)):
         g = geoms[i]
-        pts = _parse_linestring_points(g) if isinstance(g, str) else []
+        pts = linestring_points(g)
         if len(pts) >= 2:
             for x, y in pts:
                 positions.append(x)

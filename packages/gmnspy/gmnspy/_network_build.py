@@ -158,4 +158,10 @@ def network_from_records(
             schema=config_schema,
         ),
     }
-    return Network(spec=gmns_spec, tables=tables, engine=eng, source=None, spec_version=spec_version)
+    net = Network(spec=gmns_spec, tables=tables, engine=eng, source=None, spec_version=spec_version)
+    # Importer-built links carry WKT geometry; canonicalise to WKB in memory
+    # (geometry ADR) so record- and file-sourced networks behave identically.
+    from gmnspy._geometry import convert_geometry_to_wkb
+
+    convert_geometry_to_wkb(net)
+    return net

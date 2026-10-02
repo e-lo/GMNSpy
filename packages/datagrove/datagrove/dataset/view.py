@@ -85,6 +85,26 @@ def _st_buffer(geom: dt.binary, distance: float) -> dt.binary:  # type: ignore[e
     """Buffer GEOMETRY by ``distance`` in the geometry's CRS units."""
 
 
+@udf.scalar.builtin(name="ST_GeomFromWKB")
+def _st_geom_from_wkb(wkb: dt.binary) -> dt.binary:  # type: ignore[empty-body]
+    """Parse WKB bytes into a duckdb GEOMETRY."""
+
+
+def geom_from_any(col: Any) -> Any:
+    """Decode a stored geometry column (WKT ``str`` **or** WKB ``bytes``) to GEOMETRY.
+
+    The binary-geometry migration (geometry ADR) makes WKB the canonical stored
+    encoding, but CSV-sourced tables still hold WKT. Dispatch on the ibis column
+    dtype — ``ST_GeomFromWKB`` for a binary column, ``ST_GeomFromText`` for a
+    string one — so the spatial scopes work on either without the caller
+    converting first. A literal WKT the caller passes in still uses
+    :func:`_st_geom_from_text` directly (it is always text).
+    """
+    if col.type().is_binary():
+        return _st_geom_from_wkb(col)
+    return _st_geom_from_text(col)
+
+
 # Sentinel attribute name used to cache "spatial extension is loaded"
 # on the duckdb backend object. Avoids re-installing on every call.
 _SPATIAL_LOADED_ATTR = "_datagrove_spatial_loaded"
@@ -254,7 +274,7 @@ def from_bbox(
 
     def _build(expr: ir.Table) -> Any:
         return _st_intersects(
-            _st_geom_from_text(expr[geometry_column]),
+            geom_from_any(expr[geometry_column]),
             _st_make_envelope(minx, miny, maxx, maxy),
         )
 
@@ -317,7 +337,7 @@ def from_polygon(
 
     def _build(expr: ir.Table) -> Any:
         return _st_intersects(
-            _st_geom_from_text(expr[geometry_column]),
+            geom_from_any(expr[geometry_column]),
             _st_geom_from_text(wkt),
         )
 
@@ -380,7 +400,7 @@ def from_geometry_buffer(
 
     def _build(expr: ir.Table) -> Any:
         return _st_intersects(
-            _st_geom_from_text(expr[geometry_column]),
+            geom_from_any(expr[geometry_column]),
             _st_buffer(_st_geom_from_text(wkt), float(distance_m)),
         )
 

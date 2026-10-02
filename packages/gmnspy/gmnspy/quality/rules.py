@@ -394,19 +394,13 @@ class SharpAngleBendsRule:
         return "geometry" in link.columns()
 
     def run(self, package: Package, report: ValidationReport, rc: RuleConfig | None = None) -> None:
-        """Parse each link's WKT, compute interior turn angles, flag those below threshold."""
-        from shapely import from_wkt
+        """Parse each link's geometry (WKT or WKB), compute interior turn angles, flag sharp ones."""
+        from gmnspy._geom import shapely_from_any
 
         min_angle = _threshold(rc, "min_angle_degrees", 30.0)
         arrow = _to_arrow(package.tables["link"])
         for i, row in enumerate(arrow.to_pylist()):
-            wkt = row.get("geometry")
-            if wkt is None or not str(wkt).strip():
-                continue
-            try:
-                geom = from_wkt(str(wkt))
-            except Exception:  # pragma: no cover - shapely raises broadly
-                continue
+            geom = shapely_from_any(row.get("geometry"))
             if geom is None or geom.is_empty or geom.geom_type != "LineString":
                 continue
             coords = list(geom.coords)

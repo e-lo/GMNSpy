@@ -24,10 +24,30 @@ from typing import TYPE_CHECKING
 
 import pyarrow as pa
 
+from gmnspy._wkt import linestring_points, linestring_wkb
+
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from gmnspy.network import Network
 
 __all__ = ["GeometrySource", "assemble_link_geometry"]
+
+
+def _to_wkb(cell: object) -> bytes | None:
+    """Normalise a geometry cell (WKB ``bytes`` or legacy WKT ``str``) to WKB bytes.
+
+    Post-ingest the ``link`` / ``geometry`` tables already hold WKB, so this is a
+    pass-through; it also accepts a WKT string (re-encoding via the dep-free
+    LINESTRING codec) so :func:`assemble_link_geometry` stays correct on a
+    network whose geometry was not converted on load. Empty/unparseable → ``None``.
+    """
+    if cell is None:
+        return None
+    if isinstance(cell, (bytes, bytearray, memoryview)):
+        b = bytes(cell)
+        return b or None
+    if isinstance(cell, str):
+        return linestring_wkb(linestring_points(cell)) or None
+    return None
 
 
 class GeometrySource:
@@ -40,24 +60,29 @@ class GeometrySource:
 
 
 def assemble_link_geometry(net: Network) -> pa.Table:
-    """Return ``(link_id, geometry_wkt, source)`` for every link in ``net``.
+    """Return ``(link_id, geometry, source)`` for every link in ``net``.
 
-    Resolution order per link row:
+    ``geometry`` is **WKB bytes** (the canonical in-memory encoding; geometry
+    ADR) or null. Resolution order per link row:
 
-    1. Inline ``link.geometry`` (non-null, non-empty WKT) — ``source = "inline"``.
+    1. Inline ``link.geometry`` (non-null) — ``source = "inline"``.
     2. ``link.geometry_id`` resolving in ``net.geometry`` — ``source = "geometry_table"``.
-    3. Straight ``LINESTRING(x1 y1, x2 y2)`` from ``from_node_id`` /
-       ``to_node_id`` looked up in ``net.nodes`` — ``source = "node_endpoints"``.
+    3. Straight segment from ``from_node_id`` / ``to_node_id`` node coords,
+       encoded as a WKB ``LINESTRING`` — ``source = "node_endpoints"``.
     4. None of the above (geometry column absent + geometry_id absent +
-       endpoint nodes missing coords) — ``geometry_wkt = None``,
+       endpoint nodes missing coords) — ``geometry = None``,
        ``source = "missing"``.
+
+    Inline/table cells are pass-through when already WKB; a legacy WKT string is
+    re-encoded, so the function is correct whether or not the network's geometry
+    was canonicalised on load.
 
     Args:
         net: A loaded :class:`gmnspy.Network`.
 
     Returns:
         A :class:`pyarrow.Table` with columns ``link_id`` (matching
-        the link table's id type), ``geometry_wkt`` (string or null),
+        the link table's id type), ``geometry`` (WKB bytes or null),
         and ``source`` (string from :class:`GeometrySource`).
 
     Examples:
@@ -67,7 +92,7 @@ def assemble_link_geometry(net: Network) -> pa.Table:
         >>> from gmnspy.semantics import assemble_link_geometry
         >>> net = Network.from_source(leavenworth.csv_dir(), engine=IbisEngine())
         >>> tbl = assemble_link_geometry(net)
-        >>> set(tbl.column_names) == {"link_id", "geometry_wkt", "source"}
+        >>> set(tbl.column_names) == {"link_id", "geometry", "source"}
         True
         >>> # Leavenworth carries geometry via geometry_id, so all rows
         >>> # should resolve through the geometry table.
@@ -79,7 +104,7 @@ def assemble_link_geometry(net: Network) -> pa.Table:
     node_lookup = _build_node_xy_lookup(net)
 
     link_ids: list = []
-    geom_wkts: list[str | None] = []
+    geoms: list[bytes | None] = []
     sources: list[str] = []
 
     has_inline_geom = "geometry" in links_arrow.column_names
@@ -96,38 +121,41 @@ def assemble_link_geometry(net: Network) -> pa.Table:
 
         # 1. Inline geometry wins.
         if inline_col is not None:
-            wkt = inline_col[i]
-            if wkt is not None and str(wkt).strip():
-                geom_wkts.append(str(wkt))
+            wkb = _to_wkb(inline_col[i])
+            if wkb is not None:
+                geoms.append(wkb)
                 sources.append(GeometrySource.INLINE)
                 continue
 
         # 2. geometry_id lookup.
         if geom_id_col is not None:
             gid = geom_id_col[i]
-            if gid is not None and gid in geom_lookup:
-                geom_wkts.append(geom_lookup[gid])
+            wkb = _to_wkb(geom_lookup.get(gid)) if gid is not None else None
+            if wkb is not None:
+                geoms.append(wkb)
                 sources.append(GeometrySource.GEOMETRY_TABLE)
                 continue
 
-        # 3. Synthesize from node endpoints.
+        # 3. Synthesize a straight segment (as WKB) from node endpoints.
         from_id, to_id = from_col[i], to_col[i]
         if from_id in node_lookup and to_id in node_lookup:
             x1, y1 = node_lookup[from_id]
             x2, y2 = node_lookup[to_id]
             if None not in (x1, y1, x2, y2):
-                geom_wkts.append(f"LINESTRING ({x1} {y1}, {x2} {y2})")
-                sources.append(GeometrySource.NODE_ENDPOINTS)
-                continue
+                wkb = linestring_wkb([(x1, y1), (x2, y2)]) or None
+                if wkb is not None:
+                    geoms.append(wkb)
+                    sources.append(GeometrySource.NODE_ENDPOINTS)
+                    continue
 
         # 4. Truly unresolvable — emit a null + flag for the audit.
-        geom_wkts.append(None)
+        geoms.append(None)
         sources.append(GeometrySource.MISSING)
 
     return pa.table(
         {
             "link_id": pa.array(link_ids, type=links_arrow.column("link_id").type),
-            "geometry_wkt": pa.array(geom_wkts, type=pa.string()),
+            "geometry": pa.array(geoms, type=pa.binary()),
             "source": pa.array(sources, type=pa.string()),
         }
     )

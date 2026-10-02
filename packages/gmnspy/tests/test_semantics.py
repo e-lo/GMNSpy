@@ -179,7 +179,9 @@ def test_assemble_geometry_inline_wins():
     net = _network_from_tables({"link": links, "node": nodes})
     tbl = assemble_link_geometry(net)
     assert tbl.column("source").to_pylist() == ["inline"]
-    assert "LINESTRING (0 0" in tbl.column("geometry_wkt").to_pylist()[0]
+    from gmnspy._wkt import linestring_points
+
+    assert linestring_points(tbl.column("geometry").to_pylist()[0]) == [(0.0, 0.0), (0.5, 0.5), (1.0, 1.0)]
 
 
 def test_assemble_geometry_id_lookup():
@@ -210,7 +212,9 @@ def test_assemble_geometry_id_lookup():
     net = _network_from_tables({"link": links, "node": nodes, "geometry": geometry})
     tbl = assemble_link_geometry(net)
     assert tbl.column("source").to_pylist() == ["geometry_table"]
-    assert tbl.column("geometry_wkt").to_pylist() == ["LINESTRING (0 0, 1 1, 2 2)"]
+    from gmnspy._wkt import linestring_points
+
+    assert linestring_points(tbl.column("geometry").to_pylist()[0]) == [(0.0, 0.0), (1.0, 1.0), (2.0, 2.0)]
 
 
 def test_assemble_geometry_falls_back_to_node_endpoints():
@@ -236,10 +240,10 @@ def test_assemble_geometry_falls_back_to_node_endpoints():
     net = _network_from_tables({"link": links, "node": nodes})
     tbl = assemble_link_geometry(net)
     assert tbl.column("source").to_pylist() == ["node_endpoints"]
-    # Use 'in' to be tolerant of formatter trailing zeros / int coercion.
-    wkt = tbl.column("geometry_wkt").to_pylist()[0]
-    assert wkt.startswith("LINESTRING (")
-    assert "0.5" in wkt and "0.25" in wkt and "3.5" in wkt and "4.121" in wkt
+    # Synthesised straight segment, emitted as WKB from the two node endpoints.
+    from gmnspy._wkt import linestring_points
+
+    assert linestring_points(tbl.column("geometry").to_pylist()[0]) == [(0.5, 0.25), (3.5, 4.121)]
 
 
 def test_assemble_geometry_leavenworth_uses_geometry_table():
