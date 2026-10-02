@@ -43,7 +43,17 @@ def run_workbench(
         except workbench.ActionError as exc:
             typer.echo(f"error: {exc}", err=True)
             raise typer.Exit(1) from exc
+    from gmnspy.workbench.server import is_loopback_host
+
     app_settings = session.settings.app
+    if not is_loopback_host(app_settings.host):
+        source = session.loaded.sources.get("app.host", "default")
+        typer.echo(
+            f"WARNING: binding to {app_settings.host!r} (set by the {source} layer) exposes the Workbench "
+            "to other machines on the network. It has no authentication and can open local files — only "
+            "do this on a trusted network.",
+            err=True,
+        )
     opened = ", ".join(session.registry.ids()) or "none (open one from the header)"
     typer.echo(f"GMNSpy Workbench on http://{app_settings.host}:{app_settings.port}  (networks: {opened})")
     workbench.serve(session)

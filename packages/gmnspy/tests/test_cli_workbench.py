@@ -55,6 +55,20 @@ def test_select_serve_is_an_alias(served, rdu_source):
     assert result.exit_code == 0 and served[0].registry.ids() == ["rdu-i40"]
 
 
+def test_app_warns_on_public_bind(served):
+    result = runner.invoke(app, ["app", "--host", "0.0.0.0"])
+    assert result.exit_code == 0, result.output
+    assert "0.0.0.0" in result.output
+    assert "no authentication" in result.output
+    assert "session" in result.output  # names the source layer that set app.host
+
+
+def test_app_loopback_bind_has_no_warning(served):
+    result = runner.invoke(app, ["app"])
+    assert result.exit_code == 0, result.output
+    assert "no authentication" not in result.output
+
+
 def test_app_resolves_relative_source_to_absolute_path(served, monkeypatch, rdu_source):
     monkeypatch.chdir(Path(rdu_source).parent)
     relative = Path(rdu_source).name
