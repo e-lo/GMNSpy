@@ -1,0 +1,57 @@
+# Build-cost model for the workbench's Open / Import wizard (gmnspy.workbench.estimate).
+#
+#   links   = n_elements * links_per_element
+#   seconds = latency_s + links * s_per_link
+#   bytes   = fixed_bytes[format] + links * bytes_per_link[format]
+#
+# n_elements is what the cheap pre-query returns for each source:
+#   osm           ways matching the filter (Overpass `out count`)
+#   overture      road segments in the bbox (DuckDB COUNT(*), same predicate as the read)
+#   osm_file      size of the local .osm / .json file in bytes (no pre-query)
+#   overture_file road segments in the local snapshot (COUNT(*))
+#
+# HONESTY NOTE: these numbers are seeded from ONE measured data point and some guesses.
+#   * Measured: an OSM drive build of the RDU metro area produced ~269k links in ~27 s
+#     (docs/design/benchmarking-suite-scope.md). That run used a cached Overpass extract,
+#     so download time is NOT in it, and the time to write and re-open the output is not either.
+#     s_per_link = 27 / 269_000 ~ 1.0e-4 is used for every source.
+#   * Guessed, not measured: every latency_s, every links_per_element, and the Overture rates.
+#   * Output sizes: measured on the 178-link RDU I-40 fixture, where fixed per-file overhead
+#     dominates; expect real per-link sizes to be smaller.
+#   * zip: `zip` is a normal output format now that CSV-in-zip read/write is supported
+#     (deviation from the original plan, which treated zip as not-yet-supported for output).
+#     Its bytes_per_link figure is a rough CSV-size-times-compression-factor guess, not measured.
+# Re-fit with the opt-in calibration test (GMNSPY_CALIBRATE=1, see
+# packages/gmnspy/tests/test_workbench_estimate.py) and replace these values.
+
+[sources.osm]
+latency_s = 5.0            # guess: Overpass queueing + transfer start
+links_per_element = 2.5    # guess: ways split at intersections, x2 for two-way streets
+s_per_link = 1.0e-4        # measured once (RDU metro, see above)
+
+[sources.overture]
+latency_s = 15.0           # guess: remote GeoParquet footer/row-group reads before any rows arrive
+links_per_element = 1.6    # guess: segments split at connectors, two-way for most classes
+s_per_link = 1.0e-4        # borrowed from OSM; not measured for Overture
+
+[sources.osm_file]
+latency_s = 1.0            # guess
+links_per_element = 0.0015 # guess: roughly one link per ~700 bytes of OSM XML/JSON
+s_per_link = 1.0e-4        # borrowed from OSM
+
+[sources.overture_file]
+latency_s = 1.0            # guess: local parquet, no network
+links_per_element = 1.6    # same guess as overture
+s_per_link = 1.0e-4        # borrowed from OSM
+
+[output.bytes_per_link]    # measured on the RDU I-40 fixture (links + nodes files / links)
+parquet = 200
+csv = 320
+duckdb = 300
+zip = 110                  # guess: csv bytes_per_link reduced by a rough compression factor
+
+[output.fixed_bytes]       # per-output overhead independent of size
+parquet = 0
+csv = 0
+duckdb = 800000            # an empty DuckDB file is ~0.8 MB of preallocated blocks
+zip = 0
