@@ -63,3 +63,10 @@ def test_header_has_open_import_recent_and_jobs_not_the_path_box():
     for element_id in ("open-wizard", "recent", "jobs-btn", "jobs-panel", "wizard"):
         assert f'id="{element_id}"' in html
     assert 'id="open-src"' not in html and 'id="open-go"' not in html
+
+
+def test_wizard_modules_exist_and_are_wired_from_main():
+    names = {p.name for p in JS_DIR.glob("*.js")}
+    assert {"wizard.js", "filebrowser.js", "areapicker.js", "jobs.js"} <= names
+    main = (JS_DIR / "main.js").read_text()
+    assert 'from "./wizard.js"' in main and 'from "./jobs.js"' in main

@@ -2,6 +2,7 @@
 import { dispatch } from "./api.js";
 import { $, esc, toast } from "./dom.js";
 import { fitLinks } from "./map.js";
+import { openWizard } from "./wizard.js";
 
 // Recents live in this browser's localStorage: a per-user convenience that needs no server code.
 // They are only shortcuts: re-opening one is a normal open_network action, checked against io.allowed_roots.
@@ -50,6 +51,7 @@ export function renderHeader(server) {
 
 export function wireHeader() {
   $("net-select").onchange = e => run({ type: "set_active_network", net_id: e.target.value });
+  $("open-wizard").onclick = () => openWizard();
   $("recent").onchange = e => {
     const r = loadRecent()[Number(e.target.value)];
     e.target.value = "";

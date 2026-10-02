@@ -10,6 +10,7 @@ import { populateColorby, renderLegend, syncControls, wirePanels } from "./panel
 import { clearDetails, renderHighlights, renderSelection, showLinkDetails, wireSide } from "./side.js";
 import { activeSelection, store } from "./store.js";
 import { onNetworkChanged, onSelectionChanged, restoreViewMode, wireTable } from "./table.js";
+import { onWizardJob, wireWizard } from "./wizard.js";
 
 const netKeyFor = server => {
   const h = server.networks.find(n => n.id === server.active);
@@ -83,7 +84,7 @@ function wireStore() {
 }
 
 async function boot() {
-  wireStore(); wirePanels(); wireSide(); wireTable(); wireHeader(); wireHistory(); wireMapButtons(); wireJobs();
+  wireStore(); wirePanels(); wireSide(); wireTable(); wireHeader(); wireHistory(); wireMapButtons(); wireJobs(); wireWizard();
   renderRecent();
   const [cfg, server, history] = await Promise.all([getJSON("/api/config"), getJSON("/api/state"), getJSON("/api/history")]);
   store.set({ server, basemap: cfg.style });
@@ -98,7 +99,7 @@ async function boot() {
         state: e => onState(e.state),
         history: e => { showEntry(e.entry); rememberRecent(e.entry); },
         navigate: onNavigate,
-        job: e => onJob(e.job),
+        job: e => { onJob(e.job); onWizardJob(e.job); },
       });
     },
   });
