@@ -11,6 +11,7 @@ and are checked like any other; every other scheme, and fsspec ``::`` chains, ar
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Literal
 from urllib.parse import urlsplit
@@ -69,9 +70,13 @@ def split_source(source: str) -> tuple[SourceKind, str]:
     if not scheme:
         return "local", source
     if scheme in REMOTE_SCHEMES:
+        # "s3:../x" or "http:/abs" parse with a remote scheme but datagrove's inner adapters read
+        # them as relative local paths: only a literal scheme://host is remote.
+        if not source.lower().startswith(f"{scheme}://") or not urlsplit(source).netloc:
+            raise PathNotAllowed(f"{source}: remote URLs must look like scheme://host/...")
         return "remote", source
     if scheme == "duckdb":
-        return "local", source[len("duckdb://") :]
+        return "local", re.sub(r"^duckdb:(//)?", "", source, flags=re.IGNORECASE)
     if scheme == "file":
         parts = urlsplit(source)
         if parts.netloc not in ("", "localhost"):

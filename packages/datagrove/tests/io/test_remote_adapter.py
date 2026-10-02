@@ -526,3 +526,19 @@ def test_credentials_keyed_by_bare_hostname_not_netloc(remote_registry, monkeypa
 
     assert seen == ["bucket.server"]
     assert type(remote_registry["csv"]).last_kwargs.get("storage_options") == {"token": "env-bearer"}
+
+
+@pytest.mark.parametrize("source", ["s3:../x", "https:x", "http:/abs", "S3:..//x"])
+def test_scheme_without_slashes_is_never_routed_as_remote(remote_registry, source) -> None:
+    """``s3:../x`` is a relative local path to every inner adapter, so neither dispatch nor probe calls it remote."""
+    from datagrove.io import _scheme_of
+
+    assert _scheme_of(source) is None
+    assert remote_registry["remote"].probe(source) is False
+
+
+def test_scheme_with_slashes_is_still_remote(remote_registry) -> None:
+    from datagrove.io import _scheme_of
+
+    assert _scheme_of("S3://b/k.csv") == "s3"
+    assert remote_registry["remote"].probe("S3://b/k.csv") is True

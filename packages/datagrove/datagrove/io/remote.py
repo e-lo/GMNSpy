@@ -42,7 +42,7 @@ from urllib.parse import urlparse
 
 import fsspec
 
-from datagrove.io import dispatch, register_adapter
+from datagrove.io import _scheme_of, dispatch, register_adapter
 from datagrove.io.base import (
     FormatAdapter,
     FormatNotDetected,
@@ -144,10 +144,10 @@ class RemoteAdapter:
         if not isinstance(source, str):
             return False
         try:
-            scheme = urlparse(source).scheme.lower()
+            scheme = _scheme_of(source)  # None unless literally ``scheme://...`` (same rule as dispatch)
         except (ValueError, AttributeError):
             return False
-        return bool(scheme) and scheme in REMOTE_SCHEMES
+        return scheme in REMOTE_SCHEMES
 
     # ----- read ------------------------------------------------------------
 

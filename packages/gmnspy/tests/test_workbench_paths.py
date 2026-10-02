@@ -114,3 +114,16 @@ def test_open_locator_keeps_the_duckdb_hint(tmp_path):
     assert open_locator(f"duckdb://{db}", _settings(tmp_path)) == f"duckdb://{db.resolve()}"
     assert open_locator(str(db), _settings(tmp_path)) == str(db.resolve())
     assert open_locator("s3://b/k", _settings(tmp_path)) == "s3://b/k"
+
+
+@pytest.mark.parametrize("bad", ["s3:../x", "https:x", "http:/abs", "S3:..//x", "s3:///no-host"])
+def test_remote_scheme_without_scheme_slash_slash_host_is_rejected(tmp_path, bad):
+    with pytest.raises(PathNotAllowed, match="must look like scheme://host"):
+        classify_source(bad, _settings(tmp_path))
+    assert not is_url(bad)
+
+
+@pytest.mark.parametrize("prefix", ["duckdb://", "duckdb:", "DUCKDB://"])
+def test_duckdb_prefix_is_stripped_robustly(tmp_path, prefix):
+    db = tmp_path / "net.db"
+    assert classify_source(f"{prefix}{db}", _settings(tmp_path)) == ("local", db.resolve())

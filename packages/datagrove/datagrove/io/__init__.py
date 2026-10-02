@@ -261,12 +261,16 @@ def _scheme_of(source_str: str) -> str | None:
     """Extract a URL scheme from ``source_str``, if any.
 
     Returns the scheme lowercase (without ``://``), or ``None`` if the
-    source has no scheme or only a single-letter scheme (which is most
-    likely a Windows drive letter like ``C:\\path``).
+    source has no scheme, only a single-letter scheme (which is most
+    likely a Windows drive letter like ``C:\\path``), or is not literally
+    ``scheme://...`` (``s3:../x`` is a relative local path to every
+    inner adapter, so it must never be routed by scheme).
     """
     parsed = urlparse(source_str)
     scheme = parsed.scheme.lower()
     if not scheme or len(scheme) == 1:
+        return None
+    if not source_str.lower().startswith(f"{scheme}://"):
         return None
     return scheme
 
