@@ -65,3 +65,15 @@ def test_events_stream_starts_with_state_snapshot(client):
         body = r.read().decode()
     assert r.headers["content-type"].startswith("text/event-stream")
     assert body.startswith("event: state\n") and '"active": "rdu-i40"' in body
+
+
+def test_rejects_spoofed_host_header(client):
+    """DNS-rebinding guard: a loopback bind only trusts the hosts it expects."""
+    r = client.get("/", headers={"Host": "evil.example"})
+    assert r.status_code == 400
+
+
+def test_normal_request_still_works(client):
+    """The TestClient's own Host header ("testserver") must stay allowed."""
+    r = client.get("/")
+    assert r.status_code == 200
