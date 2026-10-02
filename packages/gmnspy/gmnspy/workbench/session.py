@@ -157,10 +157,9 @@ class Session:
                 ts=time.time(),
             )
             self.history.append(entry)
-            state = self.state() if ok else None
-        self.events.publish({"type": "history", "entry": entry.to_dict()})
-        if state is not None:
-            self.events.publish({"type": "state", "state": state})
+            self.events.publish({"type": "history", "entry": entry.to_dict()})
+            if ok:
+                self.events.publish({"type": "state", "state": self.state()})
         return entry
 
     def add_network(
@@ -170,8 +169,7 @@ class Session:
         with self._lock:
             handle = self.registry.add(net, source=source, label=label, net_id=net_id)
             self.active = self.active or handle.id
-            state = self.state()
-        self.events.publish({"type": "state", "state": state})
+            self.events.publish({"type": "state", "state": self.state()})
         return handle
 
     def state(self) -> dict[str, Any]:

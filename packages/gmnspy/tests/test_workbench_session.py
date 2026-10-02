@@ -1,5 +1,7 @@
 """Tests for the workbench Session (the action bus)."""
 
+import threading
+import time
 from pathlib import Path
 
 import pytest
@@ -176,3 +178,37 @@ def test_history_python_replays_to_same_state(session, rdu_source):
             exec(entry.python, globals_ns)
 
     assert replay.state() == session.state()
+
+
+def test_concurrent_dispatch_publishes_history_before_state_atomically(opened, monkeypatch):
+    """history/state publishes must happen while the lock is held, so two dispatchers can't interleave them."""
+    log: list[str] = []
+    log_lock = threading.Lock()
+    release_second = threading.Event()
+    orig_publish = opened.events.publish
+
+    def slow_publish(event):
+        with log_lock:
+            log.append(event["type"])
+        if event["type"] == "history" and threading.current_thread().name == "first":
+            release_second.set()
+            time.sleep(0.05)  # widen the window a pre-fix implementation would race through
+        orig_publish(event)
+
+    monkeypatch.setattr(opened.events, "publish", slow_publish)
+
+    def first():
+        opened.dispatch_recorded(ClearSelection())
+
+    def second():
+        release_second.wait()
+        opened.dispatch_recorded(ClearSelection())
+
+    t1 = threading.Thread(target=first, name="first")
+    t2 = threading.Thread(target=second, name="second")
+    t1.start()
+    t2.start()
+    t1.join()
+    t2.join()
+
+    assert log == ["history", "state", "history", "state"]
