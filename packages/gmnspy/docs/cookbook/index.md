@@ -33,6 +33,7 @@ For bbox / polygon (non-GMNS-specific) spatial scope, see [datagrove cookbook: s
 
 ## Surfaces
 
+* [Explore networks in the GMNSpy Workbench](workbench.md) — linked map + tables, NL selection, replayable actions.
 * [Self-host the HTTP server](serve-http.md) — config file, bearer auth, deploying behind a proxy.
 * [Wire the MCP server to Claude Code / Claude Desktop](serve-mcp.md) — stdio transport, tool list, agent prompts.
 * [Run the bundled benchmarks](run-bench.md) — `gmnspy bench`, what to expect on Leavenworth vs regional networks.

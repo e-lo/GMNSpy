@@ -83,6 +83,7 @@ _KNOWN_FICTIONAL = {
     "gmnspy.__file__",  # python builtin, just a doc example
     "gmnspy.symbols",  # generic prose
     "gmnspy.utils",  # generic prose; no such submodule
+    "gmnspy.toml",  # the project config FILENAME (gmnspy.toml), not a Python attribute path
     "datagrove.utils",  # generic prose; no such submodule
     "datagrove.package",  # lowercase — refers to the Package class, not a submodule
     # Setuptools entry-point GROUP NAME (not a Python attribute path).
