@@ -1,5 +1,7 @@
 """Tests for `gmnspy app` and its viz / select-serve aliases."""
 
+from pathlib import Path
+
 import pytest
 from gmnspy.cli.app import app
 from typer.testing import CliRunner
@@ -51,3 +53,14 @@ def test_viz_is_an_alias(served, rdu_source):
 def test_select_serve_is_an_alias(served, rdu_source):
     result = runner.invoke(app, ["select-serve", rdu_source, "--provider", "stub"])
     assert result.exit_code == 0 and served[0].registry.ids() == ["rdu-i40"]
+
+
+def test_app_resolves_relative_source_to_absolute_path(served, monkeypatch, rdu_source):
+    monkeypatch.chdir(Path(rdu_source).parent)
+    relative = Path(rdu_source).name
+    result = runner.invoke(app, ["app", relative])
+    assert result.exit_code == 0, result.output
+    (session,) = served
+    recorded_source = session.history[0].action["source"]
+    assert Path(recorded_source).is_absolute()
+    assert recorded_source == str(Path(rdu_source).resolve())

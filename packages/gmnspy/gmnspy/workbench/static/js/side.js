@@ -4,6 +4,9 @@ import { $, esc, toast } from "./dom.js";
 import { store } from "./store.js";
 
 const HINT = '<span class="empty">Click a link for details; hover to inspect; type an utterance to select.</span>';
+const DETAILS_HINT = '<span class="empty">Click a link on the map.</span>';
+
+export function clearDetails() { $("details").innerHTML = DETAILS_HINT; }
 
 export function renderSelection(sel) {
   $("status-wrap").innerHTML = sel

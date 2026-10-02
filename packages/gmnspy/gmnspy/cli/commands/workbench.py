@@ -7,6 +7,7 @@ aliases that call :func:`run_workbench`.
 from __future__ import annotations
 
 from collections.abc import Sequence
+from pathlib import Path
 
 import typer
 
@@ -33,8 +34,12 @@ def run_workbench(
         typer.echo(f"error: {exc}", err=True)
         raise typer.Exit(2) from exc
     for source in sources:
+        resolved = str(source)
+        path = Path(resolved)
+        if path.exists():
+            resolved = str(path.resolve())
         try:
-            session.dispatch(OpenNetwork(source=str(source)))
+            session.dispatch(OpenNetwork(source=resolved))
         except workbench.ActionError as exc:
             typer.echo(f"error: {exc}", err=True)
             raise typer.Exit(1) from exc

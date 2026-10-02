@@ -128,7 +128,17 @@ function getTooltip({ layer, index }) {
     `<br><span style="color:#8a93a3">${ft ? esc(ft) : ""}</span>`, style: TOOLTIP_STYLE };
 }
 
-function fit(bounds, padding) { if (!bounds.isEmpty()) map.fitBounds(bounds, { padding, maxZoom: 15, duration: 500 }); }
+function fit(bounds, padding, retried) {
+  if (bounds.isEmpty()) return;
+  const el = map.getContainer(), w = el.clientWidth, h = el.clientHeight;
+  if (!retried && (w <= padding * 2 || h <= padding * 2)) {
+    map.resize();
+    requestAnimationFrame(() => fit(bounds, padding, true));
+    return;
+  }
+  const p = Math.min(padding, Math.floor(Math.min(w, h) / 4));
+  map.fitBounds(bounds, { padding: p, maxZoom: 15, duration: 500 });
+}
 
 export function fitNetwork() {
   const net = store.get().net;

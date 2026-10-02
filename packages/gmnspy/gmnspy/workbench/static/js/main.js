@@ -6,7 +6,7 @@ import { showEntry, wireHistory } from "./history.js";
 import { fitBbox, fitLinks, fitNetwork, initMap, render } from "./map.js";
 import { decodeNetwork } from "./netbuf.js";
 import { populateColorby, renderLegend, syncControls, wirePanels } from "./panels.js";
-import { renderPicks, renderSelection, showLinkDetails, wireSide } from "./side.js";
+import { clearDetails, renderPicks, renderSelection, showLinkDetails, wireSide } from "./side.js";
 import { activeSelection, store } from "./store.js";
 import { onNetworkChanged, onSelectionChanged, restoreViewMode, wireTable } from "./table.js";
 
@@ -76,16 +76,17 @@ function wireStore() {
   });
   store.subscribe(["server", "prop"], s => renderLegend(s.server.style, s.prop));
   store.subscribe(["properties"], s => { populateColorby(s.properties); syncControls(s.server.style); });
-  store.subscribe(["netKey"], () => { onNetworkChanged(); store.set({ picks: new Set() }); });
+  store.subscribe(["netKey"], () => { onNetworkChanged(); store.set({ picks: new Set() }); clearDetails(); });
   store.subscribe(["picks"], s => renderPicks(s.picks));
   store.subscribe(["pickMode"], s => { $("btn-pick").classList.toggle("on", s.pickMode); $("map").classList.toggle("picking", s.pickMode); });
 }
 
 async function boot() {
   wireStore(); wirePanels(); wireSide(); wireTable(); wireHeader(); wireHistory(); wireMapButtons();
-  const [cfg, server] = await Promise.all([getJSON("/api/config"), getJSON("/api/state")]);
+  const [cfg, server, history] = await Promise.all([getJSON("/api/config"), getJSON("/api/state"), getJSON("/api/history")]);
   store.set({ server });
   restoreViewMode();
+  if (history.entries.length) showEntry(history.entries[history.entries.length - 1]);
   initMap(cfg.style, {
     onLinkClick,
     onReady: async () => {
