@@ -75,7 +75,7 @@ class StubParser:
         if tokens and tokens[-1].lower() in _DIR_WORDS:
             direction = _DIR_WORDS[tokens[-1].lower()]
             head = " ".join(tokens[:-1]).strip()
-        if not head:
+        if not head or not re.search(r"[a-zA-Z0-9]", head):  # no letters/digits: e.g. "???" isn't a facility
             raise IntentError(f"could not find a facility in {utterance!r}")
 
         facility = _facility_from_text(head)
