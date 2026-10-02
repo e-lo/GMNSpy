@@ -280,3 +280,28 @@ def test_new_datagrove_prefix_honoured(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setenv("DATAGROVE_CRED_EXAMPLE_COM_TOKEN", "datagrove-token")
     assert resolve_credentials("example.com") == {"token": "datagrove-token"}
+
+
+# ---------------------------------------------------------------------------
+# credential_source: names the layer, never the value
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("env", "keyring_value", "netrc_value", "expected"),
+    [
+        ({"token": "t"}, {"token": "k"}, {"username": "u"}, "env"),
+        ({}, {"token": "k"}, {"username": "u"}, "keyring"),
+        ({}, {}, {"username": "u", "password": "p"}, "netrc"),
+        ({}, {}, {}, "none"),
+    ],
+)
+def test_credential_source_names_the_first_layer(
+    monkeypatch: pytest.MonkeyPatch, env: dict, keyring_value: dict, netrc_value: dict, expected: str
+) -> None:
+    from datagrove.io import credentials as creds_mod
+
+    monkeypatch.setattr(creds_mod, "_lookup_env", lambda host: env)
+    monkeypatch.setattr(creds_mod, "_lookup_keyring", lambda host: keyring_value)
+    monkeypatch.setattr(creds_mod, "_lookup_netrc", lambda host: netrc_value)
+    assert creds_mod.credential_source("data.example.com") == expected

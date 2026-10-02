@@ -30,7 +30,7 @@ import netrc
 import os
 from typing import Final
 
-__all__ = ["resolve_credentials"]
+__all__ = ["credential_source", "resolve_credentials"]
 
 _logger: Final = logging.getLogger(__name__)
 
@@ -101,6 +101,32 @@ def resolve_credentials(host: str, *, explicit: dict | None = None) -> dict:
 
     # Layer 5: nothing.
     return {}
+
+
+def credential_source(host: str) -> str:
+    """Name the cascade layer that would supply credentials for ``host``, never the values.
+
+    Walks the same env → keyring → netrc order as :func:`resolve_credentials`
+    (there is no ``explicit`` layer: callers that pass one already know).
+    Safe to show in a UI ("credentials from: env").
+
+    Args:
+        host: Network host (port suffixes are ignored, as in the resolver).
+
+    Returns:
+        ``"env"``, ``"keyring"``, ``"netrc"``, or ``"none"``.
+
+    Examples:
+        >>> credential_source("no.such.host.example")
+        'none'
+    """
+    if _lookup_env(_sanitize_host(host)):
+        return "env"
+    if _lookup_keyring(host):
+        return "keyring"
+    if _lookup_netrc(host):
+        return "netrc"
+    return "none"
 
 
 # ---------------------------------------------------------------------------
