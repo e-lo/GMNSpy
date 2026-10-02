@@ -108,12 +108,27 @@ def test_dispatch_from_python_blocks_until_the_open_job_finishes(make_session, r
     assert len(session.registry.get("rdu-i40").links_df()) > 0  # frames were primed by the job
 
 
-def test_file_url_is_rejected_not_a_roots_bypass(make_session, tmp_path_factory):
+@pytest.mark.parametrize("prefix", ["file://", "duckdb://"])
+def test_local_scheme_urls_are_checked_against_allowed_roots(make_session, tmp_path_factory, prefix):
     session = make_session()
-    elsewhere = tmp_path_factory.mktemp("not-allowed")
-    with pytest.raises(ActionError, match="use a local path"):
-        session.dispatch(OpenNetwork(source=elsewhere.as_uri()))
-    assert session.history[-1].error_type == "ActionError" and len(session.registry) == 0
+    elsewhere = tmp_path_factory.mktemp("not-allowed") / "net.duckdb"
+    with pytest.raises(PathNotAllowed, match="outside the allowed folders"):
+        session.dispatch(OpenNetwork(source=f"{prefix}{elsewhere}"))
+    assert session.history[-1].error_type == "PathNotAllowed" and len(session.registry) == 0
+
+
+def test_unsupported_scheme_is_path_not_allowed(make_session):
+    session = make_session()
+    with pytest.raises(PathNotAllowed, match="unsupported URL scheme"):
+        session.dispatch(OpenNetwork(source="local:///etc/net"))
+    assert session.history[-1].error_type == "PathNotAllowed"
+
+
+def test_dispatching_a_job_action_under_the_session_lock_raises(make_session, rdu_source):
+    session = make_session()
+    with session._lock, pytest.raises(RuntimeError, match="would deadlock"):
+        session.dispatch(OpenNetwork(source=rdu_source))
+    assert session.history == [] and len(session.registry) == 0
 
 
 def test_open_bundled_zip(make_session):

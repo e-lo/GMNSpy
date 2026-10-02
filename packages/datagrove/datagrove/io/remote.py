@@ -16,7 +16,7 @@ RemoteAdapter is the front for any URL-based source: ``http(s)://``,
 This means the credentials cascade is enforced in exactly one place even
 though every format (csv, parquet, duckdb, zipcsv) can live behind a URL.
 
-The full list of URL schemes claimed by this adapter is :data:`_REMOTE_SCHEMES`
+The full list of URL schemes claimed by this adapter is :data:`REMOTE_SCHEMES`
 — other modules (notably ``io/__init__.py``) point at that tuple rather than
 repeat the list.
 
@@ -57,14 +57,14 @@ if TYPE_CHECKING:  # pragma: no cover - typing only
     from datagrove.engines.base import Engine, TableExpr
     from datagrove.spec.model import Schema
 
-__all__ = ["RemoteAdapter"]
+__all__ = ["REMOTE_SCHEMES", "RemoteAdapter"]
 
 _logger: Final = logging.getLogger(__name__)
 
 # Schemes RemoteAdapter claims. Order matches the architecture spec.
 # Other modules (io/__init__.py, docs) should reference this tuple
 # rather than repeat the list — N4 keeps the spelling in one place.
-_REMOTE_SCHEMES: Final[tuple[str, ...]] = (
+REMOTE_SCHEMES: Final[tuple[str, ...]] = (
     "http",
     "https",
     "s3",
@@ -98,7 +98,7 @@ class _ParsedUrl:
 
     raw: str
     scheme: str  # lowercase, no trailing ``://``; ``""`` if absent
-    host: str  # ``netloc`` or ``""``
+    host: str  # bare ``hostname`` (no ``user:pw@`` userinfo, no port) or ``""``
     path: str  # URL path component (the part after scheme://host/)
     stripped: str  # ``raw`` with ``scheme://netloc/`` removed (best-effort)
 
@@ -107,7 +107,9 @@ def _parse(url_str: str) -> _ParsedUrl:
     """Parse ``url_str`` once into the local cache shape."""
     parsed = urlparse(url_str)
     scheme = (parsed.scheme or "").lower()
-    host = parsed.netloc or ""
+    # ``hostname``, not ``netloc``: userinfo (``user:secret@``) must never reach the credential
+    # lookups or logs, and the cascade keys on the bare host.
+    host = parsed.hostname or ""
     path = parsed.path or ""
     # urlparse already strips ``scheme://netloc`` from ``path``; leading
     # ``/`` is part of the path, which we drop for the "use this as the
@@ -129,7 +131,7 @@ class RemoteAdapter:
 
     name: str = "remote"
     extensions: tuple[str, ...] = ()
-    schemes: tuple[str, ...] = _REMOTE_SCHEMES
+    schemes: tuple[str, ...] = REMOTE_SCHEMES
 
     # ----- probe -----------------------------------------------------------
 
@@ -145,7 +147,7 @@ class RemoteAdapter:
             scheme = urlparse(source).scheme.lower()
         except (ValueError, AttributeError):
             return False
-        return bool(scheme) and scheme in _REMOTE_SCHEMES
+        return bool(scheme) and scheme in REMOTE_SCHEMES
 
     # ----- read ------------------------------------------------------------
 

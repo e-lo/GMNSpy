@@ -414,5 +414,5 @@ __all__ = [
 from . import csv_adapter as _csv_adapter  # noqa: E402,F401  -- self-registers
 from . import duckdb_adapter as _duckdb_adapter  # noqa: E402,F401  -- self-registers
 from . import parquet_adapter as _parquet_adapter  # noqa: E402,F401  -- self-registers
-from . import remote as _remote  # noqa: E402,F401  -- self-registers; claims URL schemes per remote._REMOTE_SCHEMES
+from . import remote as _remote  # noqa: E402,F401  -- self-registers; claims URL schemes per remote.REMOTE_SCHEMES
 from . import zipcsv_adapter as _zipcsv_adapter  # noqa: E402,F401  -- self-registers

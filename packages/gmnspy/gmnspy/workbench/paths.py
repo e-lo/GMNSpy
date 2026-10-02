@@ -3,24 +3,74 @@
 An empty ``io.allowed_roots`` means "the user's home directory". Paths are
 resolved (``~`` expanded, symlinks followed, ``..`` collapsed) *before* the
 containment check, so neither a symlink nor a ``..`` segment can escape a root.
-URLs are not local paths and are never checked here.
+Only remote URLs (datagrove's :data:`~datagrove.io.remote.REMOTE_SCHEMES`: http(s), s3, gs/gcs,
+az/abfs(s)) skip the check. ``duckdb://<path>`` and ``file://<path>`` are local paths in disguise
+and are checked like any other; every other scheme, and fsspec ``::`` chains, are rejected.
+:func:`classify_source` is the one entry point for "a source string the user typed".
 """
 
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Literal
 from urllib.parse import urlsplit
+from urllib.request import url2pathname
+
+from datagrove.io.remote import REMOTE_SCHEMES
 
 from gmnspy.config import Settings
 
 from .errors import PathNotAllowed
 
-__all__ = ["allowed_roots", "is_allowed", "is_url", "resolve_allowed"]
+__all__ = ["SourceKind", "allowed_roots", "classify_source", "is_allowed", "is_url", "resolve_allowed", "split_source"]
+
+
+SourceKind = Literal["remote", "local"]
+
+
+def _scheme(source: str) -> str:
+    """The URL scheme, lower-cased; ``""`` for a plain path (a one-letter Windows drive is not a scheme)."""
+    scheme = urlsplit(source).scheme
+    return scheme.lower() if len(scheme) > 1 else ""
 
 
 def is_url(source: str) -> bool:
-    """Whether ``source`` is a URL: it has a scheme of two or more letters (a Windows drive letter is not one)."""
-    return len(urlsplit(str(source)).scheme) > 1
+    """Whether ``source`` is a remote URL (a scheme in datagrove's ``REMOTE_SCHEMES``)."""
+    return _scheme(str(source)) in REMOTE_SCHEMES
+
+
+def split_source(source: str) -> tuple[SourceKind, str]:
+    """Split ``source`` into ``("remote", url)`` or ``("local", path)`` without checking the roots.
+
+    ``duckdb://`` and ``file://`` prefixes are stripped to their local path. Raises
+    :class:`PathNotAllowed` for an fsspec ``::`` chain or any other scheme.
+    """
+    source = str(source)
+    if "::" in source:
+        raise PathNotAllowed(f"{source}: chained (::) URLs are not supported")
+    scheme = _scheme(source)
+    if not scheme:
+        return "local", source
+    if scheme in REMOTE_SCHEMES:
+        return "remote", source
+    if scheme == "duckdb":
+        return "local", source[len("duckdb://") :]
+    if scheme == "file":
+        parts = urlsplit(source)
+        if parts.netloc not in ("", "localhost"):
+            raise PathNotAllowed(f"{source}: file:// URLs must name a local path")
+        return "local", url2pathname(parts.path)
+    remote = ", ".join(REMOTE_SCHEMES)
+    raise PathNotAllowed(f"{source}: unsupported URL scheme {scheme!r}; use a local path or one of {remote}")
+
+
+def classify_source(source: str, settings: Settings) -> tuple[SourceKind, str | Path]:
+    """``("remote", url)``, or ``("local", resolved_path)`` checked against ``io.allowed_roots``.
+
+    Raises :class:`PathNotAllowed` for an unsupported scheme or a local path outside every root.
+    """
+    kind, target = split_source(source)
+    return (kind, target) if kind == "remote" else (kind, resolve_allowed(target, settings))
 
 
 def allowed_roots(settings: Settings) -> list[Path]:
@@ -32,14 +82,25 @@ def _inside(candidate: Path, roots: list[Path]) -> bool:
     return any(candidate.is_relative_to(root) for root in roots)
 
 
+def _resolve(path: str | Path) -> Path:
+    """``path`` with ``~`` expanded and fully resolved; :class:`PathNotAllowed` if it cannot be."""
+    try:
+        return Path(path).expanduser().resolve()
+    except (RuntimeError, ValueError, OSError) as exc:  # ~nosuchuser, NUL bytes, symlink loops
+        raise PathNotAllowed(f"{path!r} is not a usable local path: {exc}") from exc
+
+
 def is_allowed(path: str | Path, settings: Settings) -> bool:
     """Whether ``path`` resolves inside an allowed root."""
-    return _inside(Path(path).expanduser().resolve(), allowed_roots(settings))
+    try:
+        return _inside(_resolve(path), allowed_roots(settings))
+    except PathNotAllowed:
+        return False
 
 
 def resolve_allowed(path: str | Path, settings: Settings) -> Path:
     """Return ``path`` fully resolved, or raise :class:`PathNotAllowed` if it falls outside every allowed root."""
-    candidate = Path(path).expanduser().resolve()
+    candidate = _resolve(path)
     roots = allowed_roots(settings)
     if not _inside(candidate, roots):
         shown = ", ".join(str(r) for r in roots)

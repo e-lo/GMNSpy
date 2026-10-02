@@ -26,11 +26,21 @@ def run_workbench(
     from gmnspy import workbench
     from gmnspy.config import SettingsError
     from gmnspy.workbench.actions import OpenNetwork
-    from gmnspy.workbench.paths import allowed_roots, is_allowed, is_url
+    from gmnspy.workbench.paths import allowed_roots, is_allowed, is_url, split_source
 
     flags = {"select.provider": provider, "viz.basemap": basemap, "app.host": host, "app.port": port}
     overrides = {k: v for k, v in flags.items() if v is not None}
-    resolved = [s if is_url(s) else str(Path(s).resolve()) for s in map(str, sources)]
+    from gmnspy.workbench.errors import PathNotAllowed
+
+    def _local(source: str) -> str:
+        # duckdb:// and file:// sources are local paths: trust (and open) the path itself. An
+        # unsupported scheme passes through unchanged, and OpenNetwork reports it below.
+        try:
+            return str(Path(split_source(source)[1]).resolve())
+        except PathNotAllowed:
+            return source
+
+    resolved = [s if is_url(s) else _local(s) for s in map(str, sources)]
     try:
         session = workbench.Session(overrides=overrides)
         # Sources named on the command line are trusted: allow exactly those paths for this session.

@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 from gmnspy.config import Settings
 from gmnspy.workbench.errors import PathNotAllowed
-from gmnspy.workbench.paths import allowed_roots, is_allowed, is_url, resolve_allowed
+from gmnspy.workbench.paths import allowed_roots, classify_source, is_allowed, is_url, resolve_allowed
 
 
 def _settings(*roots: Path) -> Settings:
@@ -56,3 +56,47 @@ def test_symlink_escape_rejected(tmp_path):
     (root / "link").symlink_to(outside, target_is_directory=True)
     with pytest.raises(PathNotAllowed):
         resolve_allowed(root / "link", _settings(root))
+
+
+# ------------------------------------------------------------------ classify_source: only remote schemes skip the roots
+
+
+def test_classify_remote_url_passes_through(tmp_path):
+    assert classify_source("s3://b/k", _settings(tmp_path)) == ("remote", "s3://b/k")
+
+
+def test_classify_duckdb_url_inside_root_is_local(tmp_path):
+    db = tmp_path / "net.duckdb"
+    assert classify_source(f"duckdb://{db}", _settings(tmp_path)) == ("local", db.resolve())
+
+
+def test_classify_duckdb_url_outside_root_rejected(tmp_path):
+    with pytest.raises(PathNotAllowed, match="outside the allowed folders"):
+        classify_source("duckdb:///etc/secret.duckdb", _settings(tmp_path))
+
+
+def test_classify_file_url_is_checked_as_a_local_path(tmp_path):
+    inside = tmp_path / "net"
+    assert classify_source(inside.as_uri(), _settings(tmp_path)) == ("local", inside.resolve())
+    with pytest.raises(PathNotAllowed, match="outside the allowed folders"):
+        classify_source("file:///etc/net", _settings(tmp_path))
+
+
+@pytest.mark.parametrize(
+    ("source", "match"),
+    [
+        ("local:///x", "unsupported URL scheme 'local'"),
+        ("simplecache::file:///x", "chained"),
+        ("file://otherhost/x", "must name a local path"),
+    ],
+)
+def test_classify_rejects_other_schemes(tmp_path, source, match):
+    with pytest.raises(PathNotAllowed, match=match):
+        classify_source(source, _settings(tmp_path))
+
+
+@pytest.mark.parametrize("bad", ["~nosuchuser-gmnspy/x", "net\x00work"])
+def test_unusable_local_path_is_path_not_allowed(tmp_path, bad):
+    with pytest.raises(PathNotAllowed, match="not a usable local path"):
+        resolve_allowed(bad, _settings(tmp_path))
+    assert not is_allowed(bad, _settings(tmp_path))

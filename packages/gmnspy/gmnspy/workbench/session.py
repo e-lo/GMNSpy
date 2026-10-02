@@ -11,6 +11,11 @@ work on a background job thread *without* the session lock; only registering the
 result (and recording history) takes the lock. :meth:`Session.submit` starts one
 and returns immediately (the HTTP path); :meth:`Session.dispatch` starts one and
 waits (Python, the CLI), so callers see the same blocking behaviour as before.
+
+There is a brief window between ``_register`` and ``_finish`` where the new network is
+already in the registry (and active) but its history entry does not exist yet. The UI is
+unaffected: no ``state`` event is published until ``_record``, so the browser sees the
+network and its history entry together.
 """
 
 from __future__ import annotations
@@ -23,7 +28,6 @@ from collections.abc import Mapping
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlsplit
 
 from gmnspy import Network
 from gmnspy.config import LoadedSettings, Settings, SettingsError, get_value, load_settings, save_setting
@@ -48,7 +52,7 @@ from .actions import (
 from .errors import ActionError, JobCancelled, NotSupportedYet, PathNotAllowed
 from .events import EventBus
 from .jobs import Job, JobContext, JobRunner
-from .paths import is_url, resolve_allowed
+from .paths import classify_source
 from .registry import NetworkHandle, NetworkRegistry, as_pandas, default_label
 from .selection import selection_payload, unparsed_payload
 
@@ -154,6 +158,10 @@ class Session:
         if isinstance(action, dict):
             action = parse_action(action)
         if action.runs_as_job:
+            # The job thread needs the lock (``_register``/``_finish``) and we wait for it below, so a
+            # caller already holding the lock (e.g. a handler) would deadlock: fail loudly instead.
+            if self._lock._is_owned():  # type: ignore[attr-defined]  # RLock's owner check
+                raise RuntimeError("cannot run a job action while holding the session lock (it would deadlock)")
             job = self.submit(action)
             # Wait OUTSIDE the session lock: the job thread takes it in ``_register`` and ``_finish``,
             # so waiting while holding it would deadlock. Never call this with the lock held.
@@ -284,10 +292,8 @@ class Session:
 
     def _job_open_network(self, action: OpenNetwork, ctx: JobContext) -> dict[str, Any]:
         settings = self.settings
-        if urlsplit(action.source).scheme.lower() == "file":
-            # A file:// URL is a local path in disguise; it must not bypass the allowed-roots check.
-            raise ActionError(f"{action.source}: file:// URLs are not supported; use a local path")
-        source = action.source if is_url(action.source) else str(resolve_allowed(action.source, settings))
+        _, target = classify_source(action.source, settings)  # only remote URLs skip io.allowed_roots
+        source = str(target)
         ctx.stage("open", progress=0.1)
         net, frames = self._load(source, settings.io.spec_version)
         ctx.stage("register", progress=0.9)  # last cancellation checkpoint

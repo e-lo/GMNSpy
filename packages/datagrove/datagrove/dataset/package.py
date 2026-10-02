@@ -1148,19 +1148,19 @@ def _looks_remote(path: str) -> bool:
     rather than handing the URL straight to the inner format adapter.
 
     Source-of-truth for the scheme list is
-    :data:`datagrove.io.remote._REMOTE_SCHEMES`; we import lazily to
+    :data:`datagrove.io.remote.REMOTE_SCHEMES`; we import lazily to
     avoid a top-level cycle.
     """
     # Local import keeps the dataset → io edge load-order-friendly
     # (io self-registers RemoteAdapter at module import, which is
-    # what populates _REMOTE_SCHEMES — we want the import to fire
+    # what populates REMOTE_SCHEMES — we want the import to fire
     # the first time _looks_remote runs, not at package.py load).
-    from datagrove.io.remote import _REMOTE_SCHEMES
+    from datagrove.io.remote import REMOTE_SCHEMES
 
     head, sep, _ = path.partition("://")
     if not sep:
         return False
-    return head.lower() in _REMOTE_SCHEMES
+    return head.lower() in REMOTE_SCHEMES
 
 
 def _scan_source(source_str: str, *, format: str | None = None) -> ResourceListing:
