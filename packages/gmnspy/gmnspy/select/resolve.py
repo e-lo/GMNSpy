@@ -51,9 +51,10 @@ def _facility_links(links, facility):
         hit = hit | links["ref"].apply(lambda r: bool(want & norm_ref(r)))
     names = facility.names()
     if names:
-        wantn = {norm_name(n) for n in names}
-        nm = links["name"].fillna("").astype("string").str.lower().str.replace(r"[^a-z0-9]", "", regex=True)
-        hit = hit | nm.isin(wantn)
+        wantn = {norm_name(n) for n in names} - {""}  # a blank/symbols-only name must match nothing, not blank links
+        if wantn:
+            nm = links["name"].fillna("").astype("string").str.lower().str.replace(r"[^a-z0-9]", "", regex=True)
+            hit = hit | nm.isin(wantn)
     return links[hit.fillna(False)]
 
 

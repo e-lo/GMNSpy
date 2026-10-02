@@ -132,6 +132,17 @@ def test_close_and_switch_networks(opened, rdu_source):
     assert opened.active == "copy" and opened.registry.ids() == ["copy"]
 
 
+def test_unexpected_handler_error_is_recorded_not_raised_raw(opened, monkeypatch):
+    def _boom(action):
+        raise KeyError("boom")
+
+    monkeypatch.setattr(opened, "_do_clear_selection", _boom)
+    with pytest.raises(ActionError, match="internal error: KeyError"):
+        opened.dispatch(ClearSelection())
+    entry = opened.history[-1]
+    assert entry.ok is False and entry.error_type == "InternalError"
+
+
 def test_add_network_from_python(session, rdu_source):
     h = session.add_network(Network.from_source(rdu_source), source=rdu_source)
     assert session.active == h.id and session.history == []

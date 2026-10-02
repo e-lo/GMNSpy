@@ -10,6 +10,7 @@ here yet: in P2 they become ProjectCard-shaped ``NetworkChange`` objects.
 from __future__ import annotations
 
 import copy
+import logging
 import threading
 import time
 from collections.abc import Mapping
@@ -42,6 +43,8 @@ from .registry import NetworkHandle, NetworkRegistry
 from .selection import selection_payload, unparsed_payload
 
 __all__ = ["DEFAULT_STYLE", "ActionError", "HistoryEntry", "NotSupportedYet", "Session"]
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_STYLE: dict[str, Any] = {
     "color_by": "none",
@@ -139,6 +142,10 @@ class Session:
                 result, ok, error, error_type = handler(action), True, None, None
             except ActionError as exc:  # includes NotSupportedYet
                 result, ok, error, error_type = None, False, str(exc), type(exc).__name__
+            except Exception as exc:  # boundary: an unexpected handler failure is still a recorded, user-facing error
+                logger.exception("workbench action %s failed", action.type)
+                error = f"internal error: {type(exc).__name__}: {exc}"
+                result, ok, error_type = None, False, "InternalError"
             entry = HistoryEntry(
                 seq=len(self.history) + 1,
                 action=action.model_dump(mode="json"),

@@ -79,3 +79,12 @@ def test_unknown_anchor_is_not_resolved(rdu):
     r = resolve_frames(_intent("EB", "Nonexistent Street XYZ", "Airport Boulevard"), links, nodes)
     assert r.status in {"not_found", "ambiguous"}
     assert r.from_match is None or r.from_match.node_id is None
+
+
+def test_blank_facility_name_matches_nothing(rdu):
+    """A whitespace-only name normalizes to "" and must not match blank-named links."""
+    links, nodes = rdu
+    assert (links["name"].fillna("").astype(str).str.strip() == "").any(), "fixture must have a blank-named link"
+    r = resolve_frames(SelectionIntent(facility=Facility(name="  ")), links, nodes)
+    assert r.status == "not_found"
+    assert r.link_ids == []
