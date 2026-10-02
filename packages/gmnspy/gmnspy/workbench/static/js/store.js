@@ -19,7 +19,7 @@ export const store = createStore({
   server: null,               // {networks, active, selection, style}
   netKey: null,               // "<id>@<version>" of the decoded active network
   net: null, attrs: null, properties: [], prop: null,
-  pickMode: false, picks: new Set(), marker: null,
+  highlightMode: false, highlights: new Set(), marker: null,
 });
 
 export function activeSelection(s) {

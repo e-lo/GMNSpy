@@ -1,5 +1,5 @@
   :root { --bg:#0f1115; --panel:#171a21; --edge:#2a2f3a; --ink:#e6e8ec; --muted:#9aa3b2;
-          --accent:#ff8c3b; --from:#35c46a; --to:#e0524d; --pick:#2dd2e6; }
+          --accent:#ff8c3b; --from:#35c46a; --to:#e0524d; --hl:#2dd2e6; }
   * { box-sizing:border-box; }
   html,body { margin:0; height:100%; font:14px/1.45 ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
               color:var(--ink); background:var(--bg); }
@@ -119,16 +119,16 @@
   #details td.v { word-break:break-word; max-width:200px; }
   #details .lid { color:var(--accent); font-weight:600; margin-bottom:4px; }
 
-  /* interactive pick */
-  #map.picking { cursor:crosshair; }
-  #boxsel { position:absolute; z-index:4; border:1.5px dashed var(--pick); background:rgba(45,210,230,.12);
+  /* highlight mode */
+  #map.highlighting { cursor:crosshair; }
+  #boxsel { position:absolute; z-index:4; border:1.5px dashed var(--hl); background:rgba(45,210,230,.12);
             pointer-events:none; display:none; }
-  .pcount { background:var(--pick); color:#06222a; border-radius:999px; padding:1px 8px; font-size:11px;
+  .pcount { background:var(--hl); color:#06222a; border-radius:999px; padding:1px 8px; font-size:11px;
             font-weight:700; margin-left:4px; }
-  .iconbtn.on#btn-pick { background:var(--pick); border-color:var(--pick); color:#06222a; }
+  .iconbtn.on#btn-highlight { background:var(--hl); border-color:var(--hl); color:#06222a; }
   .mini { padding:5px 10px; font-size:12px; border-radius:7px; }
   .mini.ghost { background:none; color:var(--muted); border:1px solid var(--edge); font-weight:500; }
-  #pick-actions { display:flex; gap:6px; margin:4px 0 6px; }
+  #hl-actions { display:flex; gap:6px; margin:4px 0 6px; }
 
   /* ---- workbench additions ---- */
   #app { grid-template-rows:auto 1fr auto; }

@@ -6,7 +6,7 @@ import { activeSelection, store } from "./store.js";
 
 const OFFSET_EXT = typeof deck.PathStyleExtension === "function" ? new deck.PathStyleExtension({ offset: true }) : null;
 const OFFSET_AMT = 0.8, ARROW_ZOOM = 13;
-const PICK_COLOR = [45, 210, 230];
+const HIGHLIGHT_COLOR = [45, 210, 230];
 const ARROW_SVG = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(
   '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><polygon points="12,3 20,21 12,16 4,21" fill="white"/></svg>');
 const TOOLTIP_STYLE = { background: "#11151a", color: "#e6e8ec", fontSize: "12px", padding: "6px 8px",
@@ -63,7 +63,7 @@ function baseLayers(net, style, colors) {
   return layers;
 }
 
-// A highlight PathLayer over a set of link ids (shared by selection + picks).
+// A highlight PathLayer over a set of link ids (shared by selection + highlights).
 function idPathLayer(net, layerId, ids, color, extraWidth) {
   const positions = [], startIndices = [0], widths = [];
   for (const id of ids) {
@@ -114,7 +114,7 @@ export function render() {
   const style = s.server.style, sel = activeSelection(s);
   const layers = baseLayers(s.net, style, linkColors(s));
   if (style.show.selection && sel) layers.push(...selectionLayers(s.net, style, sel));
-  if (s.picks.size) { const l = idPathLayer(s.net, "picked", s.picks, [...PICK_COLOR, 255], 2.5); if (l) layers.push(l); }
+  if (s.highlights.size) { const l = idPathLayer(s.net, "highlighted", s.highlights, [...HIGHLIGHT_COLOR, 255], 2.5); if (l) layers.push(l); }
   if (s.marker) layers.push(markerLayer(s.marker));
   overlay.setProps({ layers });
   setLabels(style.show.labels);
@@ -170,13 +170,13 @@ export function flyToNode(nodeId) {
   map.flyTo({ center: [lon, lat], zoom: Math.max(map.getZoom(), 15), duration: 500 });
 }
 
-// shift-drag box select over the links layer (deck region picking) adds to picks
+// shift-drag box select over the links layer (deck region picking) adds to highlights
 function wireBoxSelect() {
   const mapEl = $("map"), box = $("boxsel");
   let start = null;
   const deckInstance = () => overlay._deck || (overlay.props && overlay.props.deck) || null;
   mapEl.addEventListener("pointerdown", e => {
-    if (!store.get().pickMode || !e.shiftKey || e.button !== 0) return;
+    if (!store.get().highlightMode || !e.shiftKey || e.button !== 0) return;
     e.preventDefault(); map.dragPan.disable();
     const r = mapEl.getBoundingClientRect();
     start = { x: e.clientX - r.left, y: e.clientY - r.top, rect: r };
@@ -195,10 +195,10 @@ function wireBoxSelect() {
     box.style.display = "none"; map.dragPan.enable(); start = null;
     const dk = deckInstance(), s = store.get();
     if (!dk || !s.net || w <= 2 || h <= 2) return;
-    const picks = new Set(s.picks);
+    const highlights = new Set(s.highlights);
     for (const p of dk.pickObjects({ x: x0, y: y0, width: w, height: h, layerIds: ["links"] }))
-      if (p.index != null && p.index >= 0) picks.add(s.net.linkIds[p.index]);
-    store.set({ picks });
+      if (p.index != null && p.index >= 0) highlights.add(s.net.linkIds[p.index]);
+    store.set({ highlights });
   };
   mapEl.addEventListener("pointerup", finish);
   mapEl.addEventListener("pointerleave", e => { if (start) finish(e); });

@@ -215,7 +215,7 @@ The app is a single page:
   - Diagnostics are listed.
 - **Ambiguous anchors** list their candidates. Choosing one re-resolves with that anchor pinned.
 - Export a fragment (resolved or query form), a ProjectCard, or run schema validation.
-- Selections can be named and saved in the session, so Python and Compare can use them.
+- Selections can be named and saved in the session ("Save selection…"), so Python and Compare can use them. "Save" is reserved for this; building a selection on the map is "Highlight links" → "Set as selection".
 
 ### d. Python: shared live session
 - **In a notebook:** `app = gmnspy.app(net)` starts uvicorn in a background thread, in the same process, on the same `Network` objects. The handle offers:

@@ -1,4 +1,4 @@
-// Right-hand panel: selection result, link details, and interactive picks.
+// Right-hand panel: selection result, link details, and interactive highlights.
 import { dispatch, getJSON, netPath } from "./api.js";
 import { $, esc, toast } from "./dom.js";
 import { store } from "./store.js";
@@ -36,17 +36,17 @@ export async function showLinkDetails(linkId) {
   }
 }
 
-export function renderPicks(picks) {
-  $("pick-count").textContent = picks.size;
-  $("pick-hint").style.display = picks.size ? "none" : "";
-  $("pick-actions").style.display = picks.size ? "flex" : "none";
+export function renderHighlights(highlights) {
+  $("hl-count").textContent = highlights.size;
+  $("hl-hint").style.display = highlights.size ? "none" : "";
+  $("hl-actions").style.display = highlights.size ? "flex" : "none";
 }
 
 export function wireSide() {
-  $("pick-select").onclick = async () => {
-    const ids = [...store.get().picks];
+  $("hl-set").onclick = async () => {
+    const ids = [...store.get().highlights];
     if (!ids.length) return;
     try { await dispatch({ type: "select", link_ids: ids }); } catch (e) { toast(e.message); }
   };
-  $("pick-clear").onclick = () => store.set({ picks: new Set() });
+  $("hl-clear").onclick = () => store.set({ highlights: new Set() });
 }

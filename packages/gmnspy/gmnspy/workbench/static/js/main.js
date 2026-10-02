@@ -6,7 +6,7 @@ import { showEntry, wireHistory } from "./history.js";
 import { fitBbox, fitLinks, fitNetwork, initMap, render } from "./map.js";
 import { decodeNetwork } from "./netbuf.js";
 import { populateColorby, renderLegend, syncControls, wirePanels } from "./panels.js";
-import { clearDetails, renderPicks, renderSelection, showLinkDetails, wireSide } from "./side.js";
+import { clearDetails, renderHighlights, renderSelection, showLinkDetails, wireSide } from "./side.js";
 import { activeSelection, store } from "./store.js";
 import { onNetworkChanged, onSelectionChanged, restoreViewMode, wireTable } from "./table.js";
 
@@ -57,28 +57,28 @@ function onNavigate(ev) {
 
 function onLinkClick(linkId) {
   const s = store.get();
-  if (!s.pickMode) { showLinkDetails(linkId); return; }
-  const picks = new Set(s.picks);
-  if (picks.has(linkId)) picks.delete(linkId); else picks.add(linkId);
-  store.set({ picks });
+  if (!s.highlightMode) { showLinkDetails(linkId); return; }
+  const highlights = new Set(s.highlights);
+  if (highlights.has(linkId)) highlights.delete(linkId); else highlights.add(linkId);
+  store.set({ highlights });
 }
 
 function wireMapButtons() {
   $("btn-fitnet").onclick = () => fitNetwork();
   $("btn-fitsel").onclick = () => { const sel = activeSelection(store.get()); if (sel) fitLinks(sel.link_ids); };
-  $("btn-pick").onclick = () => store.set({ pickMode: !store.get().pickMode });
+  $("btn-highlight").onclick = () => store.set({ highlightMode: !store.get().highlightMode });
 }
 
 function wireStore() {
-  store.subscribe(["server", "net", "prop", "picks", "marker"], () => render());
+  store.subscribe(["server", "net", "prop", "highlights", "marker"], () => render());
   store.subscribe(["server"], s => {
     renderHeader(s.server); syncControls(s.server.style); renderSelection(activeSelection(s)); onSelectionChanged();
   });
   store.subscribe(["server", "prop"], s => renderLegend(s.server.style, s.prop));
   store.subscribe(["properties"], s => { populateColorby(s.properties); syncControls(s.server.style); });
-  store.subscribe(["netKey"], () => { onNetworkChanged(); store.set({ picks: new Set() }); clearDetails(); });
-  store.subscribe(["picks"], s => renderPicks(s.picks));
-  store.subscribe(["pickMode"], s => { $("btn-pick").classList.toggle("on", s.pickMode); $("map").classList.toggle("picking", s.pickMode); });
+  store.subscribe(["netKey"], () => { onNetworkChanged(); store.set({ highlights: new Set() }); clearDetails(); });
+  store.subscribe(["highlights"], s => renderHighlights(s.highlights));
+  store.subscribe(["highlightMode"], s => { $("btn-highlight").classList.toggle("on", s.highlightMode); $("map").classList.toggle("highlighting", s.highlightMode); });
 }
 
 async function boot() {
