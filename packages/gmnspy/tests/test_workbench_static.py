@@ -56,3 +56,10 @@ def test_js_syntax(tmp_path):
         target.write_text(path.read_text())
         proc = subprocess.run(["node", "--check", str(target)], capture_output=True, text=True)
         assert proc.returncode == 0, f"{path.name}: {proc.stderr}"
+
+
+def test_header_has_open_import_recent_and_jobs_not_the_path_box():
+    html = (STATIC_DIR / "index.html").read_text()
+    for element_id in ("open-wizard", "recent", "jobs-btn", "jobs-panel", "wizard"):
+        assert f'id="{element_id}"' in html
+    assert 'id="open-src"' not in html and 'id="open-go"' not in html

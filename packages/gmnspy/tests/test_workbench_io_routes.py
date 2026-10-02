@@ -16,8 +16,10 @@ WAIT = 10.0
 class FakeNominatim:
     def __init__(self, hits=None, error=None):
         self.hits, self.error = hits or [], error
+        self.timeouts: list[float | None] = []
 
     def get(self, url, params=None, headers=None, timeout=None):
+        self.timeouts.append(timeout)
         if self.error:
             raise self.error
         hits = self.hits
@@ -120,6 +122,17 @@ def test_geocode_failure_is_502(make_client):
     _, client = make_client(http=FakeNominatim(error=OSError("nominatim down")))
     r = client.get("/api/geocode", params={"q": "Durham"})
     assert r.status_code == 502 and "nominatim down" in r.json()["detail"]
+
+
+def test_geocode_uses_short_timeout_and_no_retries(make_client):
+    # The route is an interactive wizard step, so it fails fast rather than using
+    # geocode_candidates' library defaults (timeout=30, retries=3).
+    fake = FakeNominatim(
+        [{"display_name": "Durham", "type": "city", "boundingbox": ["35.8", "36.1", "-79.0", "-78.7"]}]
+    )
+    _, client = make_client(http=fake)
+    assert client.get("/api/geocode", params={"q": "Durham"}).status_code == 200
+    assert fake.timeouts == [10]
 
 
 def test_estimate_local_osm(make_client, out_dir):

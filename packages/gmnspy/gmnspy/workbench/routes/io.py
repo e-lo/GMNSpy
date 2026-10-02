@@ -61,7 +61,12 @@ def io_router(session: Session) -> APIRouter:
         osm = session.settings.osm
         try:
             found = osm_query.geocode_candidates(
-                q, limit=max(1, min(limit, 20)), session=session.http, user_agent=osm.user_agent or osm_query.USER_AGENT
+                q,
+                limit=max(1, min(limit, 20)),
+                session=session.http,
+                user_agent=osm.user_agent or osm_query.USER_AGENT,
+                timeout=10,
+                retries=1,
             )
         except Exception as exc:  # boundary: a geocoder failure is shown to the user, not a 500
             raise HTTPException(502, f"place search failed: {type(exc).__name__}: {exc}") from exc

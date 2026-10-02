@@ -1,10 +1,41 @@
-// Header: network switcher, open-by-path, and the utterance box. All via actions.
+// Header: network switcher, Open / Import… and Recent, and the utterance box. All via actions.
 import { dispatch } from "./api.js";
 import { $, esc, toast } from "./dom.js";
 import { fitLinks } from "./map.js";
 
+// Recents live in this browser's localStorage: a per-user convenience that needs no server code.
+// They are only shortcuts: re-opening one is a normal open_network action, checked against io.allowed_roots.
+const RECENT_KEY = "gmnspy.workbench.recent";
+const RECENT_MAX = 10;
+
 async function run(action, after) {
   try { const result = await dispatch(action); if (after) after(result); } catch (e) { toast(e.message); }
+}
+
+function loadRecent() {
+  try { return JSON.parse(localStorage.getItem(RECENT_KEY)) || []; } catch (e) { return []; }
+}
+
+function saveRecent(list) {
+  try { localStorage.setItem(RECENT_KEY, JSON.stringify(list)); } catch (e) { /* storage unavailable: recents aren't kept */ }
+}
+
+export function renderRecent() {
+  const list = loadRecent();
+  $("recent").innerHTML = '<option value="">Recent…</option>' +
+    list.map((r, i) => `<option value="${i}" title="${esc(r.source)}">${esc(r.label)}</option>`).join("");
+  $("recent").disabled = !list.length;
+}
+
+// Called for every history entry (from the UI, Python, or the CLI): remember successful opens and builds.
+export function rememberRecent(entry) {
+  if (!entry.ok) return;
+  const a = entry.action;
+  const source = a.type === "open_network" ? a.source : a.type === "build_network" ? entry.result.output : null;
+  if (!source) return;
+  const label = a.label || (a.type === "build_network" ? a.name : source.replace(/[\\/]+$/, "").split(/[\\/]/).pop());
+  saveRecent([{ source, label }, ...loadRecent().filter(r => r.source !== source)].slice(0, RECENT_MAX));
+  renderRecent();
 }
 
 export function renderHeader(server) {
@@ -19,12 +50,11 @@ export function renderHeader(server) {
 
 export function wireHeader() {
   $("net-select").onchange = e => run({ type: "set_active_network", net_id: e.target.value });
-  const open = () => {
-    const source = $("open-src").value.trim();
-    if (source) run({ type: "open_network", source }, () => { $("open-src").value = ""; });
+  $("recent").onchange = e => {
+    const r = loadRecent()[Number(e.target.value)];
+    e.target.value = "";
+    if (r) run({ type: "open_network", source: r.source, label: r.label });
   };
-  $("open-go").onclick = open;
-  $("open-src").onkeydown = e => { if (e.key === "Enter") open(); };
   const select = async () => {
     const utterance = $("utterance").value.trim();
     if (!utterance) return;

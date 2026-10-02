@@ -15,7 +15,7 @@ export function showEntry(entry) {
 
 export function sessionScript(entries) {
   const lines = [
-    "from gmnspy.workbench import Session, OpenNetwork, CloseNetwork, SetActiveNetwork, Select, ClearSelection, Style, Navigate, SetSetting",
+    "from gmnspy.workbench import Session, OpenNetwork, BuildNetwork, CloseNetwork, SetActiveNetwork, Select, ClearSelection, Style, Navigate, SetSetting",
     "",
     "app = Session()  # or reuse a live session",
   ];

@@ -1,8 +1,9 @@
 // Workbench boot: wire modules to the store and the server's SSE stream.
 import { getBuffer, getJSON, netPath, subscribe } from "./api.js";
 import { $, toast } from "./dom.js";
-import { renderHeader, wireHeader } from "./header.js";
+import { rememberRecent, renderHeader, renderRecent, wireHeader } from "./header.js";
 import { showEntry, wireHistory } from "./history.js";
+import { loadJobs, onJob, wireJobs } from "./jobs.js";
 import { fitBbox, fitLinks, fitNetwork, initMap, render } from "./map.js";
 import { decodeNetwork } from "./netbuf.js";
 import { populateColorby, renderLegend, syncControls, wirePanels } from "./panels.js";
@@ -82,16 +83,23 @@ function wireStore() {
 }
 
 async function boot() {
-  wireStore(); wirePanels(); wireSide(); wireTable(); wireHeader(); wireHistory(); wireMapButtons();
+  wireStore(); wirePanels(); wireSide(); wireTable(); wireHeader(); wireHistory(); wireMapButtons(); wireJobs();
+  renderRecent();
   const [cfg, server, history] = await Promise.all([getJSON("/api/config"), getJSON("/api/state"), getJSON("/api/history")]);
-  store.set({ server });
+  store.set({ server, basemap: cfg.style });
+  await loadJobs();
   restoreViewMode();
   if (history.entries.length) showEntry(history.entries[history.entries.length - 1]);
   initMap(cfg.style, {
     onLinkClick,
     onReady: async () => {
       await onState(store.get().server);
-      subscribe({ state: e => onState(e.state), history: e => showEntry(e.entry), navigate: onNavigate });
+      subscribe({
+        state: e => onState(e.state),
+        history: e => { showEntry(e.entry); rememberRecent(e.entry); },
+        navigate: onNavigate,
+        job: e => onJob(e.job),
+      });
     },
   });
 }

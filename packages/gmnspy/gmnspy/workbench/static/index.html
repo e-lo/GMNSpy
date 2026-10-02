@@ -15,8 +15,8 @@
   <header>
     <h1>GMNSpy Workbench</h1>
     <select id="net-select" aria-label="Active network"></select>
-    <input id="open-src" placeholder="Open network: path or URL" aria-label="Open network" />
-    <button id="open-go" class="mini">Open</button>
+    <button id="open-wizard" class="mini">Open / Import…</button>
+    <select id="recent" aria-label="Recent networks"></select>
     <div id="viewmode">
       <button data-mode="map" class="on">Map</button>
       <button data-mode="split">Split</button>
@@ -25,6 +25,7 @@
     <input id="utterance" placeholder='e.g. "I-40 EB between South Miami Boulevard and Airport Boulevard"' aria-label="Selection utterance" />
     <button id="go">Select</button>
     <span id="count"></span>
+    <button id="jobs-btn" class="mini ghost" aria-label="Background jobs">Jobs <span id="jobs-count" class="pcount">0</span></button>
   </header>
   <div id="stage" data-mode="map">
     <div id="map">
@@ -104,6 +105,88 @@
   <h4>Session as Python</h4>
   <pre id="hist-script"></pre>
   <div class="row"><button class="mini" id="hist-copy-all">Copy all</button></div>
+</div>
+<div class="panel" id="jobs-panel">
+  <h4>Jobs</h4>
+  <div id="jobs-list"><span class="empty">No jobs yet.</span></div>
+</div>
+<div id="wizard" class="modal" role="dialog" aria-modal="true" aria-labelledby="wz-title" hidden>
+  <div class="modal-card">
+    <div class="modal-head">
+      <h3 id="wz-title">Open / Import</h3>
+      <button class="mini ghost" id="wz-close" aria-label="Close">&#10005;</button>
+    </div>
+    <div class="modal-body">
+      <section class="wz-step" data-step="source">
+        <button class="wz-choice" data-src="local"><b>GMNS on this machine</b><span>A folder, .zip, .duckdb, or datapackage.json</span></button>
+        <button class="wz-choice" data-src="url"><b>GMNS at a URL</b><span>s3://, gs://, az://, or https://</span></button>
+        <button class="wz-choice" data-src="osm"><b>Build from OpenStreetMap</b><span>Draw an area, search a place, or use a local .osm / Overpass .json file</span></button>
+        <button class="wz-choice" data-src="overture"><b>Build from Overture</b><span>Draw an area, search a place, or use a local snapshot folder</span></button>
+      </section>
+      <section class="wz-step" data-step="local" hidden>
+        <p class="wz-note">Pick a GMNS folder, .zip, .duckdb, or datapackage.json. It opens in place; nothing is uploaded.</p>
+        <div class="fb" id="wz-local-fb"></div>
+      </section>
+      <section class="wz-step" data-step="url" hidden>
+        <div class="row">
+          <input id="wz-url" class="grow" placeholder="s3://bucket/network/" aria-label="Network URL" />
+          <button class="mini" id="wz-check">Check</button>
+        </div>
+        <div id="wz-url-result" class="wz-note"></div>
+      </section>
+      <section class="wz-step" data-step="area" hidden>
+        <div class="tabs" id="ap-tabs">
+          <button data-tab="draw" class="on">Draw</button><button data-tab="coords">Coordinates</button><button
+            data-tab="place">Place</button><button data-tab="file">Local file</button>
+        </div>
+        <div class="ap-pane" data-pane="draw">
+          <button class="mini" id="ap-draw">Draw</button>
+          <span class="wz-note">then drag a rectangle on the map; drag a corner to adjust it.</span>
+        </div>
+        <div class="ap-pane" data-pane="coords" hidden>
+          <div class="row"><label for="ap-bbox">W,S,E,N</label>
+            <input id="ap-bbox" class="grow" placeholder="-78.95,35.95,-78.85,36.05" /></div>
+          <div class="row"><label for="ap-point">or lat,lon</label>
+            <input id="ap-point" class="grow" placeholder="35.99,-78.90" />
+            <input id="ap-buffer" type="number" min="1" step="100" aria-label="Buffer in metres" /> m</div>
+          <button class="mini" id="ap-apply">Preview</button>
+        </div>
+        <div class="ap-pane" data-pane="place" hidden>
+          <div class="row"><input id="ap-q" class="grow" placeholder="Durham, North Carolina" aria-label="Place" />
+            <button class="mini" id="ap-search">Search</button></div>
+          <div id="ap-cands"></div>
+        </div>
+        <div class="ap-pane" data-pane="file" hidden>
+          <p class="wz-note" id="ap-file-note"></p>
+          <div class="fb" id="ap-file-fb"></div>
+        </div>
+        <div id="ap-map"></div>
+        <div id="ap-summary" class="wz-note"></div>
+      </section>
+      <section class="wz-step" data-step="options" hidden>
+        <div class="form">
+          <label for="opt-network-type">Network type</label>
+          <select id="opt-network-type"><option>drive</option><option>walk</option><option>bike</option><option>all</option></select>
+          <label for="opt-extra-tags">Extra tags</label><input id="opt-extra-tags" placeholder="surface, maxheight" />
+          <label for="opt-spec">GMNS spec version</label><input id="opt-spec" />
+          <label for="opt-release" class="ovt-only">Overture release</label><input id="opt-release" class="ovt-only" />
+          <label for="opt-name">Output name</label><input id="opt-name" placeholder="durham-osm" />
+          <label for="opt-format">Output format</label>
+          <select id="opt-format"><option value="parquet">Parquet folder</option><option value="csv">CSV folder</option>
+            <option value="duckdb">DuckDB file</option><option value="zip">Zip</option></select>
+          <label>Output folder</label><code id="opt-outdir">choose below</code>
+        </div>
+        <div class="fb" id="opt-out-fb"></div>
+      </section>
+      <section class="wz-step" data-step="run" hidden>
+        <div id="wz-estimate" class="wz-note"></div>
+      </section>
+    </div>
+    <div class="modal-foot">
+      <button class="mini ghost" id="wz-back">Back</button>
+      <button class="mini" id="wz-next">Next</button>
+    </div>
+  </div>
 </div>
 <div id="toast" role="status"></div>
 </body>

@@ -12,17 +12,23 @@ async function readJSON(r) {
 
 export const getJSON = path => fetch(path).then(readJSON);
 
+export async function postJSON(path, body) {
+  const r = await fetch(path, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+  });
+  return readJSON(r);
+}
+
 export async function getBuffer(path) {
   const r = await fetch(path);
   if (!r.ok) throw new Error(`${path}: ${r.status}`);
   return r.arrayBuffer();
 }
 
+// Resolves to the action's result. A job action (open/build) resolves at once to {job_id};
+// its outcome arrives later as `job` + `history` + `state` SSE events.
 export async function dispatch(action) {
-  const r = await fetch("/api/actions", {
-    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(action),
-  });
-  return (await readJSON(r)).result;
+  return (await postJSON("/api/actions", action)).result;
 }
 
 export const netPath = (netId, rest) => `/api/n/${encodeURIComponent(netId)}/roadway/${rest}`;
