@@ -298,18 +298,15 @@ class Package:
             # where they'd raise TypeError.
             if credentials is not None and adapter.name == "remote":
                 read_kwargs["credentials"] = credentials
-            # Multi-table containers (duckdb file, zip of csvs) encode a
-            # ``"<container>::<member>"`` sub-locator in ResourceRef.path.
-            # ``ref.format`` names the *member* format (a zip member is
-            # "csv"), so the read must go back to the adapter that owns the
-            # container — the one that produced the ref — with ``table=``.
-            # Re-dispatching the container honours the caller's ``format=``
-            # exactly as the top-level scan did.
-            container, sep, member = ref.path.rpartition("::")
-            if sep and adapter.name != "remote":
-                adapter = dispatch(container, format=format)
-                read_kwargs["table"] = member
-                expr = adapter.read(container, engine=eng, schema=schema, **read_kwargs)
+            # Members of multi-table containers (duckdb file, zip of csvs)
+            # are marked by their scanning adapter; ``ref.format`` names the
+            # *member* format (a zip member is "csv"), so the read goes back
+            # to the recorded container adapter with ``table=<member>``.
+            # Path text alone is never trusted: "a::b.csv" is a legal filename.
+            if ref.container_adapter is not None and adapter.name != "remote":
+                adapter = get_adapter(ref.container_adapter)
+                read_kwargs["table"] = ref.member
+                expr = adapter.read(ref.container, engine=eng, schema=schema, **read_kwargs)
             else:
                 expr = adapter.read(ref.path, engine=eng, schema=schema, **read_kwargs)
             tables_out[ref.name] = Table(
@@ -1288,8 +1285,11 @@ def _write_zipcsv_package(pkg: Package, dest: Path) -> None:
     created *beside* ``dest`` (same filesystem), added to a staging
     archive, and deleted, so at most one uncompressed CSV is on disk at a
     time. The finished archive is ``os.replace``-d over ``dest``: readers
-    never see a partial zip, and a failed write leaves any previous
-    ``dest`` intact. The staging directory is always removed.
+    never see a partial zip, and a failed write leaves a previous *file*
+    ``dest`` intact. Replacing an existing *directory* ``dest`` is not
+    atomic — it is ``rmtree``-d just before the rename. The staging
+    directory is always removed. Resources without a resolvable schema
+    are written without a ``schema`` key.
     """
     dest.parent.mkdir(parents=True, exist_ok=True)
     csv_adapter = get_adapter("csv")

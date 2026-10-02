@@ -212,6 +212,8 @@ class ZipCsvAdapter:
                 name=Path(m).stem,
                 path=f"{path_str}::{m}",
                 format="csv",
+                container_adapter=self.name,
+                member=m,
             )
             for m in members
         ]

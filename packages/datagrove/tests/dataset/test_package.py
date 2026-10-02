@@ -252,6 +252,16 @@ def test_package_from_source_reads_multi_csv_zip() -> None:
         assert zipped[name].count() == on_disk[name].count()
 
 
+def test_package_from_source_csv_filename_with_double_colon(tmp_path: Path) -> None:
+    """'::' in a plain filename is not a container sub-locator."""
+    src = tmp_path / "pkg"
+    src.mkdir()
+    (src / "a::b.csv").write_text("x,y\n1,2\n3,4\n")
+    pkg = Package.from_source(src, engine=IbisEngine())
+    assert list(pkg.keys()) == ["a::b"]
+    assert pkg["a::b"].count() == 2
+
+
 @pytest.mark.parametrize(("filename", "fmt"), [("out.zip", None), ("out.csv.zip", None), ("out.bin", "zip")])
 def test_package_write_zip_roundtrip(tmp_path: Path, filename: str, fmt: str | None) -> None:
     """write() to a zip produces flat CSV members + datapackage.json and reopens."""
