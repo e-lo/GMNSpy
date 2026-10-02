@@ -79,3 +79,33 @@ def test_backend_error_is_reported_not_raised():
 
     report = check_url("s3://bucket/net", url_to_fs=boom)
     assert report["reachable"] is False and report["error"] == "PermissionError: access denied"
+
+
+def test_backend_error_scrubs_url_secrets():
+    def boom(url, **_):
+        raise OSError("https://bucket.s3.amazonaws.com/x?X-Amz-Signature=SECRET&token=abc")
+
+    report = check_url("s3://bucket/net", url_to_fs=boom)
+    assert report["reachable"] is False
+    assert "SECRET" not in report["error"]
+    assert "token=abc" not in report["error"]
+    assert report["error"] == "OSError: https://bucket.s3.amazonaws.com/x"
+
+
+def test_slow_backend_times_out_quickly():
+    import time
+
+    def hangs(url, **_):
+        class _Fs:
+            def exists(self, path):
+                time.sleep(5)
+                return True
+
+        return _Fs(), "/net"
+
+    start = time.perf_counter()
+    report = check_url("s3://bucket/net", url_to_fs=hangs, timeout_s=0.2)
+    elapsed = time.perf_counter() - start
+    assert report["reachable"] is False
+    assert report["error"] == "timed out after 0.2s"
+    assert elapsed < 2.0
