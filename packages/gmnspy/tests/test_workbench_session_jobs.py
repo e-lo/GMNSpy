@@ -1,6 +1,9 @@
 """Session job actions: OpenNetwork / BuildNetwork run off the session lock, with approval and cancel."""
 
+import os
+import sys
 import threading
+import time
 from pathlib import Path
 
 import pytest
@@ -213,6 +216,7 @@ def test_build_from_local_osm_writes_then_opens_from_disk(make_session, out_dir)
     assert handle.source == str(dest.resolve()) and handle.label == "tiny" and len(handle.links_df()) == 2
     entry = session.history[-1]
     assert entry.ok and entry.result["estimate"] == result["estimate"]
+    assert result["threshold_s"] == 90 and result["approval"] == "not_needed"
     assert "approved=True" in entry.python and "input_file=" in entry.python
     assert session.jobs.snapshots()[0]["label"] == "build tiny"
 
@@ -260,7 +264,8 @@ def test_over_threshold_needs_approval_and_writes_nothing(make_session, out_dir)
 
 def test_approved_build_runs_over_threshold(make_session, out_dir):
     session = make_session(http=FakeOverpass(ways=10), overrides={"app.approve_above_s": 1})
-    assert session.dispatch(_bbox_build(out_dir, approved=True))["net_id"]
+    result = session.dispatch(_bbox_build(out_dir, approved=True))
+    assert result["net_id"] and result["approval"] == "given" and result["threshold_s"] == 1
 
 
 def test_unavailable_estimate_needs_approval(make_session, out_dir):
@@ -300,11 +305,13 @@ def test_failed_write_leaves_no_partial_output(make_session, out_dir, monkeypatc
         raise OSError("disk full")
 
     monkeypatch.setattr(Network, "write", broken_write)
+    session = make_session()
     with pytest.raises(ActionError, match="disk full"):
-        make_session().dispatch(
+        session.dispatch(
             BuildNetwork(source="osm", input_file=OSM_FILE, output_dir=out_dir, output_format="parquet", name="tiny")
         )
     assert list(Path(out_dir).iterdir()) == []
+    assert session.history[-1].result["estimate"]["basis"].startswith("osm_file:")
 
 
 def test_output_outside_roots_rejected(make_session, tmp_path_factory):
@@ -357,6 +364,7 @@ def test_cancel_build_during_query_leaves_no_output(make_session, out_dir):
     caller.join(WAIT)
     assert len(raised) == 1 and isinstance(raised[0], JobCancelled)  # dispatch re-raises the recorded type
     assert session.history[-1].error_type == "JobCancelled" and list(Path(out_dir).iterdir()) == []
+    assert session.history[-1].result["estimate"]["n_elements"] == 10  # the estimate survives the cancel
 
 
 def test_cancel_during_write_removes_the_staged_output(make_session, out_dir, monkeypatch):
@@ -391,3 +399,77 @@ def test_open_duckdb_url_without_duckdb_extension(make_session, tmp_path):
     net_id = session.dispatch(OpenNetwork(source=f"duckdb://{db}"))["net_id"]
     assert len(session.registry.get(net_id).links_df()) > 0
     assert session.registry.get(net_id).source == f"duckdb://{db.resolve()}"
+
+
+def test_promote_never_clobbers_a_file_that_appeared(tmp_path):
+    tmp, dest = tmp_path / ".partial-1-net.zip", tmp_path / "net.zip"
+    tmp.write_text("new")
+    dest.write_text("theirs")
+    with pytest.raises(ActionError, match="already exists"):
+        build.promote(tmp, dest)
+    assert dest.read_text() == "theirs" and tmp.read_text() == "new"  # staging() removes tmp afterwards
+    dest.unlink()
+    build.promote(tmp, dest)
+    assert dest.read_text() == "new" and not tmp.exists()
+
+
+def test_promote_never_replaces_an_empty_folder(tmp_path):
+    tmp, dest = tmp_path / ".partial-1-net", tmp_path / "net"
+    tmp.mkdir()
+    dest.mkdir()
+    with pytest.raises(ActionError, match="already exists"):
+        build.promote(tmp, dest)
+    assert tmp.is_dir() and dest.is_dir()
+
+
+def test_reopen_failure_reports_the_written_output(make_session, out_dir, monkeypatch):
+    session = make_session()
+
+    def broken_load(source, spec_version):
+        raise ActionError(f"could not open {source}: corrupt")
+
+    monkeypatch.setattr(session, "_load", broken_load)
+    with pytest.raises(ActionError, match=r"written to .* but could not be opened .* OpenNetwork"):
+        session.dispatch(
+            BuildNetwork(source="osm", input_file=OSM_FILE, output_dir=out_dir, output_format="zip", name="z")
+        )
+    dest = (Path(out_dir) / "z.zip").resolve()
+    result = session.history[-1].result
+    assert result["output"] == str(dest) and dest.is_file() and "estimate" in result
+    assert len(session.registry) == 0
+
+
+def test_missing_extra_is_an_error_not_an_approval(make_session, out_dir, monkeypatch):
+    monkeypatch.setitem(sys.modules, "gmnspy.osm.query", None)  # import now raises ImportError
+    session = make_session(http=FakeOverpass(ways=10))
+    with pytest.raises(ActionError, match=r"gmnspy\[osm\]") as caught:
+        session.dispatch(_bbox_build(out_dir))
+    assert not isinstance(caught.value, ApprovalRequired) and session.history[-1].error_type == "ActionError"
+
+
+def test_matching_name_suffix_is_not_doubled(make_session, out_dir):
+    result = make_session().dispatch(
+        BuildNetwork(source="osm", input_file=OSM_FILE, output_dir=out_dir, output_format="zip", name="tiny.zip")
+    )
+    assert Path(result["output"]).name == "tiny.zip"
+
+
+def test_stale_partials_are_cleaned_fresh_ones_kept(make_session, out_dir):
+    stale, fresh = Path(out_dir) / ".partial-aaaa-old", Path(out_dir) / ".partial-bbbb-new.zip"
+    stale.mkdir()
+    (stale / "link.parquet").write_text("x")
+    fresh.write_text("in progress")
+    old = time.time() - build.STALE_PARTIAL_S - 60
+    os.utime(stale, (old, old))
+    make_session().dispatch(
+        BuildNetwork(source="osm", input_file=OSM_FILE, output_dir=out_dir, output_format="parquet", name="tiny")
+    )
+    assert sorted(p.name for p in Path(out_dir).iterdir()) == [fresh.name, "tiny"]
+
+
+def test_staging_cleanup_removes_a_duckdb_wal(tmp_path):
+    with pytest.raises(RuntimeError), build.staging(tmp_path / "net.duckdb") as tmp:
+        tmp.write_text("db")
+        tmp.with_name(f"{tmp.name}.wal").write_text("wal")
+        raise RuntimeError("boom")
+    assert list(tmp_path.iterdir()) == []

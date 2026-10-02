@@ -10,12 +10,17 @@ A build never leaves a partial output behind and never overwrites one: it writes
 staging sibling of the destination (:func:`staging`), and only :func:`promote` moves the finished
 output to its final name. The staging path is removed on any failure, including a cancel.
 
+Staging outputs are hidden siblings named ``.partial-<8 hex>-<dest name>`` (plus a DuckDB
+``.wal``). Only a hard crash of the process (power loss, ``kill -9``) can leave one behind;
+:func:`plan_build` deletes any ``.partial-*`` entry in the output folder older than 24 hours.
+
 The OSM/Overture modules are imported at run time via :func:`~gmnspy.workbench.extras.optional_module`:
 they need the ``[osm]`` / ``[overture]`` extras.
 """
 
 from __future__ import annotations
 
+import logging
 import os
 import shutil
 import time
@@ -56,8 +61,17 @@ WORLD_BBOX = (-180.0, -90.0, 180.0, 90.0)
 _SUFFIX = {"parquet": "", "csv": "", "duckdb": ".duckdb", "zip": ".zip"}
 _FILE_KIND: dict[str, SourceKind] = {"osm": "osm_file", "overture": "overture_file"}
 _OSM_FILE_SUFFIXES = (".osm", ".json")
+#: The optional-extra modules each source's build imports; resolved up front by :func:`plan_build`.
+_EXTRA_MODULES = {
+    "osm": ("gmnspy.osm.query", "gmnspy.osm.local", "gmnspy.osm.convert"),
+    "overture": ("gmnspy.overture.query", "gmnspy.overture.convert"),
+}
+#: Staging leftovers older than this (from a crashed build) are deleted by the next build in that folder.
+STALE_PARTIAL_S = 24 * 3600
 Records = tuple[list[dict[str, Any]], list[dict[str, Any]]]
 Tick = Callable[[str, float], None]
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -82,12 +96,17 @@ def plan_build(action: BuildNetwork, settings: Settings) -> BuildPlan:
 
     Raises:
         PathNotAllowed: the output folder or input file is outside ``io.allowed_roots``.
-        ActionError: missing output folder, existing destination, or an input of the wrong kind.
+        ActionError: missing output folder, existing destination, an input of the wrong kind, or the
+            source's ``[osm]``/``[overture]`` extra is not installed.
     """
+    for module in _EXTRA_MODULES[action.source]:
+        optional_module(module, action.source)  # fail now, not as an "unavailable" estimate later
     out_dir = _local(action.output_dir, "output_dir", settings)
     if not out_dir.is_dir():
         raise ActionError(f"output folder does not exist: {action.output_dir}")
-    dest = out_dir / f"{action.name}{_SUFFIX[action.output_format]}"
+    _remove_stale_partials(out_dir)
+    suffix = _SUFFIX[action.output_format]
+    dest = out_dir / (action.name if action.name.lower().endswith(suffix) else f"{action.name}{suffix}")
     if dest.exists():
         raise ActionError(f"{dest} already exists; choose another name (builds never overwrite)")
     if action.input_file is None:
@@ -139,6 +158,8 @@ def estimate_for(
         engine = IbisEngine()
     try:
         n = _count(action, plan, settings, http, engine)
+    except ActionError:  # a missing extra is a real error, not an unknown size
+        raise
     except Exception as exc:  # boundary: a failed pre-query is reported; the user may still choose to run
         return Estimate(
             seconds=None, out_bytes=None, n_elements=None, basis=f"unavailable: {type(exc).__name__}: {exc}"
@@ -225,10 +246,23 @@ def fetch_and_convert(
 
 
 def _remove(path: Path) -> None:
+    """Delete ``path`` (file, folder, or link) and a DuckDB ``.wal`` beside it; missing is fine."""
     if path.is_dir() and not path.is_symlink():
         shutil.rmtree(path, ignore_errors=True)
-    elif path.exists() or path.is_symlink():
+    else:
         path.unlink(missing_ok=True)
+    path.with_name(f"{path.name}.wal").unlink(missing_ok=True)
+
+
+def _remove_stale_partials(out_dir: Path) -> None:
+    """Delete ``.partial-*`` staging leftovers in ``out_dir`` older than :data:`STALE_PARTIAL_S`."""
+    cutoff = time.time() - STALE_PARTIAL_S
+    for leftover in out_dir.glob(".partial-*"):
+        try:
+            if leftover.lstat().st_mtime < cutoff:
+                _remove(leftover)
+        except OSError:  # vanished or not ours to delete: never block a build on cleanup
+            logger.warning("could not remove stale build leftover %s", leftover)
 
 
 @contextmanager
@@ -258,7 +292,26 @@ def write_output(net: Network, tmp: Path, output_format: str, ctx: JobContext) -
 
 
 def promote(tmp: Path, dest: Path) -> None:
-    """Move the finished staging output to ``dest``; refuses (:class:`ActionError`) if ``dest`` appeared meanwhile."""
-    if dest.exists() or dest.is_symlink():
-        raise ActionError(f"{dest} already exists; choose another name (builds never overwrite)")
-    os.replace(tmp, dest)
+    """Move the finished staging output to ``dest``, never clobbering anything that appeared there meanwhile.
+
+    A file output (DuckDB, zip) is hard-linked to ``dest``, which fails atomically if ``dest`` exists,
+    and then the staging name is unlinked. A folder output (Parquet, CSV) is checked, then renamed.
+
+    Raises:
+        ActionError: ``dest`` already exists, or the move failed.
+    """
+    taken = f"{dest} already exists; choose another name (builds never overwrite)"
+    try:
+        if tmp.is_dir():
+            if dest.exists() or dest.is_symlink():  # rename() would replace an empty folder
+                raise ActionError(taken)
+            os.replace(tmp, dest)
+        else:
+            os.link(tmp, dest)
+            tmp.unlink()
+    except FileExistsError as exc:
+        raise ActionError(taken) from exc
+    except OSError as exc:
+        if dest.exists():
+            raise ActionError(taken) from exc
+        raise ActionError(f"could not move the finished output to {dest}: {exc}") from exc

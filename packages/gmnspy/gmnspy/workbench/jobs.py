@@ -194,6 +194,7 @@ class JobRunner:
                 outcome = {"status": "done", "stage": "done", "progress": 1.0, "result": result}
             except JobCancelled as exc:
                 outcome = {"status": "cancelled", "error": str(exc), "error_type": "JobCancelled"}
+                outcome["payload"] = exc.payload
             except ActionError as exc:
                 outcome = {"status": "failed", "error": str(exc), "error_type": type(exc).__name__}
                 outcome["payload"] = exc.payload

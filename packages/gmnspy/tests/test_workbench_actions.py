@@ -95,7 +95,7 @@ def test_build_network_needs_exactly_one_of_area_or_input_file():
 
 
 def test_build_network_name_is_a_plain_file_name():
-    for bad in ("../escape", "a/b", ".hidden", ""):
+    for bad in ("../escape", "a/b", ".hidden", "", "trailing.", "a.."):
         with pytest.raises(ValidationError):
             BuildNetwork(**{**_BUILD, "name": bad}, input_file="/x.osm")
 
@@ -121,3 +121,11 @@ def test_build_snippet_keeps_area_kind_and_forces_approval():
     )
     replayed = eval(py.removeprefix("app.do(").removesuffix(")"), {"BuildNetwork": BuildNetwork})
     assert replayed == a.model_copy(update={"approved": True})
+
+
+def test_build_network_name_suffix_must_match_the_format():
+    for name, fmt in (("net.zip", "parquet"), ("net.duckdb", "zip"), ("net.CSV", "parquet"), ("net.parquet", "csv")):
+        with pytest.raises(ValidationError, match="output_format"):
+            BuildNetwork(**{**_BUILD, "name": name, "output_format": fmt}, input_file="/x.osm")
+    for name, fmt in (("net.zip", "zip"), ("net.duckdb", "duckdb"), ("v1.2", "parquet")):
+        assert BuildNetwork(**{**_BUILD, "name": name, "output_format": fmt}, input_file="/x.osm").name == name

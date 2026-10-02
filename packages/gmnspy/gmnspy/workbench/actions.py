@@ -11,6 +11,7 @@ the ``to_python`` replay snippet.
 
 from __future__ import annotations
 
+from pathlib import PurePath
 from typing import Annotated, Any, ClassVar, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, model_validator
@@ -136,6 +137,10 @@ class SetSetting(_Action):
     scope: Literal["session", "user", "project"] = "session"
 
 
+#: Name suffixes that imply an output format; a ``BuildNetwork.name`` ending in one must match it.
+_OUTPUT_SUFFIXES = frozenset({".zip", ".duckdb", ".csv", ".parquet"})
+
+
 class BuildNetwork(_Action):
     """Build a GMNS network from OSM or Overture, write it to ``output_dir``, then open it from disk.
 
@@ -155,7 +160,7 @@ class BuildNetwork(_Action):
     input_file: str | None = None
     output_dir: str
     output_format: Literal["parquet", "csv", "duckdb", "zip"]
-    name: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9_.-]*$", max_length=100)
+    name: str = Field(pattern=r"^[A-Za-z0-9](?:[A-Za-z0-9_.-]*[A-Za-z0-9_-])?$", max_length=100)
     network_type: str = "drive"
     extra_tags: list[str] | None = None
     spec_version: str | None = None
@@ -169,6 +174,9 @@ class BuildNetwork(_Action):
             raise ValueError("give exactly one of area or input_file")
         if self.overture_release is not None and self.source != "overture":
             raise ValueError("overture_release only applies to source='overture'")
+        suffix = PurePath(self.name).suffix.lower()
+        if suffix in _OUTPUT_SUFFIXES and suffix != f".{self.output_format}":
+            raise ValueError(f"name {self.name!r} ends in {suffix} but output_format is {self.output_format!r}")
         return self
 
     def job_label(self) -> str:

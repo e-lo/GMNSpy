@@ -311,27 +311,46 @@ class Session:
     def _job_build_network(self, action: BuildNetwork, ctx: JobContext) -> dict[str, Any]:
         settings = self.settings
         plan = build.plan_build(action, settings)
+        threshold = settings.app.approve_above_s
         with build.staging(plan.dest) as tmp:  # removes the partial output on any failure, cancel included
             engine = IbisEngine()  # private connection: never shared with the networks the browser reads
             try:
                 ctx.stage("estimate", progress=0.0)
                 estimate = build.estimate_for(action, plan, settings, http=self.http, engine=engine)
-                threshold = settings.app.approve_above_s
-                if not action.approved and needs_approval(estimate, threshold):
+                over = needs_approval(estimate, threshold)
+                if over and not action.approved:
                     raise ApprovalRequired(estimate, threshold)
-                net = build.fetch_and_convert(
-                    action, plan, settings, ctx, estimate=estimate, http=self.http, engine=engine
-                )
-                build.write_output(net, tmp, action.output_format, ctx)
+                try:
+                    net = build.fetch_and_convert(
+                        action, plan, settings, ctx, estimate=estimate, http=self.http, engine=engine
+                    )
+                    build.write_output(net, tmp, action.output_format, ctx)
+                    # Last cancellation checkpoint: once the output is promoted the build is done, so a
+                    # later cancel cannot leave a finished output that the history calls cancelled.
+                    ctx.stage("open", progress=0.9)
+                    build.promote(tmp, plan.dest)
+                except ActionError as exc:  # includes JobCancelled: keep the estimate for the history entry
+                    exc.payload = {**(exc.payload or {}), "estimate": estimate.to_dict()}
+                    raise
             finally:
                 engine.close()
-            # Last cancellation checkpoint: once the output is promoted the build is done, so a later
-            # cancel cannot leave a finished output on disk that the history calls cancelled.
-            ctx.stage("open", progress=0.9)
-            build.promote(tmp, plan.dest)
-        loaded, frames = self._load(str(plan.dest), action.spec_version or settings.io.spec_version)
-        handle = self._register(loaded, frames, source=str(plan.dest), label=action.label or action.name)
-        return {"net_id": handle.id, "output": str(plan.dest), "estimate": estimate.to_dict()}
+        output = str(plan.dest)
+        try:
+            loaded, frames = self._load(output, action.spec_version or settings.io.spec_version)
+        except ActionError as exc:
+            failed = ActionError(
+                f"the network was written to {output} but could not be opened ({exc}); open it with OpenNetwork"
+            )
+            failed.payload = {"output": output, "estimate": estimate.to_dict()}
+            raise failed from exc
+        handle = self._register(loaded, frames, source=output, label=action.label or action.name)
+        return {
+            "net_id": handle.id,
+            "output": output,
+            "estimate": estimate.to_dict(),
+            "threshold_s": threshold,
+            "approval": "given" if over else "not_needed",
+        }
 
     def _do_close_network(self, action: CloseNetwork) -> None:
         self._handle(action.net_id)
