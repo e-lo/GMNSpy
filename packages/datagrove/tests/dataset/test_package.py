@@ -236,6 +236,58 @@ def test_package_write_overwrite_protection(tmp_path: Path) -> None:
     pkg.write(dest, format="parquet", overwrite=True)
 
 
+# ---------------------------------------------------------------------------
+# CSV-in-zip packages — read via the "<zip>::<member>" sub-locator, write
+# as CSV members plus a datapackage.json.
+# ---------------------------------------------------------------------------
+
+
+def test_package_from_source_reads_multi_csv_zip() -> None:
+    """Each zip member is read through the zipcsv adapter, not the plain csv one."""
+    spec = _gmns_datapackage()
+    zipped = Package.from_source(leavenworth.zip_path(), engine=IbisEngine(), spec=spec)
+    on_disk = Package.from_source(leavenworth.csv_dir(), engine=IbisEngine(), spec=spec)
+    assert set(zipped.keys()) == set(on_disk.keys())
+    for name in ("link", "node"):
+        assert zipped[name].count() == on_disk[name].count()
+
+
+@pytest.mark.parametrize(("filename", "fmt"), [("out.zip", None), ("out.csv.zip", None), ("out.bin", "zip")])
+def test_package_write_zip_roundtrip(tmp_path: Path, filename: str, fmt: str | None) -> None:
+    """write() to a zip produces flat CSV members + datapackage.json and reopens."""
+    import json
+    import zipfile
+
+    pkg = Package.from_source(
+        leavenworth.csv_dir(), engine=IbisEngine(), spec=_gmns_datapackage(), tables=["link", "node"]
+    )
+    dest = tmp_path / filename
+    pkg.write(dest, format=fmt)
+
+    with zipfile.ZipFile(dest) as zf:
+        assert sorted(zf.namelist()) == ["datapackage.json", "link.csv", "node.csv"]
+        descriptor = json.loads(zf.read("datapackage.json"))
+    assert {r["name"]: r["path"] for r in descriptor["resources"]} == {"link": "link.csv", "node": "node.csv"}
+    # Schemas are inlined so the archive is self-describing.
+    assert all(isinstance(r["schema"], dict) for r in descriptor["resources"])
+
+    reopened = Package.from_source(dest, engine=IbisEngine(), spec=_gmns_datapackage(), format="zipcsv")
+    assert reopened["link"].count() == pkg["link"].count()
+    assert reopened["node"].count() == pkg["node"].count()
+    # Atomic write leaves no staging debris next to the destination.
+    assert sorted(p.name for p in tmp_path.iterdir()) == [filename]
+
+
+def test_package_write_zip_overwrite(tmp_path: Path) -> None:
+    pkg = Package.from_source(leavenworth.csv_dir(), engine=IbisEngine(), spec=_gmns_datapackage(), tables=["node"])
+    dest = tmp_path / "out.zip"
+    pkg.write(dest)
+    with pytest.raises(FileExistsError):
+        pkg.write(dest)
+    pkg.write(dest, overwrite=True)
+    assert Package.from_source(dest, engine=IbisEngine(), spec=_gmns_datapackage())["node"].count() > 0
+
+
 def test_package_write_on_dirty_emits_warning(tmp_path: Path) -> None:
     pkg = Package.from_source(
         leavenworth.csv_dir(),

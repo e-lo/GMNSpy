@@ -160,19 +160,6 @@ def load(format: str = "csv") -> Network:
     }
     if format not in sources:
         raise ValueError(f"unknown format {format!r}; expected one of {sorted(sources)}")
-    if format == "zip":
-        # TODO(gh-issue-pending): Package.from_source() mis-dispatches
-        # .csv.zip to the CSV adapter (the per-table sub-refs lose the
-        # parent zipcsv adapter selection and get re-dispatched by
-        # extension). zip_path() still works through the ZipCsvAdapter
-        # directly — call sites that need the zip variant should
-        # invoke the adapter explicitly until the dispatch is fixed.
-        raise NotImplementedError(
-            "load('zip') is blocked by a Package.from_source dispatch bug — "
-            "use load('csv'|'parquet'|'duckdb') for now. "
-            "zip_path() still returns the path; load the file via "
-            "ZipCsvAdapter directly if you need the zip path."
-        )
     # Network.from_source() looks up the GMNS spec by version
     # (defaulting to gmnspy.DEFAULT_SPEC) — no need to pass the
     # datapackage.json path explicitly. The fixture is GMNS 0.97.

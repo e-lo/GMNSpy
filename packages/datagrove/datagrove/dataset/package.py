@@ -24,9 +24,13 @@ contract.
 
 from __future__ import annotations
 
+import json
 import logging
+import os
 import shutil
+import tempfile
 import warnings
+import zipfile
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -294,16 +298,18 @@ class Package:
             # where they'd raise TypeError.
             if credentials is not None and adapter.name == "remote":
                 read_kwargs["credentials"] = credentials
-            # The duckdb adapter requires a ``table=`` kwarg per its
-            # multi-table contract; the ResourceRef.path encodes the
-            # ``"file::table"`` sub-locator that scan() produced.
-            if ref.format == "duckdb":
-                path_str, _, table_name = ref.path.rpartition("::")
-                if not path_str:
-                    path_str = ref.path
-                    table_name = ref.name
-                read_kwargs["table"] = table_name
-                expr = adapter.read(path_str, engine=eng, schema=schema, **read_kwargs)
+            # Multi-table containers (duckdb file, zip of csvs) encode a
+            # ``"<container>::<member>"`` sub-locator in ResourceRef.path.
+            # ``ref.format`` names the *member* format (a zip member is
+            # "csv"), so the read must go back to the adapter that owns the
+            # container — the one that produced the ref — with ``table=``.
+            # Re-dispatching the container honours the caller's ``format=``
+            # exactly as the top-level scan did.
+            container, sep, member = ref.path.rpartition("::")
+            if sep and adapter.name != "remote":
+                adapter = dispatch(container, format=format)
+                read_kwargs["table"] = member
+                expr = adapter.read(container, engine=eng, schema=schema, **read_kwargs)
             else:
                 expr = adapter.read(ref.path, engine=eng, schema=schema, **read_kwargs)
             tables_out[ref.name] = Table(
@@ -699,11 +705,15 @@ class Package:
         file), each :class:`Table` writes to a per-table location under
         ``dest``. The exact layout matches the read-side scan so a
         round-trip via :meth:`from_source` returns the same logical
-        package.
+        package. A zip (``.zip`` / ``.csv.zip``, or ``format="zip"``)
+        holds one flat ``<table>.csv`` member per table plus a
+        ``datapackage.json`` with inlined schemas, and is written
+        atomically (staged beside ``dest``, then renamed over it).
 
         Args:
             dest: Target directory or file.
-            format: Optional explicit format name.
+            format: Optional explicit format name (an adapter name;
+                ``"zip"`` is accepted as an alias for ``"zipcsv"``).
             overwrite: When ``False`` (the default), refuses to clobber
                 an existing ``dest``. When ``True``, removes the existing
                 target first.
@@ -763,12 +773,16 @@ class Package:
         #    else default to parquet (the recommended persistent layout
         #    per architecture §6.1).
         dest_path = Path(dest)
-        target_format = format or _infer_write_format(dest_path)
+        target_format = _resolve_write_format(dest_path, format)
 
-        # 3. Overwrite guard.
+        # 3. Overwrite guard. The zip writer stages beside ``dest`` and
+        #    renames over it, so an existing archive survives a failed write.
+        if dest_path.exists() and not overwrite:
+            raise FileExistsError(f"Destination {dest_path!r} already exists. Pass overwrite=True to replace it.")
+        if target_format == "zipcsv":
+            _write_zipcsv_package(self, dest_path)
+            return
         if dest_path.exists():
-            if not overwrite:
-                raise FileExistsError(f"Destination {dest_path!r} already exists. Pass overwrite=True to replace it.")
             if dest_path.is_dir():
                 shutil.rmtree(dest_path)
             else:
@@ -1251,12 +1265,82 @@ def _schema_for(spec: DataPackage, table_name: str) -> Schema | None:
     return None
 
 
+def _resolve_write_format(dest: Path, format: str | None) -> str:
+    """Return the canonical write-format name for :meth:`Package.write`.
+
+    An explicit ``format`` wins (``"zip"`` is an alias for the
+    ``"zipcsv"`` adapter, matching the user-facing ``--format zip``);
+    otherwise the format is inferred from ``dest``.
+    """
+    if format is None:
+        return _infer_write_format(dest)
+    return "zipcsv" if format == "zip" else format
+
+
+def _write_zipcsv_package(pkg: Package, dest: Path) -> None:
+    """Write ``pkg`` as a CSV-in-zip data package at ``dest``, atomically.
+
+    Layout: one flat ``<table>.csv`` member per table plus a
+    ``datapackage.json`` (see :func:`_csv_package_descriptor`) — the same
+    shape :class:`~datagrove.io.zipcsv_adapter.ZipCsvAdapter` scans back.
+
+    Each table is encoded by the csv adapter into a staging directory
+    created *beside* ``dest`` (same filesystem), added to a staging
+    archive, and deleted, so at most one uncompressed CSV is on disk at a
+    time. The finished archive is ``os.replace``-d over ``dest``: readers
+    never see a partial zip, and a failed write leaves any previous
+    ``dest`` intact. The staging directory is always removed.
+    """
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    csv_adapter = get_adapter("csv")
+    with tempfile.TemporaryDirectory(prefix=f".{dest.name}.", dir=dest.parent) as staging_dir:
+        staging = Path(staging_dir)
+        staged_zip = staging / ".package.zip"
+        with zipfile.ZipFile(staged_zip, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
+            for name, table in pkg.tables.items():
+                member = staging / f"{name}.csv"
+                csv_adapter.write(table.expr, member, engine=pkg.engine)
+                zf.write(member, arcname=member.name)
+                member.unlink()
+            descriptor = _csv_package_descriptor(pkg.spec, pkg.tables)
+            zf.writestr("datapackage.json", json.dumps(descriptor, indent=2))
+        if dest.is_dir():
+            shutil.rmtree(dest)
+        os.replace(staged_zip, dest)
+
+
+def _csv_package_descriptor(spec: DataPackage, table_names: Iterable[str]) -> dict[str, Any]:
+    """Build a ``datapackage.json`` for flat ``<table>.csv`` resources.
+
+    Package-level metadata and each resource's own properties are carried
+    over from ``spec``; ``path`` / ``format`` / ``mediatype`` / ``encoding``
+    are rewritten for the archive layout. Resolved schemas are inlined so
+    the archive is self-describing — a relative schema path from the
+    source package would dangle inside the zip, so it is dropped instead.
+    """
+    descriptor = spec.model_dump(mode="json", by_alias=True, exclude_none=True, exclude={"resources"})
+    originals = {r.name: r for r in spec.resources}
+    resources: list[dict[str, Any]] = []
+    for name in table_names:
+        original = originals.get(name)
+        entry = original.model_dump(mode="json", by_alias=True, exclude_none=True) if original else {"name": name}
+        entry.update(path=f"{name}.csv", format="csv", mediatype="text/csv", encoding="utf-8")
+        schema = _schema_for(spec, name)
+        if schema is not None:
+            entry["schema"] = schema.model_dump(mode="json", by_alias=True, exclude_none=True)
+        else:
+            entry.pop("schema", None)
+        resources.append(entry)
+    descriptor["resources"] = resources
+    return descriptor
+
+
 def _infer_write_format(dest: Path) -> str:
     """Infer a write format from ``dest``.
 
     Order:
         1. Extension match (``.parquet``, ``.csv``, ``.duckdb``,
-           ``.csv.zip``).
+           ``.csv.zip`` / ``.zip``).
         2. No extension at all → default to ``"parquet"`` (the
            recommended persistent layout per architecture §6.1) so the
            common "give me a directory" call site keeps working.
@@ -1268,7 +1352,7 @@ def _infer_write_format(dest: Path) -> str:
     name = dest.name.lower()
     if name.endswith(".duckdb"):
         return "duckdb"
-    if name.endswith(".csv.zip"):
+    if name.endswith(".zip"):
         return "zipcsv"
     if name.endswith(".parquet"):
         return "parquet"
