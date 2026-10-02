@@ -37,7 +37,7 @@ Several things are missing entirely:
 
 ## Core idea: one Action bus
 
-Every state change is a typed **Action**: a pydantic discriminated union in `gmnspy/app/actions.py`. Examples: `OpenNetwork`, `BuildNetwork`, `Select`, `Style`, `Filter`, `Navigate`, `RunValidation`, `ApplyEdit`, `Compare`, `SetSetting`.
+Every state change is a typed **Action**: a pydantic discriminated union in `gmnspy/workbench/actions.py`. Examples: `OpenNetwork`, `BuildNetwork`, `Select`, `Style`, `Filter`, `Navigate`, `RunValidation`, `ApplyEdit`, `Compare`, `SetSetting`.
 
 Three front doors share this one deterministic `Session.dispatch(action)`:
 1. **UI clicks**, sent as `POST /api/actions`.
@@ -133,8 +133,8 @@ This mirrors Wrangler's `Scenario` of roadway + transit.
 ## Architecture
 
 ```
-gmnspy/app/
-  __init__.py      app(net=None, *, port, open_browser) -> AppHandle (thread-launched uvicorn)
+gmnspy/workbench/
+  __init__.py      Session/build_app/serve; P4 adds launch(net=None, *, port) -> AppHandle, exposed as gmnspy.app
   session.py       Session: NetworkRegistry, selections, style spec, history, settings ref
   registry.py      NetworkHandle(id, label, source, Network, version, caches keyed by version)
   actions.py       Action union + handlers; to_python(action) snippet renderer
@@ -292,8 +292,8 @@ This also fixes the stale `GMNSPY_AUTO_APPROVE` vs `DATAGROVE_AUTO_APPROVE` docs
 
 | Phase | Scope | Builds |
 |---|---|---|
-| P0 | Foundations | `config.py`; the `app/` package with Session, Registry, Action bus, SSE and jobs; split the front end into ES modules; port the viz features; `gmnspy app` CLI; retire `select-serve` (`gmnspy viz` becomes an alias) |
-| P1 | Open/Build + Inspect | Map↔table linking both ways, FK navigation, Settings UI |
+| P0 | Foundations | `config.py`; the `workbench/` package with Session, Registry, Action bus and SSE (background jobs arrive with Build in P1); split the front end into ES modules; port the viz features; `gmnspy app` CLI; retire `select-serve` (`gmnspy viz` becomes an alias) |
+| P1 | Open/Build + Inspect | Jobs + progress events, map↔table linking both ways, FK navigation, Settings UI |
 | P2 | Validate + fix + change log | Issues triad; `gmnspy.changes` (NetworkChange, `apply_change`, DraftCard, ProjectCard export and schema validation); editor built on it; undo; export report |
 | P3 | Selection verification + NL assistant | Pinning ambiguous anchors; Style/Filter/Navigate actions |
 | P4 | Python live session | `gmnspy.app()` handle, `show`, history `to_python`, `--console` |
