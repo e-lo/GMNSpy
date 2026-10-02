@@ -38,6 +38,7 @@ from .actions import (
     parse_action,
     to_python,
 )
+from .errors import ActionError, NotSupportedYet
 from .events import EventBus
 from .registry import NetworkHandle, NetworkRegistry
 from .selection import selection_payload, unparsed_payload
@@ -55,14 +56,6 @@ DEFAULT_STYLE: dict[str, Any] = {
     "show": {"links": True, "nodes": True, "labels": True, "selection": True},
     "colors": {"links": [46, 64, 110], "nodes": [70, 90, 120], "selection": [255, 140, 59]},
 }
-
-
-class ActionError(Exception):
-    """An action could not be applied; the message is shown to the user."""
-
-
-class NotSupportedYet(ActionError):
-    """The action is in the schema but its handler ships in a later phase."""
 
 
 @dataclass
