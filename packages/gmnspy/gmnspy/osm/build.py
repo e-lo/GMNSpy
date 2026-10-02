@@ -16,15 +16,16 @@ from __future__ import annotations
 
 import time
 from collections.abc import Callable, Sequence
+from pathlib import Path
 from typing import Any
 
 from gmnspy._network_build import network_from_records as _network_from_records
 from gmnspy.network import Network
 from gmnspy.spec import DEFAULT_SPEC
 
-from . import convert, query
+from . import convert, local, query
 
-__all__ = ["build_network_from_osm", "network_from_records"]
+__all__ = ["build_network_from_osm", "build_network_from_osm_file", "network_from_records"]
 
 
 def network_from_records(
@@ -116,4 +117,34 @@ def build_network_from_osm(
             f"no OSM ways matched for network_type={network_type!r} in the requested area; "
             "try a larger area or a different --network-type."
         )
+    return network_from_records(node_records, link_records, spec_version=spec_version, engine=engine)
+
+
+def build_network_from_osm_file(
+    path: str | Path,
+    *,
+    network_type: str = "drive",
+    extra_tags: list[str] | None = None,
+    spec_version: str = DEFAULT_SPEC,
+    engine: Any = None,
+) -> Network:
+    """Build a GMNS network from a local ``.osm`` XML file or Overpass JSON export (no network access).
+
+    Args:
+        path: The local OSM file (see :func:`gmnspy.osm.local.read_osm_file` for formats).
+        network_type: One of ``drive``/``walk``/``bike``/``all``; applied locally to the ``highway`` tag.
+        extra_tags: OSM tag keys to carry onto each link as extra columns.
+        spec_version: GMNS spec version (default :data:`gmnspy.spec.DEFAULT_SPEC`).
+        engine: Engine to materialise through (default: datagrove ibis).
+
+    Returns:
+        A populated :class:`~gmnspy.network.Network`.
+
+    Raises:
+        ValueError: Unsupported/malformed file, or no ways match ``network_type``.
+    """
+    nodes, ways = local.read_osm_file(path, network_type=network_type)
+    node_records, link_records = convert.build_node_link_tables(nodes, ways, extra_tags=extra_tags)
+    if not link_records:
+        raise ValueError(f"no OSM ways in {Path(path).name} matched network_type={network_type!r}")
     return network_from_records(node_records, link_records, spec_version=spec_version, engine=engine)

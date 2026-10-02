@@ -18,10 +18,11 @@ from typing import TYPE_CHECKING
 from .edit import issue_osm_edit_url, osm_edit_url
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
-    from .build import build_network_from_osm, network_from_records
+    from .build import build_network_from_osm, build_network_from_osm_file, network_from_records
 
 __all__ = [
     "build_network_from_osm",
+    "build_network_from_osm_file",
     "issue_osm_edit_url",
     "network_from_records",
     "osm_edit_url",
@@ -30,7 +31,7 @@ __all__ = [
 
 def __getattr__(name: str):
     """Lazy-import the build/query entry points so they only need [osm] when actually called."""
-    if name in {"build_network_from_osm", "network_from_records"}:
+    if name in {"build_network_from_osm", "build_network_from_osm_file", "network_from_records"}:
         try:
             import requests  # noqa: F401
             import yaml  # noqa: F401
