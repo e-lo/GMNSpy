@@ -18,59 +18,13 @@ import time
 from collections.abc import Callable, Sequence
 from typing import Any
 
-from datagrove.dataset import Table
-from datagrove.engines import get_engine
-
+from gmnspy._network_build import network_from_records as _network_from_records
 from gmnspy.network import Network
-from gmnspy.spec import DEFAULT_SPEC, load_gmns_spec
+from gmnspy.spec import DEFAULT_SPEC
 
 from . import convert, query
 
 __all__ = ["build_network_from_osm", "network_from_records"]
-
-# Units the converter emits, declared on the generated GMNS `config` table so
-# the network is self-describing (GMNS is unit-agnostic — units live in config).
-# free_speed is mph (faithful to US OSM maxspeed tags); length is geodesic
-# metres. Change here (and in gmnspy.osm.convert) to switch unit systems.
-_UNITS = {
-    "short_length": "meter",
-    "long_length": "meter",
-    "speed": "mph",
-    "crs": "EPSG:4326",
-    "geometry_field_format": "WKT",
-}
-
-
-def _resource_schema(spec: Any, name: str) -> Any:
-    """Return the resolved schema for resource ``name`` from a loaded spec."""
-    for resource in spec.resources:
-        if resource.name == name:
-            return resource.table_schema
-    return None
-
-
-def _records_to_expr(eng: Any, records: Sequence[dict[str, Any]], schema: Any) -> Any:
-    """Build a table expression from records, preserving columns when empty.
-
-    An empty record list yields a column-less frame, which the ibis/duckdb
-    engine rejects ("must have at least one column"). When empty, build a
-    zero-row frame whose columns come from the schema so the table stays valid
-    and typed.
-    """
-    records = list(records)
-    if records:
-        return eng.from_records(records, schema=schema)
-    columns: dict[str, list[Any]] = {field.name: [] for field in schema.fields} if schema and schema.fields else {}
-    return eng.from_records(columns, schema=schema)
-
-
-def _config_records(spec_version: str) -> list[dict[str, Any]]:
-    """Build the single-row GMNS ``config`` table declaring units + CRS."""
-    try:
-        version_number = float(spec_version)
-    except (TypeError, ValueError):
-        version_number = None
-    return [{"dataset_name": "osm_export", "id_type": "integer", "version_number": version_number, **_UNITS}]
 
 
 def network_from_records(
@@ -80,11 +34,13 @@ def network_from_records(
     spec_version: str = DEFAULT_SPEC,
     engine: Any = None,
 ) -> Network:
-    """Assemble a :class:`~gmnspy.network.Network` from node/link records.
+    """Assemble a :class:`~gmnspy.network.Network` from OSM node/link records.
 
+    Thin wrapper over :func:`gmnspy._network_build.network_from_records` that
+    stamps the ``osm_export`` dataset name on the generated ``config`` table.
     The records are loaded onto the engine verbatim (extra provenance columns
-    preserved); the per-table GMNS schema is attached to each table so
-    :meth:`Network.validate` can run.
+    ``osm_way_id`` / ``osm_node_ids`` preserved); the per-table GMNS schema is
+    attached so :meth:`Network.validate` can run.
 
     Args:
         node_records: GMNS ``node`` rows (e.g. from
@@ -99,38 +55,13 @@ def network_from_records(
         A :class:`~gmnspy.network.Network` with ``node`` and ``link`` tables
         and ``spec_version`` stamped.
     """
-    eng = engine or get_engine()
-    gmns_spec = load_gmns_spec(spec_version)
-    node_schema = _resource_schema(gmns_spec, "node")
-    link_schema = _resource_schema(gmns_spec, "link")
-    config_schema = _resource_schema(gmns_spec, "config")
-
-    # Pass the schema to from_records so GMNS columns get their declared
-    # (nullable) types even when an optional column is entirely null — an
-    # all-None column otherwise infers as `null` dtype and fails schema
-    # validation. cast_schema leaves non-schema columns (osm_way_id,
-    # osm_node_ids) untouched, so provenance is preserved.
-    tables = {
-        "node": Table(
-            name="node",
-            expr=_records_to_expr(eng, node_records, node_schema),
-            engine=eng,
-            schema=node_schema,
-        ),
-        "link": Table(
-            name="link",
-            expr=_records_to_expr(eng, link_records, link_schema),
-            engine=eng,
-            schema=link_schema,
-        ),
-        "config": Table(
-            name="config",
-            expr=eng.from_records(_config_records(spec_version), schema=config_schema),
-            engine=eng,
-            schema=config_schema,
-        ),
-    }
-    return Network(spec=gmns_spec, tables=tables, engine=eng, source=None, spec_version=spec_version)
+    return _network_from_records(
+        node_records,
+        link_records,
+        spec_version=spec_version,
+        engine=engine,
+        dataset_name="osm_export",
+    )
 
 
 def build_network_from_osm(
