@@ -261,11 +261,12 @@ class IbisEngine:
         """Materialize in-memory records as a duckdb temp table.
 
         Accepts the two shapes :class:`pandas.DataFrame` accepts (list
-        of row dicts OR columnar dict) so callers can use the same
-        handle across all three engines. We round-trip through pyarrow
-        rather than ibis ``memtable`` so the table is materialized
-        eagerly inside our duckdb connection (matters because the
-        caller's source dict is mutable in its own scope).
+        of row dicts OR columnar dict). We convert to pyarrow, wrap it
+        in ``ibis.memtable``, and ``create_table`` it into our duckdb
+        connection so the table is materialized eagerly (the caller's
+        source dict may mutate in its own scope). The memtable wrap is
+        required on ibis 10+/duckdb 1.5+, where ``create_table`` with a
+        raw pyarrow ``obj`` raises a duckdb ``ParserException``.
 
         Args:
             records: Either ``[{"a": 1}, {"a": 2}]`` or ``{"a": [1, 2]}``.
@@ -288,7 +289,7 @@ class IbisEngine:
         # unknown all-null column — before handing the table to duckdb.
         arrow = _coerce_all_null_columns_to_string(arrow)
         name = _temp_table_name("inline")
-        self.con.create_table(name, obj=arrow, temp=True)
+        self.con.create_table(name, obj=ibis.memtable(arrow), temp=True)
         expr = self.con.table(name)
         return self.cast_schema(expr, schema) if schema is not None else expr
 
@@ -304,7 +305,7 @@ class IbisEngine:
         """
         arrow_table = _coerce_all_null_columns_to_string(arrow_table)
         name = _temp_table_name("inline_arrow")
-        self.con.create_table(name, obj=arrow_table, temp=True)
+        self.con.create_table(name, obj=ibis.memtable(arrow_table), temp=True)
         return self.con.table(name)
 
     # ------------------------------------------------------------------
@@ -384,7 +385,7 @@ class IbisEngine:
         try:
             if table in dst.list_tables():
                 dst.drop_table(table)
-            dst.create_table(table, obj=arrow)
+            dst.create_table(table, obj=ibis.memtable(arrow))
         finally:
             dst.disconnect()
 
