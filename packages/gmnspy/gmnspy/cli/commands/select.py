@@ -62,28 +62,19 @@ def register(app: typer.Typer) -> None:
     @app.command(name="select-serve")
     def select_serve(
         source: Path = typer.Argument(..., help="Path/URL to a GMNS network."),
-        provider: str = typer.Option("stub", "--provider", help="Parser: stub | claude."),
+        provider: str = typer.Option(None, "--provider", help="Parser: stub | claude."),
         engine: str = typer.Option(
-            None, "--engine", help="Compute engine (DuckDB is the only one; kept for compatibility)."
+            None, "--engine", help="Ignored: DuckDB is the only engine (kept for compatibility)."
         ),
-        host: str = typer.Option("127.0.0.1", "--host", help="Bind host."),
-        port: int = typer.Option(8848, "--port", help="Bind port."),
+        host: str = typer.Option(None, "--host", help="Bind host."),
+        port: int = typer.Option(None, "--port", help="Bind port."),
     ) -> None:
-        """Serve the interactive selection map: type an utterance, see it on the network.
+        """Serve the interactive selection map: now an alias of ``gmnspy app SOURCE``."""
+        from .workbench import run_workbench
 
-        Loads the network once, then runs a local MapLibre web app where each
-        utterance is parsed, resolved, and drawn (selection highlighted, gore/
-        merge anchors marked) over a basemap. Requires the ``[server]`` extra.
-        """
-        import uvicorn
-
-        from ...select.webapp import build_app
-
-        net = Network.from_source(source, engine=resolve_engine(engine))
-        links = net.links.to_pandas() if hasattr(net.links, "to_pandas") else net.links.execute()
-        nodes = net.nodes.to_pandas() if hasattr(net.nodes, "to_pandas") else net.nodes.execute()
-        typer.echo(f"gmnspy select map on http://{host}:{port}  ({len(links)} links, provider={provider})")
-        uvicorn.run(build_app(links, nodes, provider=provider), host=host, port=port)
+        del engine  # accepted for backward compatibility only
+        typer.echo("note: `gmnspy select-serve` is now `gmnspy app`", err=True)
+        run_workbench([str(source)], provider=provider, host=host, port=port)
 
 
 def _emit(payload: dict, json_out: bool) -> None:

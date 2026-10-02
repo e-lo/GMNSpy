@@ -5,6 +5,9 @@ basemap tiles; the resolved selection is highlighted with its gore/merge anchor
 nodes marked. Backend is a thin FastAPI app over the resolver — the network is
 loaded once and served as GeoJSON (localhost; render, not transfer, is the cost
 MapLibre removes). Requires the ``[server]`` + ``[nl]`` extras.
+
+Deprecated: ``gmnspy select-serve`` now launches the workbench
+(:mod:`gmnspy.workbench`); this prototype is removed in P1.
 """
 
 from __future__ import annotations

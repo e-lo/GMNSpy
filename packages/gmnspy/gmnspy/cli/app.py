@@ -35,6 +35,7 @@ from .commands import (
     spec,
     validate,
     viz,
+    workbench,
 )
 
 __all__ = ["app"]
@@ -73,6 +74,7 @@ def _build_gmnspy_app() -> typer.Typer:
     build.register(gmnspy_app)
     select.register(gmnspy_app)
     viz.register(gmnspy_app)
+    workbench.register(gmnspy_app)
     return gmnspy_app
 
 

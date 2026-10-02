@@ -148,6 +148,10 @@ include = [
     "gmnspy/select/schema/*.json",
     "gmnspy/select/templates/*.html",
     "gmnspy/viz/templates/*.html",
+    # GMNSpy Workbench static front end (gmnspy.workbench; served by `gmnspy app`).
+    "gmnspy/workbench/static/*.html",
+    "gmnspy/workbench/static/*.css",
+    "gmnspy/workbench/static/js/*.js",
     # Maintained OSM->GMNS tag-mapping + network-filter data (gmnspy.osm).
     "gmnspy/osm/mappings/*.yaml",
     # Maintained Overture->GMNS property-mapping + network-filter data
