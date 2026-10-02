@@ -71,9 +71,11 @@ def test_simplify_geometry_drops_collinear_vertex():
     net = _network({"link": links, "node": nodes})
     with Session(net) as s:
         result = simplify_geometry(net, s)
-    new_wkt = net.links.to_pandas()["geometry"].iloc[0]
-    # Collapses to just the endpoints.
-    assert new_wkt == "LINESTRING (0 0, 3 0)"
+    from gmnspy._wkt import linestring_points
+
+    new_geom = net.links.to_pandas()["geometry"].iloc[0]
+    # Geometry is written back as WKB; collapses to just the endpoints.
+    assert linestring_points(new_geom) == [(0.0, 0.0), (3.0, 0.0)]
     assert result.diff.rows_changed >= 0  # bulk replace records a coarse diff
 
 
@@ -91,10 +93,11 @@ def test_simplify_geometry_douglas_peucker_with_tolerance():
     net = _network({"link": links, "node": nodes})
     with Session(net) as s:
         simplify_geometry(net, s, mode="douglas_peucker", tolerance=0.5)
-    new_wkt = net.links.to_pandas()["geometry"].iloc[0]
-    assert "0 0" in new_wkt and "10 0" in new_wkt
-    # Middle vertex 5 should be dropped.
-    assert "5" not in new_wkt.split(",")[1]
+    from gmnspy._wkt import linestring_points
+
+    new_geom = net.links.to_pandas()["geometry"].iloc[0]
+    # WKB round-trip; the middle bend vertex (x=5) is dropped within tolerance.
+    assert linestring_points(new_geom) == [(0.0, 0.0), (10.0, 0.0)]
 
 
 def test_simplify_geometry_roundtrip_rollback():

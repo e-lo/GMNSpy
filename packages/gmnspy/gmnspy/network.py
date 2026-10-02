@@ -223,6 +223,11 @@ class Network(Package):
         # Package returns a `Package` instance; we re-pack into `cls`
         # (always `Network` in practice) so the named accessors light up.
         base = Package.from_source(source, engine=engine, spec=gmns_spec, tables=tables)
+        # Canonicalise geometry to WKB bytes in memory (geometry ADR): CSV
+        # packages arrive as WKT, GeoParquet as WKB — this converges both.
+        from gmnspy._geometry import convert_geometry_to_wkb
+
+        convert_geometry_to_wkb(base)
         return cls(
             spec=base.spec,
             tables=base.tables,

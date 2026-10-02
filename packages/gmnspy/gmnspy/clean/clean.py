@@ -172,7 +172,8 @@ def simplify_geometry(
             simplified = _drop_collinear(geom, tolerance=tolerance)
         if simplified is geom or simplified.is_empty:
             continue
-        row["geometry"] = simplified.wkt
+        # Write geometry back as WKB bytes (canonical in-memory encoding; ADR).
+        row["geometry"] = simplified.wkb
     return _submit_replace(session, "link", new_rows)
 
 
