@@ -149,7 +149,7 @@ def simplify_geometry(
         >>> simplify_geometry  # doctest: +ELLIPSIS
         <function simplify_geometry at ...>
     """
-    from shapely import from_wkt
+    from gmnspy._geom import shapely_from_any
 
     if "geometry" not in net.links.columns():
         raise CleanError(
@@ -163,13 +163,7 @@ def simplify_geometry(
     arrow = _to_arrow(net.links)
     new_rows: list[dict] = arrow.to_pylist()
     for row in new_rows:
-        wkt = row.get("geometry")
-        if wkt is None or not str(wkt).strip():
-            continue
-        try:
-            geom = from_wkt(str(wkt))
-        except Exception:  # pragma: no cover - shapely raises broadly
-            continue
+        geom = shapely_from_any(row.get("geometry"))
         if geom is None or geom.is_empty or geom.geom_type != "LineString":
             continue
         if mode == "douglas_peucker":
@@ -411,7 +405,7 @@ def recompute_lengths(net: Network, session: Session, *, geodesic: bool = False)
         >>> recompute_lengths  # doctest: +ELLIPSIS
         <function recompute_lengths at ...>
     """
-    from shapely import from_wkt
+    from gmnspy._geom import shapely_from_any
 
     if "geometry" not in net.links.columns():
         raise CleanError("recompute_lengths requires an inline 'geometry' column on net.links.")
@@ -419,13 +413,7 @@ def recompute_lengths(net: Network, session: Session, *, geodesic: bool = False)
     arrow = _to_arrow(net.links)
     new_rows = arrow.to_pylist()
     for row in new_rows:
-        wkt = row.get("geometry")
-        if wkt is None or not str(wkt).strip():
-            continue
-        try:
-            geom = from_wkt(str(wkt))
-        except Exception:  # pragma: no cover
-            continue
+        geom = shapely_from_any(row.get("geometry"))
         if geom is None or geom.is_empty or geom.geom_type != "LineString":
             continue
         row["length"] = _geodesic_length_m(geom) if geodesic else float(geom.length)

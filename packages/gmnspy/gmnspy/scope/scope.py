@@ -485,12 +485,11 @@ def from_link(
         spatial = _get_or_build_spatial_index(net)
         if spatial is None:
             raise ScopeError("from_link(spatial_buffer_m=...) requires a geometry column on links.")
-        from shapely import from_wkt
-
         geoms = _link_geometries(net, {int(link_id)})
         if not geoms:
             raise ScopeError(f"link_id={link_id!r} has no parseable geometry.")
-        new_link_ids = set(spatial.query_geometry(from_wkt(geoms[0].wkt), distance_m=spatial_buffer_m))
+        # geoms[0] is already a shapely geometry — query the tree with it directly.
+        new_link_ids = set(spatial.query_geometry(geoms[0], distance_m=spatial_buffer_m))
         new_link_ids.add(int(link_id))
         nodes = _link_endpoint_nodes(net, new_link_ids)
         provenance = f"from_link({link_id!r}, spatial_buffer_m={spatial_buffer_m})"
@@ -685,7 +684,7 @@ def _link_endpoint_nodes(net: Network, link_ids: set[int]) -> set[int]:
 
 def _link_geometries(net: Network, link_ids: set[int]):
     """Return the parsed shapely geometries for ``link_ids`` (drops null/unparseable)."""
-    from shapely import from_wkt
+    from gmnspy._geom import shapely_from_any
 
     if not link_ids or "geometry" not in net.links.columns():
         return []
@@ -693,13 +692,10 @@ def _link_geometries(net: Network, link_ids: set[int]):
     lid_col = arrow.column("link_id").to_pylist()
     geom_col = arrow.column("geometry").to_pylist()
     geoms = []
-    for lid, wkt in zip(lid_col, geom_col, strict=True):
-        if lid is None or int(lid) not in link_ids or wkt is None:
+    for lid, geom in zip(lid_col, geom_col, strict=True):
+        if lid is None or int(lid) not in link_ids:
             continue
-        try:
-            g = from_wkt(str(wkt))
-        except Exception:  # pragma: no cover - shapely raises broadly
-            continue
+        g = shapely_from_any(geom)
         if g is not None and not g.is_empty:
             geoms.append(g)
     return geoms
