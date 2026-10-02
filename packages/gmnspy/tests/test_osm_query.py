@@ -175,3 +175,38 @@ class TestFetchNetworkElements:
         assert set(nodes) == {1, 2}
         assert ways[0]["id"] == 9
         assert all(call[0] == "POST" for call in sess.calls)  # no geocode GET
+
+
+class TestCountQuery:
+    def test_count_query_counts_ways_without_recursing(self):
+        q = query.build_overpass_query(bbox=(-71.1, 42.0, -71.0, 42.1), network_type="drive", out="count")
+        assert q.endswith("(42.0,-71.1,42.1,-71.0);out count;")
+        assert "(._;>;)" not in q
+
+    def test_body_is_still_the_default(self):
+        assert query.build_overpass_query(bbox=(-71.1, 42.0, -71.0, 42.1)).endswith("(._;>;);out body;")
+
+
+_DURHAM = {
+    "display_name": "Durham, Durham County, North Carolina, United States",
+    "type": "administrative",
+    "boundingbox": ["35.86", "36.14", "-79.01", "-78.75"],
+    "geojson": {"type": "Polygon", "coordinates": [[[-79.0, 35.9], [-78.8, 35.9], [-78.8, 36.1], [-79.0, 35.9]]]},
+}
+_DURHAM_ST = {"display_name": "Durham Street", "type": "residential", "boundingbox": ["1", "2", "3", "4"]}
+
+
+class TestGeocodeCandidates:
+    def test_returns_every_hit_with_bbox_and_outline(self):
+        session = _FakeSession([_FakeResponse(200, [_DURHAM, _DURHAM_ST, {"display_name": "no bbox"}])])
+        got = query.geocode_candidates("Durham", session=session, sleep=_NO_SLEEP)
+        assert [c["display_name"] for c in got] == [_DURHAM["display_name"], "Durham Street"]
+        assert got[0]["bbox"] == (-79.01, 35.86, -78.75, 36.14)
+        assert got[0]["polygon"][0] == (35.9, -79.0)  # (lat, lon), like geocode_area
+        assert got[1]["polygon"] is None and got[1]["type"] == "residential"
+
+    def test_sends_limit_and_simplification(self):
+        session = _FakeSession([_FakeResponse(200, [])])
+        assert query.geocode_candidates("nowhere", limit=3, session=session, sleep=_NO_SLEEP) == []
+        _method, _url, params = session.calls[0]
+        assert params["limit"] == 3 and params["polygon_threshold"] == 0.001 and params["polygon_geojson"] == 1
