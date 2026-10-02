@@ -1,10 +1,11 @@
 """Tests for gmnspy.config — layered settings."""
 
 import sys
+import tomllib
 from pathlib import Path
 
 import pytest
-from gmnspy.config import Settings, SettingsError, get_value, load_settings, user_config_path
+from gmnspy.config import Settings, SettingsError, dumps_toml, get_value, load_settings, save_setting, user_config_path
 from gmnspy.spec import DEFAULT_SPEC
 
 
@@ -88,3 +89,38 @@ def test_get_value():
     assert get_value(Settings(), "app.port") == 8850
     with pytest.raises(SettingsError, match="unknown setting"):
         get_value(Settings(), "app.nope")
+
+
+def test_save_setting_round_trips_and_coerces(tmp_path, isolated_env):
+    path = save_setting("app.port", "9100", scope="user", environ=isolated_env)
+    assert path == Path(isolated_env["GMNSPY_CONFIG_DIR"]) / "config.toml"
+    assert "port = 9100" in path.read_text()
+    assert load_settings(project_dir=tmp_path, environ=isolated_env).settings.app.port == 9100
+
+
+def test_save_setting_project_scope_keeps_other_keys(tmp_path, isolated_env):
+    (tmp_path / "gmnspy.toml").write_text('[viz]\nbasemap = "esri"\n')
+    save_setting("select.provider", "claude", scope="project", project_dir=tmp_path, environ=isolated_env)
+    s = load_settings(project_dir=tmp_path, environ=isolated_env).settings
+    assert (s.viz.basemap, s.select.provider) == ("esri", "claude")
+
+
+def test_save_setting_none_resets_to_default(tmp_path, isolated_env):
+    save_setting("app.port", 9100, scope="user", environ=isolated_env)
+    save_setting("app.port", None, scope="user", environ=isolated_env)
+    loaded = load_settings(project_dir=tmp_path, environ=isolated_env)
+    assert loaded.settings.app.port == 8850 and loaded.sources["app.port"] == "default"
+
+
+def test_save_setting_rejects_unknown_key_without_writing(tmp_path, isolated_env):
+    with pytest.raises(SettingsError):
+        save_setting("select.bogus", 1, scope="user", environ=isolated_env)
+    assert not (Path(isolated_env["GMNSPY_CONFIG_DIR"]) / "config.toml").exists()
+
+
+def test_dumps_toml_round_trips_nested_tables_and_quoting():
+    data = {
+        "io": {"allowed_roots": ["/a", 'b "q"'], "spec_version": "0.97"},
+        "validation": {"rules": {"dangling-node": {"enabled": False, "thresholds": {"max": 2.5}}, "my rule": {}}},
+    }
+    assert tomllib.loads(dumps_toml(data)) == data
