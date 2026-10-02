@@ -387,3 +387,28 @@ def test_scan_partitioned_dir_with_trailing_slash(adapter: ParquetAdapter, synth
     with_slash = Path(str(synthetic_partitioned_dir) + "/")
     listing = adapter.scan(with_slash, engine)
     assert listing[0].name == synthetic_partitioned_dir.name
+
+
+class _RecordingEngine:
+    """Records what ``read_parquet`` receives."""
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, dict[str, Any]]] = []
+
+    def read_parquet(self, path: str, **kwargs: Any) -> str:
+        self.calls.append((path, kwargs))
+        return "expr"
+
+
+@pytest.mark.parametrize("url", ["https://h/x.parquet", "s3://bucket/dir/x.parquet", "s3://b/../../secret.parquet"])
+def test_read_passes_remote_url_unmangled(adapter: ParquetAdapter, url: str) -> None:
+    """``Path(url)`` collapses ``//`` into a local relative path; the URL must reach the engine verbatim."""
+    engine = _RecordingEngine()
+    adapter.read(url, engine)  # type: ignore[arg-type]
+    assert engine.calls == [(url, {"schema": None, "hive_partitioning": False})]
+
+
+def test_scan_keeps_remote_url_unmangled(adapter: ParquetAdapter) -> None:
+    assert adapter.scan("https://h/data/link.parquet") == [
+        ResourceRef(name="link", path="https://h/data/link.parquet", format="parquet")
+    ]

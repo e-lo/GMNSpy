@@ -127,3 +127,19 @@ def test_remote_scheme_without_scheme_slash_slash_host_is_rejected(tmp_path, bad
 def test_duckdb_prefix_is_stripped_robustly(tmp_path, prefix):
     db = tmp_path / "net.db"
     assert classify_source(f"{prefix}{db}", _settings(tmp_path)) == ("local", db.resolve())
+
+
+@pytest.mark.parametrize("bad", ["https://@/x", "https://:80/x", "s3://user@/k"])
+def test_remote_url_without_a_hostname_is_rejected(tmp_path, bad):
+    with pytest.raises(PathNotAllowed, match="must look like scheme://host"):
+        classify_source(bad, _settings(tmp_path))
+
+
+@pytest.mark.parametrize("bad", ["s3://b/../../secret/link.parquet", "https://h/a/../x.parquet", "s3://b/.."])
+def test_remote_url_with_dotdot_segment_is_rejected(tmp_path, bad):
+    with pytest.raises(PathNotAllowed, match=r"'\.\.' path segments"):
+        classify_source(bad, _settings(tmp_path))
+
+
+def test_remote_url_with_dots_inside_a_name_is_fine(tmp_path):
+    assert classify_source("s3://b/v1..2/x.parquet", _settings(tmp_path)) == ("remote", "s3://b/v1..2/x.parquet")
