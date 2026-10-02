@@ -9,6 +9,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
 from .routes.core import core_router
+from .routes.network import network_router
 from .session import Session
 
 __all__ = ["STATIC_DIR", "build_app"]
@@ -21,6 +22,7 @@ def build_app(session: Session) -> FastAPI:
     app = FastAPI(title="GMNSpy Workbench")
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
     app.include_router(core_router(session))
+    app.include_router(network_router(session))
 
     @app.get("/", response_class=HTMLResponse)
     def index() -> str:
