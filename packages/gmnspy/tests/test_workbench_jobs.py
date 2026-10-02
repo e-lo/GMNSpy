@@ -129,6 +129,57 @@ def test_terminal_event_is_published_before_wait_returns():
     assert events[-1]["job"]["status"] == "done"
 
 
+def test_publish_failure_still_finishes_the_job():
+    calls = []
+
+    def publish(event):
+        calls.append(event)
+        if len(calls) == 1:
+            raise RuntimeError("bus down")
+
+    runner = JobRunner(publish)
+    job = runner.submit("open_network", "o", lambda ctx: 1)
+    assert job.wait(WAIT)
+    snap = runner.snapshot(job)
+    assert snap["status"] == "failed" and snap["error_type"] == "InternalError" and "bus down" in snap["error"]
+
+
+@pytest.mark.filterwarnings("ignore::pytest.PytestUnhandledThreadExceptionWarning")
+def test_base_exception_in_job_still_finishes_the_job(runner):
+    def fn(ctx):
+        raise SystemExit("bye")
+
+    job = runner.submit("open_network", "o", fn)
+    assert job.wait(WAIT)
+    # the runner re-raises SystemExit after finishing the job; join so pytest reports it here, not in the next test
+    for thread in threading.enumerate():
+        if thread.name == f"gmnspy-{job.id}":
+            thread.join(WAIT)
+    snap = runner.snapshot(job)
+    assert snap["status"] == "failed" and snap["error_type"] == "InternalError" and "SystemExit" in snap["error"]
+
+
+def test_thread_start_failure_finishes_the_job(runner, monkeypatch):
+    def refuse(self):
+        raise RuntimeError("can't start new thread")
+
+    monkeypatch.setattr(threading.Thread, "start", refuse)
+    with pytest.raises(RuntimeError, match="can't start"):
+        runner.submit("open_network", "o", lambda ctx: 1)
+    monkeypatch.undo()
+    (snap,) = runner.snapshots()
+    assert snap["status"] == "failed" and snap["finished"] is not None
+    assert runner.get(snap["id"]).wait(0)
+
+
+def test_cancel_after_finish_publishes_nothing(runner, events):
+    job = runner.submit("open_network", "o", lambda ctx: 1)
+    assert job.wait(WAIT)
+    before = len(events)
+    runner.cancel(job.id)
+    assert len(events) == before
+
+
 def test_unknown_job():
     with pytest.raises(KeyError, match="unknown job"):
         JobRunner(lambda e: None).get("job-99")

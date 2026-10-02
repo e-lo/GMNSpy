@@ -4,7 +4,11 @@ A job function receives a :class:`JobContext`. It calls ``ctx.stage(name, ...)``
 boundary; that publishes progress and is also the cancellation checkpoint (it raises
 :class:`~gmnspy.workbench.errors.JobCancelled` once :meth:`JobRunner.cancel` was called). Work
 inside one stage (an Overpass download, a DuckDB read) is not interrupted, so a cancel takes
-effect at the next boundary.
+effect at the next boundary. A cancel that arrives after the last checkpoint does not undo the
+work: the job ends ``status="done"`` with ``cancel_requested=True``.
+
+A job's ``result`` is published in every later event and kept for the session's lifetime, so it
+must be small, JSON-able, and never mutated after the job function returns.
 
 Thread-safety: every mutation of a :class:`Job` and every snapshot of it (``to_dict``) happens
 under the runner's lock. The runner never touches session state; the ``on_finish`` callback
@@ -16,6 +20,11 @@ order their snapshots were taken (a stale ``running`` snapshot can never follow 
 one). The runner lock is never held while publishing. ``publish`` must therefore be
 non-blocking and must not call back into the runner or take the session lock
 (``EventBus.publish`` qualifies). The terminal event is published before :meth:`Job.wait`
+returns. ``cancel`` on a finished job publishes nothing, so every terminal event is published
+after ``on_finish`` ran and carries the ``history_seq`` it set.
+
+A job can never stay ``running`` forever: whatever fails (``publish``, starting the thread, the
+job function, even with a ``BaseException``), the job ends ``failed`` and :meth:`Job.wait`
 returns.
 """
 
@@ -116,8 +125,13 @@ class JobRunner:
         with self._lock:
             job = Job(id=f"job-{next(self._ids)}", kind=kind, label=label)
             self._jobs[job.id] = job
-        self._emit(job)
-        threading.Thread(target=self._run, args=(job, fn, on_finish), name=f"gmnspy-{job.id}", daemon=True).start()
+        thread = threading.Thread(target=self._run, args=(job, fn, on_finish), name=f"gmnspy-{job.id}", daemon=True)
+        try:
+            thread.start()
+        except BaseException as exc:
+            self._settle(job, _internal_error(exc))
+            job._done.set()
+            raise
         return job
 
     def get(self, job_id: str) -> Job:
@@ -142,10 +156,12 @@ class JobRunner:
         """Request cancellation (no-op for a finished job) and return the job's snapshot."""
         job = self.get(job_id)
         with self._lock:
-            if job.finished is None:
+            running = job.finished is None
+            if running:
                 job.cancel_requested = True
                 job._cancel.set()
-        self._emit(job)
+        if running:
+            self._emit(job)
         return self.snapshot(job)
 
     def update(self, job: Job, **changes: Any) -> None:
@@ -161,25 +177,32 @@ class JobRunner:
         with self._emit_lock:
             self._publish({"type": "job", "job": self.snapshot(job)})
 
-    def _run(self, job: Job, fn: Callable[[JobContext], Any], on_finish: Callable[[Job], None] | None) -> None:
-        outcome: dict[str, Any]
-        try:
-            result = fn(JobContext(job, self))
-            outcome = {"status": "done", "stage": "done", "progress": 1.0, "result": result}
-        except JobCancelled as exc:
-            outcome = {"status": "cancelled", "error": str(exc), "error_type": "JobCancelled"}
-        except ActionError as exc:
-            outcome = {"status": "failed", "error": str(exc), "error_type": type(exc).__name__, "payload": exc.payload}
-        except Exception as exc:  # boundary: a crashed job is a reported failure, never a dead thread
-            logger.exception("workbench job %s (%s) crashed", job.id, job.kind)
-            outcome = {"status": "failed", "error": f"internal error: {type(exc).__name__}: {exc}"}
-            outcome["error_type"] = "InternalError"
+    def _settle(self, job: Job, outcome: dict[str, Any]) -> None:
         with self._lock:
             for key, value in outcome.items():
                 setattr(job, key, value)
             job.eta_s = None
             job.finished = time.time()
+
+    def _run(self, job: Job, fn: Callable[[JobContext], Any], on_finish: Callable[[Job], None] | None) -> None:
+        reraise: BaseException | None = None
         try:
+            outcome: dict[str, Any]
+            try:
+                self._emit(job)  # "starting", on this thread so it precedes the first stage event
+                result = fn(JobContext(job, self))
+                outcome = {"status": "done", "stage": "done", "progress": 1.0, "result": result}
+            except JobCancelled as exc:
+                outcome = {"status": "cancelled", "error": str(exc), "error_type": "JobCancelled"}
+            except ActionError as exc:
+                outcome = {"status": "failed", "error": str(exc), "error_type": type(exc).__name__}
+                outcome["payload"] = exc.payload
+            except BaseException as exc:  # boundary: a crashed job is a reported failure, never a dead thread
+                logger.exception("workbench job %s (%s) crashed", job.id, job.kind)
+                outcome = _internal_error(exc)
+                if not isinstance(exc, Exception):
+                    reraise = exc  # SystemExit etc.: record the failure, then let it propagate
+            self._settle(job, outcome)
             try:
                 if on_finish is not None:
                     on_finish(job)
@@ -188,3 +211,9 @@ class JobRunner:
             self._emit(job)  # before ``_done``: a waiter sees the terminal event already published
         finally:
             job._done.set()
+        if reraise is not None:
+            raise reraise
+
+
+def _internal_error(exc: BaseException) -> dict[str, Any]:
+    return {"status": "failed", "error": f"internal error: {type(exc).__name__}: {exc}", "error_type": "InternalError"}
