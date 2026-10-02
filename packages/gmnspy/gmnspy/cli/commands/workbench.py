@@ -26,20 +26,25 @@ def run_workbench(
     from gmnspy import workbench
     from gmnspy.config import SettingsError
     from gmnspy.workbench.actions import OpenNetwork
+    from gmnspy.workbench.paths import allowed_roots, is_allowed, is_url
 
     flags = {"select.provider": provider, "viz.basemap": basemap, "app.host": host, "app.port": port}
+    overrides = {k: v for k, v in flags.items() if v is not None}
+    resolved = [s if is_url(s) else str(Path(s).resolve()) for s in map(str, sources)]
     try:
-        session = workbench.Session(overrides={k: v for k, v in flags.items() if v is not None})
+        session = workbench.Session(overrides=overrides)
+        # Sources named on the command line are trusted: allow exactly those paths for this session.
+        extra = [s for s in resolved if not is_url(s) and not is_allowed(s, session.settings)]
+        if extra:
+            roots = [str(r) for r in allowed_roots(session.settings)] + extra
+            session = workbench.Session(overrides={**overrides, "io.allowed_roots": roots})
+            typer.echo(f"note: allowing {', '.join(extra)} for this session (io.allowed_roots)", err=True)
     except SettingsError as exc:
         typer.echo(f"error: {exc}", err=True)
         raise typer.Exit(2) from exc
-    for source in sources:
-        resolved = str(source)
-        path = Path(resolved)
-        if path.exists():
-            resolved = str(path.resolve())
+    for source in resolved:
         try:
-            session.dispatch(OpenNetwork(source=resolved))
+            session.dispatch(OpenNetwork(source=source))
         except workbench.ActionError as exc:
             typer.echo(f"error: {exc}", err=True)
             raise typer.Exit(1) from exc

@@ -1,5 +1,6 @@
 """Tests for `gmnspy app` and its viz / select-serve aliases."""
 
+import json
 from pathlib import Path
 
 import pytest
@@ -93,3 +94,22 @@ def test_app_resolves_relative_source_to_absolute_path(served, monkeypatch, rdu_
     recorded_source = session.history[0].action["source"]
     assert Path(recorded_source).is_absolute()
     assert recorded_source == str(Path(rdu_source).resolve())
+
+
+def test_cli_sources_outside_allowed_roots_are_trusted_for_the_session(served, monkeypatch, rdu_source, tmp_path):
+    """A path typed on the command line is the user's explicit choice: the CLI allows exactly that path."""
+    monkeypatch.setenv("GMNSPY_IO__ALLOWED_ROOTS", json.dumps([str(tmp_path / "elsewhere")]))
+    result = runner.invoke(app, ["app", rdu_source])
+    assert result.exit_code == 0, result.output
+    (session,) = served
+    roots = session.settings.io.allowed_roots
+    assert str(Path(rdu_source).resolve()) in roots and str((tmp_path / "elsewhere").resolve()) in roots
+    assert session.loaded.sources["io.allowed_roots"] == "session" and "allowing" in result.output
+    assert session.registry.ids() == ["rdu-i40"]
+
+
+def test_cli_does_not_widen_roots_when_already_allowed(served, monkeypatch, rdu_source):
+    monkeypatch.setenv("GMNSPY_IO__ALLOWED_ROOTS", json.dumps([str(Path(rdu_source).parent)]))
+    result = runner.invoke(app, ["app", rdu_source])
+    assert result.exit_code == 0 and "allowing" not in result.output
+    assert served[0].loaded.sources["io.allowed_roots"] == "env"
