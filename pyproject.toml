@@ -166,6 +166,14 @@ addopts = [
     "--ignore=gmnspy",          # legacy tree (Phase 0 closeout removes)
     "--ignore=tests",           # legacy tree
     "--ignore=_archive",
+    # Fixture BUILD scripts are one-shot data-prep (they hit OSM/Overpass and
+    # run work at module scope), not library modules. Keep them out of the
+    # --doctest-modules sweep so collection never imports them — otherwise a
+    # live Overpass 504 fails CI at collection time. The fixture *accessor*
+    # modules (__init__.py) still get collected.
+    "--ignore-glob=*/fixtures/*/build.py",
+    "--ignore-glob=*/fixtures/*/build_fixture.py",
+    "--ignore-glob=*/fixtures/*/scripts/*.py",
 ]
 filterwarnings = [
     "error",
@@ -191,7 +199,16 @@ markers = [
 [tool.coverage.run]
 source = ["packages/datagrove/datagrove", "packages/gmnspy/gmnspy"]
 branch = true
-omit = ["*/tests/*", "*/_legacy/*"]
+omit = [
+    "*/tests/*",
+    "*/_legacy/*",
+    # Fixture build scripts are excluded from the doctest sweep (see pytest
+    # addopts), so they are never imported under test — drop them from the
+    # coverage denominator too, else the gate counts them as 0%.
+    "*/fixtures/*/build.py",
+    "*/fixtures/*/build_fixture.py",
+    "*/fixtures/*/scripts/*.py",
+]
 
 [tool.coverage.report]
 exclude_lines = [
