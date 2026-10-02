@@ -16,6 +16,7 @@ redirected to ``tmp_path``.
 from __future__ import annotations
 
 import hashlib
+from importlib import resources
 from pathlib import Path
 
 import gmnspy.fixtures
@@ -55,3 +56,15 @@ def _fixture_data_is_read_only() -> None:
         "write derived output to tmp_path, not the fixture dir. "
         f"Changed files: {changed}"
     )
+
+
+@pytest.fixture(scope="session")
+def rdu_source() -> str:
+    """Path to the committed RDU I-40 parquet fixture network (read-only)."""
+    return str(resources.files("gmnspy.fixtures.rdu_i40").joinpath("parquet"))
+
+
+@pytest.fixture
+def isolated_env(tmp_path: Path) -> dict[str, str]:
+    """An environ whose gmnspy user-config dir lives under ``tmp_path``, never the real ``~/.config``."""
+    return {"GMNSPY_CONFIG_DIR": str(tmp_path / "user")}
