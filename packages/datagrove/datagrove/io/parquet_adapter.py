@@ -58,6 +58,13 @@ if TYPE_CHECKING:  # pragma: no cover - typing only
 # ---------------------------------------------------------------------------
 
 
+#: Conventional primary geometry column name (GeoParquet / geopandas default).
+_DEFAULT_GEOMETRY_COLUMN = "geometry"
+
+#: GeoParquet spec version this adapter emits.
+_GEOPARQUET_VERSION = "1.1.0"
+
+
 def _as_path(source: SourceRef) -> Path:
     """Coerce ``source`` to a :class:`Path` for filesystem checks.
 
@@ -67,6 +74,62 @@ def _as_path(source: SourceRef) -> Path:
     every adapter accepts/rejects the same SourceRef shapes.
     """
     return normalize_to_path(source, adapter="ParquetAdapter")
+
+
+def _has_wkb_geometry(expr: TableExpr, column: str) -> bool:
+    """True when ``expr`` has a binary (WKB) column named ``column``.
+
+    The trigger for GeoParquet output. Binary dtype is the signal (WKB is the
+    canonical in-memory geometry encoding, per the geometry ADR); a plain
+    non-binary ``geometry`` column or no such column means a normal parquet
+    write. Only ibis expressions are inspected — the single compute engine post
+    the DuckDB consolidation.
+    """
+    import ibis
+
+    if not isinstance(expr, ibis.expr.types.Table) or column not in expr.columns:
+        return False
+    try:
+        return bool(expr[column].type().is_binary())
+    except Exception:  # pragma: no cover - defensive
+        return False
+
+
+def _geo_metadata(column: str, bounds: tuple[float, float, float, float] | None) -> dict:
+    """Build the GeoParquet ``geo`` file-metadata object for one WKB column.
+
+    ``crs`` is intentionally omitted — per the GeoParquet spec an absent ``crs``
+    means OGC:CRS84 (WGS84 lon/lat), which is exactly gmnspy's EPSG:4326 default.
+    Recording an explicit non-CRS84 CRS (PROJJSON) is a later slice. ``bbox`` is
+    included when computable; ``geometry_types`` is left ``[]`` (spec-valid,
+    "not enumerated") to avoid a second decode pass.
+    """
+    col: dict[str, Any] = {"encoding": "WKB", "geometry_types": []}
+    if bounds is not None:
+        col["bbox"] = [bounds[0], bounds[1], bounds[2], bounds[3]]
+    return {"version": _GEOPARQUET_VERSION, "primary_column": column, "columns": {column: col}}
+
+
+def _write_geoparquet(expr: TableExpr, dest_path: Path, column: str) -> None:
+    """Write ``expr`` as GeoParquet: a WKB ``column`` + the ``geo`` file metadata.
+
+    Materialises through pyarrow (the geometry column is already WKB binary) and
+    attaches the ``geo`` metadata to the file schema. Unlike the engine's
+    streaming ``write_parquet`` primitive this buffers the table, which is the
+    price of standards-compliant geometry metadata; non-geometry tables keep the
+    streaming path.
+    """
+    import json
+
+    import pyarrow.parquet as pq
+
+    from datagrove.dataset.geometry import geoparquet_bounds
+
+    bounds = geoparquet_bounds(expr, column)
+    table = expr.to_pyarrow()
+    meta = dict(table.schema.metadata or {})
+    meta[b"geo"] = json.dumps(_geo_metadata(column, bounds)).encode("utf-8")
+    pq.write_table(table.replace_schema_metadata(meta), str(dest_path))
 
 
 def _looks_partitioned(path: Path) -> bool:
@@ -299,9 +362,17 @@ class ParquetAdapter:
             True
         """
         partition_by = kwargs.pop("partition_by", None)
+        geometry_column = kwargs.pop("geometry_column", _DEFAULT_GEOMETRY_COLUMN)
 
         if partition_by:
             self._write_partitioned(expr, dest, engine, partition_by, **kwargs)
+            return
+
+        # GeoParquet: a WKB (binary) geometry column gets the `geo` file
+        # metadata so GDAL / geopandas / QGIS / duckdb read it as geometry.
+        # Falls through to a plain parquet write otherwise (full back-compat).
+        if _has_wkb_geometry(expr, geometry_column):
+            _write_geoparquet(expr, _as_path(dest), geometry_column)
             return
 
         # Single-file: defer to the engine's parquet primitive.
