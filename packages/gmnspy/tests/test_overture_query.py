@@ -93,3 +93,13 @@ class TestLocalSnapshotLayout:
         (tmp_path / "segment.parquet").write_bytes(b"")
         assert not is_local_snapshot(tmp_path)
         assert not is_local_snapshot(tmp_path / "segment.parquet")
+
+
+class TestCountSegments:
+    def test_count_matches_read(self, engine):
+        n = query.count_segments(WORLD_BBOX, network_type="drive", data_root=FIXTURE_ROOT, engine=engine)
+        assert n > 0
+        assert n == len(query.read_segments(WORLD_BBOX, network_type="drive", data_root=FIXTURE_ROOT, engine=engine))
+
+    def test_empty_bbox_counts_zero(self, engine):
+        assert query.count_segments((10.0, 10.0, 11.0, 11.0), data_root=FIXTURE_ROOT, engine=engine) == 0

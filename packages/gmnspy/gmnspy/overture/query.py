@@ -39,6 +39,7 @@ from . import attrs
 
 __all__ = [
     "OVERTURE_RELEASE",
+    "count_segments",
     "fetch_network_elements",
     "overture_data_root",
     "point_buffer_bbox",
@@ -255,6 +256,55 @@ def _bbox_intersects(table: Any, bbox: tuple[float, float, float, float]) -> Any
 # ---------------------------------------------------------------------------
 
 
+def _matching_segments(
+    bbox: tuple[float, float, float, float],
+    network_type: str,
+    overture_release: str,
+    data_root: str | None,
+    engine: Any,
+) -> Any:
+    """The lazy ibis table of road segments in ``bbox`` allowed for ``network_type`` (bbox + class pushed down)."""
+    source = _type_source(overture_data_root(overture_release, data_root), "segment")
+    _prepare_backend(engine, source)
+    table = engine.read_parquet(source, hive_partitioning=source.endswith("/*"))
+    available = set(table.columns)
+    predicate = _bbox_intersects(table, bbox)
+    if "subtype" in available:
+        predicate = predicate & (table.subtype == _ROAD_SUBTYPE)
+    allowed = attrs.allowed_classes(network_type)
+    if allowed and "class" in available:
+        predicate = predicate & table["class"].isin(sorted(allowed))
+    return table.filter(predicate)
+
+
+def count_segments(
+    bbox: tuple[float, float, float, float],
+    *,
+    network_type: str = "drive",
+    overture_release: str = OVERTURE_RELEASE,
+    data_root: str | None = None,
+    engine: Any = None,
+) -> int:
+    """Count the road segments :func:`read_segments` would return, without reading their geometry.
+
+    The same bbox + ``class`` predicates as the read, so it is the cheap pre-query the workbench's
+    build estimate sizes a request with.
+
+    Args:
+        bbox: ``(west, south, east, north)`` in EPSG:4326.
+        network_type: One of ``drive``/``walk``/``bike``/``all``.
+        overture_release: Pinned release string (ignored when ``data_root`` set).
+        data_root: Override base URI (Azure mirror / local snapshot dir).
+        engine: Compute engine (default: datagrove ibis/duckdb).
+
+    Returns:
+        The number of matching segments.
+    """
+    return int(
+        _matching_segments(bbox, network_type, overture_release, data_root, engine or get_engine()).count().execute()
+    )
+
+
 def read_segments(
     bbox: tuple[float, float, float, float],
     *,
@@ -284,20 +334,8 @@ def read_segments(
     Returns:
         A list of segment records (``geometry`` as WKT + nested properties).
     """
-    engine = engine or get_engine()
-    root = overture_data_root(overture_release, data_root)
-    source = _type_source(root, "segment")
-    _prepare_backend(engine, source)
-
-    table = engine.read_parquet(source, hive_partitioning=source.endswith("/*"))
-    available = set(table.columns)
-    predicate = _bbox_intersects(table, bbox)
-    if "subtype" in available:
-        predicate = predicate & (table.subtype == _ROAD_SUBTYPE)
-    allowed = attrs.allowed_classes(network_type)
-    if allowed and "class" in available:
-        predicate = predicate & table["class"].isin(sorted(allowed))
-    filtered = table.filter(predicate)
+    filtered = _matching_segments(bbox, network_type, overture_release, data_root, engine or get_engine())
+    available = set(filtered.columns)
 
     wanted = [c for c in _SEGMENT_PROPERTY_COLUMNS if c in available]
     for path in extra_tags or []:
