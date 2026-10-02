@@ -26,25 +26,28 @@ def run_workbench(
     from gmnspy import workbench
     from gmnspy.config import SettingsError
     from gmnspy.workbench.actions import OpenNetwork
-    from gmnspy.workbench.paths import allowed_roots, is_allowed, is_url, split_source
+    from gmnspy.workbench.errors import PathNotAllowed
+    from gmnspy.workbench.paths import allowed_roots, is_allowed, local_locator, split_source
 
     flags = {"select.provider": provider, "viz.basemap": basemap, "app.host": host, "app.port": port}
     overrides = {k: v for k, v in flags.items() if v is not None}
-    from gmnspy.workbench.errors import PathNotAllowed
-
-    def _local(source: str) -> str:
-        # duckdb:// and file:// sources are local paths: trust (and open) the path itself. An
-        # unsupported scheme passes through unchanged, and OpenNetwork reports it below.
+    to_open: list[str] = []
+    trusted: list[str] = []  # local paths named on the command line (candidates for io.allowed_roots)
+    for source in map(str, sources):
         try:
-            return str(Path(split_source(source)[1]).resolve())
-        except PathNotAllowed:
-            return source
-
-    resolved = [s if is_url(s) else _local(s) for s in map(str, sources)]
+            kind, target = split_source(source)
+            path = None if kind == "remote" else str(Path(target).expanduser().resolve())
+        except (PathNotAllowed, RuntimeError, ValueError, OSError):
+            path = None  # unsupported scheme or unusable path: never trusted; OpenNetwork reports it below
+        if path is None:
+            to_open.append(source)
+            continue
+        trusted.append(path)
+        to_open.append(local_locator(source, path))  # keeps a duckdb:// format hint
     try:
         session = workbench.Session(overrides=overrides)
         # Sources named on the command line are trusted: allow exactly those paths for this session.
-        extra = [s for s in resolved if not is_url(s) and not is_allowed(s, session.settings)]
+        extra = [p for p in trusted if not is_allowed(p, session.settings)]
         if extra:
             roots = [str(r) for r in allowed_roots(session.settings)] + extra
             session = workbench.Session(overrides={**overrides, "io.allowed_roots": roots})
@@ -52,7 +55,7 @@ def run_workbench(
     except SettingsError as exc:
         typer.echo(f"error: {exc}", err=True)
         raise typer.Exit(2) from exc
-    for source in resolved:
+    for source in to_open:
         try:
             session.dispatch(OpenNetwork(source=source))
         except workbench.ActionError as exc:

@@ -113,3 +113,21 @@ def test_cli_does_not_widen_roots_when_already_allowed(served, monkeypatch, rdu_
     result = runner.invoke(app, ["app", rdu_source])
     assert result.exit_code == 0 and "allowing" not in result.output
     assert served[0].loaded.sources["io.allowed_roots"] == "env"
+
+
+def test_cli_expands_user_in_trusted_sources(served, monkeypatch, rdu_source, tmp_path):
+    home = Path(rdu_source).parent.parent
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("GMNSPY_IO__ALLOWED_ROOTS", json.dumps([str(tmp_path / "elsewhere")]))
+    rel = Path(rdu_source).resolve().relative_to(home.resolve())
+    result = runner.invoke(app, ["app", f"~/{rel}"])
+    assert result.exit_code == 0, result.output
+    assert served[0].registry.ids() == ["rdu-i40"]
+    assert str(Path(rdu_source).resolve()) in served[0].settings.io.allowed_roots
+
+
+def test_cli_never_trusts_unsupported_schemes(served, monkeypatch, tmp_path):
+    monkeypatch.setenv("GMNSPY_IO__ALLOWED_ROOTS", json.dumps([str(tmp_path)]))
+    result = runner.invoke(app, ["app", "ftp://example.invalid/net"])
+    assert result.exit_code == 1 and "unsupported URL scheme" in result.output
+    assert "allowing" not in result.output

@@ -57,7 +57,7 @@ from .errors import ActionError, ApprovalRequired, JobCancelled, NotSupportedYet
 from .estimate import Estimate, needs_approval
 from .events import EventBus
 from .jobs import Job, JobContext, JobRunner
-from .paths import classify_source
+from .paths import open_locator
 from .registry import NetworkHandle, NetworkRegistry, as_pandas
 from .selection import selection_payload, unparsed_payload
 
@@ -301,8 +301,7 @@ class Session:
 
     def _job_open_network(self, action: OpenNetwork, ctx: JobContext) -> dict[str, Any]:
         settings = self.settings
-        _, target = classify_source(action.source, settings)  # only remote URLs skip io.allowed_roots
-        source = str(target)
+        source = open_locator(action.source, settings)  # only remote URLs skip io.allowed_roots
         ctx.stage("open", progress=0.1)
         net, frames = self._load(source, settings.io.spec_version)
         ctx.stage("register", progress=0.9)  # last cancellation checkpoint

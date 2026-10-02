@@ -529,3 +529,23 @@ def test_from_tables_constructor() -> None:
     )
     p = Package.from_tables({"link": link, "node": node}, spec=pkg, engine=e)
     assert set(p.keys()) == {"link", "node"}
+
+
+@pytest.mark.parametrize(
+    ("path", "expected"),
+    [
+        ("s3://b/k.parquet", True),
+        ("HTTPS://x.org/n.csv", True),
+        ("duckdb:///tmp/x.duckdb", False),
+        ("C:\\data\\net", False),
+        ("relative/net", False),
+    ],
+)
+def test_looks_remote_agrees_with_dispatch_scheme(path: str, expected: bool) -> None:
+    """``_looks_remote`` uses the same urlparse scheme as ``dispatch`` (``_scheme_of``), so they can't disagree."""
+    from datagrove.dataset.package import _looks_remote
+    from datagrove.io import _scheme_of
+    from datagrove.io.remote import REMOTE_SCHEMES
+
+    assert _looks_remote(path) is expected
+    assert _looks_remote(path) is (_scheme_of(path) in REMOTE_SCHEMES)

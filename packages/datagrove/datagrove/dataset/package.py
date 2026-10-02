@@ -1155,12 +1155,12 @@ def _looks_remote(path: str) -> bool:
     # (io self-registers RemoteAdapter at module import, which is
     # what populates REMOTE_SCHEMES — we want the import to fire
     # the first time _looks_remote runs, not at package.py load).
+    from datagrove.io import _scheme_of
     from datagrove.io.remote import REMOTE_SCHEMES
 
-    head, sep, _ = path.partition("://")
-    if not sep:
-        return False
-    return head.lower() in REMOTE_SCHEMES
+    # Same urlparse-based scheme as ``dispatch`` (via ``_scheme_of``), so the two can never
+    # disagree about whether a string is remote.
+    return _scheme_of(path) in REMOTE_SCHEMES
 
 
 def _scan_source(source_str: str, *, format: str | None = None) -> ResourceListing:

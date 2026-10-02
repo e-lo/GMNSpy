@@ -379,3 +379,15 @@ def test_cancel_during_write_removes_the_staged_output(make_session, out_dir, mo
     release.set()
     assert job.wait(WAIT) and session.jobs.snapshot(job)["status"] == "cancelled"
     assert list(Path(out_dir).iterdir()) == [] and len(session.registry) == 0
+
+
+def test_open_duckdb_url_without_duckdb_extension(make_session, tmp_path):
+    import shutil
+    from importlib import resources
+
+    db = tmp_path / "net.db"
+    shutil.copy(str(resources.files("gmnspy.fixtures.leavenworth").joinpath("leavenworth.duckdb")), db)
+    session = make_session()
+    net_id = session.dispatch(OpenNetwork(source=f"duckdb://{db}"))["net_id"]
+    assert len(session.registry.get(net_id).links_df()) > 0
+    assert session.registry.get(net_id).source == f"duckdb://{db.resolve()}"

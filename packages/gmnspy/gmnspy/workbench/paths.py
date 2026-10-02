@@ -22,7 +22,17 @@ from gmnspy.config import Settings
 
 from .errors import PathNotAllowed
 
-__all__ = ["SourceKind", "allowed_roots", "classify_source", "is_allowed", "is_url", "resolve_allowed", "split_source"]
+__all__ = [
+    "SourceKind",
+    "allowed_roots",
+    "classify_source",
+    "is_allowed",
+    "is_url",
+    "local_locator",
+    "open_locator",
+    "resolve_allowed",
+    "split_source",
+]
 
 
 SourceKind = Literal["remote", "local"]
@@ -36,7 +46,10 @@ def _scheme(source: str) -> str:
 
 def is_url(source: str) -> bool:
     """Whether ``source`` is a remote URL (a scheme in datagrove's ``REMOTE_SCHEMES``)."""
-    return _scheme(str(source)) in REMOTE_SCHEMES
+    try:
+        return split_source(source)[0] == "remote"
+    except PathNotAllowed:
+        return False
 
 
 def split_source(source: str) -> tuple[SourceKind, str]:
@@ -46,6 +59,10 @@ def split_source(source: str) -> tuple[SourceKind, str]:
     :class:`PathNotAllowed` for an fsspec ``::`` chain or any other scheme.
     """
     source = str(source)
+    # urlsplit drops leading whitespace/C0 characters and deletes tab/CR/LF, so " s3://..." or
+    # "s\t3://..." would look remote here while datagrove reads them as relative local paths.
+    if source != source.strip() or any(ord(c) < 32 or ord(c) == 127 for c in source):
+        raise PathNotAllowed(f"{source!r}: sources must not have surrounding whitespace or control characters")
     if "::" in source:
         raise PathNotAllowed(f"{source}: chained (::) URLs are not supported")
     scheme = _scheme(source)
@@ -71,6 +88,21 @@ def classify_source(source: str, settings: Settings) -> tuple[SourceKind, str | 
     """
     kind, target = split_source(source)
     return (kind, target) if kind == "remote" else (kind, resolve_allowed(target, settings))
+
+
+def local_locator(source: str, path: str | Path) -> str:
+    """What to open for local ``path`` named by ``source``: keeps a ``duckdb://`` format hint (``net.db``)."""
+    return f"duckdb://{path}" if _scheme(str(source)) == "duckdb" else str(path)
+
+
+def open_locator(source: str, settings: Settings) -> str:
+    """The locator to hand ``Network.from_source``: the remote URL, or the checked local path.
+
+    Like :func:`classify_source` (and raises the same errors), but a ``duckdb://`` source stays
+    ``duckdb://<resolved path>`` so a DuckDB file without a ``.duckdb`` extension still opens.
+    """
+    kind, target = classify_source(source, settings)
+    return str(target) if kind == "remote" else local_locator(source, target)
 
 
 def allowed_roots(settings: Settings) -> list[Path]:

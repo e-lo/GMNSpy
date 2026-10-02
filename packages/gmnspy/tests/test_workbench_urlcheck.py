@@ -76,6 +76,11 @@ def test_unsupported_scheme():
     assert report["reachable"] is False and "unsupported URL scheme" in report["error"]
 
 
+def test_chained_url_is_rejected():
+    report = check_url("simplecache::s3://bucket/net")
+    assert report["reachable"] is False and "chained" in report["error"]
+
+
 def test_file_scheme_is_rejected():
     report = check_url("file:///etc/passwd")
     assert report["reachable"] is False

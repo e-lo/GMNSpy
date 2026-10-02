@@ -22,13 +22,12 @@ from urllib.parse import urlsplit
 
 import fsspec
 from datagrove.io.credentials import credential_source, resolve_credentials
+from datagrove.io.remote import REMOTE_SCHEMES
 
-__all__ = ["REMOTE_SCHEMES", "check_url"]
+__all__ = ["check_url"]
 
 logger = logging.getLogger(__name__)
 
-#: URL schemes the wizard accepts for "GMNS at a URL" (the datagrove remote adapter's schemes).
-REMOTE_SCHEMES = ("http", "https", "s3", "gs", "gcs", "az", "abfs", "abfss")
 
 _TABLE_SUFFIXES = (".csv", ".parquet")
 #: Cap on how many directory entries we *process* when listing tables. ``fs.ls`` itself may still
@@ -151,6 +150,9 @@ def _check_url(url: str, *, url_to_fs: Callable[..., tuple[Any, str]], timeout_s
         "error": None,
     }
     scheme = parts.scheme.lower()
+    if "::" in url:
+        report["error"] = "chained (::) URLs are not supported; give a single remote URL"
+        return report
     if scheme == "file":
         report["error"] = "file:// is not accepted here; use the local file browser for local paths"
         return report

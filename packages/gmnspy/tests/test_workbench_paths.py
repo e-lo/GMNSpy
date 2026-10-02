@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 from gmnspy.config import Settings
 from gmnspy.workbench.errors import PathNotAllowed
-from gmnspy.workbench.paths import allowed_roots, classify_source, is_allowed, is_url, resolve_allowed
+from gmnspy.workbench.paths import allowed_roots, classify_source, is_allowed, is_url, open_locator, resolve_allowed
 
 
 def _settings(*roots: Path) -> Settings:
@@ -100,3 +100,17 @@ def test_unusable_local_path_is_path_not_allowed(tmp_path, bad):
     with pytest.raises(PathNotAllowed, match="not a usable local path"):
         resolve_allowed(bad, _settings(tmp_path))
     assert not is_allowed(bad, _settings(tmp_path))
+
+
+@pytest.mark.parametrize("bad", [" s3://b/../../secret/link.parquet", "\x01s3://b/k", "s\t3://b/k", "s3://b/k\n"])
+def test_whitespace_and_control_characters_are_rejected(tmp_path, bad):
+    with pytest.raises(PathNotAllowed, match="whitespace or control characters"):
+        classify_source(bad, _settings(tmp_path))
+    assert not is_url(bad)
+
+
+def test_open_locator_keeps_the_duckdb_hint(tmp_path):
+    db = tmp_path / "net.db"
+    assert open_locator(f"duckdb://{db}", _settings(tmp_path)) == f"duckdb://{db.resolve()}"
+    assert open_locator(str(db), _settings(tmp_path)) == str(db.resolve())
+    assert open_locator("s3://b/k", _settings(tmp_path)) == "s3://b/k"
