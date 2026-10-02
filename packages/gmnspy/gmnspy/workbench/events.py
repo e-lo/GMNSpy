@@ -12,7 +12,17 @@ import json
 import threading
 from typing import Any
 
-__all__ = ["EventBus", "sse_format"]
+__all__ = ["MAX_QUEUED_EVENTS", "EventBus", "sse_format"]
+
+#: Cap per-subscriber queue depth so a stalled browser tab can't grow memory without bound.
+MAX_QUEUED_EVENTS = 256
+
+
+def _put_drop_oldest(queue: asyncio.Queue, event: dict[str, Any]) -> None:
+    """Put ``event`` on ``queue``, dropping the oldest item first if it's full (newest wins)."""
+    if queue.full():
+        queue.get_nowait()
+    queue.put_nowait(event)
 
 
 class EventBus:
@@ -25,7 +35,7 @@ class EventBus:
 
     def subscribe(self) -> asyncio.Queue:
         """Return a new queue fed by :meth:`publish`. Must be called inside a running event loop."""
-        queue: asyncio.Queue = asyncio.Queue()
+        queue: asyncio.Queue = asyncio.Queue(maxsize=MAX_QUEUED_EVENTS)
         with self._lock:
             self._subs.append((asyncio.get_running_loop(), queue))
         return queue
@@ -47,7 +57,7 @@ class EventBus:
             subs = list(self._subs)
         for loop, queue in subs:
             try:
-                loop.call_soon_threadsafe(queue.put_nowait, event)
+                loop.call_soon_threadsafe(_put_drop_oldest, queue, event)
             except RuntimeError:  # loop closed: the client went away without unsubscribing
                 self.unsubscribe(queue)
 

@@ -4,7 +4,7 @@ import asyncio
 import json
 import threading
 
-from gmnspy.workbench.events import EventBus, sse_format
+from gmnspy.workbench.events import MAX_QUEUED_EVENTS, EventBus, sse_format
 
 
 def test_publish_from_another_thread_reaches_subscriber():
@@ -35,6 +35,21 @@ def test_unsubscribe_stops_delivery():
 
 def test_publish_with_no_subscribers_is_a_noop():
     EventBus().publish({"type": "ping"})
+
+
+def test_queue_drops_oldest_when_full():
+    bus = EventBus()
+
+    async def main():
+        q = bus.subscribe()
+        for i in range(MAX_QUEUED_EVENTS + 5):
+            bus.publish({"type": "n", "i": i})
+        await asyncio.sleep(0)
+        return q.qsize(), await q.get()
+
+    qsize, first = asyncio.run(main())
+    assert qsize == MAX_QUEUED_EVENTS
+    assert first["i"] == 5
 
 
 def test_sse_format():
