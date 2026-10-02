@@ -15,10 +15,12 @@ from typing import Annotated, Any, ClassVar, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, model_validator
 
-from .registry import Component
+from .area import Area
+from .registry import Component, default_label
 
 __all__ = [
     "Action",
+    "BuildNetwork",
     "ClearSelection",
     "CloseNetwork",
     "Navigate",
@@ -41,6 +43,10 @@ class _Action(BaseModel):
     runs_as_job: ClassVar[bool] = False
     replay_overrides: ClassVar[dict[str, Any]] = {}
 
+    def job_label(self) -> str:
+        """The label a ``runs_as_job`` action's background job shows in the jobs panel."""
+        return self.type.replace("_", " ")
+
 
 class OpenNetwork(_Action):
     """Load a GMNS network from a local path (inside ``io.allowed_roots``) or URL and make it active."""
@@ -50,6 +56,10 @@ class OpenNetwork(_Action):
     source: str
     label: str | None = None
     net_id: str | None = None
+
+    def job_label(self) -> str:
+        """``open <name>``, named after the source."""
+        return f"open {default_label(self.source)}"
 
 
 class CloseNetwork(_Action):
@@ -126,8 +136,56 @@ class SetSetting(_Action):
     scope: Literal["session", "user", "project"] = "session"
 
 
+class BuildNetwork(_Action):
+    """Build a GMNS network from OSM or Overture, write it to ``output_dir``, then open it from disk.
+
+    Give exactly one of ``area`` (fetch from the service) or ``input_file`` (a local ``.osm`` /
+    Overpass ``.json`` for OSM, or a local snapshot folder for Overture). Without ``approved``, a
+    build whose estimate is over ``app.approve_above_s``, or cannot be estimated, fails with
+    :class:`~gmnspy.workbench.errors.ApprovalRequired` (carrying the estimate). A replayed snippet
+    always passes ``approved=True``: re-running a recorded build counts as approval.
+    """
+
+    type: Literal["build_network"] = "build_network"
+    mutates: ClassVar[bool] = True
+    runs_as_job: ClassVar[bool] = True
+    replay_overrides: ClassVar[dict[str, Any]] = {"approved": True}
+    source: Literal["osm", "overture"]
+    area: Area | None = None
+    input_file: str | None = None
+    output_dir: str
+    output_format: Literal["parquet", "csv", "duckdb", "zip"]
+    name: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9_.-]*$", max_length=100)
+    network_type: str = "drive"
+    extra_tags: list[str] | None = None
+    spec_version: str | None = None
+    overture_release: str | None = None
+    label: str | None = None
+    approved: bool = False
+
+    @model_validator(mode="after")
+    def _one_input(self) -> BuildNetwork:
+        if (self.area is None) == (self.input_file is None):
+            raise ValueError("give exactly one of area or input_file")
+        if self.overture_release is not None and self.source != "overture":
+            raise ValueError("overture_release only applies to source='overture'")
+        return self
+
+    def job_label(self) -> str:
+        """``build <name>``, named after the output."""
+        return f"build {self.name}"
+
+
 Action = Annotated[
-    OpenNetwork | CloseNetwork | SetActiveNetwork | Select | ClearSelection | Style | Navigate | SetSetting,
+    OpenNetwork
+    | BuildNetwork
+    | CloseNetwork
+    | SetActiveNetwork
+    | Select
+    | ClearSelection
+    | Style
+    | Navigate
+    | SetSetting,
     Field(discriminator="type"),
 ]
 _ADAPTER: TypeAdapter[Action] = TypeAdapter(Action)

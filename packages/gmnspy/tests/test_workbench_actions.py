@@ -2,6 +2,7 @@
 
 import pytest
 from gmnspy.workbench.actions import (
+    BuildNetwork,
     Navigate,
     OpenNetwork,
     Select,
@@ -71,3 +72,52 @@ def test_action_json_schema_lists_every_type():
 def test_open_network_is_a_job_action():
     assert OpenNetwork.runs_as_job and not Select.runs_as_job and not OpenNetwork.mutates
     assert OpenNetwork.replay_overrides == {}
+
+
+_BUILD = {"source": "osm", "output_dir": "/out", "output_format": "parquet", "name": "durham"}
+
+
+def test_build_network_is_a_mutating_job_action():
+    assert BuildNetwork.runs_as_job and BuildNetwork.mutates and BuildNetwork.replay_overrides == {"approved": True}
+
+
+def test_job_labels_are_per_action():
+    assert BuildNetwork(**_BUILD, input_file="/x.osm").job_label() == "build durham"
+    assert OpenNetwork(source="/data/durham").job_label() == "open durham"
+
+
+def test_build_network_needs_exactly_one_of_area_or_input_file():
+    with pytest.raises(ValidationError, match="exactly one of area or input_file"):
+        BuildNetwork(**_BUILD)
+    with pytest.raises(ValidationError, match="exactly one of area or input_file"):
+        BuildNetwork(**_BUILD, input_file="/x.osm", area={"kind": "bbox", "bbox": (-79, 35, -78, 36)})
+    assert BuildNetwork(**_BUILD, input_file="/x.osm").approved is False
+
+
+def test_build_network_name_is_a_plain_file_name():
+    for bad in ("../escape", "a/b", ".hidden", ""):
+        with pytest.raises(ValidationError):
+            BuildNetwork(**{**_BUILD, "name": bad}, input_file="/x.osm")
+
+
+def test_overture_release_only_with_overture():
+    with pytest.raises(ValidationError, match="overture_release"):
+        BuildNetwork(**_BUILD, input_file="/x.osm", overture_release="2025-12-17.0")
+
+
+def test_build_network_parses_from_json_with_area_union():
+    a = parse_action(
+        {"type": "build_network", **_BUILD, "area": {"kind": "point", "lat": 36, "lon": -79, "buffer_m": 500}}
+    )
+    assert isinstance(a, BuildNetwork) and a.area.kind == "point"
+
+
+def test_build_snippet_keeps_area_kind_and_forces_approval():
+    a = BuildNetwork(**_BUILD, area={"kind": "bbox", "bbox": (-79, 35, -78, 36)})
+    py = to_python(a)
+    assert py == (
+        "app.do(BuildNetwork(source='osm', area={'kind': 'bbox', 'bbox': (-79.0, 35.0, -78.0, 36.0)}, "
+        "output_dir='/out', output_format='parquet', name='durham', approved=True))"
+    )
+    replayed = eval(py.removeprefix("app.do(").removesuffix(")"), {"BuildNetwork": BuildNetwork})
+    assert replayed == a.model_copy(update={"approved": True})

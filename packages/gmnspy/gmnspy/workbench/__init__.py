@@ -9,6 +9,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from .actions import (
+    BuildNetwork,
     ClearSelection,
     CloseNetwork,
     Navigate,
@@ -18,18 +19,27 @@ from .actions import (
     SetSetting,
     Style,
 )
-from .session import ActionError, NotSupportedYet, Session
+from .area import BboxArea, PlaceArea, PointArea
+from .errors import ActionError, ApprovalRequired, JobCancelled, NotSupportedYet, PathNotAllowed
+from .session import Session
 
 if TYPE_CHECKING:
     from fastapi import FastAPI
 
 __all__ = [
     "ActionError",
+    "ApprovalRequired",
+    "BboxArea",
+    "BuildNetwork",
     "ClearSelection",
     "CloseNetwork",
+    "JobCancelled",
     "Navigate",
     "NotSupportedYet",
     "OpenNetwork",
+    "PathNotAllowed",
+    "PlaceArea",
+    "PointArea",
     "Select",
     "Session",
     "SetActiveNetwork",

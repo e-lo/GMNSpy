@@ -29,6 +29,8 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
+from datagrove.engines.ibis_engine import IbisEngine
+
 from gmnspy import Network
 from gmnspy.config import LoadedSettings, Settings, SettingsError, get_value, load_settings, save_setting
 from gmnspy.select.intent import SelectionIntent
@@ -36,8 +38,10 @@ from gmnspy.select.parse import ClaudeParser, StubParser
 from gmnspy.select.resolve import resolve_frames
 from gmnspy.viz.styling import styleable_columns
 
+from . import build
 from .actions import (
     Action,
+    BuildNetwork,
     ClearSelection,
     CloseNetwork,
     Navigate,
@@ -49,14 +53,15 @@ from .actions import (
     parse_action,
     to_python,
 )
-from .errors import ActionError, JobCancelled, NotSupportedYet, PathNotAllowed
+from .errors import ActionError, ApprovalRequired, JobCancelled, NotSupportedYet, PathNotAllowed
+from .estimate import Estimate, needs_approval
 from .events import EventBus
 from .jobs import Job, JobContext, JobRunner
 from .paths import classify_source
-from .registry import NetworkHandle, NetworkRegistry, as_pandas, default_label
+from .registry import NetworkHandle, NetworkRegistry, as_pandas
 from .selection import selection_payload, unparsed_payload
 
-__all__ = ["DEFAULT_STYLE", "ActionError", "HistoryEntry", "NotSupportedYet", "Session"]
+__all__ = ["DEFAULT_STYLE", "ActionError", "ApprovalRequired", "HistoryEntry", "NotSupportedYet", "Session"]
 
 logger = logging.getLogger(__name__)
 
@@ -146,6 +151,8 @@ class Session:
         entry = self.dispatch_recorded(action)
         if entry.ok:
             return entry.result
+        if entry.error_type == "ApprovalRequired":
+            raise ApprovalRequired(Estimate(**entry.result["estimate"]), entry.result["threshold_s"])
         raise _ERROR_TYPES.get(entry.error_type or "", ActionError)(entry.error)
 
     do = dispatch
@@ -191,9 +198,11 @@ class Session:
         if not action.runs_as_job:
             raise ValueError(f"{action.type} is not a job action; use dispatch()")
         run = getattr(self, f"_job_{action.type}")
-        label = f"open {default_label(action.source)}"
         return self.jobs.submit(
-            action.type, label, lambda ctx: run(action, ctx), on_finish=lambda job: self._finish(action, job)
+            action.type,
+            action.job_label(),
+            lambda ctx: run(action, ctx),
+            on_finish=lambda job: self._finish(action, job),
         )
 
     def _finish(self, action: Action, job: Job) -> None:
@@ -299,6 +308,31 @@ class Session:
         ctx.stage("register", progress=0.9)  # last cancellation checkpoint
         handle = self._register(net, frames, source=source, label=action.label, net_id=action.net_id)
         return {"net_id": handle.id}
+
+    def _job_build_network(self, action: BuildNetwork, ctx: JobContext) -> dict[str, Any]:
+        settings = self.settings
+        plan = build.plan_build(action, settings)
+        with build.staging(plan.dest) as tmp:  # removes the partial output on any failure, cancel included
+            engine = IbisEngine()  # private connection: never shared with the networks the browser reads
+            try:
+                ctx.stage("estimate", progress=0.0)
+                estimate = build.estimate_for(action, plan, settings, http=self.http, engine=engine)
+                threshold = settings.app.approve_above_s
+                if not action.approved and needs_approval(estimate, threshold):
+                    raise ApprovalRequired(estimate, threshold)
+                net = build.fetch_and_convert(
+                    action, plan, settings, ctx, estimate=estimate, http=self.http, engine=engine
+                )
+                build.write_output(net, tmp, action.output_format, ctx)
+            finally:
+                engine.close()
+            # Last cancellation checkpoint: once the output is promoted the build is done, so a later
+            # cancel cannot leave a finished output on disk that the history calls cancelled.
+            ctx.stage("open", progress=0.9)
+            build.promote(tmp, plan.dest)
+        loaded, frames = self._load(str(plan.dest), action.spec_version or settings.io.spec_version)
+        handle = self._register(loaded, frames, source=str(plan.dest), label=action.label or action.name)
+        return {"net_id": handle.id, "output": str(plan.dest), "estimate": estimate.to_dict()}
 
     def _do_close_network(self, action: CloseNetwork) -> None:
         self._handle(action.net_id)
