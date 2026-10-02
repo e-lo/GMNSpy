@@ -50,7 +50,7 @@ __all__ = [
 # Pinned, known-good Overture release (date-versioned). Bump this one constant to
 # move to a newer release; pinning keeps builds reproducible (a re-run of the same
 # area returns the same network). Override per-call with ``overture_release=``.
-OVERTURE_RELEASE = "2024-11-13.0"
+OVERTURE_RELEASE = "2025-12-17.0"  # latest Overture release (schema v1.15.0); overridable via overture_release=
 
 # Default AWS public bucket base (anonymous read). Override via ``data_root=``
 # for the Azure mirror or a local snapshot.
