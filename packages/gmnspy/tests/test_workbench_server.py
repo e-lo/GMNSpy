@@ -101,3 +101,35 @@ def test_ipv6_loopback_bind_accepts_bracketed_host(tmp_path, isolated_env, rdu_s
     ipv6_client = TestClient(build_app(session))
     assert ipv6_client.get("/", headers={"host": "[::1]:8850"}).status_code == 200
     assert ipv6_client.get("/", headers={"host": "evil.example"}).status_code == 400
+
+
+def test_post_with_foreign_origin_is_403(client):
+    r = client.post("/api/actions", json={"type": "clear_selection"}, headers={"Origin": "https://evil.example"})
+    assert r.status_code == 403
+
+
+def test_post_with_cross_site_sec_fetch_is_403(client):
+    r = client.post("/api/actions", json={"type": "clear_selection"}, headers={"Sec-Fetch-Site": "cross-site"})
+    assert r.status_code == 403
+
+
+def test_post_with_matching_origin_is_ok(client):
+    r = client.post("/api/actions", json={"type": "clear_selection"}, headers={"Origin": "http://127.0.0.1:8850"})
+    assert r.status_code == 200
+
+
+def test_post_with_no_origin_is_ok(client):
+    """CLI/curl/TestClient callers send no Origin header at all."""
+    r = client.post("/api/actions", json={"type": "clear_selection"})
+    assert r.status_code == 200
+
+
+def test_get_with_foreign_origin_still_ok(client):
+    """Reads are harmless; the Host guard already covers DNS rebinding."""
+    r = client.get("/", headers={"Origin": "https://evil.example"})
+    assert r.status_code == 200
+
+
+def test_post_with_null_origin_is_403(client):
+    r = client.post("/api/actions", json={"type": "clear_selection"}, headers={"Origin": "null"})
+    assert r.status_code == 403

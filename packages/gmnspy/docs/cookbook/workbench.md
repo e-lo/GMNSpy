@@ -26,9 +26,11 @@ them with the network picker. `gmnspy viz` and `gmnspy select-serve` are aliases
 uv run gmnspy app ./base ./build --port 8900 --basemap esri --provider claude
 ```
 
-The server binds `127.0.0.1` by default and, while bound to a loopback host, only accepts requests whose
-`Host` header names that same loopback address. `--host 0.0.0.0` exposes it to the rest of the network —
-there's no authentication in front of it, so don't do that on a shared network.
+The server binds `127.0.0.1` by default. While bound to a local host (`127.0.0.1`, `localhost`, or `[::1]`),
+it only accepts requests whose `Host` header names that same local address, and it rejects any cross-origin
+write (a POST from a page with a different origin, or flagged `Sec-Fetch-Site: cross-site`). `--host 0.0.0.0`
+exposes it to the rest of the network — there's no authentication in front of it, so don't do that on a
+shared network.
 
 ## Settings
 

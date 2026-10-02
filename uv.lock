@@ -1196,7 +1196,7 @@ requires-dist = [
     { name = "anywidget", marker = "extra == 'notebook'", specifier = ">=0.9" },
     { name = "datagrove", editable = "packages/datagrove" },
     { name = "duckdb", marker = "extra == 'dev-fixtures'", specifier = ">=1.0" },
-    { name = "fastapi", marker = "extra == 'server'", specifier = ">=0.110" },
+    { name = "fastapi", marker = "extra == 'server'", specifier = ">=0.132.0" },
     { name = "geopandas", marker = "extra == 'clean'", specifier = ">=1.0" },
     { name = "gmnspy", extras = ["clean", "server", "mcp", "notebook", "osm", "overture", "graph", "reports", "nl", "bench"], marker = "extra == 'all'" },
     { name = "httpx", marker = "extra == 'server'", specifier = ">=0.27" },
