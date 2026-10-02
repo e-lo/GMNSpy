@@ -819,16 +819,16 @@ s3 = [
 [package.metadata]
 requires-dist = [
     { name = "adlfs", marker = "extra == 'azure'", specifier = ">=2024.3" },
-    { name = "duckdb", specifier = ">=1.0,<1.2" },
+    { name = "duckdb", specifier = ">=1.1" },
     { name = "fsspec", specifier = ">=2024.3" },
     { name = "gcsfs", marker = "extra == 'gcs'", specifier = ">=2024.3" },
-    { name = "ibis-framework", extras = ["duckdb"], specifier = ">=9.0,<10" },
+    { name = "ibis-framework", extras = ["duckdb"], specifier = ">=10" },
     { name = "jinja2", specifier = ">=3.1" },
     { name = "keyring", marker = "extra == 'keyring'", specifier = ">=24" },
     { name = "mcp", marker = "extra == 'mcp'", specifier = ">=1.0" },
     { name = "pandas", marker = "extra == 'pandas'", specifier = ">=2.2" },
     { name = "polars", marker = "extra == 'polars'", specifier = ">=1.0" },
-    { name = "pyarrow", specifier = ">=16" },
+    { name = "pyarrow", specifier = ">=17" },
     { name = "pydantic", specifier = ">=2.6" },
     { name = "rich", specifier = ">=13" },
     { name = "s3fs", marker = "extra == 's3'", specifier = ">=2024.3" },
@@ -1131,6 +1131,7 @@ all = [
     { name = "numpy" },
     { name = "openpyxl" },
     { name = "pandas" },
+    { name = "psutil" },
     { name = "pydantic-settings" },
     { name = "pyproj" },
     { name = "pyyaml" },
@@ -1138,6 +1139,9 @@ all = [
     { name = "scipy" },
     { name = "shapely" },
     { name = "uvicorn", extra = ["standard"] },
+]
+bench = [
+    { name = "psutil" },
 ]
 clean = [
     { name = "geopandas" },
@@ -1171,6 +1175,9 @@ osm = [
     { name = "pyyaml" },
     { name = "requests" },
 ]
+overture = [
+    { name = "pyyaml" },
+]
 reports = [
     { name = "jinja2" },
     { name = "openpyxl" },
@@ -1191,7 +1198,7 @@ requires-dist = [
     { name = "duckdb", marker = "extra == 'dev-fixtures'", specifier = ">=1.0" },
     { name = "fastapi", marker = "extra == 'server'", specifier = ">=0.110" },
     { name = "geopandas", marker = "extra == 'clean'", specifier = ">=1.0" },
-    { name = "gmnspy", extras = ["clean", "server", "mcp", "notebook", "osm", "graph", "reports", "nl"], marker = "extra == 'all'" },
+    { name = "gmnspy", extras = ["clean", "server", "mcp", "notebook", "osm", "overture", "graph", "reports", "nl", "bench"], marker = "extra == 'all'" },
     { name = "httpx", marker = "extra == 'server'", specifier = ">=0.27" },
     { name = "ipywidgets", marker = "extra == 'notebook'", specifier = ">=8.1" },
     { name = "jinja2", marker = "extra == 'reports'", specifier = ">=3.1" },
@@ -1202,10 +1209,12 @@ requires-dist = [
     { name = "osmnx", marker = "extra == 'dev-fixtures'", specifier = ">=1.9" },
     { name = "pandas", marker = "extra == 'dev-fixtures'", specifier = ">=2.2" },
     { name = "pandas", marker = "extra == 'graph'", specifier = ">=2.0" },
+    { name = "psutil", marker = "extra == 'bench'", specifier = ">=5.9" },
     { name = "pyarrow", marker = "extra == 'dev-fixtures'", specifier = ">=16" },
     { name = "pydantic-settings", marker = "extra == 'server'", specifier = ">=2.2" },
     { name = "pyproj", marker = "extra == 'clean'", specifier = ">=3.6" },
     { name = "pyyaml", marker = "extra == 'osm'", specifier = ">=6" },
+    { name = "pyyaml", marker = "extra == 'overture'", specifier = ">=6" },
     { name = "pyyaml", marker = "extra == 'reports'", specifier = ">=6" },
     { name = "requests", marker = "extra == 'osm'", specifier = ">=2" },
     { name = "scipy", marker = "extra == 'graph'", specifier = ">=1.11" },
@@ -1213,7 +1222,7 @@ requires-dist = [
     { name = "shapely", marker = "extra == 'dev-fixtures'", specifier = ">=2.0" },
     { name = "uvicorn", extras = ["standard"], marker = "extra == 'server'", specifier = ">=0.29" },
 ]
-provides-extras = ["osm", "clean", "graph", "server", "mcp", "nl", "notebook", "reports", "all", "dev-fixtures"]
+provides-extras = ["osm", "overture", "clean", "graph", "server", "mcp", "nl", "bench", "notebook", "reports", "all", "dev-fixtures"]
 
 [[package]]
 name = "google-api-core"
@@ -1678,20 +1687,20 @@ wheels = [
 
 [[package]]
 name = "ibis-framework"
-version = "9.5.0"
+version = "12.0.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "atpublic" },
     { name = "parsy" },
     { name = "python-dateutil" },
-    { name = "pytz" },
     { name = "sqlglot" },
     { name = "toolz" },
     { name = "typing-extensions" },
+    { name = "tzdata" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/32/86/31c9a61eb2c9c7ffe8959ff8c3e4a5d2e15d8e896e7562ba7796abeb5af9/ibis_framework-9.5.0.tar.gz", hash = "sha256:1c8a29277e63ee0dfc289bc8f550164b5e3bdaec1b76b62436c37d331bb4ef84", size = 1270088, upload_time = "2024-09-11T20:57:51.338Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/f2/8e/2e7ad9bdeaf45350da7beeb67a0d4317d400dac882825eb7c3bd4d3c6ae1/ibis_framework-12.0.0.tar.gz", hash = "sha256:238624f2c14fdab8382ca2f4f667c3cdb81e29844cd5f8db8a325d0743767c61", size = 1351369, upload_time = "2026-02-07T14:31:13.171Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/dd/a9/899888a3b49ee07856a0bab673652a82ea89999451a51fba4d99e65868f7/ibis_framework-9.5.0-py3-none-any.whl", hash = "sha256:145fe30d94f111cff332580c275ce77725c5ff7086eede93af0b371649d009c0", size = 1964985, upload_time = "2024-09-11T20:57:49.513Z" },
+    { url = "https://files.pythonhosted.org/packages/9d/b3/11d406849715b47c9d69bb22f50874f80caee96bd1cbe7b61abbebbf5a05/ibis_framework-12.0.0-py3-none-any.whl", hash = "sha256:0bbd790f268da9cb87926d5eaad2b827a573927113c4ed3be5095efa89b9e512", size = 2079219, upload_time = "2026-02-07T14:31:10.646Z" },
 ]
 
 [package.optional-dependencies]
@@ -1742,7 +1751,7 @@ name = "importlib-metadata"
 version = "9.0.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "zipp", marker = "python_full_version < '3.13'" },
+    { name = "zipp", marker = "python_full_version < '3.12'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/a9/01/15bb152d77b21318514a96f43af312635eb2500c96b55398d020c93d86ea/importlib_metadata-9.0.0.tar.gz", hash = "sha256:a4f57ab599e6a2e3016d7595cfd72eb4661a5106e787a95bcc90c7105b831efc", size = 56405, upload_time = "2026-03-20T06:42:56.999Z" }
 wheels = [

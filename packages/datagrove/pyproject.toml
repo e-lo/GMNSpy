@@ -30,9 +30,10 @@ classifiers = [
 ]
 dependencies = [
     "pydantic>=2.6",
-    "ibis-framework[duckdb]>=9.0,<10",  # 10+ changed create_table codegen; breaks from_records on duckdb
-    "duckdb>=1.0,<1.2",
-    "pyarrow>=16",
+    # ibis 10+ wrapped-memtable create_table fix is in ibis_engine.py; see from_records.
+    "ibis-framework[duckdb]>=10",
+    "duckdb>=1.1",
+    "pyarrow>=17",
     "fsspec>=2024.3",
     "rich>=13",
     "jinja2>=3.1",
