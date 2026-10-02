@@ -23,6 +23,7 @@ __all__ = [
     "MAX_LIMIT",
     "FilterError",
     "page_table",
+    "parse_ids",
     "table_list_entry",
     "table_schema",
 ]
@@ -75,6 +76,22 @@ def primary_key(name: str, columns: list[str]) -> str | None:
     if cand in columns:
         return cand
     return next((c for c in columns if c.endswith("_id")), None)
+
+
+def parse_ids(ids: str | None) -> list | None:
+    """Parse a comma-separated ``ids`` querystring into ints (fallback: strings); ``None`` when empty."""
+    if not ids:
+        return None
+    out: list = []
+    for tok in ids.split(","):
+        tok = tok.strip()
+        if not tok:
+            continue
+        try:
+            out.append(int(tok))
+        except ValueError:
+            out.append(tok)
+    return out or None
 
 
 def _is_frame(src: Any) -> bool:

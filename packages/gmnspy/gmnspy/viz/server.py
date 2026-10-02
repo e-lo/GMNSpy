@@ -5,6 +5,9 @@ index-aligned attribute payload for tooltips (`/api/network.attrs.json`), and
 the NL selection (`/api/select`, reusing :mod:`gmnspy.select`). The frontend
 (deck.gl + MapLibre) renders links + nodes from the binary and highlights a
 selection by slicing the already-loaded buffer. Requires the ``[server]`` extra.
+
+Deprecated: ``gmnspy viz`` now launches the workbench (:mod:`gmnspy.workbench`);
+this single-network app remains only for existing callers and is removed in P1.
 """
 
 from __future__ import annotations
@@ -14,7 +17,6 @@ from functools import lru_cache
 from importlib import resources
 from typing import Any
 
-import pandas as pd
 from fastapi import Body, FastAPI, Query, Response
 from fastapi.responses import HTMLResponse, JSONResponse
 
@@ -24,7 +26,12 @@ from gmnspy.select.parse import ClaudeParser, StubParser
 from gmnspy.select.resolve import resolve_frames
 
 from .buffers import network_attrs, pack_network
+from .styling import basemap_style as _basemap_style
+from .styling import json_scalar as _json_scalar
+from .styling import property_payload as _property_payload
+from .styling import styleable_columns as _styleable_columns
 from .tables import FilterError, columns_of, page_table, primary_key, table_list_entry, table_schema
+from .tables import parse_ids as _parse_ids
 
 __all__ = ["build_app"]
 
@@ -35,115 +42,6 @@ def _page() -> str:
 
 def _py(v: Any) -> Any:
     return getattr(v, "item", lambda: v)()
-
-
-def _parse_ids(ids: str | None) -> list | None:
-    """Parse a comma-separated ``ids`` querystring into ints (fallback: strings)."""
-    if not ids:
-        return None
-    out = []
-    for tok in ids.split(","):
-        tok = tok.strip()
-        if not tok:
-            continue
-        try:
-            out.append(int(tok))
-        except ValueError:
-            out.append(tok)
-    return out or None
-
-
-def _json_scalar(v: Any) -> Any:
-    try:
-        if v is None or pd.isna(v):
-            return None
-    except (TypeError, ValueError):
-        pass
-    return getattr(v, "item", lambda: v)()
-
-
-#: Columns never offered as a color-by property (geometry/opaque or identity).
-_SKIP_STYLE_COLS = {"geometry", "osm_node_ids", "osm_way_id", "link_id", "from_node_id", "to_node_id"}
-_MAX_CATEGORIES = 25
-
-
-def _styleable_columns(links) -> list[dict]:
-    """List columns usable for color-by, classified continuous vs categorical."""
-    out = []
-    for c in links.columns:
-        if c in _SKIP_STYLE_COLS:
-            continue
-        s = links[c]
-        if pd.api.types.is_numeric_dtype(s):
-            out.append({"name": c, "kind": "continuous"})
-        elif s.nunique(dropna=True) <= _MAX_CATEGORIES:  # skip high-cardinality (e.g. name)
-            out.append({"name": c, "kind": "categorical"})
-    return out
-
-
-def _property_payload(links, name: str) -> dict | None:
-    if name not in links.columns:
-        return None
-    s = links[name]
-    values = [_json_scalar(v) for v in s]
-    if pd.api.types.is_numeric_dtype(s):
-        nn = [v for v in values if v is not None]
-        return {
-            "name": name,
-            "kind": "continuous",
-            "values": values,
-            "min": min(nn) if nn else 0,
-            "max": max(nn) if nn else 1,
-        }
-    cats = sorted({str(v) for v in values if v is not None})
-    return {
-        "name": name,
-        "kind": "categorical",
-        "values": [None if v is None else str(v) for v in values],
-        "categories": cats,
-    }
-
-
-_ESRI = "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas"
-#: Free, no-key vector Positron (OpenMapTiles/OSM data). Gives the muted
-#: "network pops" look without any API key or secret to manage.
-_POSITRON_URL = "https://tiles.openfreemap.org/styles/positron"
-
-
-def _basemap_style(basemap: str = "positron"):
-    """Return a MapLibre style for ``basemap``.
-
-    * ``"positron"`` (default) — OpenFreeMap's no-key vector Positron (a style
-      URL string). No API key, crisp at all zooms.
-    * ``"esri"`` — Esri World Light Gray raster, capped at z16 so MapLibre
-      overzooms rather than hitting the 'map data not yet available' tiles.
-
-    No basemap option requires or embeds a secret.
-    """
-    if basemap == "esri":
-        return {
-            "version": 8,
-            "sources": {
-                "basemap": {
-                    "type": "raster",
-                    "tileSize": 256,
-                    "maxzoom": 16,
-                    "attribution": "Esri, © OpenStreetMap contributors",
-                    "tiles": [f"{_ESRI}/World_Light_Gray_Base/MapServer/tile/{{z}}/{{y}}/{{x}}"],
-                },
-                "labels": {
-                    "type": "raster",
-                    "tileSize": 256,
-                    "maxzoom": 16,
-                    "tiles": [f"{_ESRI}/World_Light_Gray_Reference/MapServer/tile/{{z}}/{{y}}/{{x}}"],
-                },
-            },
-            "layers": [
-                {"id": "basemap", "type": "raster", "source": "basemap"},
-                {"id": "labels", "type": "raster", "source": "labels"},
-            ],
-        }
-    return _POSITRON_URL
 
 
 def build_app(
