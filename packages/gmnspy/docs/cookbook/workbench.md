@@ -58,4 +58,5 @@ provider = "claude"
 
 Everything you do in the browser is a typed action: open, select, style, navigate, change a setting.
 The strip at the bottom shows the last action as Python. **Session as Python** shows the whole session as
-a script you can copy.
+a script you can copy. Networks added from Python via `Session.add_network` aren't recorded as actions
+and so aren't replayed in that script.

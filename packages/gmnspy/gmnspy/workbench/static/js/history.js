@@ -14,7 +14,11 @@ export function showEntry(entry) {
 }
 
 export function sessionScript(entries) {
-  const lines = ["# GMNSpy Workbench session: replay against a live workbench handle named `app`"];
+  const lines = [
+    "from gmnspy.workbench import Session, OpenNetwork, CloseNetwork, SetActiveNetwork, Select, ClearSelection, Style, Navigate, SetSetting",
+    "",
+    "app = Session()  # or reuse a live session",
+  ];
   for (const e of entries) lines.push(e.ok ? e.python : `# failed: ${e.python}  # ${e.error}`);
   return lines.join("\n");
 }

@@ -158,3 +158,21 @@ def test_settings_payload(opened):
     p = opened.settings_payload()
     assert p["values"]["app"]["port"] == 8850 and p["sources"]["app.port"] == "default"
     assert "properties" in p["schema"] and set(p["paths"]) == {"user", "project"}
+
+
+def test_history_python_replays_to_same_state(session, rdu_source):
+    session.dispatch(OpenNetwork(source=rdu_source))
+    session.dispatch(Select(utterance=UTTERANCE))
+    session.dispatch(Style(color_by="lanes"))
+    session.dispatch(ClearSelection())
+
+    replay = Session(project_dir=session.project_dir, environ=session._environ, parser=StubParser())
+    import gmnspy.workbench as workbench_module
+
+    globals_ns = {name: getattr(workbench_module, name) for name in workbench_module.__all__}
+    globals_ns["app"] = replay
+    for entry in session.history:
+        if entry.ok:
+            exec(entry.python, globals_ns)
+
+    assert replay.state() == session.state()
