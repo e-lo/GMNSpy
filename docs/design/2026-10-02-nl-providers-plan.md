@@ -2,77 +2,105 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Natural-language selection in the Workbench (and in `gmnspy select`) gains four providers: local Ollama (Qwen), Anthropic, OpenAI and Gemini. You pick a provider and model in the UI. Your API keys stay in the OS keyring (or env, or a labelled 0600 file when there is no keyring). Keys are managed through write-only UI and CLI paths and never appear in settings, API responses, history, SSE or logs.
+**Goal:** Natural-language selection in the Workbench (and in `gmnspy select`) gains four providers: local Ollama (Qwen), Anthropic, OpenAI and Gemini. You pick a provider and model per session in the UI, and **Make default** saves the choice. API keys come from environment variables or the OS keyring. They are managed through write-only UI and CLI paths and never appear in settings, API responses, history, SSE or logs. A group of `llm.quality` settings, all visible in the UI and the privacy note, improves parsing and matching:
+- the shipped GMNS assistant guide;
+- an optional project `AGENTS.md`/`CLAUDE.md`;
+- network vocabulary;
+- few-shot examples;
+- a close-match retry;
+- the repair budget and temperature.
 
 **Architecture:**
 - A new provider-neutral package, `gmnspy.llm`, contains:
   - types and errors;
-  - one HTTP call path (`_http.request_json`, with httpx imported lazily);
-  - four hand-rolled adapters behind `LLMProvider.complete()` / `list_models()`;
-  - a structured-output helper (forced tool → validate → repair, with JSON mode for tool-less models);
-  - a TOML model catalog;
-  - a `SecretStore` (env → keyring → file) whose key slots are bound to the endpoint origin;
-  - a `ProviderRegistry`.
-- `gmnspy.select.parse.LLMParser` uses any provider with the unchanged selection tool schema. `ClaudeParser` becomes a back-compat subclass.
-- The Workbench session builds its parser from settings plus the registry, and turns `LLMError` into `ActionError`.
-- New non-recorded `/api/llm/*` routes handle key status, key writes and connection tests.
-- The header gets a provider + model picker, and a "Language models" panel manages keys.
+  - one HTTP call path (`_http.request_json`, httpx imported lazily);
+  - four hand-rolled adapters behind `LLMProvider.complete()` / `list_models()`, where Anthropic marks the stable prompt prefix for prompt caching;
+  - a structured-output helper (forced tool → validate → repair, plus JSON mode);
+  - the TOML model catalog;
+  - a `SecretStore` (env → keyring) with origin-bound key slots;
+  - a `ProviderRegistry` that also decides what each provider is sent;
+  - `gmnspy.llm.context`, the shipped guide plus project-note discovery.
+- `gmnspy.select.prompt` assembles the optional prompt parts. `LLMParser` takes them per call. `ClaudeParser` is kept as a back-compat subclass.
+- The Workbench session builds the parser from settings and the registry, adds the prompt context, keeps few-shot memory, retries once with close matches, and turns `LLMError` into `ActionError`.
+- New non-recorded `/api/llm/*` routes handle status, key writes and connection tests.
+- The header gets a picker, and a "Language models" panel holds keys and quality settings.
 
 **Tech Stack:**
-- Python 3.11, pydantic v2, httpx 0.28 (`MockTransport` in tests), jsonschema 4, keyring 24+ (macOS Keychain / Windows Credential Manager / Secret Service), FastAPI.
+- Python 3.11, pydantic v2, httpx 0.28 (`MockTransport` in tests), jsonschema 4, keyring 24+, FastAPI, `difflib` (stdlib).
 - Plain ES modules.
 - pytest + `fastapi.testclient`, and `node --check`.
 
-**Spec:** [2026-10-02-nl-providers-design.md](2026-10-02-nl-providers-design.md).
+**Spec:** [2026-10-02-nl-providers-design.md](2026-10-02-nl-providers-design.md) (revised 2026-10-02 with the user's decisions).
 
-**Branch:** cut `feat/nl-providers` from `feat/workbench-p0`. After P0 merges, rebase it onto `refactor/v1.0`. It does not depend on P1a or P1b.
+**Branch:** this plan runs **after P1a**. Cut `feat/nl-providers` from `feat/workbench-p1a` once [the P1a plan](2026-10-02-workbench-p1a-plan.md) is implemented, and rebase it onto `refactor/v1.0` when P0 and P1a merge. It does not depend on P1b.
 
 **Conventions:**
 - Run commands from the repo root.
 - Run tests with `uv run --all-extras pytest <path> -q`.
 - Lint with `uv run ruff check packages scripts && uv run ruff format --check packages scripts`.
-- Ruff enforces Google-style docstrings (`D`) on every public module-level function, class and method outside `tests/` and `__init__.py`. Every code block below already has them.
-- Line length is 120.
-- `__all__` lists are sorted the way ruff's `RUF022` expects: SCREAMING_CASE, then CamelCase, then lowercase.
-- **Never put a real key in a test.** Tests use obviously fake strings. The fixtures in Task 0 and Task 4 stop any test from reaching the real network or the developer's keychain.
+- Ruff enforces Google-style docstrings (`D`) on every public module-level function, class and method outside `tests/` and `__init__.py`. Line length is 120.
+- `__all__` lists are sorted the way `RUF022` expects.
+- `--doctest-modules` is on, so every `>>>` example below is a test.
+- **Never put a real key in a test.** The fixtures from Tasks 0 and 4 stop any test from reaching the real network or the developer's keychain.
+- **How this plan was checked:** every code block was produced from a scratch copy of the P1a-implemented tree (the state the P1a plan describes) and then checked there:
+  - each task's files were applied in order onto a fresh copy;
+  - the task's own test command was run and its count recorded in that task's Expected line;
+  - at Tasks 10, 13 and 16 the whole gmnspy suite was run as well, and it was green at all three.
 
----
+## Decisions (user, 2026-10-02) and how this plan applies them
+
+1. **Tiny default models.**
+   - Anthropic defaults to Haiku 4.5 (`claude-haiku-4-5-20251001`), with Sonnet 5 and Opus 5.5 available.
+   - OpenAI defaults to `gpt-4.1-mini`, Gemini to `gemini-2.5-flash-lite`, and Ollama to `qwen3:4b`. All three are each provider's fast tier, and their ids are marked VERIFY in `models.toml`.
+   - The design's "Tiny models" section lists where a small model may struggle and what each knob does about it.
+2. **Picker scope.** Choosing a provider or model is `SetSetting(scope="session")`. **Make default** writes the current pair with `scope="user"`.
+3. **No plaintext fallback.** Keys resolve from env vars, then the OS keyring. There is no secrets file. Without a keyring the UI and CLI name the env vars to set.
+4. **No per-launch token now** (P4).
+5. **`llm.quality`.** It holds:
+   - `assistant_context` (+ `_max_chars`);
+   - `project_context` `auto|on|off` (+ `_max_chars`);
+   - `grounding` `auto|on|off` (+ `grounding_max_names`);
+   - `few_shot` (opt-in, + `few_shot_max`);
+   - `match_retry` (+ `match_candidates`), which is the candidate/ambiguity knob that applies here: the resolver already ranks ambiguous anchors deterministically, so the LLM-side gain is one re-prompt with the closest real names when nothing matched;
+   - `max_repairs`;
+   - `temperature`.
+
+   `auto` means on for a local endpoint and off for a remote one. The privacy note is generated from these settings (`ProviderRegistry.disclosure`).
+6. **Context docs.**
+   - The shipped `gmnspy/llm/context/gmns_assistant.md` is identical for every provider. It goes in the stable system prefix, which the Anthropic adapter marks with `cache_control`.
+   - An optional `AGENTS.md` (or `CLAUDE.md`) is read from next to the active network or the project dir. It is sent only when `project_context` allows, which is off for remote providers unless opted in.
+7. **Alternatives (PydanticAI, LiteLLM, instructor; MCP).** These are recorded in the design. Out of scope here.
 
 ## Scope notes
 
 - **In scope:**
-  - the `gmnspy.llm` package and four adapters;
-  - the catalog;
-  - secrets, including `datagrove.io.credentials.system_keyring`;
-  - the structured-output helper;
-  - the registry;
-  - widened settings (`select.provider` with the `claude` alias, `select.model`, `llm.*`);
-  - the `SetSetting` secret guard and the 422 no-echo hardening;
-  - `LLMParser`, `ClaudeParser` and `make_parser`;
-  - session wiring with `parsed_by`;
-  - the `/api/llm` routes;
-  - the `gmnspy llm` CLI;
-  - the header picker and the Language-models panel;
-  - recorded contract fixtures, the record script and the live smoke marker;
-  - docs.
+  - `gmnspy.llm` (types, errors, catalog, secrets, `_http`, four adapters, structured output, registry, context);
+  - `datagrove.io.credentials.system_keyring`;
+  - widened settings (`select.*`, `llm.<provider>.*`, `llm.quality.*`), the `SetSetting` secret guard and the 422 no-echo hardening;
+  - `gmnspy.select.prompt`, `LLMParser`/`ClaudeParser`/`make_parser`/`payload_from_intent`;
+  - session wiring (prompt context, few-shot memory, close-match retry, `parsed_by`);
+  - the `/api/llm` routes, the `gmnspy llm` CLI, the picker with **Make default**, and the Language-models panel with quality controls;
+  - contract fixtures, the re-record script, the live smoke marker, and docs.
 - **Deferred:**
-  - the P3 assistant (multi-turn chat, tool results, grounding);
-  - streaming;
-  - cost metering;
-  - a per-launch auth token (P4, design Q4);
-  - multiple named OpenAI-compatible endpoints (design Q5).
-- **Overlap with P1b (Settings workspace):** this plan builds only the Language-models panel and the header picker. The panel's code lives in `llm.js`, and its DOM is a single `#llm-panel` container, so P1b can mount it as a Settings section and drop the floating panel. P1b's generic, schema-driven form will also list `llm.*`; P1b should hide that section in favour of this panel.
+  - the P3 assistant (multi-turn, tool results), which reuses this layer;
+  - streaming and cost metering;
+  - a per-launch token (P4);
+  - multiple named OpenAI-compatible endpoints;
+  - swapping the adapters for PydanticAI, LiteLLM or instructor, and exposing Workbench actions over MCP (design "Alternatives").
+- **Overlap with P1b (Settings workspace):** `llm.js` renders the whole Language-models panel into `#llm-panel`, so P1b can mount that container as its "Language models" section. P1b's generic form should hide `llm.*`, because the panel edits it, including `llm.quality`.
 
-### Conflicts with the parallel P1a plan (Open/Import wizard)
+### Builds on P1a: what is different from P0
 
-| File | P1a change | This plan | How to merge |
-|---|---|---|---|
-| `gmnspy/config.py` | `AppSettings.approve_above_s` (plus `io.allowed_roots` enforcement) | `SelectSettings` rewritten; new `LLMEndpointSettings`/`OllamaSettings`/`LLMSettings`; `Settings.llm` field; `PROVIDER_ALIASES`; `__all__` | Different classes. In `class Settings` and `__all__` both add lines; keep both |
-| `workbench/static/index.html` | header `#open-src`/`#open-go` → **Open / Import…** + **Recent** + jobs indicator | `#nl-picker` between `#utterance` and `#go`; `#llm-panel` after `#hist-panel` | Disjoint ranges. If P1a reflows the header, move the picker along with `#utterance`. Consider a second header row if the header gets crowded |
-| `workbench/session.py` | jobs runner, `OpenNetwork` via jobs, `allowed_roots` | `__init__` kwargs `llm_transport`/`keyring`, `self.llm`, `parser()`, `reset_llm()`, `_do_select`, `_do_set_setting` | `__init__` is the only shared hunk; keep both sets of attributes |
-| `workbench/server.py` | new routers | `llm_router` include | One line each |
-| `workbench/static/js/main.js`, `app.css` | wizard/jobs wiring and styles | `llm.js` wiring and styles | Both append; keep both |
-| `packages/gmnspy/pyproject.toml` | possibly `[osm]` tweaks | `[nl]` extra and wheel include | Disjoint lines; re-run `uv lock` after merging |
+| P1a change | Effect on this plan |
+|---|---|
+| `OpenNetwork` runs as a job; `POST /api/actions` answers **202** for it | Tests open networks with `session.dispatch(OpenNetwork(...))`, which waits for the job. The canary test does the same before using the client. |
+| `routes/core.py` parses the action before dispatch | The 422 branch keeps its shape; this plan only adds `include_input=False` |
+| `Session.__init__` gains `http=` and a `JobRunner` | `llm_transport=` and `keyring=` are added after `http=` |
+| `isolated_env` pins `io.allowed_roots` (`conftest.py` already imports `json`) | Task 0 adds only `from typing import Any` |
+| `datagrove.io.credentials` gains `credential_source` | `system_keyring` goes after it; `__all__` keeps both |
+| Header: **Open / Import…**, **Recent**, **Jobs** | The picker sits between `#utterance` and `#go`. `main.js` already subscribes to `job`; this adds `llm` |
+| `api.js` gains `postJSON` | This adds `sendJSON` for PUT/DELETE with the secrets header |
+| `cli/commands/workbench.py` trusts command-line sources | `--model` is added next to `--provider`; the `flags` dict gains `select.model` |
 
 ## File structure
 
@@ -80,29 +108,28 @@
 |---|---|
 | `packages/datagrove/datagrove/io/credentials.py` (modify) | `system_keyring()`: is a real OS keyring backend usable? |
 | `packages/gmnspy/gmnspy/llm/__init__.py` (new) | Public surface of the LLM layer |
-| `packages/gmnspy/gmnspy/llm/types.py` (new) | `Tool`, `Message`, `ToolCall`, `CompletionRequest`, `Completion`, `LLMProvider` |
-| `packages/gmnspy/gmnspy/llm/errors.py` (new) | `LLMError` hierarchy (user-facing, secret-free) |
-| `packages/gmnspy/gmnspy/llm/catalog.py`, `models.toml` (new) | Maintained provider/model catalog plus the user overlay |
-| `packages/gmnspy/gmnspy/llm/secrets.py` (new) | `KeySlot`, `SecretStore`, `redact`, `looks_like_secret`, `origin_of` |
-| `packages/gmnspy/gmnspy/llm/_http.py` (new) | `request_json`: the one network path, with status → error mapping and scrubbing |
-| `packages/gmnspy/gmnspy/llm/providers/{__init__,_base,anthropic,openai,gemini,ollama}.py` (new) | Adapters and the `ADAPTERS` map |
+| `packages/gmnspy/gmnspy/llm/types.py`, `errors.py` (new) | `CompletionRequest` (with `context`, `temperature`), `Completion`, `LLMProvider`; the `LLMError` hierarchy |
+| `packages/gmnspy/gmnspy/llm/catalog.py`, `models.toml` (new) | Maintained provider/model catalog (tiny defaults) plus the user overlay |
+| `packages/gmnspy/gmnspy/llm/secrets.py` (new) | `KeySlot`, `SecretStore` (env → keyring), `redact`, `looks_like_secret`, `origin_of` |
+| `packages/gmnspy/gmnspy/llm/_http.py`, `providers/*.py` (new) | One scrubbed HTTP path; anthropic (with prompt caching), openai, gemini and ollama adapters |
 | `packages/gmnspy/gmnspy/llm/structured.py` (new) | `request_tool_call`: forced tool, validation, repair, JSON mode |
-| `packages/gmnspy/gmnspy/llm/registry.py` (new) | `ProviderRegistry`, `build_registry`, `default_registry` |
-| `packages/gmnspy/gmnspy/config.py` (modify) | Widened `SelectSettings`; `LLMSettings` |
-| `packages/gmnspy/gmnspy/select/parse.py`, `select/__init__.py` (modify) | `LLMParser`, `ClaudeParser` alias, `make_parser`, `intent_from_payload` |
-| `packages/gmnspy/gmnspy/cli/commands/select.py` (modify) | `--provider` from settings, `--model` |
+| `packages/gmnspy/gmnspy/llm/registry.py` (new) | `ProviderRegistry` (status, models, test, `is_local`, `grounding_on`, `project_context_on`, `disclosure`) |
+| `packages/gmnspy/gmnspy/llm/context/__init__.py`, `gmns_assistant.md` (new) | Shipped assistant guide; `AGENTS.md`/`CLAUDE.md` discovery |
+| `packages/gmnspy/gmnspy/config.py` (modify) | `SelectSettings` widened; `LLMEndpointSettings`, `OllamaSettings`, `LLMQualitySettings`, `LLMSettings` |
+| `packages/gmnspy/gmnspy/select/prompt.py` (new) | `PromptContext`, `render_prompt`, `vocabulary_from_links`, `close_match_hint` |
+| `packages/gmnspy/gmnspy/select/parse.py`, `select/__init__.py` (modify) | `LLMParser`, `ClaudeParser` alias, `make_parser`, `payload_from_intent` |
+| `packages/gmnspy/gmnspy/cli/commands/select.py`, `workbench.py` (modify) | `--provider` from settings, `--model` |
 | `packages/gmnspy/gmnspy/cli/commands/llm.py`, `cli/app.py` (new/modify) | `gmnspy llm {status,set-key,remove-key,test,models}` |
-| `packages/gmnspy/gmnspy/workbench/actions.py` (modify) | `SetSetting` refuses key-shaped values |
-| `packages/gmnspy/gmnspy/workbench/session.py`, `selection.py` (modify) | Registry, parser factory, `LLMError` → `ActionError`, `parsed_by` |
-| `packages/gmnspy/gmnspy/workbench/routes/core.py` (modify) | 422 no longer echoes input values |
+| `packages/gmnspy/gmnspy/workbench/actions.py`, `routes/core.py` (modify) | `SetSetting` refuses key-shaped values; 422 doesn't echo input |
+| `packages/gmnspy/gmnspy/workbench/session.py`, `selection.py` (modify) | Registry, parser, prompt context, few-shot memory, match retry, `parsed_by` |
 | `packages/gmnspy/gmnspy/workbench/routes/llm.py`, `server.py` (new/modify) | `/api/llm/*` |
-| `packages/gmnspy/gmnspy/workbench/static/{index.html,app.css,js/api.js,js/llm.js,js/main.js}` (modify/new) | Picker and panel |
-| `packages/gmnspy/pyproject.toml`, `uv.lock` (modify) | `[nl]` = jsonschema + httpx + keyring (drops `anthropic`); wheel includes `llm/*.toml` |
+| `packages/gmnspy/gmnspy/workbench/static/{index.html,app.css,js/api.js,js/llm.js,js/main.js}` (modify/new) | Picker with **Make default**; Language-models panel with quality controls |
+| `packages/gmnspy/pyproject.toml`, `uv.lock` (modify) | `[nl]` = jsonschema + httpx + keyring (drops `anthropic`); wheel includes `llm/*.toml`, `llm/context/*.md` |
 | `pyproject.toml` (root, modify) | `live_llm` pytest marker |
-| `scripts/record_llm_fixtures.py` (new) | Re-record contract fixtures from live APIs (headers never written) |
+| `scripts/record_llm_fixtures.py` (new) | Re-record contract fixtures (headers never written) |
 | `packages/gmnspy/tests/conftest.py` (modify) | `FakeKeyring`, `FakeAPI`, `no_network`, autouse no-system-keyring |
 | `packages/gmnspy/tests/fixtures/llm/*_select.json` (new) | Contract fixtures |
-| `packages/gmnspy/tests/test_llm_*.py`, `test_workbench_llm_routes.py`, `test_cli_llm.py` (new) | Tests |
+| `packages/gmnspy/tests/test_llm_*.py`, `test_select_prompt.py`, `test_workbench_llm_routes.py`, `test_cli_llm.py` (new) | Tests |
 | `packages/gmnspy/docs/cookbook/workbench.md` (modify) | "Language models" section |
 
 ---
@@ -113,13 +140,13 @@
 - Modify: `pyproject.toml` (root)
 - Modify: `packages/gmnspy/tests/conftest.py`
 
-- [ ] **Step 1: Cut the branch**
+- [ ] **Step 1: Cut the branch from the P1a branch**
 
 ```bash
-git checkout feat/workbench-p0 && git checkout -b feat/nl-providers
+git checkout feat/workbench-p1a && git checkout -b feat/nl-providers
 ```
 
-- [ ] **Step 2: Register the marker.** In the root `pyproject.toml`, extend `[tool.pytest.ini_options].markers`:
+- [ ] **Step 2: Register the marker.** In the root `pyproject.toml`, `[tool.pytest.ini_options].markers` becomes:
 
 ```toml
 markers = [
@@ -130,7 +157,7 @@ markers = [
 ]
 ```
 
-- [ ] **Step 3: Add the fakes to `packages/gmnspy/tests/conftest.py`.** Add `import json` and `from typing import Any` to the stdlib imports at the top of the file, keeping them sorted (`conftest.py` already has `from __future__ import annotations`, so the `-> FakeAPI` annotation below needs no quotes). Then append:
+- [ ] **Step 3: Add the fakes to `packages/gmnspy/tests/conftest.py`.** Since P1a, the file already imports `json`. Add `from typing import Any` after `from pathlib import Path`. The file has `from __future__ import annotations`, so `-> FakeAPI` needs no quotes. Then append:
 
 ```python
 class FakeKeyring:
@@ -219,7 +246,7 @@ def no_network(monkeypatch: pytest.MonkeyPatch) -> None:
 - [ ] **Step 4: Confirm the suite still collects and passes**
 
 Run: `uv run --all-extras pytest packages/gmnspy/tests/test_workbench_session.py packages/gmnspy/tests/test_config.py -q`
-Expected: `38 passed`, with no marker errors under `--strict-markers`.
+Expected: `40 passed`, with no marker errors under `--strict-markers`.
 
 - [ ] **Step 5: Commit**
 
@@ -239,8 +266,6 @@ git commit -m "test(gmnspy): live_llm marker + FakeKeyring/FakeAPI/no_network fi
 - [ ] **Step 1: Append the failing tests**
 
 ```python
-
-
 # ---------------------------------------------------------------------------
 # system_keyring(): is a real OS keyring backend usable?
 # ---------------------------------------------------------------------------
@@ -293,7 +318,10 @@ def test_system_keyring_none_when_backend_lookup_breaks(monkeypatch: pytest.Monk
 Run: `uv run --all-extras pytest packages/datagrove/tests/io/test_credentials.py -q -k system_keyring`
 Expected: `4 failed`, each with `ImportError: cannot import name 'system_keyring'`.
 
-- [ ] **Step 3: Implement.** In `credentials.py`, change `__all__ = ["resolve_credentials"]` to `__all__ = ["resolve_credentials", "system_keyring"]`, add `from typing import Any, Final` (replacing `from typing import Final`), and add this function after `resolve_credentials`:
+- [ ] **Step 3: Implement.**
+- Change `from typing import Final` to `from typing import Any, Final`.
+- Change `__all__` to `["credential_source", "resolve_credentials", "system_keyring"]`. P1a added `credential_source`.
+- Add this function directly after `credential_source`:
 
 ```python
 def system_keyring() -> Any | None:
@@ -323,7 +351,7 @@ def system_keyring() -> Any | None:
 - [ ] **Step 4: Run the file**
 
 Run: `uv run --all-extras pytest packages/datagrove/tests/io/test_credentials.py -q`
-Expected: `19 passed`.
+Expected: `23 passed`.
 
 - [ ] **Step 5: Commit**
 
@@ -339,6 +367,12 @@ git commit -m "feat(datagrove): system_keyring() — one answer to 'is a real OS
 **Files:**
 - Create: `packages/gmnspy/gmnspy/llm/__init__.py`, `types.py`, `errors.py`
 - Test: `packages/gmnspy/tests/test_llm_types.py`
+
+`CompletionRequest` carries two parts of the system prompt:
+- `context`: the stable, cacheable part (guide, project notes, vocabulary);
+- `system`: the per-call part (examples, hints, JSON-mode instructions).
+
+It also has an optional `temperature`. Adapters without prompt caching send `full_system()`.
 
 - [ ] **Step 1: Write the failing tests** in `packages/gmnspy/tests/test_llm_types.py`
 
@@ -389,7 +423,7 @@ def test_errors_carry_provider_and_message():
 - [ ] **Step 2: Run them to see them fail**
 
 Run: `uv run --all-extras pytest packages/gmnspy/tests/test_llm_types.py -q`
-Expected: collection error, `ModuleNotFoundError: No module named 'gmnspy.llm'`.
+Expected: a collection error, `ModuleNotFoundError: No module named 'gmnspy.llm'`.
 
 - [ ] **Step 3: Create `packages/gmnspy/gmnspy/llm/types.py`**
 
@@ -438,18 +472,27 @@ class ToolCall:
 class CompletionRequest:
     """One provider-neutral completion request.
 
-    ``force_tool`` names a tool the model must call (providers that cannot force one ignore it).
-    ``json_schema`` asks for a bare JSON reply instead of a tool call: adapters with a native JSON
-    mode (Ollama's ``format``) use it, the others rely on the instructions in ``system``.
+    ``context`` is the stable, cacheable part of the system prompt (shipped guide, project notes,
+    vocabulary); ``system`` is the per-call rest. Anthropic marks ``context`` for prompt caching;
+    the other adapters send :meth:`full_system`. ``force_tool`` names a tool the model must call
+    (providers that cannot force one ignore it). ``json_schema`` asks for a bare JSON reply instead
+    of a tool call: adapters with a native JSON mode (Ollama's ``format``) use it, the others rely on
+    the instructions in ``system``. ``temperature=None`` leaves the provider's default.
     """
 
     model: str
     messages: tuple[Message, ...]
     system: str = ""
+    context: str = ""
     tools: tuple[Tool, ...] = ()
     force_tool: str | None = None
     json_schema: dict[str, Any] | None = None
     max_tokens: int = 1024
+    temperature: float | None = None
+
+    def full_system(self) -> str:
+        """``context`` then ``system``, as one system prompt (for adapters without prompt caching)."""
+        return "\n\n".join(part for part in (self.context, self.system) if part)
 
 
 @dataclass(frozen=True)
@@ -555,10 +598,10 @@ class ToolsUnsupported(LLMError):
     """The model cannot do tool calling; the caller may retry the same model in JSON mode."""
 ```
 
-- [ ] **Step 5: Create `packages/gmnspy/gmnspy/llm/__init__.py`** (the first version; Task 11 completes it)
+- [ ] **Step 5: Create `packages/gmnspy/gmnspy/llm/__init__.py`.** This is the first version; Task 11 completes it.
 
 ```python
-"""Provider-neutral LLM layer for gmnspy's natural-language features (see ``registry`` for the entry point)."""
+"""Provider-neutral LLM layer for gmnspy's natural-language features (Task 11 completes this module)."""
 
 from .errors import (
     BadRequest,
@@ -603,12 +646,12 @@ Expected: `4 passed`.
 
 ```bash
 git add packages/gmnspy/gmnspy/llm packages/gmnspy/tests/test_llm_types.py
-git commit -m "feat(gmnspy.llm): provider-neutral request/response types and secret-free error hierarchy"
+git commit -m "feat(gmnspy.llm): provider-neutral request/response types (cacheable context, temperature) and errors"
 ```
 
 ---
 
-### Task 3: Model catalog (`models.toml`) and loader
+### Task 3: Model catalog (`models.toml`, tiny defaults) and loader
 
 **Files:**
 - Create: `packages/gmnspy/gmnspy/llm/models.toml`, `packages/gmnspy/gmnspy/llm/catalog.py`
@@ -635,7 +678,7 @@ def test_anthropic_models_are_the_current_ids():
     anthropic = load_catalog()["anthropic"]
     assert [m.id for m in anthropic.models] == ["claude-haiku-4-5-20251001", "claude-sonnet-5", "claude-opus-5-5"]
     assert [m.tier for m in anthropic.models] == ["fast", "balanced", "best"]
-    assert anthropic.default_model == "claude-sonnet-5"
+    assert anthropic.default_model == "claude-haiku-4-5-20251001"
 
 
 def test_every_default_model_is_listed_and_every_model_has_a_label():
@@ -678,9 +721,9 @@ def test_unknown_provider_and_bad_entries_raise(tmp_path):
 - [ ] **Step 2: Run them to see them fail**
 
 Run: `uv run --all-extras pytest packages/gmnspy/tests/test_llm_catalog.py -q`
-Expected: collection error, `ModuleNotFoundError: No module named 'gmnspy.llm.catalog'`.
+Expected: a collection error, `ModuleNotFoundError: No module named 'gmnspy.llm.catalog'`.
 
-- [ ] **Step 3: Create `packages/gmnspy/gmnspy/llm/models.toml`**
+- [ ] **Step 3: Create `packages/gmnspy/gmnspy/llm/models.toml`.** Each `default_model` is the provider's small, fast tier (decision 1). The OpenAI, Gemini and Ollama ids are marked VERIFY.
 
 ```toml
 # Maintained catalog of the LLM providers and models the Workbench offers for its
@@ -694,7 +737,8 @@ Expected: collection error, `ModuleNotFoundError: No module named 'gmnspy.llm.ca
 #   kind           "remote" (needs an API key) | "local" (no key; Ollama)
 #   base_url       the official endpoint; a key is only ever sent to the endpoint it was entered for
 #   key_env        env vars checked, in order, before the OS keyring (official endpoint only)
-#   default_model  used when select.model is unset
+#   default_model  used when select.model is unset. Defaults are each provider's small, fast tier:
+#                  one forced tool call per utterance doesn't need a large model (design: "Tiny models").
 # Per model: id (sent to the API), label, tier (fast | balanced | best), tools (tool calling).
 #
 # VERIFY: OpenAI, Gemini and Ollama model ids are editable starting points, not
@@ -706,7 +750,7 @@ label = "Anthropic"
 kind = "remote"
 base_url = "https://api.anthropic.com"
 key_env = ["GMNSPY_ANTHROPIC_API_KEY", "ANTHROPIC_API_KEY"]
-default_model = "claude-sonnet-5"
+default_model = "claude-haiku-4-5-20251001"
 
 [[anthropic.models]]
 id = "claude-haiku-4-5-20251001"
@@ -759,7 +803,7 @@ label = "Gemini"
 kind = "remote"
 base_url = "https://generativelanguage.googleapis.com/v1beta"
 key_env = ["GMNSPY_GEMINI_API_KEY", "GEMINI_API_KEY"]
-default_model = "gemini-2.5-flash"
+default_model = "gemini-2.5-flash-lite"
 
 # VERIFY against https://ai.google.dev/gemini-api/docs/models
 [[gemini.models]]
@@ -787,21 +831,21 @@ label = "Ollama (local)"
 kind = "local"
 base_url = "http://localhost:11434"
 key_env = []
-default_model = "qwen3:8b"
+default_model = "qwen3:4b"
 
 # Ollama's installed models are discovered at run time (GET /api/tags). These entries
 # only label known tags and power the "ollama pull <id>" hint. VERIFY tags at
 # https://ollama.com/library before release.
 [[ollama.models]]
-id = "qwen3:8b"
-label = "Qwen 3 8B"
-tier = "balanced"
+id = "qwen3:4b"
+label = "Qwen 3 4B"
+tier = "fast"
 tools = true
 
 [[ollama.models]]
-id = "qwen2.5:7b"
-label = "Qwen 2.5 7B"
-tier = "fast"
+id = "qwen3:8b"
+label = "Qwen 3 8B"
+tier = "balanced"
 tools = true
 ```
 
@@ -935,7 +979,7 @@ def _provider(name: str, body: dict[str, Any]) -> ProviderInfo:
         raise ValueError(f"LLM catalog: provider {name!r} has a missing or bad field: {exc}") from None
 ```
 
-- [ ] **Step 5: Ship the data file.** In `packages/gmnspy/pyproject.toml`, under `[tool.hatch.build.targets.wheel].include`, add these lines after the workbench static entries:
+- [ ] **Step 5: Ship the data file.** In `packages/gmnspy/pyproject.toml`, under `[tool.hatch.build.targets.wheel].include`, add after the workbench static entries:
 
 ```toml
     # Maintained LLM provider/model catalog (gmnspy.llm).
@@ -951,17 +995,19 @@ Expected: `5 passed`.
 
 ```bash
 git add packages/gmnspy/gmnspy/llm/models.toml packages/gmnspy/gmnspy/llm/catalog.py packages/gmnspy/pyproject.toml packages/gmnspy/tests/test_llm_catalog.py
-git commit -m "feat(gmnspy.llm): maintained provider/model catalog (models.toml) with a key-safe user overlay"
+git commit -m "feat(gmnspy.llm): maintained provider/model catalog with tiny defaults and a key-safe user overlay"
 ```
 
 ---
 
-### Task 4: `SecretStore`: env → keyring → 0600 file, origin-bound key slots
+### Task 4: `SecretStore`: env vars, then the OS keyring; origin-bound key slots
 
 **Files:**
 - Create: `packages/gmnspy/gmnspy/llm/secrets.py`
 - Modify: `packages/gmnspy/tests/conftest.py` (autouse: no system keyring)
 - Test: `packages/gmnspy/tests/test_llm_secrets.py`
+
+There is no plaintext fallback (decision 3). On a machine without a usable keyring, `set` raises a message naming the env vars to use, and so does `MissingKey`.
 
 - [ ] **Step 1: Add the autouse guard to `packages/gmnspy/tests/conftest.py`** (append)
 
@@ -978,10 +1024,7 @@ def _no_system_keyring(monkeypatch: pytest.MonkeyPatch) -> None:
 - [ ] **Step 2: Write the failing tests** in `packages/gmnspy/tests/test_llm_secrets.py`
 
 ```python
-"""Tests for gmnspy.llm.secrets — write-only API-key storage."""
-
-import stat
-import sys
+"""Tests for gmnspy.llm.secrets — write-only API-key storage (env vars, then the OS keyring)."""
 
 import pytest
 from gmnspy.llm.errors import MissingKey
@@ -997,81 +1040,65 @@ from gmnspy.llm.secrets import (
 
 ENV_NAMES = {"openai": ("GMNSPY_OPENAI_API_KEY", "OPENAI_API_KEY")}
 OPENAI = KeySlot("openai")
-posix_only = pytest.mark.skipif(sys.platform == "win32", reason="POSIX file modes")
 
 
-def _store(tmp_path, keyring=None, environ=None):
-    return SecretStore(config_dir=tmp_path, environ=environ or {}, env_names=ENV_NAMES, keyring=keyring)
+def _store(keyring=None, environ=None):
+    return SecretStore(environ=environ or {}, env_names=ENV_NAMES, keyring=keyring)
 
 
-def test_env_beats_keyring_and_gmnspy_name_comes_first(tmp_path, fake_keyring):
+def test_env_beats_keyring_and_gmnspy_name_comes_first(fake_keyring):
     fake_keyring.set_password(KEYRING_SERVICE, "openai", "from-ring")
     env = {"OPENAI_API_KEY": "standard", "GMNSPY_OPENAI_API_KEY": "ours"}
-    assert _store(tmp_path, fake_keyring, env).lookup(OPENAI) == ("ours", "env")
-    assert _store(tmp_path, fake_keyring, {"OPENAI_API_KEY": "standard"}).lookup(OPENAI) == ("standard", "env")
-    assert _store(tmp_path, fake_keyring).lookup(OPENAI) == ("from-ring", "keyring")
+    assert _store(fake_keyring, env).lookup(OPENAI) == ("ours", "env")
+    assert _store(fake_keyring, {"OPENAI_API_KEY": "standard"}).lookup(OPENAI) == ("standard", "env")
+    assert _store(fake_keyring).lookup(OPENAI) == ("from-ring", "keyring")
 
 
-def test_origin_slot_never_uses_env(tmp_path):
+def test_origin_slot_never_uses_env(fake_keyring):
     custom = KeySlot("openai", "https://llm.example.org")
-    store = _store(tmp_path, environ={"OPENAI_API_KEY": "standard"})
+    store = _store(fake_keyring, {"OPENAI_API_KEY": "standard"})
     assert custom.name == "openai@https://llm.example.org"
     assert store.lookup(custom) is None
     with pytest.raises(MissingKey, match=r"for https://llm\.example\.org"):
         store.get(custom, "OpenAI")
 
 
-def test_missing_key_message_names_the_env_vars(tmp_path):
-    with pytest.raises(MissingKey, match=r"OpenAI: no API key is configured.*GMNSPY_OPENAI_API_KEY / OPENAI_API_KEY"):
-        _store(tmp_path).get(OPENAI, "OpenAI")
+def test_missing_key_message_offers_the_keyring_and_the_env_vars(fake_keyring):
+    with pytest.raises(MissingKey) as info:
+        _store(fake_keyring).get(OPENAI, "OpenAI")
+    assert str(info.value) == (
+        "OpenAI: no API key is configured. Add one in Settings → Language models, "
+        "or set GMNSPY_OPENAI_API_KEY or OPENAI_API_KEY."
+    )
 
 
-def test_set_in_keyring_status_and_remove(tmp_path, fake_keyring):
-    store = _store(tmp_path, fake_keyring)
+def test_without_a_keyring_the_only_way_is_an_env_var():
+    store = _store(keyring=None)
+    with pytest.raises(MissingKey, match="no OS keyring, so set GMNSPY_OPENAI_API_KEY or OPENAI_API_KEY"):
+        store.get(OPENAI, "OpenAI")
+    with pytest.raises(SecretStoreError, match=r"no OS keyring.*then restart it"):
+        store.set(OPENAI, "sk-test-key")
+    assert store.remove(OPENAI) == [] and not store.keyring_available
+
+
+def test_set_in_keyring_status_and_remove(fake_keyring):
+    store = _store(fake_keyring)
     assert store.set(OPENAI, "  sk-test-key  ") == "keyring"
     assert fake_keyring.store[(KEYRING_SERVICE, "openai")] == "sk-test-key"
     assert store.status(OPENAI) == {"configured": True, "source": "keyring"}
     assert store.remove(OPENAI) == ["keyring"]
     assert store.status(OPENAI) == {"configured": False, "source": None}
+    assert store.remove(OPENAI) == []
 
 
-def test_keyring_backend_requires_a_keyring_and_file_requires_none(tmp_path, fake_keyring):
-    with pytest.raises(SecretStoreError, match="no OS keyring is available"):
-        _store(tmp_path).set(OPENAI, "k1")
-    with pytest.raises(SecretStoreError, match="keys are not written to the plain-text file"):
-        _store(tmp_path, fake_keyring).set(OPENAI, "k1", backend="file")
-
-
-@posix_only
-def test_file_fallback_is_0600_round_trips_and_removes(tmp_path):
-    store = _store(tmp_path)
-    assert store.set(KeySlot("openai", "https://x.example"), "k-file", backend="file") == "file"
-    assert stat.S_IMODE(store.file_path.stat().st_mode) == 0o600
-    assert "PLAIN TEXT" in store.file_path.read_text()
-    assert store.lookup(KeySlot("openai", "https://x.example")) == ("k-file", "file")
-    assert store.remove(KeySlot("openai", "https://x.example")) == ["file"]
-    assert not store.file_path.exists()
-
-
-@posix_only
-def test_loose_file_permissions_are_refused(tmp_path):
-    store = _store(tmp_path)
-    store.set(OPENAI, "k-file", backend="file")
-    store.file_path.chmod(0o644)
-    with pytest.raises(SecretStoreError, match="chmod 600"):
-        store.lookup(OPENAI)
-    with pytest.raises(MissingKey, match="chmod 600"):
-        store.get(OPENAI, "OpenAI")
-
-
-def test_blank_or_spaced_keys_rejected(tmp_path, fake_keyring):
-    store = _store(tmp_path, fake_keyring)
+def test_blank_or_spaced_keys_rejected(fake_keyring):
+    store = _store(fake_keyring)
     for bad in ("", "   ", "two words"):
         with pytest.raises(SecretStoreError, match="cannot be empty"):
             store.set(OPENAI, bad)
 
 
-def test_broken_keyring_read_is_no_key_and_write_error_hides_detail(tmp_path):
+def test_broken_keyring_read_is_no_key_and_write_error_hides_detail():
     class Broken:
         def get_password(self, *a):
             raise RuntimeError("locked")
@@ -1082,7 +1109,7 @@ def test_broken_keyring_read_is_no_key_and_write_error_hides_detail(tmp_path):
         def delete_password(self, *a):
             raise RuntimeError("locked")
 
-    store = _store(tmp_path, Broken())
+    store = _store(Broken())
     assert store.lookup(OPENAI) is None
     with pytest.raises(SecretStoreError) as info:
         store.set(OPENAI, "k1")
@@ -1101,8 +1128,8 @@ def test_redact_and_looks_like_secret():
     assert origin_of("HTTPS://API.Example.org:8443/v1/x") == "https://api.example.org:8443"
 
 
-def test_repr_never_shows_keys(tmp_path, fake_keyring):
-    store = _store(tmp_path, fake_keyring)
+def test_repr_never_shows_keys(fake_keyring):
+    store = _store(fake_keyring)
     store.set(OPENAI, "sk-test-repr-check")
     assert "sk-test" not in repr(store)
 ```
@@ -1110,12 +1137,12 @@ def test_repr_never_shows_keys(tmp_path, fake_keyring):
 - [ ] **Step 3: Run them to see them fail**
 
 Run: `uv run --all-extras pytest packages/gmnspy/tests/test_llm_secrets.py -q`
-Expected: collection error, `ModuleNotFoundError: No module named 'gmnspy.llm.secrets'`. Every other gmnspy test module also errors in the autouse fixture, with `ModuleNotFoundError`, until Step 4 exists.
+Expected: a collection error, `ModuleNotFoundError: No module named 'gmnspy.llm.secrets'`. Until Step 4 exists, every other gmnspy test module also errors in the autouse fixture.
 
 - [ ] **Step 4: Create `packages/gmnspy/gmnspy/llm/secrets.py`**
 
 ```python
-"""Write-only API-key storage for LLM providers: env → OS keyring → (last resort) a 0600 file.
+"""Write-only API-key storage for LLM providers: environment variables, then the OS keyring.
 
 From the Workbench's point of view keys are write-only. This module stores, resolves and
 deletes them and reports *where* one was found. No API route, Action, history entry,
@@ -1125,29 +1152,25 @@ A key is bound to the endpoint it was entered for (:class:`KeySlot`). The provid
 official endpoint uses the plain provider slot (``"openai"``); a ``base_url`` override
 gets its own slot named for its origin (``"openai@https://llm.example.org"``), with no
 env fallback. Pointing a provider at a new URL therefore never sends an existing key there.
+
+There is deliberately no plain-text fallback: on a machine without a usable keyring, keys
+come from environment variables only, and the UI says which variable to set.
 """
 
 from __future__ import annotations
 
-import os
 import re
-import sys
-import tomllib
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any, Literal, Protocol
 from urllib.parse import urlsplit
 
 from datagrove.io.credentials import system_keyring
 
-from gmnspy.config import dumps_toml
-
 from .errors import MissingKey
 
 __all__ = [
     "KEYRING_SERVICE",
-    "SECRETS_FILE",
     "KeySlot",
     "KeyringLike",
     "SecretStore",
@@ -1159,22 +1182,14 @@ __all__ = [
 
 #: Keyring service name for every gmnspy LLM key (one entry per :attr:`KeySlot.name`).
 KEYRING_SERVICE = "gmnspy-llm"
-#: Last-resort plain-text key file, kept in the user config dir (never the project dir).
-SECRETS_FILE = "secrets.toml"
-
-Source = Literal["env", "keyring", "file"]
-Backend = Literal["keyring", "file"]
+Source = Literal["env", "keyring"]
 
 #: Key-shaped text: Anthropic ``sk-ant-…``, OpenAI ``sk-…``, Google ``AIza…``, 20+ chars after the prefix.
 _KEY_SHAPE = re.compile(r"(?<![A-Za-z0-9_-])(?:sk-ant-|sk-|AIza)[A-Za-z0-9_-]{20,}")
-_FILE_HEADER = (
-    "# gmnspy LLM API keys in PLAIN TEXT, used only because no OS keyring was available.\n"
-    "# Keep this file private (mode 0600). Remove a key with: gmnspy llm remove-key <provider>\n"
-)
 
 
 class SecretStoreError(ValueError):
-    """A key could not be stored, read or removed. The message is user-facing and secret-free."""
+    """A key could not be stored or removed. The message is user-facing and secret-free."""
 
 
 class KeyringLike(Protocol):
@@ -1237,13 +1252,11 @@ class SecretStore:
     def __init__(
         self,
         *,
-        config_dir: str | Path,
         environ: Mapping[str, str],
         env_names: Mapping[str, Sequence[str]],
         keyring: KeyringLike | Literal["auto"] | None = "auto",
     ) -> None:
         """``keyring="auto"`` uses the OS keyring when one is usable; ``None`` disables it; tests pass a fake."""
-        self.config_dir = Path(config_dir)
         self._environ = environ
         self._env_names = {name: tuple(names) for name, names in env_names.items()}
         self._keyring_arg = keyring
@@ -1251,13 +1264,8 @@ class SecretStore:
         self._keyring_resolved = False
 
     def __repr__(self) -> str:
-        """Location and backend only."""
-        return f"SecretStore(config_dir={str(self.config_dir)!r}, keyring={self.keyring_available})"
-
-    @property
-    def file_path(self) -> Path:
-        """The last-resort plain-text key file."""
-        return self.config_dir / SECRETS_FILE
+        """Backend only."""
+        return f"SecretStore(keyring={self.keyring_available})"
 
     @property
     def keyring(self) -> KeyringLike | None:
@@ -1277,7 +1285,7 @@ class SecretStore:
         return self._env_names.get(provider, ())
 
     def lookup(self, slot: KeySlot) -> tuple[str, Source] | None:
-        """``(key, source)`` for ``slot``, or ``None``; raises :class:`SecretStoreError` for an unsafe key file."""
+        """``(key, source)`` for ``slot``, or ``None``."""
         if slot.origin is None:
             for name in self.env_names(slot.provider):
                 if value := self._environ.get(name, "").strip():
@@ -1289,115 +1297,79 @@ class SecretStore:
                 stored = None
             if stored:
                 return stored, "keyring"
-        if stored := self._read_file().get(slot.name):
-            return stored, "file"
         return None
 
     def get(self, slot: KeySlot, label: str) -> str:
         """The key for ``slot``; raises :class:`~gmnspy.llm.errors.MissingKey` saying how to add one."""
-        try:
-            found = self.lookup(slot)
-        except SecretStoreError as exc:
-            raise MissingKey(slot.provider, f"{label}: {exc}") from None
+        found = self.lookup(slot)
         if found is not None:
             return found[0]
         if slot.origin is not None:
             raise MissingKey(
                 slot.provider,
                 f"{label}: no API key is configured for {slot.origin}. Keys are bound to the endpoint they were "
-                "entered for; add one for this endpoint in Settings → Language models.",
+                "entered for; add one for this endpoint in Settings → Language models (needs an OS keyring).",
             )
-        env = " / ".join(self.env_names(slot.provider))
-        hint = f", or set {env}" if env else ""
-        raise MissingKey(
-            slot.provider, f"{label}: no API key is configured. Add one in Settings → Language models{hint}."
+        raise MissingKey(slot.provider, f"{label}: no API key is configured. {self.how_to_add(slot.provider)}")
+
+    def how_to_add(self, provider: str) -> str:
+        """User-facing instructions for adding ``provider``'s key on this machine."""
+        env = " or ".join(self.env_names(provider))
+        if self.keyring_available:
+            return (
+                f"Add one in Settings → Language models, or set {env}."
+                if env
+                else "Add one in Settings → Language models."
+            )
+        return (
+            f"This machine has no OS keyring, so set {env} in the environment that starts gmnspy, then restart it."
+            if env
+            else "This machine has no OS keyring, so keys can't be stored here."
         )
 
     def status(self, slot: KeySlot) -> dict[str, Any]:
-        """``{"configured": bool, "source": "env" | "keyring" | "file" | None}``: never the key itself."""
+        """``{"configured": bool, "source": "env" | "keyring" | None}``: never the key itself."""
         found = self.lookup(slot)
         return {"configured": found is not None, "source": found[1] if found else None}
 
-    def set(self, slot: KeySlot, key: str, *, backend: Backend = "keyring") -> Source:
-        """Store ``key`` for ``slot`` and return where it went."""
+    def set(self, slot: KeySlot, key: str) -> Source:
+        """Store ``key`` for ``slot`` in the OS keyring and return ``"keyring"``."""
         key = key.strip()
         if not key or any(ch.isspace() for ch in key):
             raise SecretStoreError("an API key cannot be empty or contain spaces")
-        if backend == "keyring":
-            ring = self.keyring
-            if ring is None:
-                raise SecretStoreError(
-                    "no OS keyring is available; store the key in the plain-text file instead, "
-                    "or set it as an environment variable"
-                )
-            try:
-                ring.set_password(KEYRING_SERVICE, slot.name, key)
-            except Exception as exc:  # boundary: report the failure by type only; its text could echo the key
-                raise SecretStoreError(f"the OS keyring refused the key ({type(exc).__name__})") from None
-            return "keyring"
-        if self.keyring is not None:
-            raise SecretStoreError("an OS keyring is available, so keys are not written to the plain-text file")
-        data = self._read_file()
-        data[slot.name] = key
-        self._write_file(data)
-        return "file"
+        ring = self.keyring
+        if ring is None:
+            raise SecretStoreError(self.how_to_add(slot.provider))
+        try:
+            ring.set_password(KEYRING_SERVICE, slot.name, key)
+        except Exception as exc:  # boundary: report the failure by type only; its text could echo the key
+            raise SecretStoreError(f"the OS keyring refused the key ({type(exc).__name__})") from None
+        return "keyring"
 
     def remove(self, slot: KeySlot) -> list[Source]:
-        """Delete ``slot``'s key from the keyring and the file; return where it was removed from."""
-        removed: list[Source] = []
-        if (ring := self.keyring) is not None:
-            try:
-                if ring.get_password(KEYRING_SERVICE, slot.name):
-                    ring.delete_password(KEYRING_SERVICE, slot.name)
-                    removed.append("keyring")
-            except Exception as exc:  # boundary: as in set()
-                raise SecretStoreError(f"the OS keyring could not delete the key ({type(exc).__name__})") from None
-        data = self._read_file()
-        if slot.name in data:
-            del data[slot.name]
-            self._write_file(data)
-            removed.append("file")
-        return removed
-
-    # ------------------------------------------------------------------ plain-text file
-
-    def _read_file(self) -> dict[str, str]:
-        path = self.file_path
-        if not path.is_file():
-            return {}
-        if sys.platform != "win32" and path.stat().st_mode & 0o077:
-            raise SecretStoreError(f"{path} is readable by other users; run: chmod 600 {path}")
+        """Delete ``slot``'s key from the keyring; return where it was removed from (env vars are the user's)."""
+        ring = self.keyring
+        if ring is None:
+            return []
         try:
-            data = tomllib.loads(path.read_text(encoding="utf-8"))
-        except tomllib.TOMLDecodeError:
-            raise SecretStoreError(f"{path} is not valid TOML; fix or delete it") from None
-        keys = data.get("keys", {})
-        return {str(k): str(v) for k, v in keys.items()} if isinstance(keys, dict) else {}
-
-    def _write_file(self, data: dict[str, str]) -> None:
-        path = self.file_path
-        if not data:
-            path.unlink(missing_ok=True)
-            return
-        path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = path.with_name(path.name + ".tmp")
-        tmp.unlink(missing_ok=True)
-        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)  # 0600 from birth: never briefly world-readable
-        with os.fdopen(fd, "w", encoding="utf-8") as fh:
-            fh.write(_FILE_HEADER + dumps_toml({"keys": data}))
-        os.replace(tmp, path)
+            if not ring.get_password(KEYRING_SERVICE, slot.name):
+                return []
+            ring.delete_password(KEYRING_SERVICE, slot.name)
+        except Exception as exc:  # boundary: as in set()
+            raise SecretStoreError(f"the OS keyring could not delete the key ({type(exc).__name__})") from None
+        return ["keyring"]
 ```
 
 - [ ] **Step 5: Run the tests, plus one unrelated module to prove the autouse fixture is harmless**
 
 Run: `uv run --all-extras pytest packages/gmnspy/tests/test_llm_secrets.py packages/gmnspy/tests/test_config.py -q`
-Expected: `27 passed` (11 + 16).
+Expected: `27 passed` (9 + 18).
 
 - [ ] **Step 6: Commit**
 
 ```bash
 git add packages/gmnspy/gmnspy/llm/secrets.py packages/gmnspy/tests/test_llm_secrets.py packages/gmnspy/tests/conftest.py
-git commit -m "feat(gmnspy.llm): write-only SecretStore (env -> keyring -> 0600 file) with origin-bound key slots"
+git commit -m "feat(gmnspy.llm): write-only SecretStore (env -> OS keyring, no plaintext fallback), origin-bound slots"
 ```
 
 ---
@@ -1405,13 +1377,15 @@ git commit -m "feat(gmnspy.llm): write-only SecretStore (env -> keyring -> 0600 
 ### Task 5: The one HTTP path (`_http.request_json`), the adapter base, and the Anthropic adapter
 
 **Files:**
-- Create: `packages/gmnspy/gmnspy/llm/_http.py`, `packages/gmnspy/gmnspy/llm/providers/__init__.py`, `providers/_base.py`, `providers/anthropic.py`
+- Create: `packages/gmnspy/gmnspy/llm/_http.py`, `providers/__init__.py`, `providers/_base.py`, `providers/anthropic.py`
 - Test: `packages/gmnspy/tests/test_llm_anthropic.py`
 
 - [ ] **Step 1: Write the failing tests**
 
 ```python
 """Tests for the Anthropic adapter and the shared HTTP call path (gmnspy.llm._http)."""
+
+from dataclasses import replace
 
 import httpx
 import pytest
@@ -1526,12 +1500,23 @@ def test_unexpected_shape_is_bad_response(fake_api):
 def test_repr_has_no_key(fake_api):
     text = repr(_provider(fake_api))
     assert KEY not in text and "api.anthropic.com" in text
+
+
+def test_context_is_a_cached_system_block_and_temperature_is_sent(fake_api):
+    fake_api.add("POST", "/v1/messages", body=REPLY)
+    _provider(fake_api).complete(replace(REQUEST, context="GUIDE", temperature=0.0))
+    body = fake_api.body()
+    assert body["system"] == [
+        {"type": "text", "text": "GUIDE", "cache_control": {"type": "ephemeral"}},
+        {"type": "text", "text": "sys"},
+    ]
+    assert body["temperature"] == 0.0
 ```
 
 - [ ] **Step 2: Run them to see them fail**
 
 Run: `uv run --all-extras pytest packages/gmnspy/tests/test_llm_anthropic.py -q`
-Expected: collection error, `ModuleNotFoundError: No module named 'gmnspy.llm.providers'`.
+Expected: a collection error, `ModuleNotFoundError: No module named 'gmnspy.llm.providers'`.
 
 - [ ] **Step 3: Create `packages/gmnspy/gmnspy/llm/_http.py`**
 
@@ -1742,10 +1727,10 @@ class HTTPProvider:
         return BadResponse(self.name, f"{self.label} returned an unexpected reply ({type(exc).__name__}: {exc}).")
 ```
 
-- [ ] **Step 5: Create `packages/gmnspy/gmnspy/llm/providers/anthropic.py`**
+- [ ] **Step 5: Create `packages/gmnspy/gmnspy/llm/providers/anthropic.py`.** When `context` is set, it goes out as the first system block with `cache_control: {"type": "ephemeral"}` (Anthropic prompt caching).
 
 ```python
-"""Anthropic Messages API adapter (tool use), hand-rolled over httpx."""
+"""Anthropic Messages API adapter (tool use, prompt caching), hand-rolled over httpx."""
 
 from __future__ import annotations
 
@@ -1777,8 +1762,17 @@ class AnthropicProvider(HTTPProvider):
             "max_tokens": request.max_tokens,
             "messages": [{"role": m.role, "content": m.content} for m in request.messages],
         }
-        if request.system:
+        if request.context:
+            # The stable prefix gets a cache breakpoint (Anthropic prompt caching). Below the model's
+            # minimum cacheable length the marker is simply ignored: no error, no saving.
+            blocks = [{"type": "text", "text": request.context, "cache_control": {"type": "ephemeral"}}]
+            if request.system:
+                blocks.append({"type": "text", "text": request.system})
+            body["system"] = blocks
+        elif request.system:
             body["system"] = request.system
+        if request.temperature is not None:
+            body["temperature"] = request.temperature
         if request.tools:
             body["tools"] = [
                 {"name": t.name, "description": t.description, "input_schema": t.input_schema} for t in request.tools
@@ -1810,7 +1804,7 @@ class AnthropicProvider(HTTPProvider):
             raise self._bad_shape(exc) from None
 ```
 
-- [ ] **Step 6: Create `packages/gmnspy/gmnspy/llm/providers/__init__.py`** (Tasks 6–8 add one entry each)
+- [ ] **Step 6: Create `packages/gmnspy/gmnspy/llm/providers/__init__.py`.** Tasks 6–8 add one entry each.
 
 ```python
 """Hand-rolled ``httpx`` adapters, one per provider, each implementing :class:`~gmnspy.llm.types.LLMProvider`."""
@@ -1829,13 +1823,13 @@ __all__ = ["ADAPTERS", "AnthropicProvider", "HTTPProvider"]
 - [ ] **Step 7: Run the tests**
 
 Run: `uv run --all-extras pytest packages/gmnspy/tests/test_llm_anthropic.py -q`
-Expected: `12 passed`.
+Expected: `13 passed`.
 
 - [ ] **Step 8: Commit**
 
 ```bash
 git add packages/gmnspy/gmnspy/llm/_http.py packages/gmnspy/gmnspy/llm/providers packages/gmnspy/tests/test_llm_anthropic.py
-git commit -m "feat(gmnspy.llm): one scrubbed HTTP call path + hand-rolled Anthropic Messages adapter"
+git commit -m "feat(gmnspy.llm): one scrubbed HTTP call path + Anthropic Messages adapter (tool use, prompt caching)"
 ```
 
 ---
@@ -1851,6 +1845,8 @@ git commit -m "feat(gmnspy.llm): one scrubbed HTTP call path + hand-rolled Anthr
 
 ```python
 """Tests for the OpenAI Chat Completions adapter."""
+
+from dataclasses import replace
 
 import pytest
 from gmnspy.llm.errors import InvalidKey
@@ -1933,12 +1929,19 @@ def test_invalid_key_message_omits_provider_detail(fake_api):
         _provider(fake_api).complete(REQUEST)
     assert "Incorrect" not in str(info.value)
     assert str(info.value).startswith("OpenAI rejected the API key (HTTP 401)")
+
+
+def test_context_leads_the_system_turn_and_temperature_is_sent(fake_api):
+    fake_api.add("POST", "/v1/chat/completions", body=_reply("{}"))
+    _provider(fake_api).complete(replace(REQUEST, context="GUIDE", temperature=0.2))
+    body = fake_api.body()
+    assert body["messages"][0] == {"role": "system", "content": "GUIDE\n\nsys"} and body["temperature"] == 0.2
 ```
 
 - [ ] **Step 2: Run them to see them fail**
 
 Run: `uv run --all-extras pytest packages/gmnspy/tests/test_llm_openai.py -q`
-Expected: collection error, `ModuleNotFoundError: No module named 'gmnspy.llm.providers.openai'`.
+Expected: a collection error, `ModuleNotFoundError: No module named 'gmnspy.llm.providers.openai'`.
 
 - [ ] **Step 3: Create `packages/gmnspy/gmnspy/llm/providers/openai.py`**
 
@@ -1962,8 +1965,9 @@ __all__ = ["OpenAIProvider", "chat_messages", "function_tools", "parse_function_
 
 
 def chat_messages(request: CompletionRequest) -> list[dict[str, str]]:
-    """``messages`` with the system prompt as the leading ``system`` turn."""
-    system = [{"role": "system", "content": request.system}] if request.system else []
+    """``messages`` with the system prompt (context + system) as the leading ``system`` turn."""
+    text = request.full_system()
+    system = [{"role": "system", "content": text}] if text else []
     return system + [{"role": m.role, "content": m.content} for m in request.messages]
 
 
@@ -2020,6 +2024,8 @@ class OpenAIProvider(HTTPProvider):
             body["tools"] = function_tools(request)
             if request.force_tool:
                 body["tool_choice"] = {"type": "function", "function": {"name": request.force_tool}}
+        if request.temperature is not None:
+            body["temperature"] = request.temperature
         data = self._call("POST", "/chat/completions", body)
         try:
             choice = data["choices"][0]
@@ -2046,12 +2052,28 @@ class OpenAIProvider(HTTPProvider):
             raise self._bad_shape(exc) from None
 ```
 
-- [ ] **Step 4: Register it.** In `providers/__init__.py`, add `from .openai import OpenAIProvider`, add `"openai": OpenAIProvider,` to `ADAPTERS`, and add `"OpenAIProvider"` to `__all__` (kept sorted).
+- [ ] **Step 4: Register it.** `providers/__init__.py` becomes:
+
+```python
+"""Hand-rolled ``httpx`` adapters, one per provider, each implementing :class:`~gmnspy.llm.types.LLMProvider`."""
+
+from ._base import HTTPProvider
+from .anthropic import AnthropicProvider
+from .openai import OpenAIProvider
+
+#: Provider name -> adapter class. A catalog provider without an adapter is never offered.
+ADAPTERS: dict[str, type[HTTPProvider]] = {
+    "anthropic": AnthropicProvider,
+    "openai": OpenAIProvider,
+}
+
+__all__ = ["ADAPTERS", "AnthropicProvider", "HTTPProvider", "OpenAIProvider"]
+```
 
 - [ ] **Step 5: Run the tests**
 
 Run: `uv run --all-extras pytest packages/gmnspy/tests/test_llm_openai.py -q`
-Expected: `5 passed`.
+Expected: `6 passed`.
 
 - [ ] **Step 6: Commit**
 
@@ -2069,12 +2091,12 @@ git commit -m "feat(gmnspy.llm): OpenAI Chat Completions adapter (also OpenAI-co
 - Modify: `packages/gmnspy/gmnspy/llm/providers/__init__.py`
 - Test: `packages/gmnspy/tests/test_llm_gemini.py`
 
-> **Verify at implementation time:** check the current Gemini API reference for `FunctionDeclaration.parametersJsonSchema`, which takes full JSON Schema. If it isn't available, put `parameters` in its place, together with a sanitiser that turns the free-form `conditions` object into `{"type": "object", "properties": {}}`, because the OpenAPI-subset `parameters` field rejects property-less objects. Then update the `test_request_shape_and_parsing` expectation and re-record the contract fixture (Task 17).
-
-- [ ] **Step 1: Write the failing tests**
+> **Verify at implementation time:** check the current Gemini API reference for `FunctionDeclaration.parametersJsonSchema`, which takes full JSON Schema. If it isn't available, use `parameters`, together with a sanitiser that turns the free-form `conditions` object into `{"type": "object", "properties": {}}`. Then update `test_request_shape_and_parsing` and re-record the contract fixture (Task 18).- [ ] **Step 1: Write the failing tests**
 
 ```python
 """Tests for the Gemini generateContent adapter."""
+
+from dataclasses import replace
 
 import pytest
 from gmnspy.llm.errors import BadResponse
@@ -2165,12 +2187,20 @@ def test_list_models_filters_and_strips_prefix(fake_api):
     )
     assert _provider(fake_api).list_models() == ["gemini-2.5-flash"]
     assert fake_api.requests[0].url.params["pageSize"] == "1000"
+
+
+def test_context_joins_the_system_instruction_and_temperature_is_sent(fake_api):
+    fake_api.add("POST", PATH, body=REPLY)
+    _provider(fake_api).complete(replace(REQUEST, context="GUIDE", temperature=0.0))
+    body = fake_api.body()
+    assert body["systemInstruction"] == {"parts": [{"text": "GUIDE\n\nsys"}]}
+    assert body["generationConfig"] == {"maxOutputTokens": 200, "temperature": 0.0}
 ```
 
 - [ ] **Step 2: Run them to see them fail**
 
 Run: `uv run --all-extras pytest packages/gmnspy/tests/test_llm_gemini.py -q`
-Expected: collection error, `ModuleNotFoundError: No module named 'gmnspy.llm.providers.gemini'`.
+Expected: a collection error, `ModuleNotFoundError: No module named 'gmnspy.llm.providers.gemini'`.
 
 - [ ] **Step 3: Create `packages/gmnspy/gmnspy/llm/providers/gemini.py`**
 
@@ -2212,8 +2242,10 @@ class GeminiProvider(HTTPProvider):
             ],
             "generationConfig": {"maxOutputTokens": request.max_tokens},
         }
-        if request.system:
-            body["systemInstruction"] = {"parts": [{"text": request.system}]}
+        if system := request.full_system():
+            body["systemInstruction"] = {"parts": [{"text": system}]}
+        if request.temperature is not None:
+            body["generationConfig"]["temperature"] = request.temperature
         if request.tools:
             body["tools"] = [
                 {
@@ -2264,12 +2296,30 @@ class GeminiProvider(HTTPProvider):
             raise self._bad_shape(exc) from None
 ```
 
-- [ ] **Step 4: Register it.** In `providers/__init__.py`, add `from .gemini import GeminiProvider`, add `"gemini": GeminiProvider,` to `ADAPTERS`, and add `"GeminiProvider"` to `__all__`.
+- [ ] **Step 4: Register it.** `providers/__init__.py` becomes:
+
+```python
+"""Hand-rolled ``httpx`` adapters, one per provider, each implementing :class:`~gmnspy.llm.types.LLMProvider`."""
+
+from ._base import HTTPProvider
+from .anthropic import AnthropicProvider
+from .gemini import GeminiProvider
+from .openai import OpenAIProvider
+
+#: Provider name -> adapter class. A catalog provider without an adapter is never offered.
+ADAPTERS: dict[str, type[HTTPProvider]] = {
+    "anthropic": AnthropicProvider,
+    "openai": OpenAIProvider,
+    "gemini": GeminiProvider,
+}
+
+__all__ = ["ADAPTERS", "AnthropicProvider", "GeminiProvider", "HTTPProvider", "OpenAIProvider"]
+```
 
 - [ ] **Step 5: Run the tests**
 
 Run: `uv run --all-extras pytest packages/gmnspy/tests/test_llm_gemini.py -q`
-Expected: `5 passed`.
+Expected: `6 passed`.
 
 - [ ] **Step 6: Commit**
 
@@ -2291,6 +2341,8 @@ git commit -m "feat(gmnspy.llm): Gemini generateContent adapter (key in header, 
 
 ```python
 """Tests for the Ollama /api/chat adapter."""
+
+from dataclasses import replace
 
 import httpx
 import pytest
@@ -2383,12 +2435,20 @@ def test_list_models_then_server_down(fake_api):
     assert provider.list_models() == ["qwen3:8b", "llama3.2:3b"]
     with pytest.raises(ProviderUnavailable, match="could not reach Ollama at http://localhost:11434"):
         provider.list_models()
+
+
+def test_context_joins_the_system_turn_and_temperature_goes_in_options(fake_api):
+    fake_api.add("POST", "/api/chat", body=REPLY)
+    _provider(fake_api).complete(replace(REQUEST, context="GUIDE", temperature=0.0))
+    body = fake_api.body()
+    assert body["messages"][0] == {"role": "system", "content": "GUIDE\n\nsys"}
+    assert body["options"] == {"num_predict": 300, "temperature": 0.0}
 ```
 
 - [ ] **Step 2: Run them to see them fail**
 
 Run: `uv run --all-extras pytest packages/gmnspy/tests/test_llm_ollama.py -q`
-Expected: collection error, `ModuleNotFoundError: No module named 'gmnspy.llm.providers.ollama'`.
+Expected: a collection error, `ModuleNotFoundError: No module named 'gmnspy.llm.providers.ollama'`.
 
 - [ ] **Step 3: Create `packages/gmnspy/gmnspy/llm/providers/ollama.py`**
 
@@ -2431,6 +2491,8 @@ class OllamaProvider(HTTPProvider):
             body["tools"] = function_tools(request)
         if request.json_schema is not None:
             body["format"] = request.json_schema
+        if request.temperature is not None:
+            body["options"]["temperature"] = request.temperature
         data = self._call("POST", "/api/chat", body)
         try:
             message = data["message"]
@@ -2477,10 +2539,10 @@ ADAPTERS: dict[str, type[HTTPProvider]] = {
 __all__ = ["ADAPTERS", "AnthropicProvider", "GeminiProvider", "HTTPProvider", "OllamaProvider", "OpenAIProvider"]
 ```
 
-- [ ] **Step 5: Run all adapter tests**
+- [ ] **Step 5: Run the tests**
 
 Run: `uv run --all-extras pytest packages/gmnspy/tests/test_llm_anthropic.py packages/gmnspy/tests/test_llm_openai.py packages/gmnspy/tests/test_llm_gemini.py packages/gmnspy/tests/test_llm_ollama.py -q`
-Expected: `28 passed` (12 + 5 + 5 + 6).
+Expected: `32 passed` (13 + 6 + 6 + 7).
 
 - [ ] **Step 6: Commit**
 
@@ -2497,9 +2559,11 @@ git commit -m "feat(gmnspy.llm): Ollama /api/chat adapter (local, no key; native
 - Create: `packages/gmnspy/gmnspy/llm/structured.py`
 - Test: `packages/gmnspy/tests/test_llm_structured.py`
 
+`context` and `temperature` reach every call. In JSON mode the JSON instructions go in the per-call `system`, so the cacheable `context` prefix is identical across repairs.
+
 - [ ] **Step 1: Write the failing tests**
 
-```python
+````python
 """Tests for gmnspy.llm.structured — one validated tool call, repair loop, JSON-mode fallback."""
 
 import pytest
@@ -2599,12 +2663,20 @@ def test_json_mode_from_the_start():
     provider = Scripted(Completion(text='{"n": 6}'))
     result = request_tool_call(provider, model="m", tool=TOOL, user="x", json_mode=True)
     assert result.mode == "json" and provider.requests[0].json_schema == TOOL.input_schema
-```
+
+
+def test_context_and_temperature_reach_every_call_and_json_mode_keeps_the_context():
+    provider = Scripted(ToolsUnsupported("scripted", "no tools"), Completion(text='{"n": 1}'))
+    request_tool_call(provider, model="m", tool=TOOL, user="x", system="sys", context="GUIDE", temperature=0.0)
+    assert [r.context for r in provider.requests] == ["GUIDE", "GUIDE"]
+    assert [r.temperature for r in provider.requests] == [0.0, 0.0]
+    assert provider.requests[1].system.startswith("sys\n\nReply with ONLY one JSON object")
+````
 
 - [ ] **Step 2: Run them to see them fail**
 
 Run: `uv run --all-extras pytest packages/gmnspy/tests/test_llm_structured.py -q`
-Expected: collection error, `ModuleNotFoundError: No module named 'gmnspy.llm.structured'`.
+Expected: a collection error, `ModuleNotFoundError: No module named 'gmnspy.llm.structured'`.
 
 - [ ] **Step 3: Create `packages/gmnspy/gmnspy/llm/structured.py`**
 
@@ -2622,7 +2694,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Literal
 
 from .errors import ToolsUnsupported
@@ -2661,10 +2733,12 @@ def request_tool_call(
     tool: Tool,
     user: str,
     system: str = "",
+    context: str = "",
     validate: Callable[[dict[str, Any]], object] | None = None,
     json_mode: bool = False,
     max_repairs: int = 1,
     max_tokens: int = 1024,
+    temperature: float | None = None,
 ) -> ToolResult:
     """Ask ``provider`` to call ``tool`` for ``user``; validate, and repair until valid or out of budget.
 
@@ -2673,11 +2747,13 @@ def request_tool_call(
         model: Model id.
         tool: The tool the model must call. Its ``input_schema`` is enforced with jsonschema.
         user: The user's text.
-        system: System prompt.
+        system: The per-call part of the system prompt.
+        context: The stable, cacheable part of the system prompt (sent first).
         validate: Extra check on the arguments; raise ``ValueError`` to trigger a repair.
         json_mode: Start in JSON mode (for models known to lack tool calling).
         max_repairs: Extra calls allowed after an invalid reply.
         max_tokens: Output token cap per call.
+        temperature: Sampling temperature; ``None`` keeps the provider's default.
 
     Returns:
         The validated arguments, the mode used, and the number of calls made.
@@ -2685,11 +2761,14 @@ def request_tool_call(
     Raises:
         StructuredOutputError: Still invalid after ``max_repairs`` repairs.
     """
+    base = CompletionRequest(
+        model=model, messages=(), system=system, context=context, max_tokens=max_tokens, temperature=temperature
+    )
     mode: Mode = "json" if json_mode else "tools"
     messages = [Message("user", user)]
     error = ""
     for attempt in range(1, max_repairs + 2):
-        completion, mode = _complete(provider, model, tool, system, tuple(messages), mode, max_tokens)
+        completion, mode = _complete(provider, replace(base, messages=tuple(messages)), tool, mode)
         try:
             arguments = _arguments(completion, tool, mode)
             _check_schema(arguments, tool.input_schema)
@@ -2711,34 +2790,18 @@ def request_tool_call(
     raise StructuredOutputError(f"the model's reply was still invalid after {max_repairs + 1} attempts: {error}")
 
 
-def _complete(
-    provider: LLMProvider,
-    model: str,
-    tool: Tool,
-    system: str,
-    messages: tuple[Message, ...],
-    mode: Mode,
-    max_tokens: int,
-) -> tuple[Completion, Mode]:
+def _complete(provider: LLMProvider, base: CompletionRequest, tool: Tool, mode: Mode) -> tuple[Completion, Mode]:
     if mode == "tools":
-        request = CompletionRequest(
-            model=model, messages=messages, system=system, tools=(tool,), force_tool=tool.name, max_tokens=max_tokens
-        )
         try:
-            return provider.complete(request), "tools"
+            return provider.complete(replace(base, tools=(tool,), force_tool=tool.name)), "tools"
         except ToolsUnsupported:
             pass  # same provider, same model, JSON mode instead: a change of mode, never of provider
     instructions = JSON_MODE_INSTRUCTIONS.format(
         name=tool.name, description=tool.description, schema=json.dumps(tool.input_schema)
     )
-    request = CompletionRequest(
-        model=model,
-        messages=messages,
-        system=f"{system}\n\n{instructions}".strip(),
-        json_schema=tool.input_schema,
-        max_tokens=max_tokens,
-    )
-    return provider.complete(request), "json"
+    # The JSON instructions go in the per-call part, so the cacheable ``context`` prefix stays identical.
+    system = f"{base.system}\n\n{instructions}".strip()
+    return provider.complete(replace(base, system=system, json_schema=tool.input_schema)), "json"
 
 
 def _arguments(completion: Completion, tool: Tool, mode: Mode) -> dict[str, Any]:
@@ -2793,7 +2856,7 @@ def _echo(completion: Completion) -> str:
 - [ ] **Step 4: Run the tests**
 
 Run: `uv run --all-extras pytest packages/gmnspy/tests/test_llm_structured.py -q`
-Expected: `8 passed`.
+Expected: `9 passed`.
 
 - [ ] **Step 5: Commit**
 
@@ -2804,17 +2867,17 @@ git commit -m "feat(gmnspy.llm): request_tool_call — forced tool, schema check
 
 ---
 
-### Task 10: Settings — widen `select.provider`, add `llm.*` endpoints, refuse key-shaped values
+### Task 10: Settings: widen `select.provider`, add `llm.*` endpoints and `llm.quality`, refuse key-shaped values
 
 **Files:**
 - Modify: `packages/gmnspy/gmnspy/config.py`
-- Modify: `packages/gmnspy/gmnspy/workbench/actions.py` (`SetSetting` guard)
+- Modify: `packages/gmnspy/gmnspy/workbench/actions.py` (the `SetSetting` guard)
 - Modify: `packages/gmnspy/gmnspy/workbench/routes/core.py` (422 without input values)
 - Test: `packages/gmnspy/tests/test_config.py`, `test_workbench_actions.py`, `test_workbench_server.py`
 
 - [ ] **Step 1: Update and add the failing tests.**
 
-In `packages/gmnspy/tests/test_config.py`, update `test_precedence_user_project_env_session`. The env still says `"claude"`, and the expected value becomes `"anthropic"`:
+In `packages/gmnspy/tests/test_config.py`, `test_precedence_user_project_env_session`'s env still says `"claude"`, and its expected value becomes `"anthropic"`:
 
 ```python
     assert (s.viz.basemap, s.app.host, s.select.provider, s.app.port) == ("esri", "0.0.0.0", "anthropic", 9004)
@@ -2831,11 +2894,9 @@ def test_save_setting_project_scope_keeps_other_keys(tmp_path, isolated_env):
     assert 'provider = "anthropic"' in (tmp_path / "gmnspy.toml").read_text()  # the alias is stored under its new name
 ```
 
-Append:
+Append, after P1a's `test_negative_approval_threshold_rejected`:
 
 ```python
-
-
 def test_select_provider_claude_alias_new_providers_and_model_default(tmp_path, isolated_env):
     for given, stored in (("claude", "anthropic"), ("openai", "openai"), ("gemini", "gemini"), ("ollama", "ollama")):
         s = load_settings(project_dir=tmp_path, environ=isolated_env, overrides={"select.provider": given}).settings
@@ -2858,13 +2919,21 @@ def test_llm_section_defaults_env_and_base_url_validation(tmp_path, isolated_env
         load_settings(project_dir=tmp_path, environ=isolated_env, overrides={"llm.openai.base_url": "ftp://x"})
     with pytest.raises(SettingsError):  # there is no place for a key in settings
         load_settings(project_dir=tmp_path, environ=isolated_env, overrides={"llm.openai.api_key": "nope"})
+
+
+def test_llm_quality_defaults_and_bounds(tmp_path, isolated_env):
+    q = load_settings(project_dir=tmp_path, environ=isolated_env).settings.llm.quality
+    assert (q.grounding, q.project_context, q.assistant_context, q.few_shot) == ("auto", "auto", True, False)
+    assert (q.max_repairs, q.temperature, q.match_retry, q.grounding_max_names) == (1, 0.0, True, 200)
+    with pytest.raises(SettingsError):
+        load_settings(project_dir=tmp_path, environ=isolated_env, overrides={"llm.quality.max_repairs": 9})
+    with pytest.raises(SettingsError):
+        load_settings(project_dir=tmp_path, environ=isolated_env, overrides={"llm.quality.grounding": "always"})
 ```
 
 Append to `packages/gmnspy/tests/test_workbench_actions.py`:
 
 ```python
-
-
 def test_set_setting_refuses_key_shaped_values():
     with pytest.raises(ValidationError, match="looks like an API key"):
         SetSetting(key="select.model", value="sk-ant-api03-abcdefghijklmnopqrstuvwxyz")
@@ -2881,8 +2950,6 @@ def test_set_setting_refuses_key_shaped_values():
 Append to `packages/gmnspy/tests/test_workbench_server.py`:
 
 ```python
-
-
 def test_invalid_action_422_never_echoes_values(client):
     key = "sk-ant-api03-ECHOCHECKabcdefghijklmnop"
     r = client.post("/api/actions", json={"type": "set_setting", "key": "select.model", "value": key})
@@ -2892,11 +2959,11 @@ def test_invalid_action_422_never_echoes_values(client):
 - [ ] **Step 2: Run them to see them fail**
 
 Run: `uv run --all-extras pytest packages/gmnspy/tests/test_config.py packages/gmnspy/tests/test_workbench_actions.py packages/gmnspy/tests/test_workbench_server.py -q`
-Expected: 6 failures.
-- The alias tests fail with `Input should be 'stub' or 'claude'`.
-- The `llm` test fails with `Extra inputs are not permitted`.
-- The `SetSetting` test fails with `DID NOT RAISE`.
-- The 422 test fails because the key is echoed in `input`.
+Expected: 7 failures:
+- the alias tests fail with `Input should be 'stub' or 'claude'`;
+- the two `llm` tests fail with `Extra inputs are not permitted`;
+- the `SetSetting` test fails with `DID NOT RAISE`;
+- the 422 test fails because the key is echoed in `input`.
 
 - [ ] **Step 3: Edit `packages/gmnspy/gmnspy/config.py`.**
 
@@ -2908,21 +2975,19 @@ Secrets never live here: credentials stay in env/keyring/netrc via
 ``credentials.keyring_hosts`` only names hosts; ``llm.*`` only holds endpoints.
 ```
 
-Make the imports read:
+Add `from urllib.parse import urlsplit` after `from typing import Any, Literal`. Change the pydantic import to:
 
 ```python
-from typing import Any, Literal
-from urllib.parse import urlsplit
-
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 ```
 
-Replace `__all__` with:
+`__all__` becomes:
 
 ```python
 __all__ = [
     "PROVIDER_ALIASES",
     "LLMEndpointSettings",
+    "LLMQualitySettings",
     "LLMSettings",
     "LoadedSettings",
     "OllamaSettings",
@@ -2944,7 +3009,7 @@ After `PROJECT_FILE = "gmnspy.toml"`, add:
 PROVIDER_ALIASES = {"claude": "anthropic"}
 ```
 
-Replace `class SelectSettings` with the following, which also adds the three LLM endpoint classes:
+Replace `class SelectSettings` with the following. This also adds the LLM endpoint and quality classes, which sit between it and `VizSettings`:
 
 ```python
 class SelectSettings(_Section):
@@ -2986,13 +3051,35 @@ class OllamaSettings(LLMEndpointSettings):
     timeout_s: float = Field(default=120.0, gt=0, le=600)
 
 
+class LLMQualitySettings(_Section):
+    """What the natural-language features send to the model, and how hard they try.
+
+    ``"auto"`` means on for a local endpoint (Ollama, or any loopback ``base_url``) and off for a
+    remote provider: those two settings send network or project content off the machine.
+    """
+
+    assistant_context: bool = True
+    assistant_context_max_chars: int = Field(default=16000, ge=0, le=100_000)
+    project_context: Literal["auto", "on", "off"] = "auto"
+    project_context_max_chars: int = Field(default=4000, ge=0, le=50_000)
+    grounding: Literal["auto", "on", "off"] = "auto"
+    grounding_max_names: int = Field(default=200, ge=1, le=2000)
+    few_shot: bool = False
+    few_shot_max: int = Field(default=3, ge=1, le=10)
+    max_repairs: int = Field(default=1, ge=0, le=5)
+    temperature: float | None = Field(default=0.0, ge=0, le=2)
+    match_retry: bool = True
+    match_candidates: int = Field(default=5, ge=1, le=20)
+
+
 class LLMSettings(_Section):
-    """Language-model endpoints. API keys never live in settings (see :mod:`gmnspy.llm.secrets`)."""
+    """Language-model endpoints and quality knobs. API keys never live in settings (see :mod:`gmnspy.llm.secrets`)."""
 
     anthropic: LLMEndpointSettings = Field(default_factory=LLMEndpointSettings)
     openai: LLMEndpointSettings = Field(default_factory=LLMEndpointSettings)
     gemini: LLMEndpointSettings = Field(default_factory=LLMEndpointSettings)
     ollama: OllamaSettings = Field(default_factory=OllamaSettings)
+    quality: LLMQualitySettings = Field(default_factory=LLMQualitySettings)
 ```
 
 In `class Settings`, add this field directly after `select`:
@@ -3001,7 +3088,7 @@ In `class Settings`, add this field directly after `select`:
     llm: LLMSettings = Field(default_factory=LLMSettings)
 ```
 
-- [ ] **Step 4: Guard `SetSetting` in `packages/gmnspy/gmnspy/workbench/actions.py`.** Add `from gmnspy.llm.secrets import looks_like_secret` below `from pydantic import ...`. Then replace the `SetSetting` class with:
+- [ ] **Step 4: Guard `SetSetting` in `packages/gmnspy/gmnspy/workbench/actions.py`.** Add `from gmnspy.llm.secrets import looks_like_secret` below the pydantic import, as its own first-party import group. Then replace the `SetSetting` class with the following (P1a's `BuildNetwork` follows it unchanged):
 
 ```python
 class SetSetting(_Action):
@@ -3026,7 +3113,7 @@ class SetSetting(_Action):
         return self
 ```
 
-- [ ] **Step 5: Stop 422 responses echoing input.** In `packages/gmnspy/gmnspy/workbench/routes/core.py`, inside `actions()`, change the `detail` line to:
+- [ ] **Step 5: Stop 422 responses echoing input.** In `packages/gmnspy/gmnspy/workbench/routes/core.py`, inside `actions()`'s `except ValidationError` branch (P1a now parses before dispatching), change the `detail` line to:
 
 ```python
             detail = exc.errors(include_url=False, include_context=False, include_input=False)
@@ -3035,23 +3122,30 @@ class SetSetting(_Action):
 - [ ] **Step 6: Run the affected suites**
 
 Run: `uv run --all-extras pytest packages/gmnspy/tests/test_config.py packages/gmnspy/tests/test_workbench_actions.py packages/gmnspy/tests/test_workbench_server.py packages/gmnspy/tests/test_cli_workbench.py packages/gmnspy/tests/test_workbench_session.py -q`
-Expected: `84 passed` (18 + 10 + 23 + 11 + 22; `test_workbench_server.py` collects 23 items because some of its tests are parametrized). The existing `--provider gpt` / `value="gpt"` rejections still fail validation as before.
+Expected: `96 passed` (21 + 17 + 23 + 13 + 22). The existing `--provider gpt` / `value="gpt"` rejections still fail validation, as before. Then run the whole gmnspy suite once (`uv run --all-extras pytest packages/gmnspy/tests -q`). Every test passes; the only skip is P1a's opt-in calibration test.
 
 - [ ] **Step 7: Commit**
 
 ```bash
 git add packages/gmnspy/gmnspy/config.py packages/gmnspy/gmnspy/workbench/actions.py packages/gmnspy/gmnspy/workbench/routes/core.py packages/gmnspy/tests/test_config.py packages/gmnspy/tests/test_workbench_actions.py packages/gmnspy/tests/test_workbench_server.py
-git commit -m "feat(gmnspy): select.provider gains anthropic/openai/gemini/ollama (claude alias), llm.* endpoints; key-shaped settings refused"
+git commit -m "feat(gmnspy): select.provider gains anthropic/openai/gemini/ollama (claude alias); llm.* endpoints + llm.quality; key-shaped settings refused"
 ```
 
 ---
 
-### Task 11: `ProviderRegistry`: adapters from settings + keys, status, models, connection tests
+### Task 11: `ProviderRegistry`: adapters from settings + keys, status, the privacy note, connection tests
 
 **Files:**
 - Create: `packages/gmnspy/gmnspy/llm/registry.py`
 - Modify: `packages/gmnspy/gmnspy/llm/__init__.py` (final public surface)
 - Test: `packages/gmnspy/tests/test_llm_registry.py`
+
+`ProviderRegistry` is the one place that decides what each provider receives:
+- `is_local` (the effective `base_url` is loopback);
+- `grounding_on` / `project_context_on` (`auto` means local only);
+- `disclosure`, the privacy note's list.
+
+Status rows carry that list as `sends`, and the env vars to set as `key_env`.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -3089,7 +3183,7 @@ def test_status_rows_report_configuration_never_keys(make, fake_keyring, fake_ap
     )
     assert (rows["openai"]["configured"], rows["openai"]["usable"], rows["openai"]["local"]) == (False, False, False)
     assert (rows["ollama"]["usable"], rows["ollama"]["models"], rows["ollama"]["local"]) == (True, 1, True)
-    assert rows["gemini"]["default_model"] == "gemini-2.5-flash"
+    assert rows["gemini"]["default_model"] == "gemini-2.5-flash-lite"
     assert "sk-ant-secret-value" not in repr(rows)
 
 
@@ -3101,7 +3195,7 @@ def test_env_key_status(make):
 def test_ollama_running_without_models_is_not_usable(make, fake_api):
     fake_api.add("GET", "/api/tags", body={"models": []})
     row = next(r for r in make().status() if r["provider"] == "ollama")
-    assert row["usable"] is False and "ollama pull qwen3:8b" in row["error"]
+    assert row["usable"] is False and "ollama pull qwen3:4b" in row["error"]
 
 
 def test_base_url_override_gets_its_own_key_slot(make, fake_keyring):
@@ -3160,7 +3254,7 @@ def test_connection_test_failures_are_reported_not_raised(make, fake_keyring, fa
         "ok": False,
         "error_type": "MissingKey",
         "message": "OpenAI: no API key is configured. Add one in Settings → Language models, "
-        "or set GMNSPY_OPENAI_API_KEY / OPENAI_API_KEY.",
+        "or set GMNSPY_OPENAI_API_KEY or OPENAI_API_KEY.",
     }
     fake_keyring.set_password(KEYRING_SERVICE, "anthropic", "k")
     fake_api.add("GET", "/v1/models", status=401, body={"error": {"message": "invalid x-api-key"}})
@@ -3171,12 +3265,34 @@ def test_connection_test_failures_are_reported_not_raised(make, fake_keyring, fa
 def test_is_local_url():
     assert is_local_url("http://localhost:11434") and is_local_url("http://[::1]:8000/v1")
     assert not is_local_url("http://gpu-box:11434") and not is_local_url("https://api.openai.com/v1")
+
+
+def test_auto_quality_settings_follow_the_endpoint_and_the_privacy_note_follows_them(make):
+    reg = make()
+    assert reg.is_local("ollama") and not reg.is_local("anthropic")
+    assert (reg.grounding_on("ollama"), reg.grounding_on("anthropic")) == (True, False)
+    assert (reg.project_context_on("ollama"), reg.project_context_on("anthropic")) == (True, False)
+    assert reg.disclosure("anthropic") == [
+        "your utterance",
+        "the selection tool's schema (GMNS field names such as lanes)",
+        "the GMNS assistant guide that ships with gmnspy",
+    ]
+    opted_in = make(
+        overrides={"llm.quality.grounding": "on", "llm.quality.project_context": "on", "llm.quality.few_shot": True}
+    )
+    assert opted_in.disclosure("anthropic")[3:] == [
+        "up to 200 street names and route numbers from the active network",
+        "your project notes (AGENTS.md or CLAUDE.md, up to 4000 characters)",
+        "up to 3 earlier selections from this session (utterance and result)",
+    ]
+    local_url = make(overrides={"llm.openai.base_url": "http://localhost:1234/v1"})
+    assert local_url.grounding_on("openai")  # an OpenAI-compatible server on this machine counts as local
 ```
 
 - [ ] **Step 2: Run them to see them fail**
 
 Run: `uv run --all-extras pytest packages/gmnspy/tests/test_llm_registry.py -q`
-Expected: collection error, `ModuleNotFoundError: No module named 'gmnspy.llm.registry'`.
+Expected: a collection error, `ModuleNotFoundError: No module named 'gmnspy.llm.registry'`.
 
 - [ ] **Step 3: Create `packages/gmnspy/gmnspy/llm/registry.py`**
 
@@ -3201,7 +3317,7 @@ from gmnspy.config import LLMSettings, Settings, load_settings, user_config_path
 from .catalog import Catalog, ProviderInfo, load_catalog
 from .errors import LLMError
 from .providers import ADAPTERS
-from .secrets import KeyringLike, KeySlot, SecretStore, SecretStoreError, origin_of
+from .secrets import KeyringLike, KeySlot, SecretStore, origin_of
 from .types import LLMProvider
 
 __all__ = ["PROBE_TIMEOUT_S", "ProviderRegistry", "build_registry", "default_registry", "is_local_url"]
@@ -3240,6 +3356,34 @@ class ProviderRegistry:
         here = origin_of(self.base_url(name))
         return KeySlot(name, None if here == origin_of(self.catalog[name].base_url) else here)
 
+    def is_local(self, name: str) -> bool:
+        """Whether ``name``'s effective endpoint is on this machine (nothing it is sent leaves it)."""
+        return is_local_url(self.base_url(name))
+
+    def grounding_on(self, name: str) -> bool:
+        """Whether network vocabulary (street names, route numbers) is sent to ``name``."""
+        return _effective(self.settings.quality.grounding, self.is_local(name))
+
+    def project_context_on(self, name: str) -> bool:
+        """Whether the project's ``AGENTS.md``/``CLAUDE.md`` is sent to ``name``."""
+        return _effective(self.settings.quality.project_context, self.is_local(name))
+
+    def disclosure(self, name: str) -> list[str]:
+        """What a selection sends to ``name``, in words, for the privacy note (follows the quality settings)."""
+        quality = self.settings.quality
+        items = ["your utterance", "the selection tool's schema (GMNS field names such as lanes)"]
+        if quality.assistant_context:
+            items.append("the GMNS assistant guide that ships with gmnspy")
+        if self.grounding_on(name):
+            items.append(f"up to {quality.grounding_max_names} street names and route numbers from the active network")
+        if self.project_context_on(name):
+            items.append(
+                f"your project notes (AGENTS.md or CLAUDE.md, up to {quality.project_context_max_chars} characters)"
+            )
+        if quality.few_shot:
+            items.append(f"up to {quality.few_shot_max} earlier selections from this session (utterance and result)")
+        return items
+
     def provider(self, name: str, *, timeout_s: float | None = None) -> LLMProvider:
         """An adapter for ``name`` holding its key; raises :class:`~gmnspy.llm.errors.MissingKey` if there is none."""
         info = self.catalog[name]
@@ -3265,6 +3409,8 @@ class ProviderRegistry:
             "base_url": base,
             "local": is_local_url(base),
             "default_model": info.default_model,
+            "key_env": list(info.key_env),
+            "sends": self.disclosure(name),
             "configured": False,
             "source": None,
             "usable": False,
@@ -3281,10 +3427,7 @@ class ProviderRegistry:
             if not installed:
                 row["error"] = f"{info.label} is running but has no models; run: ollama pull {info.default_model}"
             return row
-        try:
-            row.update(self.secrets.status(self.slot(name)))
-        except SecretStoreError as exc:
-            row["error"] = str(exc)
+        row.update(self.secrets.status(self.slot(name)))
         row["usable"] = row["configured"]
         return row
 
@@ -3322,6 +3465,11 @@ class ProviderRegistry:
         return result
 
 
+def _effective(choice: str, local: bool) -> bool:
+    """Resolve an ``"auto"``/``"on"``/``"off"`` quality setting: ``auto`` is on only for a local endpoint."""
+    return choice == "on" or (choice == "auto" and local)
+
+
 def _describe(info: ProviderInfo, model_id: str) -> dict[str, Any]:
     known = info.model(model_id)
     return known.to_dict() if known else {"id": model_id, "label": model_id, "tier": None, "tools": None}
@@ -3339,7 +3487,6 @@ def build_registry(
     user_dir = user_config_path(env).parent
     catalog = load_catalog(user_dir)
     secrets = SecretStore(
-        config_dir=user_dir,
         environ=env,
         env_names={name: info.key_env for name, info in catalog.providers.items()},
         keyring=keyring,
@@ -3425,29 +3572,347 @@ __all__ = [
 
 - [ ] **Step 5: Run every LLM test so far**
 
-Run: `uv run --all-extras pytest packages/gmnspy/tests/test_llm_*.py -q`
-Expected: `66 passed` (types 4, catalog 5, secrets 11, anthropic 12, openai 5, gemini 5, ollama 6, structured 8, registry 10). Also run `uv run lint-imports`, and expect all contracts kept.
+Run: `uv run --all-extras pytest packages/gmnspy/tests/test_llm_types.py packages/gmnspy/tests/test_llm_catalog.py packages/gmnspy/tests/test_llm_secrets.py packages/gmnspy/tests/test_llm_anthropic.py packages/gmnspy/tests/test_llm_openai.py packages/gmnspy/tests/test_llm_gemini.py packages/gmnspy/tests/test_llm_ollama.py packages/gmnspy/tests/test_llm_structured.py packages/gmnspy/tests/test_llm_registry.py -q`
+Expected: `70 passed` (4 + 5 + 9 + 13 + 6 + 6 + 7 + 9 + 11). Also run `uv run lint-imports`; all contracts should be kept.
 
 - [ ] **Step 6: Commit**
 
 ```bash
 git add packages/gmnspy/gmnspy/llm/registry.py packages/gmnspy/gmnspy/llm/__init__.py packages/gmnspy/tests/test_llm_registry.py
-git commit -m "feat(gmnspy.llm): ProviderRegistry — adapters from settings + keys, status, models, connection tests"
+git commit -m "feat(gmnspy.llm): ProviderRegistry — adapters from settings + keys, status, privacy disclosure, connection tests"
 ```
 
 ---
 
-### Task 12: `LLMParser`, `ClaudeParser` alias, `make_parser`; CLI flags; the `[nl]` extra
+### Task 12: The shipped assistant guide and project notes (`gmnspy.llm.context`)
 
 **Files:**
+- Create: `packages/gmnspy/gmnspy/llm/context/__init__.py`, `packages/gmnspy/gmnspy/llm/context/gmns_assistant.md`
+- Modify: `packages/gmnspy/pyproject.toml` (wheel include)
+- Test: `packages/gmnspy/tests/test_llm_context.py`
+
+Layer (a) is `gmns_assistant.md`. It is maintained like `models.toml`, and the same text goes to every provider. A drift test checks that it names every field of the selection tool and that its worked examples are valid tool input.
+
+Layer (b) is an optional `AGENTS.md`, or failing that a `CLAUDE.md`. The search order is:
+1. the folder of a local network source (a folder source itself, or a file source's parent);
+2. the project directory.
+
+URL sources are never searched. Whether layer (b) is *sent* is decided per provider in Task 14 (`llm.quality.project_context`).
+
+- [ ] **Step 1: Write the failing tests**
+
+```python
+"""Tests for gmnspy.llm.context — the shipped assistant guide and project notes."""
+
+import json
+
+from gmnspy.llm.context import assistant_context, find_project_context, read_capped
+from gmnspy.select.parse import INTENT_TOOL
+
+
+def test_guide_covers_every_tool_field_and_its_examples_are_valid_tool_input():
+    guide = assistant_context(100_000)
+    for field in INTENT_TOOL["input_schema"]["properties"]:
+        assert f"`{field}`" in guide, field
+    examples = [line.removeprefix("Tool input: ") for line in guide.splitlines() if line.startswith("Tool input: ")]
+    assert len(examples) >= 5
+    for example in examples:
+        assert set(json.loads(example)) <= set(INTENT_TOOL["input_schema"]["properties"])
+
+
+def test_guide_is_capped():
+    capped = assistant_context(200)
+    assert capped.startswith("# GMNS assistant guide") and capped.endswith("[… truncated at 200 characters …]")
+
+
+def test_project_notes_next_to_the_network_win_over_the_project_dir(tmp_path):
+    network, project = tmp_path / "net", tmp_path / "proj"
+    network.mkdir()
+    project.mkdir()
+    (project / "AGENTS.md").write_text("project")
+    assert find_project_context(str(network), project) == project / "AGENTS.md"
+    (network / "CLAUDE.md").write_text("network")
+    assert find_project_context(str(network), project) == network / "CLAUDE.md"
+    (network / "AGENTS.md").write_text("network agents")
+    assert find_project_context(str(network), project) == network / "AGENTS.md"  # AGENTS.md before CLAUDE.md
+    zipped = network / "net.zip"
+    zipped.write_text("")
+    assert find_project_context(str(zipped), project) == network / "AGENTS.md"  # a file source: its folder
+
+
+def test_url_sources_and_missing_notes(tmp_path):
+    assert find_project_context("s3://bucket/net", tmp_path) is None
+    (tmp_path / "AGENTS.md").write_text("x")
+    assert find_project_context("s3://bucket/net", tmp_path) == tmp_path / "AGENTS.md"
+
+
+def test_read_capped_names_the_file_and_caps(tmp_path):
+    notes = tmp_path / "AGENTS.md"
+    notes.write_text("SR-520 = Evergreen Point Bridge\n" * 50)
+    text = read_capped(notes, 80)
+    assert text.startswith("Project notes from AGENTS.md:") and text.endswith("[… truncated at 80 characters …]")
+    assert read_capped(notes, 0) == ""
+```
+
+- [ ] **Step 2: Run them to see them fail**
+
+Run: `uv run --all-extras pytest packages/gmnspy/tests/test_llm_context.py -q`
+Expected: a collection error, `ModuleNotFoundError: No module named 'gmnspy.llm.context'`.
+
+- [ ] **Step 3: Create `packages/gmnspy/gmnspy/llm/context/gmns_assistant.md`**
+
+```markdown
+# GMNS assistant guide
+
+This guide is sent to the language model, together with the user's request, by gmnspy's
+natural-language features. It is the same for every provider. Maintainers: keep it short, factual
+and provider-neutral. It is versioned with gmnspy (`gmnspy/llm/context/gmns_assistant.md`).
+
+## Your job
+
+You turn a transportation modeller's request into ONE structured selection of roadway links by
+calling the `emit_selection_intent` tool. Deterministic code then finds the links. You never see the
+network's tables, and you never invent link ids, node ids, or column names.
+
+## The data model (GMNS)
+
+A network is a directed graph of **links** between **nodes** (General Modeling Network
+Specification). Useful link fields:
+
+| field | meaning |
+|---|---|
+| `link_id` | primary key; only use when the user gives ids explicitly |
+| `name` | street or path name, e.g. "Airport Boulevard" |
+| `ref` | route number, e.g. "I 40", "US 1", "NC 54" (an OpenStreetMap-derived field gmnspy keeps) |
+| `from_node_id`, `to_node_id` | the link's end nodes; travel goes from → to on a directed link |
+| `directed` | whether travel is only from → to |
+| `facility_type` | road class, e.g. motorway, trunk, primary, secondary, residential |
+| `lanes` | permanent lanes in the direction of travel |
+| `free_speed` | free-flow speed |
+| `capacity` | saturation capacity per lane |
+| `allowed_uses` | modes allowed on the link |
+| `toll` | toll amount |
+
+A two-way street is usually two directed links, one per direction. A freeway's main lanes are
+separate from its ramps; interchanges connect them.
+
+## How to fill the tool
+
+- Choose exactly ONE primary selector:
+  - `facility` with `ref` (route numbers) and/or `name` (street names) — the usual case;
+  - `select_all` — "everything", "all links", usually narrowed by `conditions` or `modes`;
+  - `link_ids` — only when the user lists ids.
+- `facility.direction` is one of `EB`, `WB`, `NB`, `SB`. Map words: eastbound → `EB`,
+  westbound → `WB`, northbound → `NB`, southbound → `SB`. Omit it when no direction is stated.
+- Write route numbers with a space: "I-40" → "I 40", "US-1" → "US 1", "NC54" → "NC 54".
+- `from_anchor` / `to_anchor` bound a segment: the cross streets or interchanges the user names
+  ("between A and B", "from A to B"). Copy them as written, minus words like "exit",
+  "interchange" or "ramp". Omit both to select the whole facility.
+- `conditions` are attribute filters, `{field: value}` or `{field: [values]}`, ANDed together,
+  e.g. "with 2 or 3 lanes" → `{"lanes": [2, 3]}`. Use only the GMNS fields above.
+- `modes` filters by mode: `drive`, `bike`, `walk`, `transit`.
+- Leave out any field you don't need. Never put an empty string in a field.
+
+If a list of street names and route numbers from the active network is provided below, prefer the
+spelling on that list when the user's words clearly mean one of them ("Airport Blvd" →
+"Airport Boulevard"). If project notes are provided, they hold local aliases and code meanings:
+apply them (for example "the Beltline" → the route number they give).
+
+## Worked examples
+
+Request: I-40 EB between South Miami Boulevard and Airport Boulevard
+Tool input: {"facility": {"ref": "I 40", "direction": "EB"}, "from_anchor": "South Miami Boulevard", "to_anchor": "Airport Boulevard"}
+
+Request: westbound I-40 from the Airport Blvd exit to Page Road
+Tool input: {"facility": {"ref": "I 40", "direction": "WB"}, "from_anchor": "Airport Blvd", "to_anchor": "Page Road"}
+
+Request: Page Road
+Tool input: {"facility": {"name": "Page Road"}}
+
+Request: Main Street northbound between 1st Ave and 5th Ave
+Tool input: {"facility": {"name": "Main Street", "direction": "NB"}, "from_anchor": "1st Ave", "to_anchor": "5th Ave"}
+
+Request: all links with 3 lanes
+Tool input: {"select_all": true, "conditions": {"lanes": [3]}}
+
+Request: motorway links that allow bikes
+Tool input: {"select_all": true, "conditions": {"facility_type": ["motorway"]}, "modes": ["bike"]}
+
+Request: links 5021, 5022 and 5023
+Tool input: {"link_ids": [5021, 5022, 5023]}
+
+## Future actions
+
+The Workbench will offer more actions as tools over time (style, filter, navigate, edits drafted for
+approval). Each arrives as its own JSON-schema tool. Only call tools you are given.
+```
+
+- [ ] **Step 4: Create `packages/gmnspy/gmnspy/llm/context/__init__.py`**
+
+```python
+"""System context for the natural-language features: the shipped guide and a project's notes.
+
+Two layers, each with its own toggle and size cap in ``llm.quality``:
+
+* :func:`assistant_context` — ``gmns_assistant.md``, maintained and shipped with gmnspy: the GMNS
+  data model, how to fill the selection tool, and worked examples. Identical for every provider.
+* :func:`find_project_context` + :func:`read_capped` — an optional ``AGENTS.md`` (or ``CLAUDE.md``)
+  next to the active network or in the project directory, holding local knowledge such as
+  aliases ("SR-520 = Evergreen Point Bridge") and code meanings. It is user content, so it is
+  only read when ``llm.quality.project_context`` says so for the provider in use.
+"""
+
+from __future__ import annotations
+
+from importlib import resources
+from pathlib import Path
+
+__all__ = [
+    "ASSISTANT_CONTEXT_FILE",
+    "PROJECT_CONTEXT_NAMES",
+    "assistant_context",
+    "find_project_context",
+    "read_capped",
+]
+
+#: The shipped guide, in this package.
+ASSISTANT_CONTEXT_FILE = "gmns_assistant.md"
+#: Project-note file names, in the order they are looked for.
+PROJECT_CONTEXT_NAMES = ("AGENTS.md", "CLAUDE.md")
+_TRUNCATED = "\n\n[… truncated at {n} characters …]"
+
+
+def _cap(text: str, max_chars: int) -> str:
+    text = text.strip()
+    if max_chars <= 0:
+        return ""
+    return text if len(text) <= max_chars else text[:max_chars].rstrip() + _TRUNCATED.format(n=max_chars)
+
+
+def assistant_context(max_chars: int) -> str:
+    """The shipped GMNS assistant guide, capped at ``max_chars`` (0 means none).
+
+    Examples:
+        >>> assistant_context(0)
+        ''
+        >>> assistant_context(100_000).startswith("# GMNS assistant guide")
+        True
+    """
+    text = resources.files("gmnspy.llm.context").joinpath(ASSISTANT_CONTEXT_FILE).read_text(encoding="utf-8")
+    return _cap(text, max_chars)
+
+
+def find_project_context(source: str | None, project_dir: str | Path | None) -> Path | None:
+    """The first ``AGENTS.md``/``CLAUDE.md`` next to a local network ``source``, else in ``project_dir``.
+
+    A directory source is searched itself; a file source (``.zip``, ``.duckdb``) in its parent.
+    URL sources are skipped: notes are only read from this machine.
+    """
+    places: list[Path] = []
+    if source and "://" not in source:
+        path = Path(source)
+        places.append(path if path.is_dir() else path.parent)
+    places.append(Path(project_dir) if project_dir is not None else Path.cwd())
+    for place in places:
+        for name in PROJECT_CONTEXT_NAMES:
+            candidate = place / name
+            if candidate.is_file():
+                return candidate
+    return None
+
+
+def read_capped(path: Path, max_chars: int) -> str:
+    """``path``'s text, capped at ``max_chars``, prefixed with where it came from."""
+    return _cap(f"Project notes from {path.name}:\n\n{path.read_text(encoding='utf-8', errors='replace')}", max_chars)
+```
+
+- [ ] **Step 5: Ship the guide.** In `packages/gmnspy/pyproject.toml`'s wheel `include`, after the `gmnspy/llm/*.toml` line, add:
+
+```toml
+    # Shipped assistant context sent with NL prompts (gmnspy.llm.context).
+    "gmnspy/llm/context/*.md",
+```
+
+- [ ] **Step 6: Run the tests and the module's doctests**
+
+Run: `uv run --all-extras pytest packages/gmnspy/tests/test_llm_context.py --doctest-modules packages/gmnspy/gmnspy/llm/context -q`
+Expected: `6 passed` (5 tests + 1 doctest).
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add packages/gmnspy/gmnspy/llm/context packages/gmnspy/pyproject.toml packages/gmnspy/tests/test_llm_context.py
+git commit -m "feat(gmnspy.llm): shipped GMNS assistant guide + AGENTS.md/CLAUDE.md project-note discovery"
+```
+
+---
+
+### Task 13: Prompt assembly, `LLMParser`, `ClaudeParser` alias, `make_parser`; CLI flags; the `[nl]` extra
+
+**Files:**
+- Create: `packages/gmnspy/gmnspy/select/prompt.py`
 - Modify: `packages/gmnspy/gmnspy/select/parse.py` (full replacement below), `select/__init__.py`
 - Modify: `packages/gmnspy/gmnspy/cli/commands/select.py`, `cli/commands/workbench.py`, `cli/commands/viz.py`
 - Modify: `packages/gmnspy/pyproject.toml`, `uv.lock`
-- Test: `packages/gmnspy/tests/test_select_parse.py`, `test_select_cli.py`, `test_cli_workbench.py`
+- Test: `packages/gmnspy/tests/test_select_prompt.py` (new), `test_select_parse.py`, `test_select_cli.py`, `test_cli_workbench.py`
 
-- [ ] **Step 1: Update the failing tests.**
+`render_prompt` splits the prompt into two parts:
+- the **stable** part: the system prompt, the guide, the project notes and the vocabulary. It changes only when the network or the settings do, so it is the cacheable `context`;
+- the **per-call** part: few-shot examples and the close-match hint.
 
-In `packages/gmnspy/tests/test_select_parse.py`, replace the imports and the old `test_claude_parser_reads_tool_use_input`. The new top of the file is:
+`make_parser` reads `max_repairs` and `temperature` from `llm.quality`.
+
+- [ ] **Step 1: Write the failing tests.**
+
+Create `packages/gmnspy/tests/test_select_prompt.py`:
+
+```python
+"""Tests for gmnspy.select.prompt — grounding vocabulary, examples, close-match hints."""
+
+import pandas as pd
+from gmnspy.select.intent import Facility, SelectionIntent
+from gmnspy.select.parse import intent_from_payload, payload_from_intent
+from gmnspy.select.prompt import PromptContext, close_match_hint, render_prompt, vocabulary_from_links
+
+
+def test_render_prompt_keeps_stable_parts_first_and_per_call_parts_apart():
+    context = PromptContext(assistant="GUIDE", project="NOTES", vocabulary=("I 40", "Page Road"), hint="HINT")
+    stable, per_call = render_prompt(context, "SYSTEM")
+    assert (
+        stable == "SYSTEM\n\nGUIDE\n\nNOTES\n\nStreet names and route numbers in the active network:\nI 40\nPage Road"
+    )
+    assert per_call == "HINT"
+    assert render_prompt(PromptContext(), "SYSTEM") == ("SYSTEM", "")
+
+
+def test_vocabulary_is_most_frequent_refs_and_names(rdu_source):
+    links = pd.read_parquet(f"{rdu_source}/link.parquet")
+    vocabulary = vocabulary_from_links(links, 3)
+    assert vocabulary == ("I 40", "Page Road", "Airport Boulevard")
+    assert len(vocabulary_from_links(links, 500)) == len(set(vocabulary_from_links(links, 500)))
+
+
+def test_close_match_hint_covers_facility_and_anchors_and_skips_known_names():
+    vocabulary = ("I 40", "Airport Boulevard", "South Miami Boulevard", "Page Road")
+    intent = SelectionIntent(facility=Facility(ref="I 40"), from_anchor="S Miami Blvd", to_anchor="Page Road")
+    hint = close_match_hint(intent, vocabulary, 2)
+    assert "'S Miami Blvd'. Closest names: South Miami Boulevard" in hint and "Page Road'" not in hint
+    assert close_match_hint(SelectionIntent(facility=Facility(ref="I 40")), vocabulary, 2) == ""
+    assert close_match_hint(intent, (), 2) == ""
+
+
+def test_payload_round_trips_through_the_intent():
+    payload = {
+        "facility": {"name": "Main Street", "direction": "NB"},
+        "from_anchor": "1st Ave",
+        "to_anchor": "5th Ave",
+        "conditions": {"lanes": [2]},
+        "modes": ["drive"],
+    }
+    assert payload_from_intent(intent_from_payload(payload, "x")) == payload
+```
+
+In `packages/gmnspy/tests/test_select_parse.py`, replace everything above the first `test_stub_*` test with:
 
 ```python
 """Tests for gmnspy.select.parse — utterance -> SelectionIntent."""
@@ -3459,7 +3924,8 @@ from gmnspy.llm.providers.anthropic import AnthropicProvider
 from gmnspy.llm.secrets import KEYRING_SERVICE
 from gmnspy.select.errors import IntentError
 from gmnspy.select.intent import SelectionIntent
-from gmnspy.select.parse import SELECTION_TOOL, ClaudeParser, LLMParser, StubParser, make_parser
+from gmnspy.select.parse import SELECTION_TOOL, SYSTEM_PROMPT, ClaudeParser, LLMParser, StubParser, make_parser
+from gmnspy.select.prompt import PromptContext
 
 pytestmark = pytest.mark.usefixtures("no_network")
 
@@ -3473,7 +3939,7 @@ def _anthropic_reply(payload):
     }
 ```
 
-Keep the five `test_stub_*` tests unchanged. Delete `test_claude_parser_reads_tool_use_input` and append:
+Keep the five `test_stub_*` tests unchanged. Replace `test_claude_parser_reads_tool_use_input` with:
 
 ```python
 def test_claude_parser_is_llm_parser_over_anthropic(fake_api):
@@ -3481,7 +3947,7 @@ def test_claude_parser_is_llm_parser_over_anthropic(fake_api):
     fake_api.add("POST", "/v1/messages", body=_anthropic_reply(payload))
     parser = ClaudeParser(provider=AnthropicProvider(api_key="k", transport=fake_api.transport()))
     intent = parser.parse(UTTER)
-    assert isinstance(parser, LLMParser) and parser.model == "claude-sonnet-5"
+    assert isinstance(parser, LLMParser) and parser.model == "claude-haiku-4-5-20251001"
     assert (intent.facility.ref, intent.facility.direction, intent.from_anchor, intent.utterance) == (
         "I 40",
         "EB",
@@ -3491,7 +3957,7 @@ def test_claude_parser_is_llm_parser_over_anthropic(fake_api):
     body = fake_api.body()
     assert body["tools"][0]["input_schema"] == SELECTION_TOOL.input_schema
     assert body["tool_choice"] == {"type": "tool", "name": "emit_selection_intent"}
-    assert parser.describe() == {"provider": "anthropic", "model": "claude-sonnet-5", "mode": "tools"}
+    assert parser.describe() == {"provider": "anthropic", "model": "claude-haiku-4-5-20251001", "mode": "tools"}
 
 
 def test_llm_parser_repairs_an_intent_error_then_succeeds(fake_api):
@@ -3520,13 +3986,34 @@ def test_make_parser_stub_default_model_and_explicit_model(tmp_path, isolated_en
     fake_keyring.set_password(KEYRING_SERVICE, "openai", "sk-test")
     assert parser_for({"select.provider": "openai"}).model == "gpt-4.1-mini"
     assert parser_for({"select.provider": "openai", "select.model": "gpt-4.1"}).model == "gpt-4.1"
+
+
+def test_quality_settings_reach_the_request(tmp_path, isolated_env, fake_keyring, fake_api):
+    overrides = {"select.provider": "anthropic", "llm.quality.max_repairs": 0, "llm.quality.temperature": 0.3}
+    settings = load_settings(project_dir=tmp_path, environ=isolated_env, overrides=overrides).settings
+    registry = build_registry(settings, environ=isolated_env, keyring=fake_keyring, transport=fake_api.transport())
+    fake_keyring.set_password(KEYRING_SERVICE, "anthropic", "k")
+    fake_api.add("POST", "/v1/messages", body=_anthropic_reply({"modes": ["drive"]}))
+    with pytest.raises(IntentError, match="after 1 attempts"):
+        make_parser(settings.select, registry).parse("drive links")
+    assert fake_api.body()["temperature"] == 0.3 and len(fake_api.requests) == 1
+
+
+def test_prompt_context_is_a_cached_prefix_and_examples_are_per_call(fake_api):
+    fake_api.add("POST", "/v1/messages", body=_anthropic_reply({"facility": {"name": "Page Road"}}))
+    context = PromptContext(
+        assistant="GUIDE", vocabulary=("Page Road",), examples=(("I-40 EB", {"facility": {"ref": "I 40"}}),)
+    )
+    LLMParser(AnthropicProvider(api_key="k", transport=fake_api.transport()), "m").parse("Page Rd", context=context)
+    cached, per_call = fake_api.body()["system"]
+    assert cached["cache_control"] == {"type": "ephemeral"}
+    assert cached["text"].startswith(SYSTEM_PROMPT) and "GUIDE" in cached["text"] and "Page Road" in cached["text"]
+    assert per_call["text"].startswith("Earlier requests") and '{"facility": {"ref": "I 40"}}' in per_call["text"]
 ```
 
 Append to `packages/gmnspy/tests/test_select_cli.py`:
 
 ```python
-
-
 def test_cli_unknown_provider_exits_2(tmp_path, monkeypatch):
     monkeypatch.setenv("GMNSPY_CONFIG_DIR", str(tmp_path / "user"))
     monkeypatch.chdir(tmp_path)
@@ -3546,8 +4033,6 @@ def test_cli_missing_key_exits_1_with_how_to(tmp_path, monkeypatch):
 Append to `packages/gmnspy/tests/test_cli_workbench.py`:
 
 ```python
-
-
 def test_app_provider_alias_and_model_flag(served):
     result = runner.invoke(app, ["app", "--provider", "claude", "--model", "claude-haiku-4-5-20251001"])
     assert result.exit_code == 0, result.output
@@ -3557,13 +4042,116 @@ def test_app_provider_alias_and_model_flag(served):
 
 - [ ] **Step 2: Run them to see them fail**
 
-Run: `uv run --all-extras pytest packages/gmnspy/tests/test_select_parse.py packages/gmnspy/tests/test_select_cli.py packages/gmnspy/tests/test_cli_workbench.py -q`
+Run: `uv run --all-extras pytest packages/gmnspy/tests/test_select_prompt.py packages/gmnspy/tests/test_select_parse.py packages/gmnspy/tests/test_select_cli.py packages/gmnspy/tests/test_cli_workbench.py -q`
 Expected:
-- `test_select_parse.py` fails to collect with `ImportError: cannot import name 'SELECTION_TOOL'`;
-- the two new CLI tests fail (the old `--provider` code calls `StubParser`);
+- the two select test files fail to collect (`No module named 'gmnspy.select.prompt'`);
+- the new CLI tests fail (the old `select` command calls `StubParser`);
 - `--model` fails with `No such option: --model`.
 
-- [ ] **Step 3: Replace `packages/gmnspy/gmnspy/select/parse.py` entirely**
+- [ ] **Step 3: Create `packages/gmnspy/gmnspy/select/prompt.py`**
+
+```python
+"""What the selection parser tells the model besides the utterance.
+
+:class:`PromptContext` carries the optional parts, each switched by ``llm.quality``:
+
+* the shipped GMNS assistant guide and the project's notes (:mod:`gmnspy.llm.context`);
+* grounding vocabulary: the active network's most common street names and route numbers;
+* few-shot examples: this session's earlier selections that resolved;
+* a one-off hint, e.g. the closest real names after a facility didn't match (:func:`close_match_hint`).
+
+:func:`render_prompt` splits them into a stable prefix (cacheable: it only changes when the network
+or the settings do) and a per-call remainder.
+"""
+
+from __future__ import annotations
+
+import difflib
+import json
+from collections import Counter
+from dataclasses import dataclass
+from typing import Any
+
+from .intent import SelectionIntent
+
+__all__ = ["PromptContext", "close_match_hint", "render_prompt", "vocabulary_from_links"]
+
+
+@dataclass(frozen=True)
+class PromptContext:
+    """Everything beyond the utterance that a selection prompt may carry (each part optional)."""
+
+    assistant: str = ""
+    project: str = ""
+    vocabulary: tuple[str, ...] = ()
+    examples: tuple[tuple[str, dict[str, Any]], ...] = ()
+    hint: str = ""
+
+
+def render_prompt(context: PromptContext, system_prompt: str) -> tuple[str, str]:
+    r"""``(stable, per_call)`` system text: the cacheable prefix, then examples and hints.
+
+    Examples:
+        >>> render_prompt(PromptContext(vocabulary=("I 40",), hint="Try again."), "Be brief.")
+        ('Be brief.\n\nStreet names and route numbers in the active network:\nI 40', 'Try again.')
+    """
+    stable = [system_prompt, context.assistant, context.project]
+    if context.vocabulary:
+        stable.append("Street names and route numbers in the active network:\n" + "\n".join(context.vocabulary))
+    per_call = []
+    if context.examples:
+        shots = "\n\n".join(
+            f"Request: {utterance}\nTool input: {json.dumps(payload, sort_keys=True)}"
+            for utterance, payload in context.examples
+        )
+        per_call.append(f"Earlier requests in this session that selected the right links:\n\n{shots}")
+    if context.hint:
+        per_call.append(context.hint)
+    return "\n\n".join(part for part in stable if part), "\n\n".join(per_call)
+
+
+def vocabulary_from_links(links: Any, max_names: int) -> tuple[str, ...]:
+    """The ``max_names`` most frequent route numbers (``ref``) and street names (``name``) in ``links``."""
+    counts: Counter[str] = Counter()
+    for column in ("ref", "name"):
+        if column in links.columns:
+            counts.update(text for text in (str(v).strip() for v in links[column].dropna()) if text)
+    return tuple(name for name, _ in counts.most_common(max_names))
+
+
+def close_match_hint(intent: SelectionIntent, vocabulary: tuple[str, ...], max_candidates: int) -> str:
+    """A re-prompt hint naming the closest real names for each facility/anchor name not in ``vocabulary``.
+
+    Empty when every name is known, nothing is close, or there is no vocabulary (grounding off).
+
+    Examples:
+        >>> from gmnspy.select.intent import Facility
+        >>> intent = SelectionIntent(facility=Facility(name="Airport Blvd"))
+        >>> print(close_match_hint(intent, ("Airport Boulevard", "Page Road"), 3))
+        The active network has no roadway called 'Airport Blvd'. Closest names: Airport Boulevard.
+        If the user meant one of these, use its exact spelling.
+    """
+    if not vocabulary:
+        return ""
+    by_folded = {name.casefold(): name for name in vocabulary}
+    wanted: list[str] = []
+    if intent.facility is not None:
+        wanted += [str(v) for v in (*intent.facility.refs(), *intent.facility.names())]
+    wanted += [a for a in (intent.from_anchor, intent.to_anchor) if a]
+    lines = []
+    for name in wanted:
+        if name.casefold() in by_folded:
+            continue
+        close = difflib.get_close_matches(name.casefold(), list(by_folded), n=max_candidates, cutoff=0.5)
+        if close:
+            names = ", ".join(by_folded[c] for c in close)
+            lines.append(f"The active network has no roadway called {name!r}. Closest names: {names}.")
+    if not lines:
+        return ""
+    return "\n".join([*lines, "If the user meant one of these, use its exact spelling."])
+```
+
+- [ ] **Step 4: Replace `packages/gmnspy/gmnspy/select/parse.py` entirely**
 
 ```python
 """Parse a natural-language utterance into a SelectionIntent.
@@ -3592,6 +4180,7 @@ from gmnspy.llm.types import LLMProvider, Tool
 
 from .errors import IntentError
 from .intent import Facility, SelectionIntent
+from .prompt import PromptContext, render_prompt
 
 if TYPE_CHECKING:
     from gmnspy.config import SelectSettings
@@ -3607,6 +4196,7 @@ __all__ = [
     "StubParser",
     "intent_from_payload",
     "make_parser",
+    "payload_from_intent",
 ]
 
 _DIR_WORDS = {
@@ -3758,33 +4348,74 @@ def intent_from_payload(payload: dict[str, Any], utterance: str) -> SelectionInt
     )
 
 
+def payload_from_intent(intent: SelectionIntent) -> dict[str, Any]:
+    """The tool arguments that produce ``intent``: the inverse of :func:`intent_from_payload` (for few-shot).
+
+    Examples:
+        >>> payload_from_intent(SelectionIntent(facility=Facility(ref="I 40", direction="EB"), from_anchor="A"))
+        {'facility': {'ref': 'I 40', 'direction': 'EB'}, 'from_anchor': 'A'}
+    """
+    out: dict[str, Any] = {}
+    if intent.facility is not None:
+        fac = intent.facility
+        out["facility"] = {k: v for k, v in (("ref", fac.ref), ("name", fac.name), ("direction", fac.direction)) if v}
+    for key in ("from_anchor", "to_anchor"):
+        if value := getattr(intent, key):
+            out[key] = value
+    if intent.select_all:
+        out["select_all"] = True
+    if intent.link_ids:
+        out["link_ids"] = list(intent.link_ids)
+    if intent.modes:
+        out["modes"] = list(intent.modes)
+    if intent.conditions:
+        out["conditions"] = dict(intent.conditions)
+    return out
+
+
 class LLMParser:
     """Parse with any :class:`~gmnspy.llm.types.LLMProvider` through the shared selection tool."""
 
-    def __init__(self, provider: LLMProvider, model: str, *, json_mode: bool = False, max_repairs: int = 1) -> None:
+    def __init__(
+        self,
+        provider: LLMProvider,
+        model: str,
+        *,
+        json_mode: bool = False,
+        max_repairs: int = 1,
+        temperature: float | None = None,
+    ) -> None:
         """Bind a provider adapter and a model id (``json_mode`` for models known to lack tool calling)."""
         self.provider = provider
         self.model = model
         self._json_mode = json_mode
         self._max_repairs = max_repairs
+        self._temperature = temperature
         self.last_mode: str | None = None
 
     def describe(self) -> dict[str, Any]:
         """Which provider, model and mode parse (no secrets): recorded on each selection as ``parsed_by``."""
         return {"provider": self.provider.name, "model": self.model, "mode": self.last_mode}
 
-    def parse(self, utterance: str) -> SelectionIntent:
-        """Parse via a forced tool call (or JSON mode); provider failures raise :class:`~gmnspy.llm.errors.LLMError`."""
+    def parse(self, utterance: str, *, context: PromptContext | None = None) -> SelectionIntent:
+        """Parse via a forced tool call (or JSON mode); provider failures raise :class:`~gmnspy.llm.errors.LLMError`.
+
+        ``context`` adds the optional guide, project notes, vocabulary, examples and hint
+        (see :mod:`gmnspy.select.prompt`); without it the model gets only the system prompt.
+        """
+        stable, per_call = render_prompt(context or PromptContext(), SYSTEM_PROMPT)
         try:
             result = request_tool_call(
                 self.provider,
                 model=self.model,
                 tool=SELECTION_TOOL,
                 user=utterance,
-                system=SYSTEM_PROMPT,
+                system=per_call,
+                context=stable,
                 validate=lambda arguments: intent_from_payload(arguments, utterance),
                 json_mode=self._json_mode,
                 max_repairs=self._max_repairs,
+                temperature=self._temperature,
             )
         except StructuredOutputError as exc:
             raise IntentError(str(exc)) from exc
@@ -3795,7 +4426,7 @@ class LLMParser:
 class ClaudeParser(LLMParser):
     """Back-compat name: an :class:`LLMParser` over the Anthropic adapter (key from the secret store)."""
 
-    def __init__(self, *, model: str = "claude-sonnet-5", provider: LLMProvider | None = None) -> None:
+    def __init__(self, *, model: str = "claude-haiku-4-5-20251001", provider: LLMProvider | None = None) -> None:
         """Use ``provider`` if given, else the Anthropic adapter from the current settings and keys."""
         if provider is None:
             from gmnspy.llm.registry import default_registry
@@ -3807,15 +4438,19 @@ class ClaudeParser(LLMParser):
 def make_parser(select: SelectSettings, registry: ProviderRegistry) -> Parser:
     """The parser that ``select.provider`` / ``select.model`` describe (``model=None`` means the catalog default).
 
-    Raises :class:`~gmnspy.llm.errors.MissingKey` when a remote provider has no key.
+    The repair budget and temperature come from ``llm.quality``. Raises
+    :class:`~gmnspy.llm.errors.MissingKey` when a remote provider has no key.
     """
     if select.provider == "stub":
         return StubParser()
+    quality = registry.settings.quality
     model = select.model or registry.catalog[select.provider].default_model
-    return LLMParser(registry.provider(select.provider), model)
+    return LLMParser(
+        registry.provider(select.provider), model, max_repairs=quality.max_repairs, temperature=quality.temperature
+    )
 ```
 
-- [ ] **Step 4: Export the new names.** In `packages/gmnspy/gmnspy/select/__init__.py`, change the parse import to `from .parse import ClaudeParser, LLMParser, Parser, StubParser, make_parser` and replace `__all__` with:
+- [ ] **Step 5: Export the new names.** In `packages/gmnspy/gmnspy/select/__init__.py`, change the parse import to `from .parse import ClaudeParser, LLMParser, Parser, StubParser, make_parser`, and replace `__all__` with:
 
 ```python
 __all__ = [
@@ -3837,16 +4472,17 @@ __all__ = [
 ]
 ```
 
-- [ ] **Step 5: `gmnspy select` takes `--provider`/`--model` from settings.** In `packages/gmnspy/gmnspy/cli/commands/select.py`:
-
-Replace the import `from ...select.parse import ClaudeParser, StubParser` with `from ...select.parse import make_parser`. Then add these two lines directly above `from ...select.emit import to_fragment`, so the relative imports stay sorted:
+- [ ] **Step 6: `gmnspy select` takes `--provider`/`--model` from settings.** In `packages/gmnspy/gmnspy/cli/commands/select.py`:
+- add `from typing import Any` after `import json`;
+- replace `from ...select.parse import ClaudeParser, StubParser` with `from ...select.parse import make_parser`;
+- add these two lines directly above `from ...select.emit import to_fragment`:
 
 ```python
 from ...config import SettingsError, load_settings
 from ...llm import LLMError, build_registry
 ```
 
-Add `from typing import Any` to the stdlib imports. Then add this helper above `register`:
+Add this helper above `register`:
 
 ```python
 def _make_parser(provider: str | None, model: str | None) -> Any:
@@ -3885,7 +4521,7 @@ Then replace the two lines `parser = ClaudeParser() if provider == "claude" else
 
 In `select_serve(...)` and in `cli/commands/viz.py`, change the `--provider` help text to `"NL parser: stub | anthropic | openai | gemini | ollama (default: settings)."`.
 
-- [ ] **Step 6: `gmnspy app --model`.** In `packages/gmnspy/gmnspy/cli/commands/workbench.py`:
+- [ ] **Step 7: `gmnspy app --model`.** In `packages/gmnspy/gmnspy/cli/commands/workbench.py` (P1a version):
 - add `model: str | None = None,` to `run_workbench`'s keyword arguments, after `provider`;
 - replace the `flags = {...}` line with:
 
@@ -3899,7 +4535,7 @@ In `select_serve(...)` and in `cli/commands/viz.py`, change the `--provider` hel
     }
 ```
 
-- in `app_cmd`, replace the `--provider` option with these two options:
+- in `app_cmd`, replace the `--provider` option with:
 
 ```python
         provider: str = typer.Option(
@@ -3910,7 +4546,7 @@ In `select_serve(...)` and in `cli/commands/viz.py`, change the `--provider` hel
 
 - pass `model=model` to `run_workbench`.
 
-- [ ] **Step 7: Swap the `[nl]` extra and relock.** In `packages/gmnspy/pyproject.toml`, replace the `nl = [...]` block with:
+- [ ] **Step 8: Swap the `[nl]` extra and relock.** In `packages/gmnspy/pyproject.toml`, replace the `nl = [...]` block with:
 
 ```toml
 nl = [
@@ -3926,33 +4562,40 @@ nl = [
 ```
 
 Run: `uv lock`
-Expected: the lock resolves. `git diff --stat uv.lock` shows `keyring` (and its `jaraco.*` deps) added for gmnspy. If nothing else requires `anthropic`, it disappears from the lock.
+Expected: the lock resolves. `git diff --stat uv.lock` shows `keyring` (and its `jaraco.*` dependencies) added for gmnspy. If nothing else requires `anthropic`, it disappears from the lock.
 
-- [ ] **Step 8: Run the tests**
+- [ ] **Step 9: Run the tests and the new doctests**
 
-Run: `uv run --all-extras pytest packages/gmnspy/tests/test_select_parse.py packages/gmnspy/tests/test_select_cli.py packages/gmnspy/tests/test_cli_workbench.py packages/gmnspy/tests/test_select_webapp.py packages/gmnspy/tests/test_viz_server.py -q`
-Expected: all pass. `test_select_parse.py` contributes 9, `test_select_cli.py` 4, and `test_cli_workbench.py` 12. The deprecated `select/webapp.py` and `viz/server.py` still construct `ClaudeParser()` only for `provider == "claude"`, which their tests never use.
+Run: `uv run --all-extras pytest packages/gmnspy/tests/test_select_parse.py packages/gmnspy/tests/test_select_prompt.py packages/gmnspy/tests/test_select_cli.py packages/gmnspy/tests/test_cli_workbench.py packages/gmnspy/tests/test_select_webapp.py packages/gmnspy/tests/test_viz_server.py --doctest-modules packages/gmnspy/gmnspy/select/prompt.py packages/gmnspy/gmnspy/select/parse.py -q`
+Expected: `62 passed`. The deprecated `select/webapp.py` and `viz/server.py` still build `ClaudeParser()` only when `provider == "claude"`, which their tests never use.
 
-- [ ] **Step 9: Commit**
+- [ ] **Step 10: Commit**
 
 ```bash
-git add packages/gmnspy/gmnspy/select packages/gmnspy/gmnspy/cli/commands packages/gmnspy/pyproject.toml uv.lock packages/gmnspy/tests/test_select_parse.py packages/gmnspy/tests/test_select_cli.py packages/gmnspy/tests/test_cli_workbench.py
-git commit -m "feat(gmnspy.select): LLMParser over any provider (ClaudeParser kept as alias), make_parser, --model; [nl] drops the anthropic SDK"
+git add packages/gmnspy/gmnspy/select packages/gmnspy/gmnspy/cli/commands packages/gmnspy/pyproject.toml uv.lock packages/gmnspy/tests/test_select_prompt.py packages/gmnspy/tests/test_select_parse.py packages/gmnspy/tests/test_select_cli.py packages/gmnspy/tests/test_cli_workbench.py
+git commit -m "feat(gmnspy.select): prompt context (guide, notes, vocabulary, examples, hints) + LLMParser over any provider; --model; [nl] drops the anthropic SDK"
 ```
 
 ---
 
-### Task 13: Session wiring: registry, parser factory, `LLMError` → `ActionError`, `parsed_by`
+### Task 14: Session wiring: registry, parser, prompt context, few-shot memory, close-match retry, `parsed_by`
 
 **Files:**
 - Modify: `packages/gmnspy/gmnspy/workbench/session.py`, `packages/gmnspy/gmnspy/workbench/selection.py`
 - Test: `packages/gmnspy/tests/test_workbench_session.py` (append)
 
+For an `LLMParser`, the session builds a `PromptContext` from `llm.quality`, using the registry's per-provider decisions:
+- the guide if `assistant_context`;
+- the project notes and the network vocabulary when they are effectively on for this provider;
+- the last `few_shot_max` resolved selections when `few_shot` is on.
+
+If the selection resolves to `not_found` and `match_retry` is on, the session re-prompts once with `close_match_hint`. The hint is built only from the vocabulary, so it exists only when grounding is on. `parsed_by.match_retry` records that it happened.
+
+Provider failures become `ActionError`; anything else the parser raises is a "could not parse" selection. Resolved utterances feed the few-shot memory.
+
 - [ ] **Step 1: Append the failing tests**
 
 ```python
-
-
 ANTHROPIC_SELECT_REPLY = {
     "content": [
         {
@@ -3988,8 +4631,8 @@ def test_select_with_anthropic_records_parsed_by(llm_session, fake_api):
     llm_session.dispatch(SetSetting(key="select.provider", value="anthropic"))
     sel = llm_session.dispatch(Select(utterance=UTTERANCE))
     assert sel["status"] == "resolved"
-    assert sel["parsed_by"] == {"provider": "anthropic", "model": "claude-sonnet-5", "mode": "tools"}
-    assert fake_api.body()["model"] == "claude-sonnet-5"
+    assert sel["parsed_by"] == {"provider": "anthropic", "model": "claude-haiku-4-5-20251001", "mode": "tools"}
+    assert fake_api.body()["model"] == "claude-haiku-4-5-20251001"
 
 
 def test_missing_key_is_an_action_error_not_a_no_match(llm_session):
@@ -4031,14 +4674,83 @@ def test_llm_and_select_settings_rebuild_the_parser(llm_session):
 def test_stub_selection_reports_parsed_by_stub(opened):
     sel = opened.dispatch(Select(utterance=UTTERANCE))
     assert sel["parsed_by"] == {"provider": "stub", "model": None, "mode": "pattern"}
+
+
+def _ollama_reply(payload):
+    call = {"function": {"name": "emit_selection_intent", "arguments": payload}}
+    return {"message": {"role": "assistant", "content": "", "tool_calls": [call]}, "done": True}
+
+
+def _system_text(body):
+    return body["messages"][0]["content"]  # Ollama: context + per-call system as one system turn
+
+
+def test_local_provider_gets_vocabulary_and_project_notes_remote_does_not(llm_session, fake_api, tmp_path):
+    (tmp_path / "AGENTS.md").write_text("Zebra Parkway means I 440.")
+    fake_api.add("POST", "/api/chat", body=_ollama_reply({"facility": {"ref": "I 40", "direction": "EB"}}))
+    fake_api.add("POST", "/v1/messages", body=ANTHROPIC_SELECT_REPLY)
+    llm_session.dispatch(SetSetting(key="select.provider", value="ollama"))
+    llm_session.dispatch(Select(utterance="I-40 EB"))
+    local = _system_text(fake_api.body())
+    assert "# GMNS assistant guide" in local and "Airport Boulevard" in local and "Zebra Parkway means I 440." in local
+    _anthropic_key(llm_session)
+    llm_session.dispatch(SetSetting(key="select.provider", value="anthropic"))
+    llm_session.dispatch(Select(utterance=UTTERANCE))
+    remote = fake_api.body()["system"][0]["text"]
+    assert "# GMNS assistant guide" in remote
+    assert "in the active network:" not in remote and "Zebra Parkway" not in remote
+
+
+def test_remote_project_notes_and_grounding_are_opt_in(llm_session, fake_api, tmp_path):
+    (tmp_path / "CLAUDE.md").write_text("Code 7 means HOV.")
+    fake_api.add("POST", "/v1/messages", body=ANTHROPIC_SELECT_REPLY)
+    _anthropic_key(llm_session)
+    for key, value in (
+        ("select.provider", "anthropic"),
+        ("llm.quality.project_context", "on"),
+        ("llm.quality.grounding", "on"),
+    ):
+        llm_session.dispatch(SetSetting(key=key, value=value))
+    llm_session.dispatch(Select(utterance=UTTERANCE))
+    cached = fake_api.body()["system"][0]["text"]
+    assert "Code 7 means HOV." in cached and "Street names and route numbers in the active network" in cached
+
+
+def test_few_shot_examples_come_from_resolved_selections_when_enabled(llm_session, fake_api):
+    fake_api.add("POST", "/v1/messages", body=ANTHROPIC_SELECT_REPLY)
+    _anthropic_key(llm_session)
+    llm_session.dispatch(SetSetting(key="select.provider", value="anthropic"))
+    llm_session.dispatch(Select(utterance=UTTERANCE))
+    assert len(fake_api.body()["system"]) == 1  # few-shot is off by default: no per-call block
+    llm_session.dispatch(SetSetting(key="llm.quality.few_shot", value=True))
+    llm_session.dispatch(Select(utterance="the same again"))
+    examples = fake_api.body()["system"][1]["text"]
+    assert examples.startswith("Earlier requests") and f"Request: {UTTERANCE}" in examples
+
+
+def test_no_match_retries_once_with_the_closest_real_names(llm_session, fake_api):
+    typo = {"facility": {"ref": "I 40", "direction": "EB"}, "from_anchor": "S Miami Blvd", "to_anchor": "Airprt Blvd"}
+    fixed = {
+        "facility": {"ref": "I 40", "direction": "EB"},
+        "from_anchor": "South Miami Boulevard",
+        "to_anchor": "Airport Boulevard",
+    }
+    fake_api.add("POST", "/api/chat", body=_ollama_reply(typo))
+    fake_api.add("POST", "/api/chat", body=_ollama_reply(fixed))
+    llm_session.dispatch(SetSetting(key="select.provider", value="ollama"))
+    sel = llm_session.dispatch(Select(utterance="I-40 EB between S Miami Blvd and Airprt Blvd"))
+    assert sel["status"] == "resolved" and sel["parsed_by"]["match_retry"] is True
+    assert "Closest names: Airport Boulevard" in _system_text(fake_api.body())
 ```
 
 - [ ] **Step 2: Run them to see them fail**
 
 Run: `uv run --all-extras pytest packages/gmnspy/tests/test_workbench_session.py -q`
-Expected: 6 failures or errors: `TypeError: Session.__init__() got an unexpected keyword argument 'keyring'` for the `llm_session` tests, and `KeyError: 'parsed_by'` for the stub test.
+Expected: 10 failures or errors:
+- `TypeError: Session.__init__() got an unexpected keyword argument 'keyring'` for the `llm_session` tests;
+- `KeyError: 'parsed_by'` for the stub test.
 
-- [ ] **Step 3: Edit `packages/gmnspy/gmnspy/workbench/selection.py`.** Change `selection_payload` and `unparsed_payload` to accept `parsed_by` and include it:
+- [ ] **Step 3: Edit `packages/gmnspy/gmnspy/workbench/selection.py`.** `selection_payload` and `unparsed_payload` take a `parsed_by` keyword and return it as the last key:
 
 ```python
 def selection_payload(
@@ -4047,8 +4759,6 @@ def selection_payload(
     """JSON-safe selection: status, link ids, located anchors, fragment, diagnostics, and who parsed it."""
 ```
 
-Add `"parsed_by": parsed_by,` as the last key of the returned dict. Then:
-
 ```python
 def unparsed_payload(
     handle: NetworkHandle, utterance: str, error: Exception, *, parsed_by: dict[str, Any] | None = None
@@ -4056,29 +4766,43 @@ def unparsed_payload(
     """A ``not_found`` selection for an utterance the parser could not read."""
 ```
 
-Add `"parsed_by": parsed_by,` as the last key of its returned dict too.
+- [ ] **Step 4: Edit `packages/gmnspy/gmnspy/workbench/session.py`** (the P1a version).
 
-- [ ] **Step 4: Edit `packages/gmnspy/gmnspy/workbench/session.py`.**
-
-Add `from gmnspy.llm import LLMError, ProviderRegistry, build_registry` directly after the `from gmnspy.config import ...` line, and replace `from gmnspy.select.parse import ClaudeParser, StubParser` with `from gmnspy.select.parse import make_parser`.
-
-Replace the `__init__` signature and body with:
+The stdlib imports gain `from collections import deque`, and `dataclasses` imports `replace`:
 
 ```python
-    def __init__(
-        self,
-        *,
-        project_dir: str | Path | None = None,
-        overrides: Mapping[str, Any] | None = None,
-        parser: Any = None,
+from collections import deque
+from collections.abc import Mapping
+from dataclasses import asdict, dataclass, replace
+```
+
+Replace `from gmnspy.select.parse import ClaudeParser, StubParser`, and add the LLM imports, so the first-party block reads:
+
+```python
+from gmnspy import Network
+from gmnspy.config import LoadedSettings, Settings, SettingsError, get_value, load_settings, save_setting
+from gmnspy.llm import LLMError, ProviderRegistry, build_registry
+from gmnspy.llm.context import assistant_context, find_project_context, read_capped
+from gmnspy.select.intent import SelectionIntent
+from gmnspy.select.parse import LLMParser, make_parser, payload_from_intent
+from gmnspy.select.prompt import PromptContext, close_match_hint, vocabulary_from_links
+from gmnspy.select.resolve import resolve_frames
+```
+
+In `__init__`, add two keyword arguments after P1a's `http`, extend the docstring, and build the registry and the example memory right after `self.loaded`:
+
+```python
         environ: Mapping[str, str] | None = None,
+        http: Any = None,
         llm_transport: Any = None,
         keyring: Any = "auto",
     ) -> None:
         """Load settings (raises :class:`~gmnspy.config.SettingsError` on bad config) and start empty.
 
-        ``llm_transport`` (an ``httpx`` transport) and ``keyring`` (``"auto"``, ``None`` or a
-        keyring-like object) exist for tests and embedding; the defaults use the network and OS keyring.
+        ``http`` is the HTTP session for Overpass/Nominatim (anything with ``get``/``post`` like
+        :mod:`requests`); ``None`` means ``requests`` itself. Tests inject a fake. ``llm_transport``
+        (an ``httpx`` transport) and ``keyring`` (``"auto"``, ``None`` or a keyring-like object) do
+        the same for the LLM providers; the defaults use the network and the OS keyring.
         """
         self.project_dir = project_dir
         self._environ = environ
@@ -4087,18 +4811,11 @@ Replace the `__init__` signature and body with:
         self._llm_transport = llm_transport
         self._keyring = keyring
         self.llm: ProviderRegistry = self._build_llm()
-        self.registry = NetworkRegistry()
-        self.events = EventBus()
-        self.active: str | None = None
-        self.selection: dict[str, Any] | None = None
-        self.style: dict[str, Any] = copy.deepcopy(DEFAULT_STYLE)
-        self.history: list[HistoryEntry] = []
-        self._injected_parser = parser
-        self._parser = parser
-        self._lock = threading.RLock()
+        #: Resolved (utterance, tool arguments) pairs: few-shot examples when ``llm.quality.few_shot`` is on.
+        self._examples: deque[tuple[str, dict[str, Any]]] = deque(maxlen=50)
 ```
 
-Replace `parser()` with the following, which adds `reset_llm()` and `_build_llm()` next to it:
+Replace `parser()`. The replacement also adds `reset_llm()` and `_build_llm()` next to it:
 
 ```python
     def parser(self) -> Any:
@@ -4123,25 +4840,68 @@ Replace `parser()` with the following, which adds `reset_llm()` and `_build_llm(
         )
 ```
 
-In `_do_select`, replace the `if action.utterance is not None: ... else: ...` block and the two lines after it with:
+Replace `_do_select`. The replacement also adds `_select_utterance` and `_prompt_context` after it:
 
 ```python
-        if action.utterance is not None:
-            try:
-                parser = self.parser()
-                intent = parser.parse(action.utterance)
-            except LLMError as exc:  # missing/invalid key, rate limit, timeout: the user must act, so it's an error
-                raise ActionError(str(exc)) from None
-            except Exception as exc:  # any other parse failure is a normal "could not parse" selection
-                self.selection = unparsed_payload(handle, action.utterance, exc, parsed_by=_parser_info(self._parser))
-                return self.selection
-            parsed_by = _parser_info(parser)
-        else:
+    def _do_select(self, action: Select) -> dict[str, Any]:
+        if action.component != "roadway":
+            raise NotSupportedYet("transit selection arrives with the transit component (phase P6)")
+        handle = self._handle(action.net_id)
+        if action.utterance is None:
             intent = SelectionIntent(link_ids=list(action.link_ids or []))
-            parsed_by = None
-        result = resolve_frames(intent, handle.links_df(), handle.nodes_df())
+            result = resolve_frames(intent, handle.links_df(), handle.nodes_df())
+            self.selection = selection_payload(handle, result)
+            return self.selection
+        try:
+            intent, result, parsed_by = self._select_utterance(handle, action.utterance)
+        except _Unparsed as exc:  # carries the parser's own message
+            self.selection = unparsed_payload(handle, action.utterance, exc, parsed_by=_parser_info(self._parser))
+            return self.selection
+        if result.status == "resolved":
+            self._examples.append((action.utterance, payload_from_intent(intent)))
         self.selection = selection_payload(handle, result, utterance=action.utterance, parsed_by=parsed_by)
         return self.selection
+
+    def _select_utterance(self, handle: NetworkHandle, utterance: str) -> tuple[SelectionIntent, Any, Any]:
+        """Parse (an LLM parser gets the prompt context), resolve, and retry once with close matches if none."""
+        try:
+            parser = self.parser()
+        except LLMError as exc:  # e.g. no key for the chosen provider
+            raise ActionError(str(exc)) from None
+        if not isinstance(parser, LLMParser):
+            intent = _parse(parser, utterance, None)
+            return intent, resolve_frames(intent, handle.links_df(), handle.nodes_df()), _parser_info(parser)
+        context = self._prompt_context(handle, parser.provider.name)
+        intent = _parse(parser, utterance, context)
+        result = resolve_frames(intent, handle.links_df(), handle.nodes_df())
+        parsed_by = _parser_info(parser)
+        quality = self.settings.llm.quality
+        if result.status == "not_found" and quality.match_retry:
+            hint = close_match_hint(intent, context.vocabulary, quality.match_candidates)
+            if hint:
+                try:
+                    retry = _parse(parser, utterance, replace(context, hint=hint))
+                except _Unparsed:
+                    retry = None  # keep the first, honest "not found"
+                if retry is not None:
+                    intent, result = retry, resolve_frames(retry, handle.links_df(), handle.nodes_df())
+                    parsed_by = {**(_parser_info(parser) or {}), "match_retry": True}
+        return intent, result, parsed_by
+
+    def _prompt_context(self, handle: NetworkHandle, provider: str) -> PromptContext:
+        """The optional prompt parts ``llm.quality`` turns on for ``provider`` (see :mod:`gmnspy.select.prompt`)."""
+        quality = self.settings.llm.quality
+        assistant = assistant_context(quality.assistant_context_max_chars) if quality.assistant_context else ""
+        project = ""
+        if self.llm.project_context_on(provider):
+            path = find_project_context(handle.source, self.project_dir)
+            project = read_capped(path, quality.project_context_max_chars) if path else ""
+        vocabulary: tuple[str, ...] = ()
+        if self.llm.grounding_on(provider):
+            limit = quality.grounding_max_names
+            vocabulary = handle.cached(f"vocabulary:{limit}", lambda: vocabulary_from_links(handle.links_df(), limit))
+        examples = tuple(self._examples)[-quality.few_shot_max :] if quality.few_shot else ()
+        return PromptContext(assistant=assistant, project=project, vocabulary=vocabulary, examples=examples)
 ```
 
 In `_do_set_setting`, replace the two lines that reset the parser for `select.` keys with:
@@ -4151,7 +4911,7 @@ In `_do_set_setting`, replace the two lines that reset the parser for `select.` 
             self.reset_llm()  # parser and adapters rebuild from the new provider/model/endpoint on next use
 ```
 
-At the end of the module, add:
+At the end of the module, after P1a's `_ERROR_TYPES`, add:
 
 ```python
 def _parser_info(parser: Any) -> dict[str, Any] | None:
@@ -4161,28 +4921,44 @@ def _parser_info(parser: Any) -> dict[str, Any] | None:
     if hasattr(parser, "describe"):
         return parser.describe()
     return {"provider": type(parser).__name__, "model": None, "mode": None}
+
+
+class _Unparsed(Exception):
+    """The parser could not read the utterance (not a provider failure): a normal "could not parse" selection."""
+
+
+def _parse(parser: Any, utterance: str, context: PromptContext | None) -> SelectionIntent:
+    """Run ``parser``: provider failures become :class:`ActionError`, anything else :class:`_Unparsed`."""
+    try:
+        return parser.parse(utterance, context=context) if context is not None else parser.parse(utterance)
+    except LLMError as exc:  # missing/invalid key, rate limit, timeout: the user must act, so it's an error
+        raise ActionError(str(exc)) from None
+    except Exception as exc:  # any other parse failure is a normal "could not parse" selection
+        raise _Unparsed(str(exc)) from exc
 ```
 
-- [ ] **Step 5: Run the session, server and static suites**
+- [ ] **Step 5: Run the session suites**
 
-Run: `uv run --all-extras pytest packages/gmnspy/tests/test_workbench_session.py packages/gmnspy/tests/test_workbench_server.py packages/gmnspy/tests/test_workbench_network_routes.py -q`
-Expected: all pass, with `test_workbench_session.py` at `28 passed` within the run.
+Run: `uv run --all-extras pytest packages/gmnspy/tests/test_workbench_session.py packages/gmnspy/tests/test_workbench_session_jobs.py packages/gmnspy/tests/test_workbench_server.py -q`
+Expected: `72 passed` (32 + 17 + 23).
 
 - [ ] **Step 6: Commit**
 
 ```bash
 git add packages/gmnspy/gmnspy/workbench/session.py packages/gmnspy/gmnspy/workbench/selection.py packages/gmnspy/tests/test_workbench_session.py
-git commit -m "feat(workbench): parser from settings + ProviderRegistry; provider errors are ActionErrors; selections record parsed_by"
+git commit -m "feat(workbench): LLM parser with prompt context (guide, notes, vocabulary, few-shot), close-match retry, parsed_by"
 ```
 
 ---
 
-### Task 14: `/api/llm` routes: status, write-only keys, models, connection test (plus the canary test)
+### Task 15: `/api/llm` routes: status (with the privacy note), write-only keys, models, connection test, canary
 
 **Files:**
 - Create: `packages/gmnspy/gmnspy/workbench/routes/llm.py`
 - Modify: `packages/gmnspy/gmnspy/workbench/server.py`
 - Test: `packages/gmnspy/tests/test_workbench_llm_routes.py`
+
+Since P1a, `open_network` is a job and `POST /api/actions` answers 202 for it. The canary test therefore opens its network with `session.dispatch(OpenNetwork(...))`, which waits for the job.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -4196,7 +4972,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 from gmnspy.llm.secrets import KEYRING_SERVICE
-from gmnspy.workbench import Session, build_app
+from gmnspy.workbench import OpenNetwork, Session, build_app
 
 pytestmark = pytest.mark.usefixtures("no_network")
 
@@ -4204,7 +4980,7 @@ SECRETS = {"X-GMNSpy-Secrets": "1"}
 KEY = "sk-ant-api03-ROUTEKEYabcdefghijklmnop"
 UTTERANCE = "I-40 EB between South Miami Boulevard and Airport Boulevard"
 ROW_KEYS = {
-    "provider", "label", "kind", "base_url", "local", "default_model",
+    "provider", "label", "kind", "base_url", "local", "default_model", "key_env", "sends",
     "configured", "source", "usable", "error", "models",
 }  # fmt: skip
 TOOL_REPLY = {
@@ -4348,8 +5124,8 @@ def test_canary_key_never_leaves_the_secret_store(
         seen.append(response.text)
         return response
 
+    session.dispatch(OpenNetwork(source=rdu_source))  # waits for the open job (POST /api/actions answers 202)
     assert call("PUT", "/api/llm/keys/anthropic", json={"key": canary}, headers=SECRETS).status_code == 200
-    call("POST", "/api/actions", json={"type": "open_network", "source": rdu_source})
     call(
         "POST",
         "/api/actions",
@@ -4372,12 +5148,28 @@ def test_canary_key_never_leaves_the_secret_store(
     assert "CANARY" not in haystack
     sent = [r for r in fake_api.requests if r.headers.get("x-api-key") == canary]
     assert sent and all(r.url.host == "api.anthropic.com" for r in sent)  # it reached the provider, and only there
+
+
+def test_without_a_keyring_the_ui_is_told_which_env_var_to_set(tmp_path, isolated_env, fake_api):
+    session = Session(project_dir=tmp_path, environ=isolated_env, keyring=None, llm_transport=fake_api.transport())
+    client = TestClient(build_app(session))
+    data = client.get("/api/llm/providers").json()
+    assert data["keyring"] is False and data["providers"][1]["key_env"] == ["GMNSPY_OPENAI_API_KEY", "OPENAI_API_KEY"]
+    r = client.put("/api/llm/keys/openai", json={"key": KEY}, headers=SECRETS)
+    assert r.status_code == 400 and "set GMNSPY_OPENAI_API_KEY or OPENAI_API_KEY" in r.json()["detail"]
+
+
+def test_status_rows_carry_the_privacy_note(client, fake_api):
+    fake_api.add("GET", "/api/tags", body={"models": []})
+    rows = {r["provider"]: r for r in client.get("/api/llm/providers").json()["providers"]}
+    assert not any("street names" in item for item in rows["anthropic"]["sends"])
+    assert any("street names" in item for item in rows["ollama"]["sends"])
 ```
 
 - [ ] **Step 2: Run them to see them fail**
 
 Run: `uv run --all-extras pytest packages/gmnspy/tests/test_workbench_llm_routes.py -q`
-Expected: `13 failed`. Every `/api/llm/...` request is a 404 until the router exists.
+Expected: `15 failed`. Every `/api/llm/...` request is a 404 until the router exists.
 
 - [ ] **Step 3: Create `packages/gmnspy/gmnspy/workbench/routes/llm.py`**
 
@@ -4396,7 +5188,7 @@ header without a CORS preflight, and this server never approves one.
 from __future__ import annotations
 
 import logging
-from typing import Any, Literal
+from typing import Any
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, ValidationError
@@ -4417,7 +5209,6 @@ class _KeyBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     key: SecretStr = Field(min_length=8, max_length=512)
-    backend: Literal["keyring", "file"] = "keyring"
 
 
 class _TestBody(BaseModel):
@@ -4451,7 +5242,6 @@ def llm_router(session: Session, *, allow_key_writes: bool) -> APIRouter:
         return {
             "providers": session.llm.status(),
             "keyring": session.llm.secrets.keyring_available,
-            "secrets_file": str(session.llm.secrets.file_path),
             "selected": {"provider": select.provider, "model": select.model},
             "key_writes": allow_key_writes,
         }
@@ -4484,13 +5274,9 @@ def llm_router(session: Session, *, allow_key_writes: bool) -> APIRouter:
             parsed = _KeyBody.model_validate(body)
         except ValidationError:
             # A hand-written detail: FastAPI's default 422 body would echo the submitted key back.
-            raise HTTPException(
-                422, 'send {"key": "...", "backend": "keyring" | "file"}; a key is 8-512 characters'
-            ) from None
+            raise HTTPException(422, 'send {"key": "..."}; a key is 8-512 characters') from None
         try:
-            source = session.llm.secrets.set(
-                session.llm.slot(provider), parsed.key.get_secret_value(), backend=parsed.backend
-            )
+            source = session.llm.secrets.set(session.llm.slot(provider), parsed.key.get_secret_value())
         except SecretStoreError as exc:
             raise HTTPException(400, str(exc)) from None
         return changed(provider, "set", source)
@@ -4515,7 +5301,7 @@ def llm_router(session: Session, *, allow_key_writes: bool) -> APIRouter:
     return router
 ```
 
-- [ ] **Step 4: Mount it.** In `packages/gmnspy/gmnspy/workbench/server.py`, add `from .routes.llm import llm_router` next to the other route imports. After `app.include_router(network_router(session))`, add:
+- [ ] **Step 4: Mount it.** In `packages/gmnspy/gmnspy/workbench/server.py`, add `from .routes.llm import llm_router` after P1a's `from .routes.io import io_router`. After `app.include_router(network_router(session))`, add:
 
 ```python
     # Key writes are refused on an exposed bind: there is no auth beyond the loopback guard (design T10).
@@ -4525,7 +5311,7 @@ def llm_router(session: Session, *, allow_key_writes: bool) -> APIRouter:
 - [ ] **Step 5: Run the route tests, then the whole workbench suite**
 
 Run: `uv run --all-extras pytest packages/gmnspy/tests/test_workbench_llm_routes.py -q`
-Expected: `13 passed`.
+Expected: `15 passed`.
 
 Run: `uv run --all-extras pytest packages/gmnspy/tests -q -k workbench`
 Expected: all pass.
@@ -4534,12 +5320,12 @@ Expected: all pass.
 
 ```bash
 git add packages/gmnspy/gmnspy/workbench/routes/llm.py packages/gmnspy/gmnspy/workbench/server.py packages/gmnspy/tests/test_workbench_llm_routes.py
-git commit -m "feat(workbench): /api/llm — provider status, write-only key routes (loopback + header guard), tests; canary test"
+git commit -m "feat(workbench): /api/llm — provider status + privacy note, write-only key routes (loopback + header guard), tests; canary test"
 ```
 
 ---
 
-### Task 15: `gmnspy llm` CLI: status, set-key (hidden prompt), remove-key, test, models
+### Task 16: `gmnspy llm` CLI: status, set-key (hidden prompt), remove-key, test, models
 
 **Files:**
 - Create: `packages/gmnspy/gmnspy/cli/commands/llm.py`
@@ -4645,12 +5431,19 @@ def test_status_text_shows_source_not_key(ring, fake_api):
     result = _llm("status")
     assert result.exit_code == 0 and "key set (keyring)" in result.output and KEY not in result.output
     assert "could not reach Ollama" in result.output
+
+
+def test_set_key_without_a_keyring_names_the_env_vars(ring, monkeypatch):
+    monkeypatch.setattr("gmnspy.llm.secrets.system_keyring", lambda: None)
+    result = _llm("set-key", "gemini", input=KEY + "\n")
+    assert result.exit_code == 1 and "set GMNSPY_GEMINI_API_KEY or GEMINI_API_KEY" in result.output
+    assert "key storage: none (no OS keyring)" in _llm("status").output
 ```
 
 - [ ] **Step 2: Run them to see them fail**
 
 Run: `uv run --all-extras pytest packages/gmnspy/tests/test_cli_llm.py -q`
-Expected: 8 failures, `No such command 'llm'`.
+Expected: `9 failed`, each with `No such command 'llm'`.
 
 - [ ] **Step 3: Create `packages/gmnspy/gmnspy/cli/commands/llm.py`**
 
@@ -4725,14 +5518,14 @@ def register(app: typer.Typer) -> None:
             return
         for row in rows:
             typer.echo(_status_line(row))
-        store = registry.secrets
-        where = "OS keyring" if store.keyring_available else f"no OS keyring; --file uses {store.file_path}"
+        where = (
+            "OS keyring" if registry.secrets.keyring_available else "none (no OS keyring): use environment variables"
+        )
         typer.echo(f"key storage: {where}")
 
     @llm_app.command(name="set-key")
     def set_key(
         provider: str = typer.Argument(..., help="anthropic | openai | gemini"),
-        file: bool = typer.Option(False, "--file", help="Store in the plain-text 0600 file (only when no OS keyring)."),
         stdin: bool = typer.Option(False, "--stdin", help="Read the key from stdin instead of a hidden prompt."),
     ) -> None:
         """Store an API key for PROVIDER's endpoint: prompted and hidden, never an argument."""
@@ -4742,7 +5535,7 @@ def register(app: typer.Typer) -> None:
         info = _remote(registry, provider)
         key = sys.stdin.readline() if stdin else typer.prompt(f"{info.label} API key", hide_input=True)
         try:
-            source = registry.secrets.set(registry.slot(provider), key, backend="file" if file else "keyring")
+            source = registry.secrets.set(registry.slot(provider), key)
         except SecretStoreError as exc:
             typer.echo(f"error: {exc}", err=True)
             raise typer.Exit(1) from None
@@ -4750,7 +5543,7 @@ def register(app: typer.Typer) -> None:
 
     @llm_app.command(name="remove-key")
     def remove_key(provider: str = typer.Argument(..., help="anthropic | openai | gemini")) -> None:
-        """Delete PROVIDER's stored key (keyring and file). Env vars are yours to unset."""
+        """Delete PROVIDER's key from the OS keyring. Env vars are yours to unset."""
         from gmnspy.llm import SecretStoreError
 
         registry = _registry()
@@ -4799,12 +5592,12 @@ def register(app: typer.Typer) -> None:
             typer.echo(f"{row['id']:<32} {row['label']:<24} {row['tier'] or '-':<9} tools={row['tools']}")
 ```
 
-- [ ] **Step 4: Register it.** In `packages/gmnspy/gmnspy/cli/app.py`, add `llm` to the `from .commands import (...)` list, keeping it alphabetical (after `info`). Add `llm.register(gmnspy_app)` directly after `select.register(gmnspy_app)`.
+- [ ] **Step 4: Register it.** In `packages/gmnspy/gmnspy/cli/app.py`, add `llm` to the `from .commands import (...)` list after `info`, and add `llm.register(gmnspy_app)` directly after `select.register(gmnspy_app)`.
 
 - [ ] **Step 5: Run the tests, plus the CLI contract tests and import linter**
 
 Run: `uv run --all-extras pytest packages/gmnspy/tests/test_cli_llm.py packages/gmnspy/tests/test_documented_cli_contract.py packages/gmnspy/tests/test_cli.py -q && uv run lint-imports`
-Expected: all pass (`test_cli_llm.py`: `8 passed`), and import-linter reports every contract kept. `gmnspy.cli` → `gmnspy.llm` is allowed.
+Expected: `46 passed` (`test_cli_llm.py`: 9), and import-linter reports every contract kept. `gmnspy.cli` → `gmnspy.llm` is allowed.
 
 - [ ] **Step 6: Commit**
 
@@ -4815,20 +5608,24 @@ git commit -m "feat(cli): gmnspy llm {status,set-key,remove-key,test,models} —
 
 ---
 
-### Task 16: Front end: header provider/model picker and the "Language models" panel
+### Task 17: Front end: provider/model picker (session scope + **Make default**) and the Language-models panel
 
 **Files:**
 - Create: `packages/gmnspy/gmnspy/workbench/static/js/llm.js`
-- Modify: `packages/gmnspy/gmnspy/workbench/static/index.html`, `app.css`, `js/api.js`, `js/main.js`
+- Modify: `packages/gmnspy/gmnspy/workbench/static/index.html`, `app.css`, `js/api.js`, `js/main.js` (all P1a versions)
 - Test: `packages/gmnspy/tests/test_workbench_static.py` (append)
 
-> **Overlap note:** P1b builds the general Settings workspace. This task builds only the picker and one panel. `llm.js` renders into `#llm-panel`, so P1b can move that container into its Settings view and delete the floating-panel CSS. P1a reflows the header; keep `#nl-picker` immediately after `#utterance` when merging.
+Behaviour:
+- The picker changes `select.provider`/`select.model` for this session (`scope:"session"`).
+- **Make default** writes the current pair with `scope:"user"`. It is enabled while either key is session-only.
+- The panel's **Quality & context** controls write `llm.quality.*` with `scope:"user"` and then refresh. The privacy note is rebuilt from the selected provider's `sends` list, so it always shows what is actually sent.
+- Without a keyring, the set-key controls are replaced by "set `ENV_VAR`" instructions.
+
+> **Overlap note:** P1b can mount `#llm-panel` in its Settings workspace unchanged. Keep `#nl-picker` immediately after `#utterance` if the header is reflowed again.
 
 - [ ] **Step 1: Append the failing static tests**
 
 ```python
-
-
 def test_llm_module_never_persists_or_stores_key_text():
     src = (JS_DIR / "llm.js").read_text()
     for banned in ("localStorage", "sessionStorage", "indexedDB", "document.cookie", "./store.js"):
@@ -4846,7 +5643,7 @@ def test_header_has_the_llm_picker_and_panel():
 Run: `uv run --all-extras pytest packages/gmnspy/tests/test_workbench_static.py -q`
 Expected: 2 failures: `FileNotFoundError` for `llm.js`, and the missing `nl-provider` marker.
 
-- [ ] **Step 3: Add `sendJSON` to `packages/gmnspy/gmnspy/workbench/static/js/api.js`.** Append after `dispatch`:
+- [ ] **Step 3: Add `sendJSON` to `packages/gmnspy/gmnspy/workbench/static/js/api.js`.** Append at the end of the file:
 
 ```js
 // PUT/DELETE/POST for non-action routes (e.g. /api/llm). Extra headers carry X-GMNSpy-Secrets.
@@ -4870,19 +5667,26 @@ export async function sendJSON(method, path, body, headers = {}) {
 import { dispatch, getJSON, sendJSON } from "./api.js";
 import { $, esc, toast } from "./dom.js";
 
-export const PRIVACY =
-  "Remote providers (Anthropic, OpenAI, Gemini) receive your utterance and the selection tool's schema " +
-  "(GMNS field names such as lanes), never your network tables or files. Ollama runs on this machine, so " +
-  "nothing leaves it unless its URL points elsewhere. Keys stay in your OS keychain and are only sent to " +
-  "the provider they were entered for.";
 const SECRETS = { "X-GMNSpy-Secrets": "1" };
-const STUB = { provider: "stub", label: "Offline (pattern)", usable: true, local: true };
+const STUB = { provider: "stub", label: "Offline (pattern)", usable: true, local: true, sends: [] };
+// llm.quality settings shown in the panel: [key, label, kind, options or bounds]
+const QUALITY = [
+  ["assistant_context", "Send the GMNS assistant guide", "bool"],
+  ["project_context", "Send project notes (AGENTS.md / CLAUDE.md)", "choice", ["auto", "on", "off"]],
+  ["grounding", "Send street names and route numbers from the network", "choice", ["auto", "on", "off"]],
+  ["grounding_max_names", "…at most this many names", "int", [1, 2000]],
+  ["few_shot", "Show the model this session's earlier selections", "bool"],
+  ["few_shot_max", "…at most this many", "int", [1, 10]],
+  ["match_retry", "If nothing matches, retry once with the closest real names", "bool"],
+  ["max_repairs", "Re-prompts after an invalid reply", "int", [0, 5]],
+  ["temperature", "Temperature (blank = provider default)", "float", [0, 2]],
+];
 
 let llm = null;      // last /api/llm/providers snapshot: status only, never key values
-let sources = {};    // /api/settings per-key sources, used to choose the SetSetting scope
-let configPath = ""; // the user config.toml path, for the catalog-overlay hint
+let settings = null; // last /api/settings payload: values, sources, paths
+let savedDefault = null; // the pair "Make default" last saved (the session override still wins afterwards)
 
-const providerRow = name => (llm ? llm.providers.find(p => p.provider === name) : null);
+const providerRow = name => (name === "stub" ? STUB : llm ? llm.providers.find(p => p.provider === name) : null);
 const panelOpen = () => $("llm-panel").classList.contains("open");
 
 export function dotClass(p) {
@@ -4891,15 +5695,15 @@ export function dotClass(p) {
   return p.configured ? "warn" : "off";
 }
 
-// Remember choices in the user file, unless a higher layer (project file, env var, or an earlier
-// session override) already sets the key: a user-file write would be masked, so keep it per-session.
-export const scopeFor = (key, srcs) => (["project", "env", "session"].includes(srcs[key]) ? "session" : "user");
+// What a selection sends to the chosen provider, in words: follows the quality settings.
+export function privacyNote(p) {
+  if (!p || p.provider === "stub") return "Offline pattern parser: nothing leaves this machine.";
+  const where = p.local ? `${p.label} runs on this machine, so nothing leaves it.` : `${p.label} is a remote service.`;
+  return `${where} Each selection sends: ${p.sends.join("; ")}. Never your network tables or files.`;
+}
 
 export async function refreshLLM() {
-  const [snap, settings] = await Promise.all([getJSON("/api/llm/providers"), getJSON("/api/settings")]);
-  llm = snap;
-  sources = settings.sources;
-  configPath = settings.paths.user;
+  [llm, settings] = await Promise.all([getJSON("/api/llm/providers"), getJSON("/api/settings")]);
   await renderPicker();
   if (panelOpen()) await renderPanel();
 }
@@ -4908,6 +5712,12 @@ export function onLLMEvent(ev) {
   llm = ev;
   renderPicker().catch(e => toast(e.message));
   if (panelOpen()) renderPanel().catch(e => toast(e.message));
+}
+
+// A set_setting from Python or another tab may change the provider, model, endpoints or quality.
+export function onHistoryEntry(entry) {
+  const a = entry.action;
+  if (entry.ok && a.type === "set_setting" && /^(select|llm)(\.|$)/.test(a.key)) refreshLLM().catch(e => toast(e.message));
 }
 
 // ------------------------------------------------------------------ header picker
@@ -4923,7 +5733,12 @@ async function renderPicker() {
   if (!current) html.push(`<option value="${esc(provider)}" selected disabled>${esc(provider)} (not set up)</option>`);
   $("nl-provider").innerHTML = html.join("");
   $("nl-dot").className = `dot ${current ? dotClass(current) : "off"}`;
-  $("nl-picker").title = PRIVACY;
+  $("nl-picker").title = privacyNote(current);
+  // Enabled while the choice is session-only and differs from what "Make default" last saved.
+  const src = settings ? settings.sources : {};
+  const sessionOnly = ["select.provider", "select.model"].some(k => src[k] === "session");
+  const saved = savedDefault && savedDefault.provider === provider && savedDefault.model === model;
+  $("nl-default").disabled = !sessionOnly || saved;
   await renderModels(provider, model);
 }
 
@@ -4950,18 +5765,19 @@ async function renderModels(provider, model) {
   box.disabled = !opts.length;
 }
 
-async function choose(key, value) {
-  const result = await dispatch({ type: "set_setting", key, value, scope: scopeFor(key, sources) });
-  sources = { ...sources, [key]: result.source };
+// The picker changes this session only; "Make default" saves the current choice to the user file.
+async function setSetting(key, value, scope) {
+  const result = await dispatch({ type: "set_setting", key, value, scope });
+  if (settings) settings.sources = { ...settings.sources, [key]: result.source };
 }
 
 async function onProviderChange(provider) {
   try {
-    await choose("select.provider", provider);
+    await setSetting("select.provider", provider, "session");
     if (provider !== "stub") {
       const p = providerRow(provider);
       const model = p ? p.default_model : null;
-      await choose("select.model", model); // explicit, so history replays the same model
+      await setSetting("select.model", model, "session"); // explicit, so history replays the same model
       llm.selected = { provider, model };
     } else {
       llm.selected = { ...llm.selected, provider };
@@ -4974,8 +5790,21 @@ async function onProviderChange(provider) {
 
 async function onModelChange(model) {
   try {
-    await choose("select.model", model);
+    await setSetting("select.model", model, "session");
     llm.selected = { ...llm.selected, model };
+  } catch (e) {
+    toast(e.message);
+  }
+  await renderPicker();
+}
+
+async function makeDefault() {
+  const { provider, model } = llm.selected;
+  try {
+    await setSetting("select.provider", provider, "user");
+    if (provider !== "stub") await setSetting("select.model", model || providerRow(provider).default_model, "user");
+    savedDefault = { provider, model };
+    await refreshLLM();
   } catch (e) {
     toast(e.message);
   }
@@ -4988,23 +5817,25 @@ function storageNote() {
     return "Key changes are disabled because the Workbench is exposed to the network; use `gmnspy llm set-key` in a terminal.";
   }
   return llm.keyring
-    ? "Keys are stored in your OS keychain (keyring)."
-    : `No OS keychain is available. Keys can be kept in a plain-text file only you can read: ${llm.secrets_file}`;
+    ? "Keys are stored in your OS keychain (keyring), or read from environment variables."
+    : "This machine has no OS keychain, so keys can't be stored here: set each provider's environment variable " +
+        "(shown below) in the shell that starts `gmnspy app`, then restart it.";
 }
 
 function statusText(p) {
   if (p.kind === "local") return p.usable ? `running · ${p.models} model(s)` : p.error || "not reachable";
   if (p.error) return p.error;
-  return p.configured ? `key set · ${p.source}` : "no key";
+  if (p.configured) return `key set · ${p.source}`;
+  return llm.keyring ? "no key" : `no key · set ${p.key_env.join(" or ")}`;
 }
 
 function actionsHTML(p) {
-  if (p.kind === "local") return llm.key_writes ? '<button class="mini ghost" data-act="test">Test</button>' : "";
   if (!llm.key_writes) return "";
-  const fromEnv = p.source === "env"; // env keys are managed in the shell, not here
+  if (p.kind === "local") return '<button class="mini ghost" data-act="test">Test</button>';
+  const manage = llm.keyring && p.source !== "env"; // env keys are managed in the shell, not here
   return [
-    fromEnv ? "" : `<button class="mini" data-act="set">${p.configured ? "Replace" : "Set key"}</button>`,
-    p.configured && !fromEnv ? '<button class="mini ghost" data-act="remove">Remove</button>' : "",
+    manage ? `<button class="mini" data-act="set">${p.configured ? "Replace" : "Set key"}</button>` : "",
+    manage && p.configured ? '<button class="mini ghost" data-act="remove">Remove</button>' : "",
     p.configured ? '<button class="mini ghost" data-act="test">Test</button>' : "",
   ].join("");
 }
@@ -5018,19 +5849,38 @@ function rowHTML(p) {
   );
 }
 
+function qualityHTML(values) {
+  return QUALITY.map(([key, label, kind, opts]) => {
+    const v = values[key];
+    const id = `q-${key}`;
+    let input;
+    if (kind === "bool") input = `<input type="checkbox" id="${id}" data-q="${key}" data-kind="bool"${v ? " checked" : ""}>`;
+    else if (kind === "choice") {
+      input = `<select id="${id}" data-q="${key}" data-kind="choice">${opts
+        .map(o => `<option${o === v ? " selected" : ""}>${o}</option>`)
+        .join("")}</select>`;
+    } else {
+      const step = kind === "float" ? "0.1" : "1";
+      input = `<input type="number" id="${id}" data-q="${key}" data-kind="${kind}" min="${opts[0]}" max="${opts[1]}" step="${step}" value="${v ?? ""}">`;
+    }
+    return `<div class="row"><label class="lbl" for="${id}">${esc(label)}</label>${input}</div>`;
+  }).join("");
+}
+
 async function renderPanel() {
-  if (!llm) return;
-  $("llm-privacy").textContent = PRIVACY;
+  if (!llm || !settings) return;
+  $("llm-privacy").textContent = privacyNote(providerRow(llm.selected.provider));
   $("llm-storage").textContent = storageNote();
   $("llm-providers").innerHTML = llm.providers.map(rowHTML).join("");
   const ollama = providerRow("ollama");
   if (ollama && document.activeElement !== $("llm-ollama-url")) $("llm-ollama-url").value = ollama.base_url;
+  $("llm-quality").innerHTML = qualityHTML(settings.values.llm.quality);
   const select = $("llm-catalog-provider");
   if (!select.options.length) {
     select.innerHTML = llm.providers.map(p => `<option value="${esc(p.provider)}">${esc(p.label)}</option>`).join("");
   }
   $("llm-catalog-hint").textContent =
-    `Add or relabel models in ${configPath.replace(/config\.toml$/, "llm_models.toml")} (same shape as models.toml).`;
+    `Add or relabel models in ${settings.paths.user.replace(/config\.toml$/, "llm_models.toml")} (same shape as models.toml).`;
   await renderCatalog(select.value);
 }
 
@@ -5049,18 +5899,28 @@ async function renderCatalog(provider) {
   }
 }
 
+async function onQualityChange(el) {
+  const kind = el.dataset.kind;
+  let value = el.value;
+  if (kind === "bool") value = el.checked;
+  else if (kind === "int") value = Number.parseInt(el.value, 10);
+  else if (kind === "float") value = el.value === "" ? null : Number.parseFloat(el.value);
+  try {
+    await setSetting(`llm.quality.${el.dataset.q}`, value, "user");
+    await refreshLLM(); // the privacy note follows these settings
+  } catch (e) {
+    toast(e.message);
+  }
+}
+
 function openKeyForm(tr) {
   const provider = tr.dataset.provider;
   const row = tr.nextElementSibling;
   const cell = row.firstElementChild;
-  const fileOption = llm.keyring
-    ? ""
-    : '<label class="llm-note"><input type="checkbox" class="kfile"> Store in a plain-text file (no OS keychain available)</label>';
   cell.innerHTML =
     '<div class="row"><input type="password" class="kval grow" autocomplete="off" spellcheck="false" ' +
     `placeholder="Paste API key" aria-label="API key for ${esc(provider)}">` +
-    '<button class="mini ksave">Save</button><button class="mini ghost kcancel">Cancel</button></div>' +
-    fileOption;
+    '<button class="mini ksave">Save</button><button class="mini ghost kcancel">Cancel</button></div>';
   row.hidden = false;
   const input = cell.querySelector(".kval");
   const close = () => {
@@ -5070,12 +5930,10 @@ function openKeyForm(tr) {
   };
   const save = async () => {
     const key = input.value.trim();
-    const file = cell.querySelector(".kfile");
-    const backend = file && file.checked ? "file" : "keyring";
     close(); // clear and drop the field before the request is even sent
     if (!key) return;
     try {
-      llm = await sendJSON("PUT", `/api/llm/keys/${encodeURIComponent(provider)}`, { key, backend }, SECRETS);
+      llm = await sendJSON("PUT", `/api/llm/keys/${encodeURIComponent(provider)}`, { key }, SECRETS);
     } catch (e) {
       toast(e.message);
     }
@@ -5093,7 +5951,7 @@ function openKeyForm(tr) {
 
 async function removeKey(tr) {
   const p = providerRow(tr.dataset.provider);
-  if (!confirm(`Remove the ${p.label} key from the ${p.source}?`)) return;
+  if (!confirm(`Remove the ${p.label} key from the keyring?`)) return;
   try {
     llm = await sendJSON("DELETE", `/api/llm/keys/${encodeURIComponent(p.provider)}`, undefined, SECRETS);
   } catch (e) {
@@ -5124,6 +5982,7 @@ async function testProvider(tr) {
 export function wireLLM() {
   $("nl-provider").onchange = e => onProviderChange(e.target.value);
   $("nl-model").onchange = e => onModelChange(e.target.value);
+  $("nl-default").onclick = () => makeDefault();
   $("nl-manage").onclick = () => {
     if ($("llm-panel").classList.toggle("open")) renderPanel().catch(e => toast(e.message));
   };
@@ -5134,10 +5993,13 @@ export function wireLLM() {
     const tr = button.closest("tr");
     ({ set: openKeyForm, remove: removeKey, test: testProvider })[button.dataset.act](tr);
   };
+  $("llm-quality").onchange = e => {
+    if (e.target.dataset.q) onQualityChange(e.target);
+  };
   $("llm-ollama-save").onclick = async () => {
     const value = $("llm-ollama-url").value.trim() || null; // empty = back to the default
     try {
-      await dispatch({ type: "set_setting", key: "llm.ollama.base_url", value, scope: "user" });
+      await setSetting("llm.ollama.base_url", value, "user");
       await refreshLLM();
     } catch (e) {
       toast(e.message);
@@ -5147,18 +6009,19 @@ export function wireLLM() {
 }
 ```
 
-- [ ] **Step 5: Edit `packages/gmnspy/gmnspy/workbench/static/index.html`.** Insert this directly after the `<input id="utterance" … />` line:
+- [ ] **Step 5: Edit `packages/gmnspy/gmnspy/workbench/static/index.html`.** Insert this directly after the `<input id="utterance" … />` line, so it sits before `#go`, `#count` and P1a's `#jobs-btn`:
 
 ```html
     <span id="nl-picker">
       <span id="nl-dot" class="dot off" aria-hidden="true"></span>
       <select id="nl-provider" aria-label="Language model provider"></select>
       <select id="nl-model" aria-label="Language model"></select>
+      <button id="nl-default" class="mini ghost" title="Save this provider and model as your default">Make default</button>
       <button id="nl-manage" class="mini ghost" aria-label="Manage language models">Models…</button>
     </span>
 ```
 
-Insert this directly after the closing `</div>` of `#hist-panel`:
+Insert this directly before P1a's `<div class="panel" id="jobs-panel">`:
 
 ```html
 <div class="panel" id="llm-panel" role="dialog" aria-label="Language models">
@@ -5166,6 +6029,8 @@ Insert this directly after the closing `</div>` of `#hist-panel`:
   <p class="llm-note" id="llm-privacy"></p>
   <p class="llm-note" id="llm-storage"></p>
   <table id="llm-providers"></table>
+  <h4 style="margin-top:14px">Quality &amp; context</h4>
+  <div id="llm-quality"></div>
   <h4 style="margin-top:14px">Ollama server</h4>
   <div class="row"><input id="llm-ollama-url" class="grow" aria-label="Ollama URL" spellcheck="false" />
     <button class="mini" id="llm-ollama-save">Save</button></div>
@@ -5200,59 +6065,50 @@ Insert this directly after the closing `</div>` of `#hist-panel`:
   .tag { font-size:10.5px; padding:1px 6px; border-radius:999px; background:rgba(45,210,230,.15); color:var(--hl); }
   .st.ok { color:var(--from); }
   .st.fail { color:var(--to); }
+  #llm-quality .row input[type=number] { width:80px; }
+  #llm-quality .row select { flex:none; }
 ```
 
-- [ ] **Step 7: Wire it in `packages/gmnspy/gmnspy/workbench/static/js/main.js`.**
-
-Add `import { onLLMEvent, refreshLLM, wireLLM } from "./llm.js";` after the `./history.js` import.
-
-Add this function above `function wireMapButtons()`:
-
-```js
-function onHistory(entry) {
-  showEntry(entry);
-  const a = entry.action; // a set_setting from Python or another tab may change the provider/model/endpoint
-  if (entry.ok && a.type === "set_setting" && /^(select|llm)(\.|$)/.test(a.key)) refreshLLM().catch(e => toast(e.message));
-}
-```
-
-In `boot()`, make these three changes:
-1. Change the first line to `wireStore(); wirePanels(); wireSide(); wireTable(); wireHeader(); wireHistory(); wireMapButtons(); wireLLM();`.
-2. After `restoreViewMode();`, add `refreshLLM().catch(e => toast(e.message));`.
-3. Change the `subscribe(...)` call to:
+- [ ] **Step 7: Wire it in `packages/gmnspy/gmnspy/workbench/static/js/main.js`** (P1a version).
+- Add `import { onHistoryEntry, onLLMEvent, refreshLLM, wireLLM } from "./llm.js";` after the `./jobs.js` import.
+- In `boot()`, append `wireLLM();` to the wiring line, which then ends `… wireMapButtons(); wireJobs(); wireWizard(); wireLLM();`.
+- After `restoreViewMode();`, add `refreshLLM().catch(e => toast(e.message));`.
+- Change the `subscribe({...})` call to:
 
 ```js
-      subscribe({ state: e => onState(e.state), history: e => onHistory(e.entry), navigate: onNavigate, llm: onLLMEvent });
+      subscribe({
+        state: e => onState(e.state),
+        history: e => { showEntry(e.entry); rememberRecent(e.entry); onHistoryEntry(e.entry); },
+        navigate: onNavigate,
+        job: e => onJob(e.job),
+        llm: onLLMEvent,
+      });
 ```
 
 - [ ] **Step 8: Run the static tests**
 
 Run: `uv run --all-extras pytest packages/gmnspy/tests/test_workbench_static.py -q`
-Expected: `19 passed`:
-- `test_index_loads_main_module` (1);
-- per-module served (13, now including `llm.js`);
-- import/export graph (1);
-- element ids (1), where every `$("…")` id in `llm.js` exists in `index.html`;
-- `node --check` (1);
-- the two new tests (2).
+Expected: `25 passed`. That is P1a's 22, plus `llm.js` in the per-module served check, plus the two new tests. The element-id test proves every `$("…")` in `llm.js` exists in `index.html`, and `node --check` parses `llm.js`.
 
 - [ ] **Step 9: Commit**
 
 ```bash
 git add packages/gmnspy/gmnspy/workbench/static packages/gmnspy/tests/test_workbench_static.py
-git commit -m "feat(workbench-ui): provider/model picker in the header + Language models panel (write-only keys, test, Ollama URL, catalog)"
+git commit -m "feat(workbench-ui): session-scoped provider/model picker + Make default; Language models panel (keys, quality & context, privacy note)"
 ```
 
 ---
 
-### Task 17: Recorded contract fixtures, the re-record script, and the opt-in live smoke test
+### Task 18: Recorded contract fixtures, the re-record script, and the opt-in live smoke test
 
 **Files:**
 - Create: `packages/gmnspy/tests/fixtures/llm/{anthropic,openai,gemini,ollama}_select.json`
 - Create: `packages/gmnspy/tests/test_llm_contract.py`, `packages/gmnspy/tests/test_llm_live.py`
 - Create: `scripts/record_llm_fixtures.py`
 
-The fixtures start hand-authored from each API reference: they have the same shapes the adapter unit tests use, but are complete replies. `scripts/record_llm_fixtures.py` replaces each one with a real exchange once you have keys. It writes only the response JSON and the request's top-level body keys, never headers.
+The fixtures start hand-authored from each API reference. `scripts/record_llm_fixtures.py` replaces each one with a real exchange once you have keys. It writes only the response JSON and the request's top-level body keys, never headers.
+
+The contract test uses a bare `LLMParser`: no prompt context and provider-default temperature, so `request_keys` describe the minimal request. The live test uses the parser as the Workbench builds it, with your settings.
 
 - [ ] **Step 1: Create the fixtures.**
 
@@ -5565,34 +6421,84 @@ git commit -m "test(gmnspy.llm): recorded-fixture contract tests per provider, r
 
 ---
 
-### Task 18: Docs, full suite, catalog verification, end-to-end browser check
+### Task 19: Docs, full suite, catalog verification, end-to-end browser check
 
 **Files:**
-- Modify: `packages/gmnspy/docs/cookbook/workbench.md`
+- Modify: `packages/gmnspy/docs/cookbook/workbench.md` (P1a version)
 - Modify (only if verification finds drift): `packages/gmnspy/gmnspy/llm/models.toml`
 
 - [ ] **Step 1: Update `packages/gmnspy/docs/cookbook/workbench.md`.**
 - In the Quick start, change `--provider claude` to `--provider anthropic`.
-- In the settings TOML example, change `provider = "claude"` to `provider = "anthropic"`.
-- Then add this section directly before `## Every action is replayable`:
+- In the Settings TOML example, change `provider = "claude"` to `provider = "anthropic"`.
+- Add this section directly before `## Every action is replayable`:
 
 ````markdown
 ## Language models (natural-language selection)
 
-The utterance box can be read by one of these:
+The utterance box can be read by:
 - an offline pattern parser (the default);
 - a local model through [Ollama](https://ollama.com), for example Qwen;
 - Anthropic, OpenAI or Gemini, with your own API key.
 
-Pick the provider and model with the picker next to the utterance box. **Models…** opens the Language models panel, where you can set, replace, remove and test keys, point at another Ollama server, and browse the model catalog.
+Pick a provider and model with the picker next to the utterance box. The choice applies to this
+session; **Make default** saves it to your user settings. **Models…** opens the Language models panel:
+set, replace, remove and test keys, point at another Ollama server, tune quality, and browse the
+model catalog. The defaults are each provider's small, fast model (for example Claude Haiku 4.5),
+which is enough for one selection at a time; pick a larger one from the picker if parses go wrong.
 
 - **Keys are write-only.**
-  - They are stored in your OS keychain (macOS Keychain, Windows Credential Manager, or Secret Service on Linux), or read from `GMNSPY_<PROVIDER>_API_KEY` or the provider's own variable (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`).
-  - They are never written to `config.toml`, shown in the browser, recorded in the session history, or logged.
-  - Without a keychain you can opt into a plain-text file that only you can read.
-- **What is sent.** Remote providers receive your utterance and the selection tool's schema (GMNS field names such as `lanes`), never your network tables or files. Ollama keeps everything on your machine.
-- **Keys are bound to their endpoint.** If you point a provider at a different `base_url`, for example an OpenAI-compatible server, it needs a key entered for that endpoint. Existing keys are never sent there.
-- **Errors are explicit.** A missing or rejected key, a rate limit or a timeout shows as an error. The Workbench never quietly switches to another provider.
+  - They are stored in your OS keychain (macOS Keychain, Windows Credential Manager, or Secret
+    Service on Linux), or read from `GMNSPY_<PROVIDER>_API_KEY` or the provider's own variable
+    (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`).
+  - Without a keychain, set the environment variable in the shell that starts `gmnspy app`; the panel
+    tells you which one.
+  - Keys are never written to `config.toml`, shown in the browser, recorded in the session history, or
+    logged.
+- **Keys are bound to their endpoint.** If you point a provider at a different `base_url`, for example
+  an OpenAI-compatible server, it needs a key entered for that endpoint. Existing keys are never sent
+  there.
+- **Errors are explicit.** A missing or rejected key, a rate limit or a timeout shows as an error. The
+  Workbench never quietly switches to another provider.
+
+### What is sent, and quality settings
+
+Every selection sends your utterance and the selection tool's schema (GMNS field names such as
+`lanes`), never your network tables or files. The `[llm.quality]` settings add more, and the privacy
+note next to the picker always lists exactly what the chosen provider receives. `"auto"` means on for
+a model on this machine (Ollama) and off for a remote provider.
+
+| Setting | Default | What it does |
+|---|---|---|
+| `assistant_context` | `true` | Sends the GMNS assistant guide that ships with gmnspy (data model, examples) |
+| `project_context` | `"auto"` | Sends an `AGENTS.md` (or `CLAUDE.md`) found next to the network or in the project folder: your aliases and code meanings |
+| `grounding` | `"auto"` | Sends the network's most common street names and route numbers, so the model spells them as the network does |
+| `grounding_max_names` | `200` | Cap on those names |
+| `few_shot` | `false` | Shows the model this session's earlier selections that resolved |
+| `match_retry` | `true` | If nothing matches, asks the model once more with the closest real names (needs grounding) |
+| `max_repairs` | `1` | Re-prompts after an invalid reply |
+| `temperature` | `0.0` | Sampling temperature; unset it for models that only accept their default |
+
+```toml
+# ~/.config/gmnspy/config.toml: endpoints, choices and quality only, never keys
+[select]
+provider = "anthropic"
+model = "claude-haiku-4-5-20251001"
+
+[llm.ollama]
+base_url = "http://localhost:11434"
+
+[llm.quality]
+grounding = "on"        # also send street names to remote providers
+few_shot = true
+```
+
+A project's `AGENTS.md` might read:
+
+```markdown
+- "the Beltline" is I 440.
+- SR-520 is the Evergreen Point Bridge.
+- facility_type 7 means HOV lanes.
+```
 
 From a terminal (also the way to manage keys when the Workbench is bound to a non-local address):
 
@@ -5601,36 +6507,30 @@ uv run gmnspy llm status
 uv run gmnspy llm set-key anthropic
 uv run gmnspy llm test anthropic
 uv run gmnspy llm models ollama
-uv run gmnspy select "I-40 EB between South Miami Boulevard and Airport Boulevard" ./my-network --provider ollama --model qwen3:8b
-```
-
-```toml
-# ~/.config/gmnspy/config.toml: endpoints and choices only, never keys
-[select]
-provider = "anthropic"
-model = "claude-haiku-4-5-20251001"
-
-[llm.ollama]
-base_url = "http://localhost:11434"
+uv run gmnspy select "I-40 EB between South Miami Boulevard and Airport Boulevard" ./my-network --provider ollama --model qwen3:4b
 ```
 ````
 
-- [ ] **Step 2: Run the full suite and lint**
+- [ ] **Step 2: Run the documented-contract tests, then the full suite and lint**
 
-Run: `uv run --all-extras pytest packages/datagrove/tests packages/gmnspy/tests -q && uv run ruff check packages scripts && uv run ruff format --check packages scripts && uv run lint-imports && uv run pyright packages/gmnspy/gmnspy/llm`
+Run: `uv run --all-extras pytest packages/gmnspy/tests/test_documented_cli_contract.py packages/gmnspy/tests/test_documented_api_contract.py packages/gmnspy/tests/test_documented_python_contract.py -q`
+Expected: `185 passed`. The `--provider`, `--model` and `gmnspy llm …` invocations all resolve.
+
+Run: `uv run --all-extras pytest packages/datagrove/tests --doctest-modules packages/datagrove/datagrove -q && uv run --all-extras pytest packages/gmnspy/tests --doctest-modules packages/gmnspy/gmnspy -q && uv run ruff check packages scripts && uv run ruff format --check packages scripts && uv run lint-imports && uv run python scripts/lint_no_sql.py && uv run pyright packages/gmnspy/gmnspy/llm packages/gmnspy/gmnspy/select/prompt.py`
 Expected:
-- every test passes; the `live_llm` tests are skipped;
-- both documented-contract tests pass on the new docs section (`--provider`, `--model` and `gmnspy llm …` all resolve);
-- lint is clean, import-linter keeps all contracts, and pyright reports 0 errors in `gmnspy/llm`.
+- datagrove: `848 passed, 5 skipped`;
+- gmnspy: `1267 passed, 5 skipped` (4 `live_llm` + P1a's opt-in calibration);
+- lint is clean, import-linter keeps 2 contracts, and pyright reports 0 errors in the new modules.
 
-- [ ] **Step 3: Verify the catalog against the live providers (needs the user's keys; the user runs this or is asked first).**
+- [ ] **Step 3: Verify the catalog against the live providers.** This needs the user's keys; the user runs it, or is asked first.
 - Run `uv run gmnspy llm test openai`, `uv run gmnspy llm test gemini` and `uv run gmnspy llm test anthropic`, each with a configured key.
 - Expected: `… connected (N models available).` Any `catalog ids not served here: …` line names ids to fix in `models.toml`.
-- Update `models.toml` and drop each `# VERIFY` comment that has now been checked.
-- Re-record the fixtures with `uv run --all-extras python scripts/record_llm_fixtures.py`, then re-run Task 17 Step 5.
-- If Gemini rejects `parametersJsonSchema`, apply the Task 7 fallback before re-recording.
+- Drop each `# VERIFY` comment that has now been checked.
+- With Ollama running, run `ollama list` and confirm a Qwen tag matches the Ollama `default_model` (`qwen3:4b`), or change it.
+- Re-record the fixtures with `uv run --all-extras python scripts/record_llm_fixtures.py`, then re-run Task 18 Step 5.
+- If Gemini rejects `parametersJsonSchema`, apply the Task 7 fallback first.
 
-- [ ] **Step 4: Check it end to end in the browser pane.** Add a second configuration to the uncommitted `.claude/launch.json` from P0 Task 12. It uses a scratch config dir, so the real `~/.config/gmnspy` is never touched:
+- [ ] **Step 4: Check it end to end in the browser pane.** Add this configuration to the uncommitted `.claude/launch.json` from P0. It uses a scratch config dir, so the real `~/.config/gmnspy` is never touched:
 
 ```json
 {
@@ -5644,15 +6544,19 @@ Expected:
 
 Start it with `preview_start` (`name: "workbench-llm"`), then check each item. Use `read_console_messages` for errors and screenshots for visuals.
 
-1. The header shows the picker: a teal dot and **Offline (pattern)**, with the model select hidden. Hovering shows the privacy note. The console has no errors.
-2. Click **Models…**. The panel lists Anthropic, OpenAI, Gemini and Ollama (local). The storage line reads "Keys are stored in your OS keychain (keyring)." The Ollama row shows `running · N model(s)` if Ollama is running, otherwise "could not reach Ollama at http://localhost:11434 (ConnectError)."
+1. The header shows the picker after the utterance box: a teal dot, **Offline (pattern)**, the model select hidden, and **Make default** disabled. Hovering shows "Offline pattern parser: nothing leaves this machine." The console has no errors.
+2. Click **Models…**. The panel lists Anthropic, OpenAI, Gemini and Ollama (local). The storage line reads "Keys are stored in your OS keychain…". **Quality & context** shows the `llm.quality` defaults. The Ollama row shows `running · N model(s)`, or "could not reach Ollama at http://localhost:11434 (ConnectError)."
 3. **Dummy key flow.** An agent must never type a real key; the user does that themselves.
-   - On Anthropic, click **Set key** and enter the test value `sk-ant-dummy-e2e-0000000000`. The field clears at once, and the row reads `key set · keyring`. Anthropic now appears in the picker.
-   - Click **Test**. The row reads "Anthropic rejected the API key (HTTP 401). …" in red, and the dot turns amber.
-   - Choose Anthropic → **Haiku 4.5 · fast** in the picker. The history strip shows `app.do(SetSetting(key='select.model', value='claude-haiku-4-5-20251001', scope='user'))`. Then run `I-40 EB between South Miami Boulevard and Airport Boulevard`. A red toast shows the same 401 message, the history entry is marked failed, and no selection is drawn.
-   - Click **Remove** and confirm. Anthropic leaves the picker, which shows "anthropic (not set up)".
-4. **Ollama flow** (only if `ollama list` shows a Qwen model). Choose **Ollama (local)** and the Qwen model, then run the same utterance. The selection resolves. `curl -s localhost:8851/api/state` shows `"parsed_by": {"provider": "ollama", …, "mode": "tools"}`, or `"json"` for a model without tool support.
-5. **No-leak checks from a terminal:**
+   - On Anthropic, **Set key** `sk-ant-dummy-e2e-0000000000`. The field clears at once, and the row reads `key set · keyring`. Anthropic appears in the picker.
+   - Choose Anthropic. The model defaults to **Haiku 4.5 · fast**, **Make default** enables, and the history strip shows `app.do(SetSetting(key='select.model', value='claude-haiku-4-5-20251001'))`, which is session scope (the default, so it's omitted).
+   - Hover the picker. The note lists the utterance, the tool schema and the GMNS guide, and *not* street names or project notes.
+   - Click **Test**. It reports the 401 message in red, and the dot turns amber.
+   - Run `I-40 EB between South Miami Boulevard and Airport Boulevard`. A red toast shows the 401 message and the history entry is marked failed.
+   - Click **Make default**, then `cat /tmp/gmnspy-llm-e2e/config.toml`. It shows `[select] provider = "anthropic"` and the model, and no key.
+   - **Remove** the key and confirm.
+4. **Quality toggles.** In **Quality & context**, set *Send street names…* to `on`. The privacy note now lists "up to 200 street names and route numbers from the active network". Set it back to `auto`.
+5. **Ollama flow** (only if `ollama list` shows a Qwen model). Choose **Ollama (local)** and the Qwen model, write an `AGENTS.md` containing `- "the airport road" is Airport Boulevard.` in the folder you launched `gmnspy app` from (the project dir; Ollama is local, so `project_context=auto` sends it), and run `I-40 EB between South Miami Boulevard and the airport road`. The selection resolves, and `curl -s localhost:8851/api/state` shows `"parsed_by": {"provider": "ollama", …}`. Delete the `AGENTS.md`.
+6. **No-leak checks from a terminal:**
    - `curl -s localhost:8851/api/llm/providers | grep -c dummy-e2e` prints `0`.
    - `curl -s -o /dev/null -w '%{http_code}' -XPUT localhost:8851/api/llm/keys/openai -H 'content-type: application/json' -d '{"key":"sk-test-e2e-0000000000"}'` prints `403` (no `X-GMNSpy-Secrets` header).
    - `grep -rc dummy-e2e /tmp/gmnspy-llm-e2e` finds nothing.
@@ -5663,59 +6567,68 @@ Stop the preview with `preview_stop`, then delete `/tmp/gmnspy-llm-e2e`. Record 
 
 ```bash
 git add packages/gmnspy/docs/cookbook/workbench.md packages/gmnspy/gmnspy/llm/models.toml packages/gmnspy/tests/fixtures/llm
-git commit -m "docs(gmnspy): Language models in the Workbench (providers, write-only keys, privacy, CLI); verified catalog"
+git commit -m "docs(gmnspy): Language models in the Workbench (providers, keys, quality & context, privacy, CLI); verified catalog"
 ```
 
 ---
 
 ## Self-review notes (completed while writing)
 
-- **Spec coverage (design doc → tasks):**
-  - Provider interface and four adapters: Tasks 2, 5–8. Stub kept: Task 12.
-  - `ClaudeParser` behind `LLMParser`, with an identical tool schema (`SELECTION_TOOL` ≡ `INTENT_TOOL`): Task 12.
-  - Tool-less models (`ToolsUnsupported` → JSON mode; `format` for Ollama) and the repair loop: Tasks 8, 9.
-  - Model catalog in data plus the key-safe overlay; Ollama discovery through `/api/tags`: Tasks 3, 11.
-  - Secrets:
-    - env → keyring → 0600 file;
-    - `datagrove.system_keyring`;
-    - origin-bound slots (T4);
-    - `redact`/`looks_like_secret`;
-    - the `SetSetting` guard and 422 no-echo (T5);
-    - `repr` hygiene and the header-only Gemini key (T6);
-    - scrubbed errors (T7);
-    - file modes (T8);
-    - exposed-bind refusal (T10);
-    - hidden-prompt CLI (T13).
-    - These land in Tasks 1, 4, 5, 7, 10, 14 and 15.
-  - Non-recorded key routes with status-only responses, the SSE `llm` event and a log line: Task 14.
-  - Settings: `select.provider` widened with the `claude` alias, `select.model`, `llm.*`: Task 10.
-  - The picker: usable providers only, status dot, scope rule, recorded `SetSetting`. The panel: set/replace/remove/test, Ollama URL, catalog, privacy note. Task 16.
-  - Errors become `ActionError`, with no provider fallback; bad output becomes a "could not parse" selection: Task 13.
-  - Testing:
-    - mocked HTTP per adapter (Tasks 5–8);
-    - recorded contract fixtures plus the re-record script (Task 17);
-    - the `live_llm` marker (Tasks 0, 17);
-    - the canary no-leak test (Task 14);
-    - `no_network` and no-system-keyring guards (Tasks 0, 4).
-  - Docs: Task 18.
+- **Decisions → tasks:**
+  1. Tiny defaults: Task 3 (`models.toml`), Task 13 (`ClaudeParser` default Haiku).
+  2. Session-scoped picker + **Make default**: Task 17.
+  3. No plaintext fallback, env → keyring, UI names env vars: Tasks 4, 11 (`key_env`), 15, 16, 17.
+  4. No token: deferred.
+  5. `llm.quality`:
+     - settings: Task 10;
+     - `auto` resolution + privacy `disclosure`: Task 11;
+     - prompt parts: Task 13;
+     - session use: Task 14;
+     - UI: Task 17.
+  6. Context layers:
+     - the guide + discovery: Task 12;
+     - the cached prefix: Tasks 2, 5 (Anthropic `cache_control`) and 13 (`render_prompt`);
+     - per-provider gating: Tasks 11, 14.
+  7. Alternatives: design only.
+- **Design coverage:**
+  - provider interface and adapters: Tasks 2, 5–8;
+  - tool-less models and the repair loop: Tasks 8, 9;
+  - catalog: Task 3;
+  - secrets and threat-model mitigations:
+    - T1/T5/T6/T7: Tasks 4, 5, 10, 15;
+    - T4 origin slots: Tasks 4, 11;
+    - T10 exposed bind: Task 15;
+    - T13 hidden prompt: Task 16;
+  - non-recorded key routes: Task 15;
+  - errors → `ActionError`: Task 14;
+  - testing (mocked HTTP, contract fixtures, live marker, canary, no-network/no-keyring guards): Tasks 0, 4, 5–9, 15, 18;
+  - docs: Task 19.
+- **Validation:**
+  - Every code block above was produced from a scratch tree. That tree is the P1a plan applied to `feat/workbench-p0` HEAD, plus this plan.
+  - Each task's files were applied in order onto a fresh copy of the P1a state, and the task's own command was run. Each Expected count above is that run's output.
+  - The full gmnspy suite was also run after Tasks 10, 13 and 16 (1101, 1129 and 1163 passed, plus P1a's 1 opt-in skip).
+  - Final tree:
+    - `1267 passed, 5 skipped` (gmnspy, with doctests) and `848 passed, 5 skipped` (datagrove);
+    - ruff check and format clean;
+    - import-linter 2/2 kept;
+    - pyright 0 new errors (the remaining pyright errors in `select/emit.py`, `select/webapp.py` and P1a's `session.py` job path predate this plan);
+    - documented-contract tests pass;
+    - `node --check` passes on every module.
+  - The `[nl]` extra swap and `uv lock` (Task 13 Step 8) were not exercised in scratch, because the scratch venv already had all three packages.
+  - Browser smoke test of the scratch tree, with the real front end and no keys touched:
+    - the page loads with no console errors;
+    - the picker shows **Offline (pattern)** with **Make default** disabled;
+    - **Models…** renders the four providers, **Quality & context**, the Ollama URL and the catalog;
+    - setting *Send street names…* to `on` recorded `SetSetting(key='llm.quality.grounding', value='on', scope='user')`, and the Anthropic privacy note immediately listed "up to 200 street names and route numbers from the active network".
+  - At 800 px the header is crowded (P1a's Open/Import, Recent and Jobs, plus the picker), and the **Models…** button can be pushed off-screen. P1b's header pass should move the utterance box and picker into a second row.
 - **Type and name consistency:**
-  - `ProviderRegistry.{names, base_url, slot, provider, status, models, test}` are used identically in Session (Task 13), routes (Task 14), CLI (Task 15) and tests.
-  - `SecretStore.{lookup, get, status, set, remove, keyring_available, file_path}` are used identically in Tasks 4, 11, 14 and 15.
-  - Every adapter takes `api_key/base_url/timeout_s/transport` (`HTTPProvider.__init__`), which `ProviderRegistry.provider` and the contract test rely on.
-  - `describe()` exists on `StubParser` and `LLMParser`; Session's `_parser_info` tolerates injected parsers without it.
-  - The JS imports in `llm.js` (`dispatch`, `getJSON`, `sendJSON`, `$`, `esc`, `toast`) all exist, which the static graph test enforces.
-- **Test counts used in Expected lines:** types 4, catalog 5, secrets 11, anthropic 12 (including 5 parametrized), openai 5, gemini 5, ollama 6, structured 8, registry 10, routes 13, cli-llm 8, contract 5, live 4 skipped. Modified files: config 16→18, actions 9→10, server 22→23 (collected items, including parametrized cases), session 22→28, select_parse 6→9, select_cli 2→4, cli_workbench 11→12, static 16→19, datagrove credentials 15→19.
-- **Validated before hand-off:** every code block and edit in this plan was applied to a scratch copy of `feat/workbench-p0` HEAD and checked there:
-  - `ruff check` and `ruff format --check` are clean, with no reformatting needed;
-  - pyright reports 0 errors in `gmnspy/llm`, `workbench/routes/llm.py`, `select/parse.py` and `cli/commands/llm.py` (the remaining pyright errors in `cli/commands/select.py:_emit` and `workbench/registry.py:node_xy` predate this plan);
-  - import-linter keeps both contracts;
-  - every per-task Expected count matches;
-  - the full `packages/gmnspy/tests --doctest-modules packages/gmnspy/gmnspy` run plus `packages/datagrove/tests/io` gives `1270 passed, 6 skipped` (4 `live_llm`, 2 pre-existing);
-  - the documented-contract tests pass with the Task 18 docs section;
-  - `node --check` passes on `llm.js`.
-- **Independently mergeable after P0:** nothing here depends on P1a/P1b. The conflict table at the top lists the shared files: `config.py`, `index.html`, `session.py`, `server.py`, `main.js`, `app.css`, `pyproject.toml`/`uv.lock`.
+  - `ProviderRegistry.{names, base_url, slot, provider, status, models, test, is_local, grounding_on, project_context_on, disclosure}` are used the same way in Session (Task 14), routes (Task 15), CLI (Task 16) and tests.
+  - `SecretStore.{lookup, get, status, set, remove, how_to_add, keyring_available}` are used the same way in Tasks 4, 11, 15 and 16.
+  - `LLMParser.parse(utterance, *, context=None)`: the session passes `context` only to an `LLMParser`, so injected or stub parsers keep `parse(utterance)`.
+  - `PromptContext` fields match between `select/prompt.py`, the session and the tests.
 - **Known follow-ups:**
-  - P4: a per-launch token gating `/api/actions` and `/api/llm/*` writes (design Q4).
-  - P3: the assistant reuses `ProviderRegistry` and `request_tool_call`, extends `Message` with tool results, adds grounding behind a privacy-note update, and excludes `llm.*`/`select.*` from its `SetSetting` vocabulary.
-  - P1b: mount `#llm-panel` in the Settings workspace and hide `llm.*` from the generic form.
-  - Delete `select/webapp.py` and `viz/server.py` (P1); they are the last `ClaudeParser()` callers.
+  - P4: a per-launch token for `/api/actions` and `/api/llm/*` writes.
+  - P3: the assistant reuses `ProviderRegistry`, `request_tool_call` and `PromptContext`; extends `Message` with tool results; excludes `llm.*`/`select.*` from its `SetSetting` vocabulary.
+  - P1b: mount `#llm-panel` and hide `llm.*` from the generic form.
+  - Delete `select/webapp.py` and `viz/server.py`, the last `ClaudeParser()` callers.
+  - If the Anthropic guide prefix stays below the model's minimum cacheable length, caching is a no-op. Measure `cache_read_input_tokens` in the live smoke test once real keys are in use (design, "Prompt caching").
