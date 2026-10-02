@@ -1,15 +1,15 @@
-"""``gmnspy build`` — create a GMNS network from OpenStreetMap (optional ``[osm]`` extra).
+"""``gmnspy build`` — create a GMNS network from OpenStreetMap or Overture Maps.
 
-Resolves an area (place name, ``--bbox``, or ``--point`` + ``--buffer``), fetches
-the OSM ``highway`` network via Overpass, converts it to GMNS ``node`` + ``link``
-tables, and writes the network to ``DEST`` (format inferred from the extension,
-or ``--format``). ``--source`` is reserved for future backends (only ``osm``
-today).
+Resolves an area (place name, ``--bbox``, or ``--point`` + ``--buffer``), reads
+the road network from the chosen ``--source`` (``osm`` via Overpass, or
+``overture`` via GeoParquet), converts it to GMNS ``node`` + ``link`` tables, and
+writes the network to ``DEST`` (format inferred from the extension, or
+``--format``).
 
-The heavy lifting lives in :mod:`gmnspy.osm`, imported lazily through
-:func:`gmnspy.cli._extras.require_extra` so the command degrades to a clean
-"install the extra" message when ``[osm]`` is absent (and so the import-linter
-boundary stays static-clean).
+The heavy lifting lives in :mod:`gmnspy.osm` / :mod:`gmnspy.overture`, imported
+lazily through :func:`gmnspy.cli._extras.require_extra` so the command degrades
+to a clean "install the extra" message when the extra is absent (and so the
+import-linter boundary stays static-clean).
 """
 
 from __future__ import annotations
@@ -74,8 +74,16 @@ def register(app: typer.Typer) -> None:
         point: str = typer.Option(None, "--point", help="Center 'lat,lon'; use with --buffer."),
         buffer_m: float = typer.Option(0.0, "--buffer", help="Buffer in metres around --point."),
         network_type: str = typer.Option("drive", "--network-type", help="drive / walk / bike / all."),
-        extra_tags: str = typer.Option(None, "--extra-tags", help="Comma-separated extra OSM tags to carry."),
-        source: str = typer.Option("osm", "--source", help="Data source (only 'osm' today)."),
+        extra_tags: str = typer.Option(
+            None, "--extra-tags", help="Comma-separated extra source properties/tags to carry."
+        ),
+        source: str = typer.Option("osm", "--source", help="Data source: 'osm' or 'overture'."),
+        overture_release: str = typer.Option(
+            None, "--overture-release", help="Overture release string (overture source only)."
+        ),
+        data_root: str = typer.Option(
+            None, "--data-root", help="Override Overture data base URI / local snapshot dir (overture source only)."
+        ),
         engine: str = typer.Option(
             None, "--engine", help="Compute engine (DuckDB is the only one; kept for compatibility)."
         ),
@@ -83,29 +91,47 @@ def register(app: typer.Typer) -> None:
         out_format: str = typer.Option(None, "--format", help="Output format: csv / parquet / duckdb / zip."),
         json_out: bool = typer.Option(False, "--json", help="Emit a JSON summary on stdout."),
     ) -> None:
-        """Build a GMNS network from OpenStreetMap and write it to ``DEST``."""
-        if source != "osm":
-            raise typer.BadParameter("only --source osm is supported (Overture is not yet implemented)")
+        """Build a GMNS network from OpenStreetMap or Overture and write it to ``DEST``."""
+        if source not in {"osm", "overture"}:
+            raise typer.BadParameter("--source must be 'osm' or 'overture'")
+        if source == "osm" and (overture_release or data_root):
+            raise typer.BadParameter("--overture-release / --data-root are only valid with --source overture")
 
         area = _parse_area(place, bbox, point, buffer_m)
         tags = [t.strip() for t in extra_tags.split(",")] if extra_tags else None
-
-        osm = require_extra("gmnspy.osm", "osm")
-        import requests  # available via the [osm] extra (resolved by require_extra above)
-
         build_kwargs = {"spec_version": spec_version} if spec_version else {}
+
         try:
-            net = osm.build_network_from_osm(
-                area,
-                buffer_m=buffer_m,
-                network_type=network_type,
-                extra_tags=tags,
-                engine=resolve_engine(engine),
-                **build_kwargs,
-            )
-        except (ValueError, LookupError, requests.exceptions.RequestException) as exc:
+            if source == "overture":
+                overture = require_extra("gmnspy.overture", "overture")
+                overture_kwargs = {}
+                if overture_release:
+                    overture_kwargs["overture_release"] = overture_release
+                if data_root:
+                    overture_kwargs["data_root"] = data_root
+                net = overture.build_network_from_overture(
+                    area,
+                    buffer_m=buffer_m,
+                    network_type=network_type,
+                    extra_tags=tags,
+                    engine=resolve_engine(engine),
+                    **build_kwargs,
+                    **overture_kwargs,
+                )
+            else:
+                osm = require_extra("gmnspy.osm", "osm")
+                net = osm.build_network_from_osm(
+                    area,
+                    buffer_m=buffer_m,
+                    network_type=network_type,
+                    extra_tags=tags,
+                    engine=resolve_engine(engine),
+                    **build_kwargs,
+                )
+        except (ValueError, LookupError, OSError) as exc:
             # ValueError/LookupError: bad area, unknown network_type, empty result,
-            # geocode miss. RequestException: Overpass/Nominatim network failures.
+            # geocode miss. OSError covers Overpass/Nominatim/object-store I/O failures
+            # (requests.RequestException subclasses OSError).
             typer.secho(str(exc), fg="red", err=True)
             raise typer.Exit(code=1) from None
 

@@ -82,9 +82,10 @@ def test_build_requires_exactly_one_area(monkeypatch):
     assert two.exit_code != 0
 
 
-def test_build_rejects_non_osm_source(monkeypatch):
+def test_build_rejects_unknown_source(monkeypatch):
+    # 'osm' and 'overture' are the supported sources; anything else is rejected.
     monkeypatch.setattr("gmnspy.osm.build_network_from_osm", _fake_network)
-    result = runner.invoke(app, ["build", "out", "--bbox", "0,0,1,1", "--source", "overture"])
+    result = runner.invoke(app, ["build", "out", "--bbox", "0,0,1,1", "--source", "bogus"])
     assert result.exit_code != 0
 
 

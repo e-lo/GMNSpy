@@ -42,6 +42,15 @@ osm = [
     "requests>=2",
     "pyyaml>=6",
 ]
+overture = [
+    # Build a GMNS network from Overture Maps (gmnspy.overture). Overture is
+    # native GeoParquet read directly by datagrove's bundled duckdb engine
+    # (read_parquet + the spatial/httpfs extensions — no extra dep), so the
+    # only addition is the maintained mapping-data loader. Place-string areas
+    # are geocoded via the [osm] extra's Nominatim helper; bbox/point areas
+    # need nothing more.
+    "pyyaml>=6",
+]
 clean = [
     "shapely>=2.0",
     "geopandas>=1.0",
@@ -85,7 +94,7 @@ reports = [
     "pyyaml>=6",    # edit-log load/dump (gmnspy.map.edits)
 ]
 all = [
-    "gmnspy[clean,server,mcp,notebook,osm,graph,reports,nl]",
+    "gmnspy[clean,server,mcp,notebook,osm,overture,graph,reports,nl]",
 ]
 dev-fixtures = [
     # Only required to *rebuild* bundled example fixtures (e.g. Leavenworth).
@@ -133,6 +142,9 @@ include = [
     "gmnspy/viz/templates/*.html",
     # Maintained OSM->GMNS tag-mapping + network-filter data (gmnspy.osm).
     "gmnspy/osm/mappings/*.yaml",
+    # Maintained Overture->GMNS property-mapping + network-filter data
+    # (gmnspy.overture).
+    "gmnspy/overture/mappings/*.yaml",
     # Bundled example networks (Leavenworth, WA; see
     # gmnspy/fixtures/leavenworth/README.md for provenance).
     "gmnspy/fixtures/**/*.csv",

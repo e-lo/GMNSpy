@@ -1,0 +1,21 @@
+# Overture segment property -> GMNS link field mapping (maintained data; edit
+# here, not in code).
+#
+# Each entry: <gmns_field>: { source: <segment property path>, transform: <name in attrs.TRANSFORMS> }
+#   * `source` is a dotted path into the Overture segment record (e.g.
+#     `names.primary` reads record["names"]["primary"]). Missing intermediate
+#     keys resolve to null.
+#   * `transform` is a key into attrs.TRANSFORMS. Unlike the OSM mapping (flat
+#     tag lookup), several Overture attributes are arrays of scoped rules, so
+#     the transform does the reduction to a scalar (see gmnspy/overture/attrs.py).
+#
+# NOTE on direction: every emitted GMNS link is directed=True and a two-way
+# segment becomes two directed links, so `directed` is NOT mapped here. Overture
+# encodes direction through access_restrictions[].when.heading, interpreted by
+# attrs.overture_direction() to decide how many links to emit.
+
+name:          { source: names.primary, transform: direct }       # street name, verbatim
+facility_type: { source: class,         transform: direct }       # motorway/primary/residential/...
+free_speed:    { source: speed_limits,  transform: max_speed_mph } # reduce scoped rules -> single mph
+lanes:         { source: lanes,         transform: lane_count }    # best-effort scalar (null when scoped/absent)
+ref:           { source: routes,        transform: primary_ref }   # route number (I-40, US-1) as provenance
