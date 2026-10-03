@@ -118,6 +118,16 @@ app.do(
 Without `approved=True`, a build over the threshold raises `gmnspy.workbench.ApprovalRequired`, and its
 `.estimate` holds the estimate.
 
+Two things to know before replaying a session's script:
+
+- **Folders trusted on the command line are not in the history.** `gmnspy app /data/net` allows `/data/net` for
+  that session only, without recording an action. A replay in a new `Session()` only gets your configured
+  `io.allowed_roots`, so an open or build under such a folder fails with `PathNotAllowed`. Add the folder to
+  `io.allowed_roots` (config file or `GMNSPY_IO__ALLOWED_ROOTS`), or pass it as an override:
+  `Session(overrides={"io.allowed_roots": ["/data/net"]})`.
+- **Builds never overwrite.** Replaying a `BuildNetwork` whose output already exists fails with
+  `… already exists`. Point the replay at a fresh `output_dir`, or move the earlier output away first.
+
 ## Settings
 
 The workbench reads layered settings. From lowest to highest precedence:
