@@ -29,7 +29,13 @@ def test_scrub_keeps_scheme_host_path_and_leaves_local_paths_alone():
 
 @pytest.mark.parametrize(
     ("source", "label"),
-    [(SIGNED, "lw"), ("https://h.example/net.parquet?sig=S", "net"), ("s3://b/k/rdu/parquet?v=1", "rdu")],
+    [
+        (SIGNED, "lw"),
+        ("https://h.example/net.parquet?sig=S", "net"),
+        ("s3://b/k/rdu/parquet?v=1", "rdu"),
+        ("https:/nohost?sig=S", "nohost"),  # malformed: the URL scrubber alone would miss it
+        ("/data/odd?name/net", "net"),  # a local path keeps its '?'
+    ],
 )
 def test_default_label_never_keeps_a_query_string(source, label):
     assert default_label(source) == label

@@ -22,7 +22,7 @@ from datagrove.io.remote import REMOTE_SCHEMES
 from gmnspy.config import Settings
 
 from .errors import PathNotAllowed
-from .redact import scrub
+from .redact import scrub_source
 
 __all__ = [
     "SourceKind",
@@ -65,9 +65,11 @@ def split_source(source: str) -> tuple[SourceKind, str]:
     # urlsplit drops leading whitespace/C0 characters and deletes tab/CR/LF, so " s3://..." or
     # "s\t3://..." would look remote here while datagrove reads them as relative local paths.
     if source != source.strip() or any(ord(c) < 32 or ord(c) == 127 for c in source):
-        raise PathNotAllowed(f"{source!r}: sources must not have surrounding whitespace or control characters")
+        raise PathNotAllowed(
+            f"{scrub_source(source)!r}: sources must not have surrounding whitespace or control characters"
+        )
     if "::" in source:
-        raise PathNotAllowed(f"{source}: chained (::) URLs are not supported")
+        raise PathNotAllowed(f"{scrub_source(source)}: chained (::) URLs are not supported")
     scheme = _scheme(source)
     if not scheme:
         return "local", source
@@ -76,24 +78,26 @@ def split_source(source: str) -> tuple[SourceKind, str]:
         # them as relative local paths: only a literal scheme://host is remote.
         parts = urlsplit(source)
         if not source.lower().startswith(f"{scheme}://") or not parts.hostname:
-            raise PathNotAllowed(f"{source}: remote URLs must look like scheme://host/...")
-        if "@" in parts.netloc:  # never echo the URL: its userinfo is the secret
+            raise PathNotAllowed(f"{scrub_source(source)}: remote URLs must look like scheme://host/...")
+        if "@" in parts.netloc:  # its userinfo is the secret: never accept (or echo) it
             raise PathNotAllowed(
-                f"{scrub(source, limit=None)}: credentials in the URL (user:password@) are not accepted; "
+                f"{scrub_source(source)}: credentials in the URL (user:password@) are not accepted; "
                 "set them in the environment, the keyring, or ~/.netrc (the credential cascade) instead"
             )
         if ".." in PurePosixPath(parts.path).parts:
-            raise PathNotAllowed(f"{source}: remote URLs must not contain '..' path segments")
+            raise PathNotAllowed(f"{scrub_source(source)}: remote URLs must not contain '..' path segments")
         return "remote", source
     if scheme == "duckdb":
         return "local", re.sub(r"^duckdb:(//)?", "", source, flags=re.IGNORECASE)
     if scheme == "file":
         parts = urlsplit(source)
         if parts.netloc not in ("", "localhost"):
-            raise PathNotAllowed(f"{source}: file:// URLs must name a local path")
+            raise PathNotAllowed(f"{scrub_source(source)}: file:// URLs must name a local path")
         return "local", url2pathname(parts.path)
     remote = ", ".join(REMOTE_SCHEMES)
-    raise PathNotAllowed(f"{source}: unsupported URL scheme {scheme!r}; use a local path or one of {remote}")
+    raise PathNotAllowed(
+        f"{scrub_source(source)}: unsupported URL scheme {scheme!r}; use a local path or one of {remote}"
+    )
 
 
 def classify_source(source: str, settings: Settings) -> tuple[SourceKind, str | Path]:

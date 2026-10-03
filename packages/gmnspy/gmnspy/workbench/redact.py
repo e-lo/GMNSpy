@@ -11,7 +11,7 @@ from __future__ import annotations
 import re
 from urllib.parse import urlsplit
 
-__all__ = ["MAX_ERROR_LEN", "safe_scrub", "scrub"]
+__all__ = ["MAX_ERROR_LEN", "safe_scrub", "scrub", "scrub_source"]
 
 #: Default cap on a scrubbed message's length (short enough to show in a toast).
 MAX_ERROR_LEN = 200
@@ -52,3 +52,14 @@ def safe_scrub(text: str, limit: int | None = MAX_ERROR_LEN) -> str:
         return scrub(text, limit)
     except Exception:  # pragma: no cover - defence in depth around an already-defensive function
         return "<unscrubbable>"
+
+
+def scrub_source(source: str) -> str:
+    """A user-typed source made safe to show, even when it is not a well-formed URL.
+
+    :func:`scrub` only recognises ``scheme://`` URLs, but rejected sources are often malformed
+    (``https:/nohost?sig=...``, ``s3://b::https://u:p@h``). So strip by hand: every
+    ``user[:password]@`` token anywhere, then everything from the first ``?`` or ``#``.
+    """
+    cleaned = re.sub(r"[^\s/:@]+(?::[^\s/@]*)?@", "", str(source))
+    return scrub(re.split(r"[?#]", cleaned, maxsplit=1)[0], limit=None)

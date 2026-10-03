@@ -154,3 +154,27 @@ def test_remote_url_with_userinfo_is_rejected_without_echoing_it(tmp_path, bad):
     message = str(exc.value)
     assert "env" in message and "keyring" in message and "netrc" in message
     assert not any(secret in message for secret in ("alice", "hunter2", "AKIAXX", "s3cr3t", "token"))
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        "https://h/a/../b.parquet?X-Amz-Signature=SECRET1",
+        "https:/nohost?sig=SECRET2",
+        "s3://b/x::https://h?sig=SECRET3",
+        "s3://b/x::https://usr:SECRET4@h/k",
+        "https://usr:SECRET5@h/x?sig=SECRET6",
+        " https://h/x?sig=SECRET8",
+        "s3:../x?sig=SECRET9",
+        "ftp://usr:SECRET10@h/x?sig=SECRET11",
+        "file://remotehost/x?sig=SECRET12",
+        "https://@/x?sig=SECRET13",
+    ],
+)
+def test_split_source_errors_never_echo_query_strings_or_userinfo(bad):
+    from gmnspy.workbench.paths import split_source
+
+    with pytest.raises(PathNotAllowed) as exc:
+        split_source(bad)
+    message = str(exc.value)
+    assert "SECRET" not in message and "sig=" not in message and "usr" not in message

@@ -19,7 +19,7 @@ import pandas as pd
 
 from gmnspy import Network
 
-from .redact import scrub
+from .redact import scrub, scrub_source
 
 __all__ = ["COMPONENTS", "Component", "NetworkHandle", "NetworkRegistry", "as_pandas", "default_label"]
 
@@ -28,6 +28,8 @@ COMPONENTS: tuple[Component, ...] = ("roadway", "transit")
 
 #: Other canonical GMNS tables exposed in the data-table view when present (kept lazy).
 _EXTRA_TABLES = ("lanes", "segments", "segment_lanes", "zones", "movements", "link_tod")
+#: A leading ``scheme:`` (two or more letters, so a Windows drive letter is not a scheme).
+_HAS_SCHEME = re.compile(r"\s*[A-Za-z][A-Za-z0-9+.-]+:")
 #: Directory/file stems too generic to name a network by.
 _GENERIC_NAMES = {"csv", "parquet", "duckdb", "zip", "data", "network", ""}
 
@@ -37,7 +39,10 @@ def default_label(source: str) -> str:
 
     Only a URL's path is used: its query string (a presigned signature) and userinfo never reach a label.
     """
-    p = Path(scrub(str(source), limit=None).split("://", 1)[-1].rstrip("/"))
+    text = str(source)
+    if _HAS_SCHEME.match(text):  # a URL, even a malformed one: drop its query string and userinfo
+        text = scrub_source(text)
+    p = Path(text.split("://", 1)[-1].rstrip("/"))
     for candidate in (p.stem, p.parent.name):
         if candidate not in _GENERIC_NAMES:
             return candidate
