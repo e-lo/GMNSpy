@@ -230,6 +230,37 @@ def test_overlapping_opens_record_history_in_registry_order(make_session, rdu_so
     assert [e.result for e in replay.history] == [e.result for e in session.history]
 
 
+def test_failed_state_publish_does_not_duplicate_the_history_entry(make_session, rdu_source):
+    session = make_session()
+    real = session.events.publish
+
+    def publish(event):
+        if event["type"] == "state":
+            raise RuntimeError("subscriber exploded")
+        real(event)
+
+    session.events.publish = publish
+    assert session.dispatch(OpenNetwork(source=rdu_source)) == {"net_id": "rdu-i40"}
+    assert [(e.ok, e.result) for e in session.history] == [(True, {"net_id": "rdu-i40"})]
+    assert session.registry.ids() == ["rdu-i40"]
+
+
+def test_cancel_after_last_checkpoint_is_done(make_session, rdu_source, monkeypatch):
+    session = make_session()
+    real_commit = Session._commit
+
+    def cancel_then_commit(self, action, ctx, loaded):
+        self.jobs.cancel(ctx.job_id)  # too late: the last checkpoint has passed
+        return real_commit(self, action, ctx, loaded)
+
+    monkeypatch.setattr(Session, "_commit", cancel_then_commit)
+    job = session.submit(OpenNetwork(source=rdu_source))
+    assert job.wait(WAIT)
+    snap = session.jobs.snapshot(job)
+    assert snap["status"] == "done" and snap["cancel_requested"] is True and snap["history_seq"] == 1
+    assert [e.ok for e in session.history] == [True] and session.registry.ids() == ["rdu-i40"]
+
+
 # ------------------------------------------------------------------ BuildNetwork
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures"

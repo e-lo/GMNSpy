@@ -254,7 +254,12 @@ class Session:
     def _record(
         self, action: Action, *, ok: bool, result: Any, error: str | None, error_type: str | None
     ) -> HistoryEntry:
-        """Append and publish a history entry (then a ``state`` event on success). Call with the lock held."""
+        """Append and publish a history entry (then a ``state`` event on success). Call with the lock held.
+
+        Publishing is best-effort: once the entry is appended the action *happened*, so a failing
+        publish (or ``state()``) is logged, never raised. Raising here would make a job's
+        ``_finish`` record the same action a second time.
+        """
         entry = HistoryEntry(
             seq=len(self.history) + 1,
             action=action.model_dump(mode="json"),
@@ -266,9 +271,12 @@ class Session:
             ts=time.time(),
         )
         self.history.append(entry)
-        self.events.publish({"type": "history", "entry": entry.to_dict()})
-        if ok:
-            self.events.publish({"type": "state", "state": self.state()})
+        try:
+            self.events.publish({"type": "history", "entry": entry.to_dict()})
+            if ok:
+                self.events.publish({"type": "state", "state": self.state()})
+        except Exception:  # boundary: the browser misses one update; the history stays correct
+            logger.exception("publishing history entry %d failed", entry.seq)
         return entry
 
     def add_network(
