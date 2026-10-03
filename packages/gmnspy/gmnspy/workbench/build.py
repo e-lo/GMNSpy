@@ -217,7 +217,7 @@ def _overture_records(action: BuildNetwork, plan: BuildPlan, settings: Settings,
     segments = query.read_segments(
         bbox, network_type=action.network_type, extra_tags=action.extra_tags, engine=engine, **read
     )
-    connectors = query.read_connectors(bbox, engine=engine, **read)
+    connectors = query.read_connectors(segments, engine=engine, **read)
     tick("convert", 0.5)
     return convert.build_node_link_tables(segments, connectors, extra_tags=action.extra_tags)
 

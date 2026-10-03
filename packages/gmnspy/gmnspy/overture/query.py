@@ -29,7 +29,7 @@ it does not vendor or redistribute it.
 from __future__ import annotations
 
 import math
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 import duckdb
@@ -38,6 +38,7 @@ from datagrove.engines import get_engine
 from ibis import udf
 
 from . import attrs
+from ._geo import parse_wkt_linestring
 
 __all__ = [
     "OVERTURE_RELEASE",
@@ -69,11 +70,9 @@ _ROAD_SUBTYPE = "road"
 # Metres per degree of latitude (spherical approximation).
 _M_PER_DEG_LAT = 111320.0
 
-# Padding (degrees) applied to the connector read bbox so endpoint connectors
-# that fall just outside the segment bbox are still fetched — avoids dangling
-# ``to_node_id`` references. ~1 km; the converter fail-fasts on anything still
-# missing.
-_CONNECTOR_PAD_DEG = 0.01
+# Tolerance (degrees, ~0.1 m) added around the selected segments' extent when
+# reading their connectors, so float round-off at the extent edge can't drop one.
+_EXTENT_EPS_DEG = 1e-6
 
 # Overture segment property columns the converter / mapping may read. Only those
 # actually present in the source are selected (so a trimmed fixture still works).
@@ -413,48 +412,60 @@ def read_segments(
 
 
 def read_connectors(
-    bbox: tuple[float, float, float, float],
+    segments: Sequence[Mapping[str, Any]],
     *,
     overture_release: str = OVERTURE_RELEASE,
     data_root: str | None = None,
     engine: Any = None,
-    pad_deg: float = _CONNECTOR_PAD_DEG,
 ) -> dict[str, tuple[float, float]]:
-    """Read Overture connectors near ``bbox`` as a ``{connector_id: (lon, lat)}`` map.
+    """Read the Overture connectors ``segments`` reference, as a ``{connector_id: (lon, lat)}`` map.
 
-    The read bbox is padded by ``pad_deg`` so endpoint connectors just outside
-    the segment bbox are still fetched (preventing dangling ``to_node_id``).
+    Every connector lies on the segment geometry that references it, so the read
+    is bounded by the selected segments' own extent (not the request bbox) and
+    is complete even when a segment crosses the bbox edge and ends far outside
+    it. The extent is pushed down as a bbox predicate (row-group pruning); a
+    global ``id IN (...)`` scan was measured at ~400 s on S3 versus ~3 s for
+    this extent read on an XS area.
 
     Args:
-        bbox: ``(west, south, east, north)`` in EPSG:4326.
+        segments: Records from :func:`read_segments` (``geometry`` as WKT plus
+            the ``connectors`` list).
         overture_release: Pinned release string (ignored when ``data_root`` set).
         data_root: Override base URI (Azure mirror / local snapshot dir).
         engine: Compute engine (default: datagrove ibis/duckdb).
-        pad_deg: Degrees of padding added on every side of the read bbox.
 
     Returns:
-        ``{connector_id: (lon, lat)}`` for connectors in the padded bbox.
+        ``{connector_id: (lon, lat)}`` for every referenced connector found.
     """
+    wanted = {c["connector_id"] for seg in segments for c in seg.get("connectors") or []}
+    if not wanted:
+        return {}
     engine = engine or get_engine()
-    root = overture_data_root(overture_release, data_root)
-    source = _type_source(root, "connector")
+    source = _type_source(overture_data_root(overture_release, data_root), "connector")
     _prepare_backend(engine, source)
 
-    west, south, east, north = bbox
-    padded = (west - pad_deg, south - pad_deg, east + pad_deg, north + pad_deg)
     table = _run_or_raise_stale_release(
         lambda: engine.read_parquet(source, hive_partitioning=source.endswith("/*")),
         overture_release=overture_release,
         data_root=data_root,
     )
-    filtered = table.filter(_bbox_intersects(table, padded))
+    filtered = table.filter(_bbox_intersects(table, _segments_extent(segments)))
     projected = filtered.select(
         "id",
         x=_st_x(_st_geom_from_wkb(_wkb(filtered.geometry))),
         y=_st_y(_st_geom_from_wkb(_wkb(filtered.geometry))),
     )
     rows = projected.to_pyarrow().to_pylist()
-    return {row["id"]: (row["x"], row["y"]) for row in rows}
+    return {row["id"]: (row["x"], row["y"]) for row in rows if row["id"] in wanted}
+
+
+def _segments_extent(segments: Sequence[Mapping[str, Any]]) -> tuple[float, float, float, float]:
+    """The ``(west, south, east, north)`` extent of the segments' WKT geometries, padded by a float tolerance."""
+    coords = [xy for seg in segments for xy in parse_wkt_linestring(str(seg["geometry"]))]
+    xs = [x for x, _ in coords]
+    ys = [y for _, y in coords]
+    eps = _EXTENT_EPS_DEG
+    return (min(xs) - eps, min(ys) - eps, max(xs) + eps, max(ys) + eps)
 
 
 def fetch_network_elements(
@@ -494,7 +505,7 @@ def fetch_network_elements(
         extra_tags=extra_tags,
     )
     connectors = read_connectors(
-        bbox,
+        segments,
         overture_release=overture_release,
         data_root=data_root,
         engine=engine,

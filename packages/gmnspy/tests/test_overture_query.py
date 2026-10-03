@@ -81,11 +81,23 @@ class TestReadSegments:
         assert query.read_segments(far, network_type="all", data_root=FIXTURE_ROOT, engine=engine) == []
 
 
+def _segments(root, network_type="all", engine=None):
+    return query.read_segments(WORLD_BBOX, network_type=network_type, data_root=root, engine=engine)
+
+
 class TestReadConnectors:
     def test_returns_lon_lat_map(self, engine):
-        conns = query.read_connectors(WORLD_BBOX, data_root=FIXTURE_ROOT, engine=engine)
+        conns = query.read_connectors(_segments(FIXTURE_ROOT, engine=engine), data_root=FIXTURE_ROOT, engine=engine)
         assert conns["ca"] == pytest.approx((0.0, 0.0))
         assert conns["cc"] == pytest.approx((0.0, 0.002))
+
+    def test_returns_only_connectors_the_segments_reference(self, engine):
+        drive = _segments(FIXTURE_ROOT, network_type="drive", engine=engine)
+        conns = query.read_connectors(drive, data_root=FIXTURE_ROOT, engine=engine)
+        assert set(conns) == {"ca", "cb", "cc", "cd"}  # "ce" is only on the excluded footway
+
+    def test_no_segments_reads_nothing(self, engine):
+        assert query.read_connectors([], data_root="/nonexistent/never-read", engine=engine) == {}
 
 
 class TestFetchNetworkElements:
@@ -143,7 +155,8 @@ class TestRetiredReleaseDiagnostic:
 
     def test_read_connectors_names_release_and_fix(self, engine):
         with pytest.raises(Exception, match="may have been retired"):
-            query.read_connectors(WORLD_BBOX, data_root=self.MISSING_ROOT, engine=engine)
+            segments = [{"geometry": "LINESTRING (0 0, 1 1)", "connectors": [{"connector_id": "c", "at": 0.0}]}]
+            query.read_connectors(segments, data_root=self.MISSING_ROOT, engine=engine)
 
     def test_other_errors_pass_through_unchanged(self, engine):
         # A genuinely unrelated duckdb error (bad bbox field access, say) must not
@@ -196,8 +209,9 @@ class TestNativeGeometryEncoding:
         assert all(wkt.startswith("LINESTRING") for wkt in native.values())
 
     def test_read_connectors_matches_wkb_fixture(self, engine, native_root):
-        native = query.read_connectors(WORLD_BBOX, data_root=native_root, engine=engine)
-        assert native == query.read_connectors(WORLD_BBOX, data_root=FIXTURE_ROOT, engine=engine)
+        segments = _segments(FIXTURE_ROOT, engine=engine)
+        native = query.read_connectors(segments, data_root=native_root, engine=engine)
+        assert native == query.read_connectors(segments, data_root=FIXTURE_ROOT, engine=engine)
         assert native
 
     def test_full_build_matches_wkb_fixture(self, engine, native_root):
