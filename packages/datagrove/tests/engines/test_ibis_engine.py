@@ -9,13 +9,14 @@ that point at the deferred-adapter tasks, and registry/protocol wiring.
 from __future__ import annotations
 
 import re
+import threading
 from pathlib import Path
 
 import ibis
 import pytest
 from datagrove.engines import Engine, get_engine
 from datagrove.engines.base import EngineNotAvailableError
-from datagrove.engines.ibis_engine import IbisEngine
+from datagrove.engines.ibis_engine import IbisEngine, backend_lock, serialize_backend
 from datagrove.spec.loader import load_schema
 from gmnspy.fixtures import leavenworth
 
@@ -347,3 +348,62 @@ def test_close_is_idempotent():
     e = IbisEngine()
     e.close()
     e.close()  # second call must not raise
+
+
+# ---------------------------------------------------------------------------
+# Thread safety: one shared connection, many threads
+# ---------------------------------------------------------------------------
+
+
+def _hammer(engine: IbisEngine, link_parquet: Path, link_csv: Path, rounds: int = 15) -> list[BaseException]:
+    """Scan, materialize and execute on ``engine`` from several threads at once; return any errors."""
+    errors: list[BaseException] = []
+    start = threading.Barrier(4)
+
+    def work(i: int) -> None:
+        start.wait()
+        try:
+            for _ in range(rounds):
+                if i % 2:
+                    expr = engine.scan(link_parquet)
+                    assert engine.count(expr) > 0
+                    engine.to_pandas(expr.head(50))
+                else:
+                    expr = engine.materialize(engine.scan(link_csv))
+                    expr.count().execute()  # direct ibis execution, bypassing the engine's methods
+                    engine.from_records({"a": [1, 2, 3]}).to_pyarrow()
+        except BaseException as exc:  # collected and asserted on by the caller
+            errors.append(exc)
+
+    threads = [threading.Thread(target=work, args=(i,)) for i in range(4)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    return errors
+
+
+def test_shared_engine_is_safe_across_threads(engine: IbisEngine, link_parquet: Path, link_csv: Path):
+    assert _hammer(engine, link_parquet, link_csv) == []
+
+
+def test_adopted_backend_is_serialized_too(link_parquet: Path, link_csv: Path):
+    con = ibis.duckdb.connect()
+    engine = IbisEngine(con=con)
+    try:
+        assert _hammer(engine, link_parquet, link_csv) == []
+    finally:
+        con.disconnect()
+
+
+def test_serialize_backend_is_idempotent_and_exposes_its_lock():
+    con = serialize_backend(ibis.duckdb.connect())
+    try:
+        lock = con._datagrove_lock
+        wrapped = con.execute
+        assert serialize_backend(con) is con and con._datagrove_lock is lock and con.execute is wrapped
+        with backend_lock(con):  # re-entrant: the holder can still call the backend
+            assert con.list_tables() == []
+        assert backend_lock(object()).__enter__() is None  # no lock: a no-op context
+    finally:
+        con.disconnect()

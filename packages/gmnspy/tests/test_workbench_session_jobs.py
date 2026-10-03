@@ -12,6 +12,7 @@ from gmnspy.select.parse import StubParser
 from gmnspy.workbench import build
 from gmnspy.workbench.actions import BuildNetwork, OpenNetwork
 from gmnspy.workbench.errors import ActionError, ApprovalRequired, JobCancelled, PathNotAllowed
+from gmnspy.workbench.registry import _extra_tables
 from gmnspy.workbench.session import Session
 
 WAIT = 10.0
@@ -143,6 +144,57 @@ def test_open_bundled_zip(make_session):
     session = make_session()
     net_id = session.dispatch(OpenNetwork(source=source))["net_id"]
     assert len(session.registry.get(net_id).links_df()) > 0
+
+
+# ------------------------------------------------------------------ concurrent opens (shared DuckDB connection)
+
+LEAVENWORTH_PARQUET = str(Path(__file__).resolve().parents[1] / "gmnspy" / "fixtures" / "leavenworth" / "parquet")
+
+
+def test_simultaneous_opens_both_succeed(make_session, rdu_source):
+    """Two open jobs share datagrove's default DuckDB connection; neither may corrupt the other."""
+    session = make_session()
+    for _ in range(20):
+        jobs = [session.submit(OpenNetwork(source=src)) for src in (rdu_source, LEAVENWORTH_PARQUET)]
+        for job in jobs:
+            assert job.wait(WAIT)
+        snaps = [session.jobs.snapshot(job) for job in jobs]
+        assert [s["status"] for s in snaps] == ["done", "done"], [s["error"] for s in snaps]
+    assert len(session.registry) == 40
+
+
+def test_http_like_reads_during_open_do_not_fail(make_session, rdu_source):
+    """Lazy reads from other threads (extra tables, add_network summaries) race an open job safely."""
+    session = make_session()
+    session.add_network(Network.from_source(LEAVENWORTH_PARQUET), label="python")  # summary() is lazy
+    errors: list[BaseException] = []
+    stop = threading.Event()
+
+    def reader():
+        while not stop.is_set():
+            try:
+                for handle in session.registry:
+                    handle.roadway.links.count()
+                    _extra_tables(handle.roadway)
+                session.state()
+            except BaseException as exc:  # asserted on below
+                errors.append(exc)
+                return
+
+    readers = [threading.Thread(target=reader) for _ in range(3)]
+    for t in readers:
+        t.start()
+    try:
+        for _ in range(5):
+            jobs = [session.submit(OpenNetwork(source=src)) for src in (rdu_source, LEAVENWORTH_PARQUET)]
+            for job in jobs:
+                assert job.wait(WAIT)
+                assert session.jobs.snapshot(job)["status"] == "done", session.jobs.snapshot(job)["error"]
+    finally:
+        stop.set()
+        for t in readers:
+            t.join(WAIT)
+    assert errors == []
 
 
 # ------------------------------------------------------------------ BuildNetwork

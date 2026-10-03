@@ -43,6 +43,7 @@ import ibis.expr.datatypes as dt
 from ibis import udf
 
 from datagrove.engines.errors import EngineNotAvailableError
+from datagrove.engines.ibis_engine import backend_lock
 from datagrove.validation._ibis import to_ibis
 
 from .table import Table
@@ -121,8 +122,9 @@ def _ensure_spatial(backend: Any) -> None:
             f"got {type(backend).__name__} which has no underlying duckdb connection."
         )
     try:
-        raw.install_extension("spatial")
-        backend.load_extension("spatial")
+        with backend_lock(backend):  # ``raw`` is the bare duckdb connection: the method locks miss it
+            raw.install_extension("spatial")
+            backend.load_extension("spatial")
     except Exception as exc:
         raise EngineNotAvailableError(
             "datagrove.dataset.view: failed to load the duckdb 'spatial' extension. "

@@ -16,6 +16,28 @@ pre-opened backend (``IbisEngine(con=ibis.duckdb.connect("net.duckdb"))``)
 to point at a file or share a connection. The engine owns one duckdb
 connection for its lifetime; call ``close()`` to release it.
 
+Thread safety
+-------------
+
+A duckdb connection is not safe to use from several threads at once: two
+threads interleaving queries on it fail with "Attempting to execute an
+unsuccessful or closed pending query result". Every ibis backend this module
+creates or adopts is therefore *serialized*: each of its methods runs under one
+re-entrant lock stored on the backend (see :func:`serialize_backend`). Locking
+the backend, not just this class's methods, also covers code that executes an
+expression directly (``expr.execute()``, ``expr.to_pandas()``), since those
+calls go through the same backend object.
+
+Per-thread ``con.cursor()`` connections are *not* an option: ibis's
+``read_csv``/``read_parquet`` register temp views and :meth:`IbisEngine.materialize`
+/ :meth:`IbisEngine.from_records` create temp tables, and duckdb temp objects
+are private to the connection that created them, so another thread's cursor
+cannot see them. Serializing costs little: duckdb already parallelizes a single
+query across cores. Remaining gaps: batch readers returned by
+``to_pyarrow_batches``/``to_pandas_batches`` are consumed after the lock is
+released, and expressions bound to ibis's process-wide *default* backend (plain
+``ibis.memtable(...)`` with no engine) are not covered.
+
 Dispatch model (post-issue-#134 inversion)
 ------------------------------------------
 
@@ -37,6 +59,10 @@ handing the rest off to ``dispatch``.
 from __future__ import annotations
 
 import contextlib
+import functools
+import inspect
+import threading
+from collections.abc import Callable
 from itertools import count
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -142,6 +168,7 @@ class IbisEngine:
         else:
             self.con = con
             self._owns_con = False
+        serialize_backend(self.con)
 
     # ------------------------------------------------------------------
     # Read primitives — adapters call these directly
@@ -252,7 +279,7 @@ class IbisEngine:
         del kwargs  # reserved for future backend-specific options
         if not table:
             raise InvalidEngineCallError("ibis engine: read_duckdb_table requires a non-empty table= argument")
-        backend = ibis.duckdb.connect(_as_path_str(source))
+        backend = serialize_backend(ibis.duckdb.connect(_as_path_str(source)))
         expr = backend.table(table)
         return self.cast_schema(expr, schema) if schema is not None else expr
 
@@ -742,6 +769,71 @@ def _coerce_all_null_columns_to_string(arrow_table: Any) -> Any:
     return arrow_table.cast(new_schema)
 
 
+_LOCK_ATTR = "_datagrove_lock"
+
+
+def _locked(method: Callable[..., Any], lock: threading.RLock) -> Callable[..., Any]:
+    @functools.wraps(method)
+    def call(*args: Any, **kwargs: Any) -> Any:
+        with lock:
+            return method(*args, **kwargs)
+
+    return call
+
+
+def _locked_finalizer_factory(make: Callable[..., Any], lock: threading.RLock) -> Callable[..., Any]:
+    """Wrap ``_make_memtable_finalizer`` so the finalizer it returns also runs under ``lock``.
+
+    ibis drops a memtable from the garbage collector, on whichever thread triggers collection,
+    via ``con.cursor()``; creating that cursor while another thread is mid-query on the same
+    duckdb connection corrupts the in-flight query, so the finalizer must wait for the lock too.
+    The lock is a leaf (nothing holding it takes another lock), so waiting on it from a GC point
+    cannot deadlock.
+    """
+
+    @functools.wraps(make)
+    def factory(*args: Any, **kwargs: Any) -> Any:
+        finalizer = make(*args, **kwargs)
+        return None if finalizer is None else _locked(finalizer, lock)
+
+    return factory
+
+
+def backend_lock(backend: Any) -> contextlib.AbstractContextManager[Any]:
+    """The lock :func:`serialize_backend` put on ``backend`` (a no-op context if it has none).
+
+    Hold it around any direct use of the raw duckdb connection (``backend.con``), which the
+    method wrappers cannot see.
+    """
+    lock = getattr(backend, _LOCK_ATTR, None)
+    return lock if lock is not None else contextlib.nullcontext()
+
+
+def serialize_backend(backend: BaseBackend) -> BaseBackend:
+    """Make ``backend`` safe to share between threads by running each of its methods under one lock.
+
+    Every method defined on the backend's class (public and private: ``execute``,
+    ``to_pyarrow``, ``create_table``, ``read_parquet``, ``raw_sql``, ...) is replaced on the
+    *instance* by a wrapper holding a re-entrant lock, so nested calls (``execute`` ->
+    ``_to_duckdb_relation`` -> ``raw_sql``) re-enter freely while a second thread waits for the
+    whole call. Idempotent: the lock lives on the backend, so wrapping it again (two engines
+    sharing one ``con``) is a no-op. Returns ``backend`` for chaining.
+    """
+    if getattr(backend, _LOCK_ATTR, None) is not None:
+        return backend
+    lock = threading.RLock()
+    # Look the methods up on the class: inspecting the instance would evaluate its properties,
+    # some of which (``version``, ``current_database``) run queries.
+    for name, _ in inspect.getmembers(type(backend), inspect.isfunction):
+        if name.startswith("__"):
+            continue
+        method = getattr(backend, name)
+        wrap = _locked_finalizer_factory if name == "_make_memtable_finalizer" else _locked
+        setattr(backend, name, wrap(method, lock))
+    setattr(backend, _LOCK_ATTR, lock)
+    return backend
+
+
 _TEMP_COUNTER = count()
 
 
@@ -757,4 +849,4 @@ def _temp_table_name(prefix: str) -> str:
     return f"_datagrove_{prefix}_{next(_TEMP_COUNTER)}"
 
 
-__all__ = ["IbisEngine"]
+__all__ = ["IbisEngine", "backend_lock", "serialize_backend"]
