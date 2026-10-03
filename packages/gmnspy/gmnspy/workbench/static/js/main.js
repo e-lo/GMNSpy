@@ -91,17 +91,20 @@ async function boot() {
   await loadJobs();
   restoreViewMode();
   if (history.entries.length) showEntry(history.entries[history.entries.length - 1]);
+  // Subscribe now, not on map load, so job/history events are never missed. Until the map is ready a
+  // `state` event is only stored (header, panels and table render from it; the map draws nothing, as no
+  // network is decoded yet); onReady then loads the network for whatever state is latest.
+  // `navigate` needs the map and is dropped until then.
+  let mapReady = false;
+  subscribe({
+    state: e => { if (mapReady) onState(e.state); else store.set({ server: e.state }); },
+    history: e => { showEntry(e.entry); rememberRecent(e.entry); },
+    navigate: e => { if (mapReady) onNavigate(e); },
+    job: e => { onJob(e.job); onWizardJob(e.job); },
+  });
   initMap(cfg.style, {
     onLinkClick,
-    onReady: async () => {
-      await onState(store.get().server);
-      subscribe({
-        state: e => onState(e.state),
-        history: e => { showEntry(e.entry); rememberRecent(e.entry); },
-        navigate: onNavigate,
-        job: e => { onJob(e.job); onWizardJob(e.job); },
-      });
-    },
+    onReady: () => { mapReady = true; return onState(store.get().server); },
   });
 }
 

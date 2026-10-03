@@ -5,7 +5,10 @@ async function readJSON(r) {
     // FastAPI's own 422 `detail` is an array of error objects, not a string;
     // stringify it so the toast shows something readable instead of "[object Object]".
     const detail = typeof j.detail === "string" ? j.detail : j.detail != null ? JSON.stringify(j.detail) : undefined;
-    throw new Error(j.error || detail || r.statusText);
+    // Our own 422s are {error, detail: [pydantic errors]}: say which field failed, not just "invalid build".
+    const why = j.error && Array.isArray(j.detail)
+      ? j.detail.map(d => (d.loc && d.loc.length ? `${d.loc.join(".")}: ` : "") + d.msg).join("; ") : "";
+    throw new Error(j.error ? (why ? `${j.error}: ${why}` : j.error) : detail || r.statusText);
   }
   return j;
 }

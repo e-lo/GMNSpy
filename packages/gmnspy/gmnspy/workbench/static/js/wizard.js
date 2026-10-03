@@ -16,15 +16,15 @@ const OUTPUT_SUFFIXES = ["zip", "duckdb", "csv", "parquet"]; // a name ending in
 const NEXT_LABEL = { local: "Open", url: "Open", area: "Next", options: "Estimate" };
 
 const wz = { src: null, step: "source", local: null, urlOk: false, outDir: null, estimate: null, prefilled: false,
-  retry: null };
-let localFb = null, outFb = null;
+  retry: null, autoName: null };
+let localFb = null, outFb = null, estimateSeq = 0;
 // The last build dispatched without approval, so an ApprovalRequired failure (the job re-estimates and may
 // land over the threshold) can reopen the Run step. `early` keeps job events that beat the 202 response.
 let pending = null;
 
 const fmtSeconds = s => (s < 90 ? `${Math.round(s)} s` : `${Math.round(s / 60)} min`);
 const fmtBytes = b => (b >= 1e9 ? `${(b / 1e9).toFixed(1)} GB` : b >= 1e6 ? `${(b / 1e6).toFixed(1)} MB`
-  : `${Math.max(1, Math.round(b / 1e3))} kB`);
+  : b >= 1e3 ? `${Math.round(b / 1e3)} kB` : `${Math.round(b)} B`);
 
 // "" when the output name is usable, else why not (mirrors BuildNetwork's validation).
 function nameProblem() {
@@ -72,6 +72,7 @@ function showStep(step) {
 
 function go(step) {
   wz.retry = null;
+  estimateSeq++; // leaving (or re-entering) the Run step drops any estimate still in flight
   showStep(step);
   if (step === "area") showAreaMap(store.get().basemap);
   if (step === "options") prefillOptions();
@@ -96,7 +97,8 @@ async function prefillSettings() {
   if (wz.prefilled) return;
   try {
     const v = (await getJSON("/api/settings")).values;
-    $("opt-network-type").value = v.build.network_type;
+    const types = [...$("opt-network-type").options].map(o => o.value);
+    $("opt-network-type").value = types.includes(v.build.network_type) ? v.build.network_type : "drive";
     $("opt-extra-tags").value = v.build.extra_tags.join(", ");
     $("opt-spec").value = v.io.spec_version;
     $("opt-format").value = v.io.default_format;
@@ -110,8 +112,11 @@ function prefillOptions() {
   outFb.reset(wz.outDir);
   const choice = areaChoice();
   const base = choice && choice.area && choice.area.kind === "place" ? choice.area.name.split(",")[0] : "network";
-  if (!$("opt-name").value) {
-    $("opt-name").value = `${base}-${wz.src}`.toLowerCase().replace(/[^a-z0-9_.-]+/g, "-").replace(/^[^a-z0-9]+/, "");
+  // Fill the name in, and keep it current after Back + a new source or place, until the user types their own.
+  const current = $("opt-name").value;
+  if (!current || current === wz.autoName) {
+    wz.autoName = `${base}-${wz.src}`.toLowerCase().replace(/[^a-z0-9_.-]+/g, "-").replace(/^[^a-z0-9]+/, "");
+    $("opt-name").value = wz.autoName;
   }
 }
 
@@ -125,13 +130,17 @@ function renderEstimate(r) {
 }
 
 async function runEstimate() {
+  const seq = ++estimateSeq; // after Back + Estimate again, only the newest answer may land
   wz.estimate = null;
   $("wz-estimate").textContent = "Estimating…";
   updateFoot();
   try {
-    wz.estimate = await postJSON("/api/estimate", buildAction());
-    renderEstimate(wz.estimate);
+    const r = await postJSON("/api/estimate", buildAction());
+    if (seq !== estimateSeq) return;
+    wz.estimate = r;
+    renderEstimate(r);
   } catch (e) {
+    if (seq !== estimateSeq) return;
     $("wz-estimate").innerHTML = `<span class="err">${esc(e.message)}</span>`;
   }
   updateFoot();
@@ -160,6 +169,7 @@ async function checkUrl() {
 function offerApproval(job, action) {
   const p = job.payload || {};
   if (!p.estimate) return;
+  estimateSeq++;
   wz.estimate = { estimate: p.estimate, needs_approval: true, threshold_s: p.threshold_s };
   $("wizard").hidden = false;
   showStep("run");
@@ -220,10 +230,11 @@ function choose(src) {
 }
 
 export function openWizard() {
-  Object.assign(wz, { src: null, local: null, urlOk: false, estimate: null, retry: null });
+  Object.assign(wz, { src: null, local: null, urlOk: false, estimate: null, retry: null, autoName: null });
   $("opt-name").value = "";
   $("wizard").hidden = false;
   go("source");
+  document.querySelector(".wz-choice").focus();
   prefillSettings();
 }
 
@@ -244,5 +255,5 @@ export function wireWizard() {
   $("wz-url").onkeydown = e => { if (e.key === "Enter") checkUrl(); };
   $("opt-name").oninput = updateFoot;
   $("opt-format").onchange = updateFoot;
-  $("wizard").onkeydown = e => { if (e.key === "Escape") closeWizard(); };
+  document.addEventListener("keydown", e => { if (e.key === "Escape" && !$("wizard").hidden) closeWizard(); });
 }

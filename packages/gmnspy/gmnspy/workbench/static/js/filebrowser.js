@@ -8,7 +8,7 @@ const KIND_LABEL = { gmns: "GMNS", zip: "zip", duckdb: "DuckDB", datapackage: "d
 // el: container element. opts.kinds: entry kinds that can be picked. opts.pickFolder: offer "Use this folder".
 // opts.onPick(entry): called with the picked entry ({path, target, kind, is_dir}).
 export function createFileBrowser(el, opts) {
-  let listing = null, picked = null;
+  let listing = null, picked = null, seq = 0;
 
   function render() {
     const up = listing.path ? '<button class="mini ghost" data-up>&#8593; Up</button>' : "";
@@ -25,10 +25,13 @@ export function createFileBrowser(el, opts) {
   }
 
   async function show(path) {
+    const mine = ++seq; // a slow listing must not replace the folder the user has since moved to
     try {
-      listing = await getJSON(`/api/fs/list${path ? `?path=${encodeURIComponent(path)}` : ""}`);
+      const next = await getJSON(`/api/fs/list${path ? `?path=${encodeURIComponent(path)}` : ""}`);
+      if (mine !== seq) return;
+      listing = next;
       render();
-    } catch (e) { toast(e.message); }
+    } catch (e) { if (mine === seq) toast(e.message); }
   }
 
   function pick(entry) { picked = entry; render(); opts.onPick(entry); }

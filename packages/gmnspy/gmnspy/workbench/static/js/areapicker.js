@@ -8,7 +8,7 @@ const OPPOSITE = [2, 3, 0, 1]; // corner order SW, SE, NE, NW; dragging one keep
 const FILE_KINDS = { osm: ["osm", "json"], overture: ["overture"] };
 const EMPTY = { type: "FeatureCollection", features: [] };
 
-let map = null, markers = [], drawStart = null, drawing = false;
+let map = null, markers = [], drawStart = null, drawEnd = null, drawing = false, searchSeq = 0;
 let tab = "draw", area = null, inputFile = null, candidates = [], fileBrowser = null, onChange = () => {};
 
 const round6 = v => Math.round(v * 1e6) / 1e6;
@@ -17,6 +17,18 @@ const corners = b => [[b[0], b[1]], [b[2], b[1]], [b[2], b[3]], [b[0], b[3]]];
 const polygonFeature = coords => ({ type: "Feature", properties: {}, geometry: { type: "Polygon", coordinates: [coords] } });
 const lonLat = poly => poly.map(([lat, lon]) => [lon, lat]); // place polygons are (lat, lon), like the server's
 const bboxOf = (a, b) => [Math.min(a[0], b[0]), Math.min(a[1], b[1]), Math.max(a[0], b[0]), Math.max(a[1], b[1])].map(round6);
+// Map coordinates run past ±180 once the map is panned across the antimeridian; bring one back to [-180, 180].
+const wrapLng = lng => { const w = ((((lng + 180) % 360) + 360) % 360) - 180; return w === -180 && lng > 0 ? 180 : w; };
+
+// "" when `b` is a usable W,S,E,N bbox, else why not (mirrors the server's Area validation).
+function bboxProblem(b) {
+  if (!b || b.length !== 4 || !b.every(Number.isFinite)) return "The area needs four numbers: W,S,E,N.";
+  if (!(b[0] >= -180 && b[2] <= 180 && b[1] >= -90 && b[3] <= 90)) {
+    return "The area must lie within -180..180 longitude and -90..90 latitude.";
+  }
+  if (!(b[0] < b[2] && b[1] < b[3])) return "The area must have W<E and S<N.";
+  return "";
+}
 
 export function pointBbox(lat, lon, m) {
   const dlat = m / M_PER_DEG_LAT, cos = Math.cos((lat * Math.PI) / 180);
@@ -29,16 +41,27 @@ export function areaBbox(a) { return a.kind === "point" ? pointBbox(a.lat, a.lon
 // What the build action needs from this step: {area} or {input_file}, or null when nothing is chosen yet.
 export function areaChoice() {
   if (tab === "file") return inputFile ? { input_file: inputFile } : null;
-  if (!area) return null;
-  const b = areaBbox(area); // a click without a drag (or a corner dragged onto its opposite) has no extent
-  return b[0] < b[2] && b[1] < b[3] ? { area } : null;
+  // Also covers a click without a drag, a corner dragged onto its opposite, and a buffer past the poles.
+  return area && !bboxProblem(areaBbox(area)) ? { area } : null;
 }
 
 function setArea(next, { fit = false, quiet = false } = {}) {
   area = next;
   render();
-  if (fit && area) { const b = areaBbox(area); map.fitBounds([[b[0], b[1]], [b[2], b[3]]], { padding: 30, duration: 300 }); }
+  const b = area && areaBbox(area);
+  if (fit && b && !bboxProblem(b)) map.fitBounds([[b[0], b[1]], [b[2], b[3]]], { padding: 30, duration: 300 });
   if (!quiet) onChange();
+}
+
+// Keep a drawn or dragged box: wrap its longitudes; refuse one that crosses the antimeridian.
+function commitBbox(raw) {
+  const b = [wrapLng(raw[0]), raw[1], wrapLng(raw[2]), raw[3]].map(round6);
+  if (raw[0] < raw[2] && b[0] >= b[2]) {
+    toast("That box crosses the antimeridian (180°); draw it on one side.");
+    setArea(null);
+    return;
+  }
+  setArea({ kind: "bbox", bbox: b });
 }
 
 function render() {
@@ -63,7 +86,7 @@ function makeMarkers() {
       area = { kind: "bbox", bbox: bboxOf([p.lng, p.lat], fixed) };
       map.getSource("ap-area").setData(polygonFeature(ring(area.bbox)));
     });
-    m.on("dragend", () => setArea(area));
+    m.on("dragend", () => commitBbox(area.bbox));
     return m;
   });
 }
@@ -75,13 +98,17 @@ function wireDraw() {
     drawStart = [e.lngLat.lng, e.lngLat.lat];
   });
   map.on("mousemove", e => {
-    if (drawStart) setArea({ kind: "bbox", bbox: bboxOf(drawStart, [e.lngLat.lng, e.lngLat.lat]) }, { quiet: true });
-  });
-  map.on("mouseup", () => {
     if (!drawStart) return;
-    drawStart = null; drawing = false;
+    drawEnd = [e.lngLat.lng, e.lngLat.lat];
+    setArea({ kind: "bbox", bbox: bboxOf(drawStart, drawEnd) }, { quiet: true });
+  });
+  // On the document, so a button released outside the map still ends the draw.
+  document.addEventListener("mouseup", () => {
+    if (!drawStart) return;
+    const raw = drawEnd && bboxOf(drawStart, drawEnd);
+    drawStart = null; drawEnd = null; drawing = false;
     map.dragPan.enable(); map.getCanvas().style.cursor = ""; $("ap-draw").classList.remove("on");
-    onChange();
+    if (raw) commitBbox(raw); else onChange();
   });
 }
 
@@ -115,23 +142,34 @@ function setTab(name) {
 function applyCoordinates() {
   const nums = s => s.split(",").map(v => Number(v.trim())).filter(v => Number.isFinite(v));
   const bbox = nums($("ap-bbox").value), point = nums($("ap-point").value), buffer = Number($("ap-buffer").value);
+  let next = null, problem = "";
   if (bbox.length === 4) {
-    if (!(bbox[0] < bbox[2] && bbox[1] < bbox[3])) { toast("bbox must be W,S,E,N with W<E and S<N"); return; }
-    setArea({ kind: "bbox", bbox: bbox.map(round6) }, { fit: true });
+    next = { kind: "bbox", bbox: bbox.map(round6) };
+    problem = bboxProblem(next.bbox);
   } else if (point.length === 2 && buffer > 0) {
-    setArea({ kind: "point", lat: point[0], lon: point[1], buffer_m: buffer }, { fit: true });
+    const [lat, lon] = point;
+    next = { kind: "point", lat, lon, buffer_m: buffer };
+    problem = !(lat >= -90 && lat <= 90 && lon >= -180 && lon <= 180)
+      ? "lat must be within -90..90 and lon within -180..180 (enter lat,lon, latitude first)."
+      : bboxProblem(pointBbox(lat, lon, buffer)) && "The buffer reaches past 180° longitude or a pole; use a smaller one.";
   } else {
-    toast("Enter W,S,E,N, or lat,lon plus a buffer in metres");
+    problem = "Enter W,S,E,N, or lat,lon plus a buffer in metres";
   }
+  if (problem) { toast(problem); setArea(null); return; }
+  setArea(next, { fit: true });
 }
 
 async function searchPlace() {
   const q = $("ap-q").value.trim();
   if (!q) return;
+  const seq = ++searchSeq; // a slower, older search must not overwrite a newer one
   $("ap-cands").innerHTML = '<span class="empty">Searching…</span>';
+  let found = [];
   try {
-    candidates = (await getJSON(`/api/geocode?q=${encodeURIComponent(q)}`)).candidates;
-  } catch (e) { candidates = []; toast(e.message); }
+    found = (await getJSON(`/api/geocode?q=${encodeURIComponent(q)}`)).candidates;
+  } catch (e) { if (seq === searchSeq) toast(e.message); }
+  if (seq !== searchSeq) return;
+  candidates = found;
   $("ap-cands").innerHTML = candidates.length
     ? candidates.map((c, i) => `<div class="cand" data-i="${i}">${esc(c.display_name)} <span class="fb-kind">${esc(c.type)}</span></div>`).join("")
     : '<span class="empty">No matches.</span>';
@@ -142,12 +180,15 @@ async function searchPlace() {
 function pickCandidate(i) {
   const c = candidates[i];
   for (const el of document.querySelectorAll("#ap-cands .cand")) el.classList.toggle("on", Number(el.dataset.i) === i);
+  const b = c.bbox, problem = b && b[0] >= b[2] ? "That place crosses the antimeridian (180°); draw or type a box on one side."
+    : bboxProblem(b);
+  if (problem) { toast(problem); setArea(null); return; }
   setArea({ kind: "place", name: c.display_name, bbox: c.bbox, polygon: c.polygon }, { fit: true });
 }
 
 // Reset for a new build of `source` ("osm" | "overture").
 export function resetAreaPicker(source) {
-  area = null; inputFile = null; candidates = []; drawing = false; drawStart = null;
+  area = null; inputFile = null; candidates = []; drawing = false; drawStart = null; drawEnd = null; searchSeq++;
   $("ap-draw").classList.remove("on");
   if (map) { map.dragPan.enable(); map.getCanvas().style.cursor = ""; }
   $("ap-cands").innerHTML = "";
