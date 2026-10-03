@@ -12,7 +12,8 @@ output to its final name. The staging path is removed on any failure, including 
 
 Staging outputs are hidden siblings named ``.partial-<8 hex>-<dest name>`` (plus a DuckDB
 ``.wal``). Only a hard crash of the process (power loss, ``kill -9``) can leave one behind;
-:func:`plan_build` deletes any ``.partial-*`` entry in the output folder older than 24 hours.
+:func:`remove_stale_partials` (called by the build job, never by the side-effect-free estimate)
+deletes any ``.partial-*`` entry in the output folder older than 24 hours.
 
 The OSM/Overture modules are imported at run time via :func:`~gmnspy.workbench.extras.optional_module`:
 they need the ``[osm]`` / ``[overture]`` extras.
@@ -52,6 +53,7 @@ __all__ = [
     "fetch_and_convert",
     "plan_build",
     "promote",
+    "remove_stale_partials",
     "staging",
     "write_output",
 ]
@@ -94,6 +96,8 @@ def _local(path: str, what: str, settings: Settings) -> Path:
 def plan_build(action: BuildNetwork, settings: Settings) -> BuildPlan:
     """Check the action against the filesystem before any work: allowed roots, inputs, a free destination.
 
+    Read-only (``/api/estimate`` calls it too); the build job cleans old staging leftovers itself.
+
     Raises:
         PathNotAllowed: the output folder or input file is outside ``io.allowed_roots``.
         ActionError: missing output folder, existing destination, an input of the wrong kind, or the
@@ -104,7 +108,6 @@ def plan_build(action: BuildNetwork, settings: Settings) -> BuildPlan:
     out_dir = _local(action.output_dir, "output_dir", settings)
     if not out_dir.is_dir():
         raise ActionError(f"output folder does not exist: {action.output_dir}")
-    _remove_stale_partials(out_dir)
     suffix = _SUFFIX[action.output_format]
     dest = out_dir / (action.name if action.name.lower().endswith(suffix) else f"{action.name}{suffix}")
     if dest.exists():
@@ -266,7 +269,7 @@ def _remove(path: Path) -> None:
     path.with_name(f"{path.name}.wal").unlink(missing_ok=True)
 
 
-def _remove_stale_partials(out_dir: Path) -> None:
+def remove_stale_partials(out_dir: Path) -> None:
     """Delete ``.partial-*`` staging leftovers in ``out_dir`` older than :data:`STALE_PARTIAL_S`."""
     cutoff = time.time() - STALE_PARTIAL_S
     for leftover in out_dir.glob(".partial-*"):

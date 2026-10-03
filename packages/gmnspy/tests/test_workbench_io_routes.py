@@ -1,12 +1,14 @@
 """Tests for the wizard's read-only routes, the jobs routes, and job actions over HTTP (no network)."""
 
+import os
+import time
 from pathlib import Path
 
 import pytest
 from datagrove.io import credentials as creds_mod
 from fastapi.testclient import TestClient
 from gmnspy.select.parse import StubParser
-from gmnspy.workbench import Session, build_app
+from gmnspy.workbench import Session, build, build_app
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
 OSM_FILE = str(FIXTURES / "osm" / "tiny.osm")
@@ -158,6 +160,16 @@ def test_estimate_is_not_recorded(make_client, out_dir):
     session, client = make_client()
     client.post("/api/estimate", json=_build_body(out_dir))
     assert session.history == []
+
+
+def test_estimate_does_not_delete_stale_partials(make_client, out_dir):
+    _, client = make_client()
+    stale = Path(out_dir) / ".partial-0123abcd-old"
+    stale.mkdir()
+    old = time.time() - build.STALE_PARTIAL_S - 60
+    os.utime(stale, (old, old))
+    assert client.post("/api/estimate", json=_build_body(out_dir)).status_code == 200
+    assert stale.exists()  # only a build job cleans up
 
 
 def test_job_action_answers_202_then_finishes(make_client, out_dir):

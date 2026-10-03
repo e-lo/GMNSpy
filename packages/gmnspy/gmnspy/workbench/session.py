@@ -334,6 +334,7 @@ class Session:
     def _job_build_network(self, action: BuildNetwork, ctx: JobContext) -> _Loaded:
         settings = self.settings
         plan = build.plan_build(action, settings)
+        build.remove_stale_partials(plan.dest.parent)  # here, not in plan_build: an estimate must not delete
         threshold = settings.app.approve_above_s
         with build.staging(plan.dest) as tmp:  # removes the partial output on any failure, cancel included
             engine = IbisEngine()  # private connection: never shared with the networks the browser reads
