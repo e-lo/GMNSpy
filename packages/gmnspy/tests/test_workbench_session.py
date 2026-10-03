@@ -125,6 +125,18 @@ def test_set_setting_rejects_bad_value(opened):
         opened.dispatch(SetSetting(key="select.provider", value="gpt"))
 
 
+@pytest.mark.parametrize("scope", ["session", "user", "project"])
+@pytest.mark.parametrize("key", ["io.allowed_roots", "io"])
+def test_set_setting_cannot_widen_the_sandbox(opened, isolated_env, tmp_path, scope, key):
+    roots = list(opened.settings.io.allowed_roots)
+    value = ["/"] if key == "io.allowed_roots" else {"allowed_roots": ["/"]}
+    with pytest.raises(ActionError, match=r"io\.allowed_roots can only be set in config files, env, or on the command"):
+        opened.dispatch(SetSetting(key=key, value=value, scope=scope))
+    assert opened.settings.io.allowed_roots == roots and opened.history[-1].error_type == "ActionError"
+    assert not (Path(isolated_env["GMNSPY_CONFIG_DIR"]) / "config.toml").exists()
+    assert not (tmp_path / "gmnspy.toml").exists()
+
+
 def test_close_and_switch_networks(opened, rdu_source):
     opened.dispatch(OpenNetwork(source=rdu_source, label="copy"))
     assert opened.active == "copy"

@@ -420,6 +420,12 @@ class Session:
         self.events.publish({"type": "navigate", **action.model_dump(mode="json", exclude={"type"})})
 
     def _do_set_setting(self, action: SetSetting) -> dict[str, Any]:
+        key = action.key.strip().lower()
+        if any(key == k or k.startswith(f"{key}.") for k in _CONFIG_ONLY_KEYS):  # "io" would replace it too
+            raise ActionError(
+                f"{action.key} cannot be changed here: io.allowed_roots can only be set in config files, env, "
+                "or on the command line"
+            )
         try:
             if action.scope == "session":
                 overrides = {**self._overrides, action.key: action.value}
@@ -438,6 +444,11 @@ class Session:
             self._parser = None  # rebuilt from the new provider/model on next use
         return {"key": action.key, "value": value, "source": loaded.sources.get(action.key)}
 
+
+#: Settings the action API refuses at every scope. ``io.allowed_roots`` is the sandbox for every local
+#: read and write; if an action (a browser click, a replayed script, the NL assistant) could widen it,
+#: the sandbox would protect nothing.
+_CONFIG_ONLY_KEYS = ("io.allowed_roots",)
 
 #: Recorded ``error_type`` -> the exception :meth:`Session.dispatch` re-raises (anything else: ActionError).
 _ERROR_TYPES: dict[str, type[ActionError]] = {

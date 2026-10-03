@@ -49,6 +49,14 @@ def test_post_action_failure_is_400_and_recorded(client):
     assert hist[-1]["ok"] is False
 
 
+def test_post_set_setting_cannot_widen_allowed_roots(client, session):
+    roots = list(session.settings.io.allowed_roots)
+    body = {"type": "set_setting", "key": "io.allowed_roots", "value": ["/"], "scope": "user"}
+    r = client.post("/api/actions", json=body)
+    assert r.status_code == 400 and "can only be set in config files, env, or on the command line" in r.json()["error"]
+    assert session.settings.io.allowed_roots == roots
+
+
 def test_post_invalid_action_is_422_and_not_recorded(client):
     before = len(client.get("/api/history").json()["entries"])
     r = client.post("/api/actions", json={"type": "select"})

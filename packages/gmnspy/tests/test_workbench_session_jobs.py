@@ -11,6 +11,7 @@ from gmnspy import Network
 from gmnspy.select.parse import StubParser
 from gmnspy.workbench import build
 from gmnspy.workbench.actions import BuildNetwork, OpenNetwork
+from gmnspy.workbench.area import BboxArea
 from gmnspy.workbench.errors import ActionError, ApprovalRequired, JobCancelled, PathNotAllowed
 from gmnspy.workbench.registry import _extra_tables
 from gmnspy.workbench.session import Session
@@ -410,6 +411,31 @@ def test_remote_output_dir_rejected(make_session):
         make_session().dispatch(
             BuildNetwork(source="osm", input_file=OSM_FILE, output_dir="s3://bucket/out", output_format="csv", name="x")
         )
+
+
+def test_local_overture_data_root_outside_roots_rejected(make_session, out_dir, tmp_path_factory):
+    outside = tmp_path_factory.mktemp("overture-mirror")
+    session = make_session(overrides={"overture.data_root": str(outside)})
+    action = BuildNetwork(
+        source="overture",
+        area=BboxArea(bbox=(-71.01, 41.99, -70.99, 42.01)),
+        output_dir=out_dir,
+        output_format="parquet",
+        name="o",
+    )
+    with pytest.raises(PathNotAllowed, match="outside the allowed folders"):
+        session.dispatch(action)
+    assert list(Path(out_dir).iterdir()) == []
+
+
+def test_overture_data_root_is_resolved_when_local_and_kept_when_remote(make_session, tmp_path):
+    inside = tmp_path / "mirror"
+    inside.mkdir()
+    local = make_session(overrides={"overture.data_root": str(tmp_path / "x" / ".." / "mirror")})
+    assert build._overture_data_root(local.settings) == str(inside.resolve())
+    remote = make_session(overrides={"overture.data_root": "s3://overturemaps-us-west-2/release"})
+    assert build._overture_data_root(remote.settings) == "s3://overturemaps-us-west-2/release"
+    assert build._overture_data_root(make_session().settings) is None
 
 
 def test_wrong_input_kind_rejected(make_session, out_dir):

@@ -110,6 +110,8 @@ def plan_build(action: BuildNetwork, settings: Settings) -> BuildPlan:
     if dest.exists():
         raise ActionError(f"{dest} already exists; choose another name (builds never overwrite)")
     if action.input_file is None:
+        if action.source == "overture":
+            _overture_data_root(settings)  # a local data_root must be inside the roots too: fail before any work
         return BuildPlan(kind=action.source, dest=dest, input_path=None)
     src = _local(action.input_file, "input_file", settings)
     if action.source == "osm" and not (src.is_file() and src.suffix.lower() in _OSM_FILE_SUFFIXES):
@@ -127,6 +129,16 @@ def _osm_options(settings: Settings) -> dict[str, Any]:
     }
 
 
+def _overture_data_root(settings: Settings) -> str | None:
+    """``overture.data_root``: a remote URL as is, a local path resolved and checked against the roots.
+
+    Raises :class:`~gmnspy.workbench.errors.PathNotAllowed` for a local root outside ``io.allowed_roots``
+    (or an unsupported scheme), exactly like any other local path a build reads.
+    """
+    root = settings.overture.data_root
+    return None if root is None else str(classify_source(root, settings)[1])
+
+
 def _overture_read(action: BuildNetwork, plan: BuildPlan, settings: Settings) -> dict[str, Any]:
     """bbox, release, and data root for an Overture read (a local snapshot is read in full)."""
     overture_query = optional_module("gmnspy.overture.query", "overture")
@@ -134,7 +146,7 @@ def _overture_read(action: BuildNetwork, plan: BuildPlan, settings: Settings) ->
         bbox, data_root = WORLD_BBOX, str(plan.input_path)
     else:
         assert action.area is not None  # guaranteed by BuildNetwork's validator
-        bbox, data_root = action.area.to_bbox(), settings.overture.data_root
+        bbox, data_root = action.area.to_bbox(), _overture_data_root(settings)
     release = action.overture_release or settings.overture.release or overture_query.OVERTURE_RELEASE
     return {"bbox": bbox, "overture_release": release, "data_root": data_root}
 
