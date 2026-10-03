@@ -2,13 +2,14 @@
 import { getJSON } from "./api.js";
 import { $, esc, toast } from "./dom.js";
 import { createFileBrowser } from "./filebrowser.js";
+import { store } from "./store.js";
 
 const M_PER_DEG_LAT = 111320; // same spherical approximation as gmnspy.osm.query.point_buffer_bbox
 const OPPOSITE = [2, 3, 0, 1]; // corner order SW, SE, NE, NW; dragging one keeps its opposite fixed
 const FILE_KINDS = { osm: ["osm", "json"], overture: ["overture"] };
 const EMPTY = { type: "FeatureCollection", features: [] };
 
-let map = null, markers = [], drawStart = null, drawEnd = null, drawing = false, searchSeq = 0;
+let map = null, markers = [], drawStart = null, drawEnd = null, drawing = false, searchSeq = 0, fitToNetwork = true;
 let tab = "draw", area = null, inputFile = null, candidates = [], fileBrowser = null, onChange = () => {};
 
 const round6 = v => Math.round(v * 1e6) / 1e6;
@@ -53,12 +54,13 @@ function setArea(next, { fit = false, quiet = false } = {}) {
   if (!quiet) onChange();
 }
 
-// Keep a drawn or dragged box: wrap its longitudes; refuse one that crosses the antimeridian.
-function commitBbox(raw) {
+// Keep a drawn or dragged box: wrap its longitudes; refuse one that crosses the antimeridian
+// (restoring `previous`, the box before a corner drag, or clearing a fresh draw).
+function commitBbox(raw, previous = null) {
   const b = [wrapLng(raw[0]), raw[1], wrapLng(raw[2]), raw[3]].map(round6);
   if (raw[0] < raw[2] && b[0] >= b[2]) {
     toast("That box crosses the antimeridian (180°); draw it on one side.");
-    setArea(null);
+    setArea(previous);
     return;
   }
   setArea({ kind: "bbox", bbox: b });
@@ -79,14 +81,17 @@ function render() {
 function makeMarkers() {
   markers = [0, 1, 2, 3].map(i => {
     const m = new maplibregl.Marker({ draggable: true, color: "#2dd2e6", scale: 0.6 });
-    let fixed = null; // captured at dragstart, so dragging past the opposite corner cannot swap which one is fixed
-    m.on("dragstart", () => { fixed = corners(area.bbox)[OPPOSITE[i]]; });
+    // Captured at dragstart, so dragging past the opposite corner cannot swap which one is fixed.
+    let fixed = null, before = null;
+    m.on("dragstart", () => { before = area; fixed = corners(area.bbox)[OPPOSITE[i]]; });
     m.on("drag", () => {
       const p = m.getLngLat();
-      area = { kind: "bbox", bbox: bboxOf([p.lng, p.lat], fixed) };
+      // `fixed` is wrapped but the marker may sit on a panned world copy: bring it within 180° of `fixed`.
+      const lng = fixed[0] + ((((p.lng - fixed[0]) % 360) + 540) % 360) - 180;
+      area = { kind: "bbox", bbox: bboxOf([lng, p.lat], fixed) };
       map.getSource("ap-area").setData(polygonFeature(ring(area.bbox)));
     });
-    m.on("dragend", () => commitBbox(area.bbox));
+    m.on("dragend", () => commitBbox(area.bbox, before));
     return m;
   });
 }
@@ -112,10 +117,30 @@ function wireDraw() {
   });
 }
 
+// The active network's [[W,S],[E,N]] extent, or null (then the map starts at the US-wide default).
+function networkBounds() {
+  const pos = store.get().net && store.get().net.nodePositions;
+  if (!pos || !pos.length) return null;
+  let w = Infinity, s = Infinity, e = -Infinity, n = -Infinity;
+  for (let k = 0; k < pos.length; k += 2) {
+    w = Math.min(w, pos[k]); e = Math.max(e, pos[k]); s = Math.min(s, pos[k + 1]); n = Math.max(n, pos[k + 1]);
+  }
+  return [w, s, e, n].every(Number.isFinite) ? [[w, s], [e, n]] : null;
+}
+
 // Create the preview map the first time the Area step is shown (a hidden container has no size).
+// Each new build starts the view at the active network's extent when there is one.
 export function showAreaMap(style) {
-  if (map) { map.resize(); return; }
-  map = new maplibregl.Map({ container: "ap-map", style, center: [-98.5, 39.8], zoom: 3 });
+  const bounds = fitToNetwork ? networkBounds() : null;
+  fitToNetwork = false;
+  if (map) {
+    map.resize();
+    if (bounds) map.fitBounds(bounds, { padding: 30, maxZoom: 14, duration: 0 });
+    return;
+  }
+  map = new maplibregl.Map(bounds
+    ? { container: "ap-map", style, bounds, fitBoundsOptions: { padding: 30, maxZoom: 14 } }
+    : { container: "ap-map", style, center: [-98.5, 39.8], zoom: 3 });
   map.on("load", () => {
     map.addSource("ap-area", { type: "geojson", data: EMPTY });
     map.addSource("ap-cands", { type: "geojson", data: EMPTY });
@@ -189,6 +214,7 @@ function pickCandidate(i) {
 // Reset for a new build of `source` ("osm" | "overture").
 export function resetAreaPicker(source) {
   area = null; inputFile = null; candidates = []; drawing = false; drawStart = null; drawEnd = null; searchSeq++;
+  fitToNetwork = true;
   $("ap-draw").classList.remove("on");
   if (map) { map.dragPan.enable(); map.getCanvas().style.cursor = ""; }
   $("ap-cands").innerHTML = "";
