@@ -1,5 +1,7 @@
 """Tests for the workbench network registry."""
 
+import threading
+
 import pytest
 from gmnspy import Network
 from gmnspy.workbench.registry import NetworkRegistry, default_label
@@ -47,6 +49,38 @@ def test_cache_is_keyed_by_version(net, rdu_source):
     assert calls == [1]
     assert h.bump() == 1
     assert h.cached("k", lambda: "v2") == "v2"
+
+
+def test_slow_build_does_not_block_other_cached_reads(net, rdu_source):
+    h = NetworkRegistry().add(net, source=rdu_source)
+    h.cached("fast", lambda: "ready")
+    building, release = threading.Event(), threading.Event()
+
+    def slow():
+        building.set()
+        release.wait(5)
+        return "slow"
+
+    worker = threading.Thread(target=lambda: h.cached("slow", slow))
+    worker.start()
+    assert building.wait(5)
+    try:
+        assert h.cached("fast", lambda: "rebuilt") == "ready"  # not stuck behind the slow build
+    finally:
+        release.set()
+        worker.join(5)
+    assert h.cached("slow", lambda: "again") == "slow"
+
+
+def test_artifact_built_across_a_bump_is_not_cached(net, rdu_source):
+    h = NetworkRegistry().add(net, source=rdu_source)
+
+    def build_then_mutate():
+        h.bump()  # the network changes while this artifact is being built
+        return "stale"
+
+    assert h.cached("k", build_then_mutate) == "stale"
+    assert h.cached("k", lambda: "fresh") == "fresh"
 
 
 def test_remove(net, rdu_source):

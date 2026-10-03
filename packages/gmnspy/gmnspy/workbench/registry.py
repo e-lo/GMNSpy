@@ -86,12 +86,23 @@ class NetworkHandle:
     _lock: threading.RLock = field(default_factory=threading.RLock, repr=False)
 
     def cached(self, key: str, build: Callable[[], Any]) -> Any:
-        """Return ``build()`` memoised for the current version."""
+        """Return ``build()`` memoised for the current version.
+
+        ``build`` runs *outside* the handle lock, so a slow DuckDB read for one artifact never
+        blocks a cached read of another. Two threads may both build a missing artifact; the first
+        stored wins. A result built while the network was mutated (``bump``) is returned but not
+        cached, since it may describe the old version.
+        """
         with self._lock:
-            slot = (key, self.version)
-            if slot not in self._cache:
-                self._cache[slot] = build()
-            return self._cache[slot]
+            version = self.version
+            slot = (key, version)
+            if slot in self._cache:
+                return self._cache[slot]
+        value = build()
+        with self._lock:
+            if self.version != version:
+                return value
+            return self._cache.setdefault(slot, value)
 
     def prime(self, **artifacts: Any) -> None:
         """Seed the current version's cache with artifacts built elsewhere (e.g. frames loaded off the lock)."""
