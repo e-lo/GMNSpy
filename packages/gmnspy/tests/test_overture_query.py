@@ -38,6 +38,20 @@ class TestResolveArea:
             query.resolve_area((1.0, 2.0, 3.0))
 
 
+class TestLatestRelease:
+    def test_returns_newest_of_an_unsorted_listing(self):
+        class _FakeFS:
+            def ls(self, path):
+                assert path == "overturemaps-us-west-2/release"
+                return [
+                    f"{path}/2026-08-19.0",
+                    f"{path}/2026-09-23.1",
+                    f"{path}/2026-09-23.0",
+                ]
+
+        assert query.latest_release(fs=_FakeFS()) == "2026-09-23.1"
+
+
 class TestDataRoot:
     def test_default_is_aws_release(self):
         assert query.overture_data_root("2024-11-13.0", None).endswith("release/2024-11-13.0")
@@ -103,3 +117,37 @@ class TestCountSegments:
 
     def test_empty_bbox_counts_zero(self, engine):
         assert query.count_segments((10.0, 10.0, 11.0, 11.0), data_root=FIXTURE_ROOT, engine=engine) == 0
+
+
+class TestRetiredReleaseDiagnostic:
+    """A missing-release / missing-path read should fail with an actionable message.
+
+    DuckDB's own error for this ("No files found that match the pattern ...") is
+    the same generic IOException it raises for any bad glob, so it reads like a
+    path typo. A ``data_root`` that doesn't exist on disk reproduces that exact
+    failure offline (no network / S3 needed) and lets us check the translated
+    message names the release and points at a fix.
+    """
+
+    MISSING_ROOT = "/nonexistent/overture-snapshot-does-not-exist"
+
+    def test_count_segments_names_release_and_fix(self, engine):
+        with pytest.raises(Exception, match="may have been retired") as excinfo:
+            query.count_segments(WORLD_BBOX, data_root=self.MISSING_ROOT, engine=engine)
+        assert "s3://overturemaps-us-west-2/release/" in str(excinfo.value)
+        assert "overture_release=" in str(excinfo.value)
+
+    def test_read_segments_names_release_and_fix(self, engine):
+        with pytest.raises(Exception, match="may have been retired"):
+            query.read_segments(WORLD_BBOX, data_root=self.MISSING_ROOT, engine=engine)
+
+    def test_read_connectors_names_release_and_fix(self, engine):
+        with pytest.raises(Exception, match="may have been retired"):
+            query.read_connectors(WORLD_BBOX, data_root=self.MISSING_ROOT, engine=engine)
+
+    def test_other_errors_pass_through_unchanged(self, engine):
+        # A genuinely unrelated duckdb error (bad bbox field access, say) must not
+        # be relabelled as a retired release -- only "no files found" is rewritten.
+        with pytest.raises(Exception) as excinfo:
+            query.count_segments(WORLD_BBOX, network_type="not-a-real-type", data_root=FIXTURE_ROOT, engine=engine)
+        assert "retired" not in str(excinfo.value)

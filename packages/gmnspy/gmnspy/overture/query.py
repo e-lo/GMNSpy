@@ -31,6 +31,7 @@ import math
 from collections.abc import Sequence
 from typing import Any
 
+import duckdb
 import ibis.expr.datatypes as dt
 from datagrove.engines import get_engine
 from ibis import udf
@@ -41,6 +42,7 @@ __all__ = [
     "OVERTURE_RELEASE",
     "count_segments",
     "fetch_network_elements",
+    "latest_release",
     "overture_data_root",
     "point_buffer_bbox",
     "read_connectors",
@@ -51,7 +53,10 @@ __all__ = [
 # Pinned, known-good Overture release (date-versioned). Bump this one constant to
 # move to a newer release; pinning keeps builds reproducible (a re-run of the same
 # area returns the same network). Override per-call with ``overture_release=``.
-OVERTURE_RELEASE = "2025-12-17.0"  # latest Overture release (schema v1.15.0); overridable via overture_release=
+# Overture releases are retired from the public bucket after a few cycles, so this
+# constant will eventually go stale; see s3://overturemaps-us-west-2/release/ for
+# the current list, or `latest_release()` below.
+OVERTURE_RELEASE = "2026-09-23.1"  # confirmed live on s3://overturemaps-us-west-2/release/ as of 2026-10-02
 
 # Default AWS public bucket base (anonymous read). Override via ``data_root=``
 # for the Azure mirror or a local snapshot.
@@ -223,6 +228,28 @@ def overture_data_root(overture_release: str, data_root: str | None) -> str:
     return f"{_AWS_BASE}/{overture_release}"
 
 
+def latest_release(fs: Any = None) -> str:
+    """Return the newest release name on the public Overture bucket (anonymous S3 listing).
+
+    Not called automatically by any read/build/count path -- :data:`OVERTURE_RELEASE`
+    stays the pinned default for reproducibility. Call this yourself (e.g. from a
+    REPL) to check whether that pin needs bumping.
+
+    Args:
+        fs: An ``fsspec`` filesystem to list with (mainly for tests); defaults to
+            an anonymous ``s3`` filesystem.
+
+    Returns:
+        The lexicographically-last release directory name, e.g. ``"2026-09-23.1"``.
+    """
+    if fs is None:
+        import fsspec
+
+        fs = fsspec.filesystem("s3", anon=True)
+    releases = sorted(path.rsplit("/", 1)[-1] for path in fs.ls("overturemaps-us-west-2/release"))
+    return releases[-1]
+
+
 def _type_source(root: str, feature_type: str) -> str:
     """Return the read path for a transportation feature type under ``root``.
 
@@ -241,6 +268,28 @@ def _prepare_backend(engine: Any, source: str) -> Any:
     if source.startswith(("s3://", "az://", "abfss://", "http://", "https://")):
         _ensure_extension(backend, "httpfs", _HTTPFS_LOADED_ATTR)
     return backend
+
+
+def _run_or_raise_stale_release(fn: Any, *, overture_release: str, data_root: str | None) -> Any:
+    """Call ``fn()``, translating a duckdb "no files" error into an actionable one.
+
+    DuckDB raises a generic ``IOException`` ("No files found that match the
+    pattern ...") whenever a Parquet glob matches nothing. The usual cause here
+    is that ``overture_release`` has been retired from the public bucket (Overture
+    only keeps a handful of recent releases around), so that's what we tell the
+    caller rather than letting the raw path-mismatch message stand alone.
+    """
+    try:
+        return fn()
+    except duckdb.IOException as exc:
+        if "no files found" not in str(exc).lower():
+            raise
+        raise duckdb.IOException(
+            f"No Overture data found for release {overture_release!r} "
+            f"(data_root={data_root!r}); this Overture release may have been "
+            "retired; set overture.release (or pass overture_release=) to a "
+            "current one from s3://overturemaps-us-west-2/release/"
+        ) from exc
 
 
 def _bbox_intersects(table: Any, bbox: tuple[float, float, float, float]) -> Any:
@@ -266,7 +315,11 @@ def _matching_segments(
     """The lazy ibis table of road segments in ``bbox`` allowed for ``network_type`` (bbox + class pushed down)."""
     source = _type_source(overture_data_root(overture_release, data_root), "segment")
     _prepare_backend(engine, source)
-    table = engine.read_parquet(source, hive_partitioning=source.endswith("/*"))
+    table = _run_or_raise_stale_release(
+        lambda: engine.read_parquet(source, hive_partitioning=source.endswith("/*")),
+        overture_release=overture_release,
+        data_root=data_root,
+    )
     available = set(table.columns)
     predicate = _bbox_intersects(table, bbox)
     if "subtype" in available:
@@ -300,9 +353,8 @@ def count_segments(
     Returns:
         The number of matching segments.
     """
-    return int(
-        _matching_segments(bbox, network_type, overture_release, data_root, engine or get_engine()).count().execute()
-    )
+    matching = _matching_segments(bbox, network_type, overture_release, data_root, engine or get_engine())
+    return int(matching.count().execute())
 
 
 def read_segments(
@@ -376,7 +428,11 @@ def read_connectors(
 
     west, south, east, north = bbox
     padded = (west - pad_deg, south - pad_deg, east + pad_deg, north + pad_deg)
-    table = engine.read_parquet(source, hive_partitioning=source.endswith("/*"))
+    table = _run_or_raise_stale_release(
+        lambda: engine.read_parquet(source, hive_partitioning=source.endswith("/*")),
+        overture_release=overture_release,
+        data_root=data_root,
+    )
     filtered = table.filter(_bbox_intersects(table, padded))
     projected = filtered.select(
         "id",
