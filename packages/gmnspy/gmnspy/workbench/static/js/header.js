@@ -13,8 +13,21 @@ async function run(action, after) {
   try { const result = await dispatch(action); if (after) after(result); } catch (e) { toast(e.message); }
 }
 
+// A remote URL is kept without its query string or fragment (a presigned signature or SAS token must
+// not sit in localStorage); re-opening a signed URL from Recent therefore needs a fresh link.
+function withoutSecrets(source) {
+  return /^[a-z][a-z0-9+.-]*:\/\//i.test(source) && !/^(duckdb|file):/i.test(source)
+    ? source.replace(/[?#].*$/, "")
+    : source;
+}
+
 function loadRecent() {
-  try { return JSON.parse(localStorage.getItem(RECENT_KEY)) || []; } catch (e) { return []; }
+  let list;
+  try { list = JSON.parse(localStorage.getItem(RECENT_KEY)) || []; } catch (e) { return []; }
+  return list.map(r => {  // also scrubs entries saved before sources were cleaned (label included)
+    const source = withoutSecrets(String(r.source));
+    return source === r.source ? r : { source, label: String(r.label).replace(/[?#].*$/, "") };
+  });
 }
 
 function saveRecent(list) {
@@ -32,8 +45,9 @@ export function renderRecent() {
 export function rememberRecent(entry) {
   if (!entry.ok) return;
   const a = entry.action;
-  const source = a.type === "open_network" ? a.source : a.type === "build_network" ? entry.result.output : null;
-  if (!source) return;
+  const raw = a.type === "open_network" ? a.source : a.type === "build_network" ? entry.result.output : null;
+  if (!raw) return;
+  const source = withoutSecrets(raw);
   const label = a.label || (a.type === "build_network" ? a.name : source.replace(/[\\/]+$/, "").split(/[\\/]/).pop());
   saveRecent([{ source, label }, ...loadRecent().filter(r => r.source !== source)].slice(0, RECENT_MAX));
   renderRecent();

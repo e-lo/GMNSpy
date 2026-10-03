@@ -13,7 +13,6 @@ back as ``error`` rather than propagated.
 from __future__ import annotations
 
 import logging
-import re
 import threading
 from collections.abc import Callable
 from pathlib import PurePosixPath
@@ -24,6 +23,11 @@ import fsspec
 from datagrove.io.credentials import credential_source, resolve_credentials
 from datagrove.io.remote import REMOTE_SCHEMES
 
+# Re-imported under urlcheck's own names: ``_check_url`` looks ``_scrub`` up here, so a test can
+# monkeypatch ``urlcheck._scrub`` to prove that ``check_url`` never raises.
+from .redact import safe_scrub as _safe_scrub
+from .redact import scrub as _scrub
+
 __all__ = ["check_url"]
 
 logger = logging.getLogger(__name__)
@@ -33,47 +37,6 @@ _TABLE_SUFFIXES = (".csv", ".parquet")
 #: Cap on how many directory entries we *process* when listing tables. ``fs.ls`` itself may still
 #: fetch (and pay for) the full listing from the backend; this only bounds the work done on it here.
 _MAX_LS_ENTRIES = 1000
-#: Cap on the scrubbed error message length shown to the user.
-_MAX_ERROR_LEN = 200
-#: Any ``scheme://...`` substring, not just http(s) -- s3/az/gs URLs embed secrets too.
-_URL_RE = re.compile(r"[A-Za-z][A-Za-z0-9+.-]*://[^\s'\"<>]+")
-
-
-def _strip_url(match: re.Match[str]) -> str:
-    raw = match.group(0)
-    scheme = raw.split("://", 1)[0]
-    try:
-        parts = urlsplit(raw)
-    except ValueError:
-        # e.g. "https://[x" -- malformed IPv6 host. Don't try to salvage it; just redact.
-        return f"{scheme}://<redacted>"
-    netloc = parts.netloc.rsplit("@", 1)[-1]  # drop userinfo (user:pass@ or access-key:secret@)
-    return f"{parts.scheme}://{netloc}{parts.path}"
-
-
-def _scrub(text: str) -> str:
-    """Strip query strings and userinfo from any URL in ``text`` (any scheme), and cap its length.
-
-    Backend exceptions (S3, Azure, GCS, HTTP clients) routinely embed the failing URL, including
-    presigned-URL signatures or ``user:pass@host`` credentials, in their messages. Only the
-    scheme/host/path survives; everything after ``?`` and any userinfo before ``@`` is dropped.
-    Never raises: a URL this function itself can't parse is redacted rather than left alone.
-    """
-    try:
-        return _URL_RE.sub(_strip_url, text)[:_MAX_ERROR_LEN]
-    except Exception:  # pragma: no cover - scrubbing must never be the reason check_url raises
-        return "<unscrubbable error>"[:_MAX_ERROR_LEN]
-
-
-def _safe_scrub(text: str) -> str:
-    """``_scrub``, but tolerant of ``_scrub`` itself being broken (or monkeypatched to explode).
-
-    Used only on the final ``check_url`` boundary, which must never raise for any reason.
-    """
-    try:
-        return _scrub(text)
-    except Exception:  # pragma: no cover - defence in depth around an already-defensive function
-        return "<unscrubbable>"
 
 
 def _tables(fs: Any, path: str) -> list[str]:

@@ -19,6 +19,8 @@ import pandas as pd
 
 from gmnspy import Network
 
+from .redact import scrub
+
 __all__ = ["COMPONENTS", "Component", "NetworkHandle", "NetworkRegistry", "as_pandas", "default_label"]
 
 Component = Literal["roadway", "transit"]
@@ -31,8 +33,11 @@ _GENERIC_NAMES = {"csv", "parquet", "duckdb", "zip", "data", "network", ""}
 
 
 def default_label(source: str) -> str:
-    """A human label for ``source``: its stem, or its parent's name when the stem is generic."""
-    p = Path(str(source).rstrip("/"))
+    """A human label for ``source``: its stem, or its parent's name when the stem is generic.
+
+    Only a URL's path is used: its query string (a presigned signature) and userinfo never reach a label.
+    """
+    p = Path(scrub(str(source), limit=None).split("://", 1)[-1].rstrip("/"))
     for candidate in (p.stem, p.parent.name):
         if candidate not in _GENERIC_NAMES:
             return candidate
@@ -121,7 +126,7 @@ class NetworkHandle:
         return {
             "id": self.id,
             "label": self.label,
-            "source": self.source,
+            "source": scrub(self.source, limit=None),  # shown in the browser: no signed query string
             "version": self.version,
             "components": [c for c in COMPONENTS if getattr(self, c) is not None],
             "links": len(self.links_df()),

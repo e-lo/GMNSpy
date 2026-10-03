@@ -77,6 +77,13 @@ A remote source must look like `scheme://host/...` (for example `s3://bucket/net
 `..` path segments. `file://` and `duckdb://` sources are treated as local paths in disguise and are checked
 against `io.allowed_roots` like any other local path.
 
+Credentials never go in the URL: a source with `user:password@` in it is refused. Put them where the
+credential cascade looks instead (environment variables, the system keyring, or `~/.netrc`). A presigned URL's
+query string (`?X-Amz-Signature=…`, an Azure SAS token) is accepted and kept in the session history, because
+the replay script needs it to open the same object; it is stripped from error messages, job labels, the network
+summary, and the **Recent** list. Treat a copied **Session as Python** script that opened a signed URL as
+holding that (expiring) signature.
+
 ```toml
 # ./gmnspy.toml
 [io]

@@ -22,6 +22,7 @@ from datagrove.io.remote import REMOTE_SCHEMES
 from gmnspy.config import Settings
 
 from .errors import PathNotAllowed
+from .redact import scrub
 
 __all__ = [
     "SourceKind",
@@ -57,7 +58,8 @@ def split_source(source: str) -> tuple[SourceKind, str]:
     """Split ``source`` into ``("remote", url)`` or ``("local", path)`` without checking the roots.
 
     ``duckdb://`` and ``file://`` prefixes are stripped to their local path. Raises
-    :class:`PathNotAllowed` for an fsspec ``::`` chain or any other scheme.
+    :class:`PathNotAllowed` for an fsspec ``::`` chain, any other scheme, or a remote URL carrying
+    ``user:password@`` credentials (those belong in env/keyring/netrc, never in a recorded source).
     """
     source = str(source)
     # urlsplit drops leading whitespace/C0 characters and deletes tab/CR/LF, so " s3://..." or
@@ -75,6 +77,11 @@ def split_source(source: str) -> tuple[SourceKind, str]:
         parts = urlsplit(source)
         if not source.lower().startswith(f"{scheme}://") or not parts.hostname:
             raise PathNotAllowed(f"{source}: remote URLs must look like scheme://host/...")
+        if "@" in parts.netloc:  # never echo the URL: its userinfo is the secret
+            raise PathNotAllowed(
+                f"{scrub(source, limit=None)}: credentials in the URL (user:password@) are not accepted; "
+                "set them in the environment, the keyring, or ~/.netrc (the credential cascade) instead"
+            )
         if ".." in PurePosixPath(parts.path).parts:
             raise PathNotAllowed(f"{source}: remote URLs must not contain '..' path segments")
         return "remote", source

@@ -58,6 +58,7 @@ from .estimate import Estimate, needs_approval
 from .events import EventBus
 from .jobs import Job, JobContext, JobRunner
 from .paths import open_locator
+from .redact import scrub
 from .registry import NetworkHandle, NetworkRegistry, as_pandas
 from .selection import selection_payload, unparsed_payload
 
@@ -318,7 +319,8 @@ class Session:
             net = Network.from_source(source, spec_version=spec_version)
             frames = {"links_df": as_pandas(net.links), "nodes_df": as_pandas(net.nodes)}
         except Exception as exc:  # boundary: any load failure is a user-facing error, not a crash
-            raise ActionError(f"could not open {source}: {exc}") from exc
+            # Both may carry a presigned query string or userinfo: never put either in a message.
+            raise ActionError(f"could not open {scrub(source, limit=None)}: {scrub(str(exc), limit=None)}") from exc
         return net, frames
 
     def _job_open_network(self, action: OpenNetwork, ctx: JobContext) -> _Loaded:

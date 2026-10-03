@@ -143,3 +143,14 @@ def test_remote_url_with_dotdot_segment_is_rejected(tmp_path, bad):
 
 def test_remote_url_with_dots_inside_a_name_is_fine(tmp_path):
     assert classify_source("s3://b/v1..2/x.parquet", _settings(tmp_path)) == ("remote", "s3://b/v1..2/x.parquet")
+
+
+@pytest.mark.parametrize(
+    "bad", ["https://alice:hunter2@h.example/net", "s3://AKIAXX:s3cr3t@bucket/net", "https://token@h.example/x"]
+)
+def test_remote_url_with_userinfo_is_rejected_without_echoing_it(tmp_path, bad):
+    with pytest.raises(PathNotAllowed, match="credential cascade") as exc:
+        classify_source(bad, _settings(tmp_path))
+    message = str(exc.value)
+    assert "env" in message and "keyring" in message and "netrc" in message
+    assert not any(secret in message for secret in ("alice", "hunter2", "AKIAXX", "s3cr3t", "token"))
