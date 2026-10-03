@@ -151,3 +151,59 @@ class TestRetiredReleaseDiagnostic:
         with pytest.raises(Exception) as excinfo:
             query.count_segments(WORLD_BBOX, network_type="not-a-real-type", data_root=FIXTURE_ROOT, engine=engine)
         assert "retired" not in str(excinfo.value)
+
+
+def _native_geometry_snapshot(dest: Path) -> str:
+    """Re-encode the WKB fixture into ``dest`` with a native duckdb GEOMETRY column.
+
+    Current Overture releases surface ``geometry`` as GEOMETRY (not raw WKB
+    binary) under duckdb spatial; this copy reproduces that encoding offline.
+    """
+    import duckdb
+
+    con = duckdb.connect()
+    con.install_extension("spatial")
+    con.load_extension("spatial")
+    for name in ("segment", "connector"):
+        src = Path(FIXTURE_ROOT) / f"{name}.parquet"
+        con.execute(
+            f"COPY (SELECT * REPLACE (ST_GeomFromWKB(geometry) AS geometry) FROM read_parquet('{src}')) "
+            f"TO '{dest / f'{name}.parquet'}' (FORMAT parquet)"
+        )
+    con.close()
+    return str(dest)
+
+
+class TestNativeGeometryEncoding:
+    """Current releases store GEOMETRY, the committed fixture stores WKB; both read the same."""
+
+    @pytest.fixture
+    def native_root(self, tmp_path):
+        return _native_geometry_snapshot(tmp_path)
+
+    def test_snapshot_really_is_native_geometry(self, engine, native_root):
+        query._prepare_backend(engine, native_root)
+        table = engine.read_parquet(f"{native_root}/segment.parquet")
+        assert table.geometry.type().is_geospatial()
+
+    def test_read_segments_matches_wkb_fixture(self, engine, native_root):
+        def by_id(root):
+            segs = query.read_segments(WORLD_BBOX, network_type="all", data_root=root, engine=engine)
+            return {s["id"]: s["geometry"] for s in segs}
+
+        native = by_id(native_root)
+        assert native == by_id(FIXTURE_ROOT)
+        assert all(wkt.startswith("LINESTRING") for wkt in native.values())
+
+    def test_read_connectors_matches_wkb_fixture(self, engine, native_root):
+        native = query.read_connectors(WORLD_BBOX, data_root=native_root, engine=engine)
+        assert native == query.read_connectors(WORLD_BBOX, data_root=FIXTURE_ROOT, engine=engine)
+        assert native
+
+    def test_full_build_matches_wkb_fixture(self, engine, native_root):
+        from gmnspy.overture import build
+
+        native = build.build_network_from_overture(WORLD_BBOX, data_root=native_root, engine=engine)
+        wkb = build.build_network_from_overture(WORLD_BBOX, data_root=FIXTURE_ROOT, engine=engine)
+        assert len(native.links.to_pandas()) == len(wkb.links.to_pandas()) == 5
+        assert len(native.nodes.to_pandas()) == len(wkb.nodes.to_pandas())

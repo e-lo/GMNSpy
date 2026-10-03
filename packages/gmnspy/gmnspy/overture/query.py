@@ -7,7 +7,8 @@ GeoParquet with DuckDB, pushes the bbox + ``class`` predicates down into
 ``read_parquet`` (so only matching rows cross the wire), and returns the plain
 ``(segments, connectors)`` records :mod:`gmnspy.overture.convert` consumes.
 
-Overture stores geometry as WKB in GeoParquet; following the official DuckDB
+Overture stores geometry as WKB in GeoParquet (surfaced by duckdb spatial either
+as raw WKB or, for current releases, as a native GEOMETRY column); following the official DuckDB
 recipe, geometry is turned into WKT / coordinates with the duckdb **spatial**
 extension via ibis builtin-UDF wrappers (no raw SQL — the whole pipeline stays
 engine-consistent). Remote ``s3://`` reads additionally need the **httpfs**
@@ -94,8 +95,21 @@ _SEGMENT_PROPERTY_COLUMNS = (
 # ---------------------------------------------------------------------------
 # DuckDB spatial extension — ibis builtin UDF wrappers (no pandas round-trip,
 # no raw SQL; mirrors datagrove.dataset.view). Geometry is binary (WKB) across
-# the ibis <-> duckdb boundary.
+# the ibis <-> duckdb boundary: older releases (and the committed test fixture)
+# store ``geometry`` as raw WKB ``binary``, while current releases' GeoParquet
+# metadata makes duckdb spatial surface it as a native ``GEOMETRY`` column, which
+# :func:`_wkb` normalizes back to WKB so the rest of the read is encoding-agnostic.
 # ---------------------------------------------------------------------------
+
+
+@udf.scalar.builtin(name="ST_AsWKB")
+def _st_as_wkb(geom: dt.geometry) -> dt.binary:  # type: ignore[empty-body]
+    """Serialize a duckdb GEOMETRY to WKB."""
+
+
+def _wkb(column: Any) -> Any:
+    """Return ``column`` as WKB ``binary``, whether stored as WKB or as a native GEOMETRY."""
+    return _st_as_wkb(column) if column.type().is_geospatial() else column
 
 
 @udf.scalar.builtin(name="ST_GeomFromWKB")
@@ -394,7 +408,7 @@ def read_segments(
         top = path.split(".")[0]
         if top in available and top not in wanted:
             wanted.append(top)
-    projected = filtered.select(*wanted, geometry=_st_as_text(_st_geom_from_wkb(filtered.geometry)))
+    projected = filtered.select(*wanted, geometry=_st_as_text(_st_geom_from_wkb(_wkb(filtered.geometry))))
     return projected.to_pyarrow().to_pylist()
 
 
@@ -436,8 +450,8 @@ def read_connectors(
     filtered = table.filter(_bbox_intersects(table, padded))
     projected = filtered.select(
         "id",
-        x=_st_x(_st_geom_from_wkb(filtered.geometry)),
-        y=_st_y(_st_geom_from_wkb(filtered.geometry)),
+        x=_st_x(_st_geom_from_wkb(_wkb(filtered.geometry))),
+        y=_st_y(_st_geom_from_wkb(_wkb(filtered.geometry))),
     )
     rows = projected.to_pyarrow().to_pylist()
     return {row["id"]: (row["x"], row["y"]) for row in rows}
