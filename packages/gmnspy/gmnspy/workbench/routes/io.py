@@ -38,6 +38,8 @@ def io_router(session: Session) -> APIRouter:
             return list_dir(path, session.settings)
         except PathNotAllowed as exc:
             raise HTTPException(403, str(exc)) from exc
+        except PermissionError as exc:  # inside the roots, but the OS won't let us read it: not a 500
+            raise HTTPException(403, f"permission denied: {path}") from exc
         except FileNotFoundError as exc:
             raise HTTPException(404, str(exc)) from exc
         except NotADirectoryError as exc:

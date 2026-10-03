@@ -91,6 +91,19 @@ def test_fs_list_missing_is_404(make_client, tmp_path):
     assert client.get("/api/fs/list", params={"path": str(tmp_path / "nope")}).status_code == 404
 
 
+@pytest.mark.skipif(not hasattr(os, "geteuid") or os.geteuid() == 0, reason="needs POSIX permissions, not root")
+def test_fs_list_unreadable_folder_is_403(make_client, tmp_path):
+    _, client = make_client()
+    locked = tmp_path / "locked"
+    locked.mkdir()
+    locked.chmod(0)
+    try:
+        r = client.get("/api/fs/list", params={"path": str(locked)})
+    finally:
+        locked.chmod(0o755)
+    assert r.status_code == 403 and r.json()["detail"] == f"permission denied: {locked}"
+
+
 def test_check_url_reports_without_network(make_client, monkeypatch):
     monkeypatch.setattr(creds_mod, "_lookup_env", lambda host: {})
     monkeypatch.setattr(creds_mod, "_lookup_keyring", lambda host: {})
