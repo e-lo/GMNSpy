@@ -33,10 +33,25 @@ Per-thread ``con.cursor()`` connections are *not* an option: ibis's
 / :meth:`IbisEngine.from_records` create temp tables, and duckdb temp objects
 are private to the connection that created them, so another thread's cursor
 cannot see them. Serializing costs little: duckdb already parallelizes a single
-query across cores. Remaining gaps: batch readers returned by
-``to_pyarrow_batches``/``to_pandas_batches`` are consumed after the lock is
-released, and expressions bound to ibis's process-wide *default* backend (plain
-``ibis.memtable(...)`` with no engine) are not covered.
+query across cores.
+
+Remaining gaps (the lock wraps *method calls*, so anything that reaches the
+duckdb connection outside one is not covered):
+
+- batch readers returned by ``to_pyarrow_batches``/``to_pandas_batches`` are
+  consumed after the call, and so the lock, has returned;
+- ``_safe_raw_sql`` is a context manager: only entering it is locked, not the
+  ``with`` body that uses its cursor; likewise the connection ``raw_sql``
+  returns is used unlocked once the call returns (``backend.con`` itself, too:
+  hold :func:`backend_lock` around direct use);
+- properties that run queries (``current_database``, ``current_catalog``,
+  ``version``, ``tables``) are not methods and are not wrapped;
+- expressions bound to ibis's process-wide *default* backend (a plain
+  ``ibis.memtable(...)`` with no engine) are not covered at all.
+
+Datagrove's own code stays inside these lines (internal uses of the first three
+happen inside an already-locked method); callers that step outside them should
+take :func:`backend_lock`.
 
 Dispatch model (post-issue-#134 inversion)
 ------------------------------------------
@@ -781,20 +796,37 @@ def _locked(method: Callable[..., Any], lock: threading.RLock) -> Callable[..., 
     return call
 
 
-def _locked_finalizer_factory(make: Callable[..., Any], lock: threading.RLock) -> Callable[..., Any]:
-    """Wrap ``_make_memtable_finalizer`` so the finalizer it returns also runs under ``lock``.
+#: How long a memtable finalizer waits for the backend lock at interpreter exit before giving up.
+_FINALIZER_WAIT_S = 1.0
 
-    ibis drops a memtable from the garbage collector, on whichever thread triggers collection,
-    via ``con.cursor()``; creating that cursor while another thread is mid-query on the same
-    duckdb connection corrupts the in-flight query, so the finalizer must wait for the lock too.
-    The lock is a leaf (nothing holding it takes another lock), so waiting on it from a GC point
-    cannot deadlock.
+
+def _locked_finalizer_factory(make: Callable[..., Any], lock: threading.RLock) -> Callable[..., Any]:
+    """Wrap ``_make_memtable_finalizer`` so the finalizer it returns also takes ``lock``, briefly.
+
+    ibis 12 registers each memtable's finalizer with :mod:`atexit` (duckdb's own backend returns
+    none, but a SQL backend handed to :class:`IbisEngine` may); it drops the table through
+    ``con.cursor()``, which must not race a query another (daemon) thread may still be running on
+    the same duckdb connection. At exit the drop is pointless anyway (the in-memory database goes
+    away with the process), so the finalizer waits at most :data:`_FINALIZER_WAIT_S` for the lock
+    and skips the drop if it is still held: Ctrl-C never hangs behind an in-flight job query.
     """
+
+    def run_if_free(finalizer: Callable[..., Any]) -> Callable[..., Any]:
+        @functools.wraps(finalizer)
+        def call(*args: Any, **kwargs: Any) -> Any:
+            if not lock.acquire(timeout=_FINALIZER_WAIT_S):
+                return None
+            try:
+                return finalizer(*args, **kwargs)
+            finally:
+                lock.release()
+
+        return call
 
     @functools.wraps(make)
     def factory(*args: Any, **kwargs: Any) -> Any:
         finalizer = make(*args, **kwargs)
-        return None if finalizer is None else _locked(finalizer, lock)
+        return None if finalizer is None else run_if_free(finalizer)
 
     return factory
 

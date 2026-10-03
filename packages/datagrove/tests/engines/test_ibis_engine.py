@@ -407,3 +407,34 @@ def test_serialize_backend_is_idempotent_and_exposes_its_lock():
         assert backend_lock(object()).__enter__() is None  # no lock: a no-op context
     finally:
         con.disconnect()
+
+
+def test_memtable_finalizer_skips_its_drop_while_a_query_holds_the_lock(monkeypatch):
+    import datagrove.engines.ibis_engine as ie
+
+    monkeypatch.setattr(ie, "_FINALIZER_WAIT_S", 0.05)
+    con = ibis.duckdb.connect()
+    dropped: list[str] = []
+    # duckdb's own backend returns no finalizer; SQL backends that do return a "DROP" callable.
+    con._make_memtable_finalizer = lambda name: lambda: dropped.append(name)
+    serialize_backend(con)
+    try:
+        finalizer = con._make_memtable_finalizer("t")
+        held, release = threading.Event(), threading.Event()
+
+        def busy():  # stands in for a job thread mid-query when the interpreter exits
+            with backend_lock(con):
+                held.set()
+                release.wait(5)
+
+        worker = threading.Thread(target=busy)
+        worker.start()
+        assert held.wait(5)
+        finalizer()  # gives up after the short wait instead of hanging
+        release.set()
+        worker.join()
+        assert dropped == []
+        finalizer()  # lock free: the drop runs
+        assert dropped == ["t"]
+    finally:
+        con.disconnect()
