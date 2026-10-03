@@ -13,7 +13,7 @@ output to its final name. The staging path is removed on any failure, including 
 Staging outputs are hidden siblings named ``.partial-<8 hex>-<dest name>`` (plus a DuckDB
 ``.wal``). Only a hard crash of the process (power loss, ``kill -9``) can leave one behind;
 :func:`remove_stale_partials` (called by the build job, never by the side-effect-free estimate)
-deletes any ``.partial-*`` entry in the output folder older than 24 hours.
+deletes any such ``.partial-<8 hex>-*`` entry in the output folder older than 24 hours.
 
 The OSM/Overture modules are imported at run time via :func:`~gmnspy.workbench.extras.optional_module`:
 they need the ``[osm]`` / ``[overture]`` extras.
@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import shutil
 import time
 import uuid
@@ -70,6 +71,8 @@ _EXTRA_MODULES = {
 }
 #: Staging leftovers older than this (from a crashed build) are deleted by the next build in that folder.
 STALE_PARTIAL_S = 24 * 3600
+#: What :func:`staging` names its output: ``.partial-<uuid4 hex[:8]>-<dest name>``.
+_STAGING_NAME = re.compile(r"\.partial-[0-9a-f]{8}-.+")
 Records = tuple[list[dict[str, Any]], list[dict[str, Any]]]
 Tick = Callable[[str, float], None]
 
@@ -270,9 +273,15 @@ def _remove(path: Path) -> None:
 
 
 def remove_stale_partials(out_dir: Path) -> None:
-    """Delete ``.partial-*`` staging leftovers in ``out_dir`` older than :data:`STALE_PARTIAL_S`."""
+    """Delete staging leftovers in ``out_dir`` older than :data:`STALE_PARTIAL_S`.
+
+    Only names :func:`staging` generates (``.partial-<8 hex>-<name>``, plus their ``.wal``) count: a
+    user's own ``.partial-notes`` or ``.partial-old`` in the output folder is never touched.
+    """
     cutoff = time.time() - STALE_PARTIAL_S
     for leftover in out_dir.glob(".partial-*"):
+        if not _STAGING_NAME.fullmatch(leftover.name):
+            continue
         try:
             if leftover.lstat().st_mtime < cutoff:
                 _remove(leftover)

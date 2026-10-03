@@ -579,16 +579,23 @@ def test_matching_name_suffix_is_not_doubled(make_session, out_dir):
 
 
 def test_stale_partials_are_cleaned_fresh_ones_kept(make_session, out_dir):
-    stale, fresh = Path(out_dir) / ".partial-aaaa-old", Path(out_dir) / ".partial-bbbb-new.zip"
+    stale, fresh = Path(out_dir) / ".partial-0a1b2c3d-old", Path(out_dir) / ".partial-4e5f6a7b-new.zip"
     stale.mkdir()
     (stale / "link.parquet").write_text("x")
+    stale_wal = Path(out_dir) / ".partial-0a1b2c3d-old.duckdb.wal"
+    stale_wal.write_text("wal")
     fresh.write_text("in progress")
+    # Old, but not names ``staging`` generates: a user's own files are never deleted.
+    users = [Path(out_dir) / n for n in (".partial-notes", ".partial-aaaa-old", ".partial-0A1B2C3D-x")]
+    for user_file in users:
+        user_file.write_text("mine")
     old = time.time() - build.STALE_PARTIAL_S - 60
-    os.utime(stale, (old, old))
+    for path in (stale, stale_wal, *users):
+        os.utime(path, (old, old))
     make_session().dispatch(
         BuildNetwork(source="osm", input_file=OSM_FILE, output_dir=out_dir, output_format="parquet", name="tiny")
     )
-    assert sorted(p.name for p in Path(out_dir).iterdir()) == [fresh.name, "tiny"]
+    assert sorted(p.name for p in Path(out_dir).iterdir()) == sorted([fresh.name, "tiny", *(u.name for u in users)])
 
 
 def test_staging_cleanup_removes_a_duckdb_wal(tmp_path):
