@@ -7,15 +7,15 @@ P3, the NL assistant all funnel through ``dispatch``. Each call is recorded as a
 here yet: in P2 they become ProjectCard-shaped ``NetworkChange`` objects.
 
 Actions marked ``runs_as_job`` (``OpenNetwork``, ``BuildNetwork``) do their slow
-work on a background job thread *without* the session lock; only registering the
-result (and recording history) takes the lock. :meth:`Session.submit` starts one
-and returns immediately (the HTTP path); :meth:`Session.dispatch` starts one and
-waits (Python, the CLI), so callers see the same blocking behaviour as before.
+work on a background job thread *without* the session lock. :meth:`Session.submit`
+starts one and returns immediately (the HTTP path); :meth:`Session.dispatch` starts
+one and waits (Python, the CLI), so callers see the same blocking behaviour as before.
 
-There is a brief window between ``_register`` and ``_finish`` where the new network is
-already in the registry (and active) but its history entry does not exist yet. The UI is
-unaffected: no ``state`` event is published until ``_record``, so the browser sees the
-network and its history entry together.
+A successful job ends in :meth:`Session._commit`, which registers the loaded network
+*and* records its history entry in one critical section. History order therefore
+always matches registry order, even when two jobs overlap, so replaying the history
+reproduces the same network ids. Failed and cancelled jobs are recorded by
+:meth:`Session._finish`.
 """
 
 from __future__ import annotations
@@ -25,7 +25,7 @@ import logging
 import threading
 import time
 from collections.abc import Mapping
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -74,6 +74,18 @@ DEFAULT_STYLE: dict[str, Any] = {
     "show": {"links": True, "nodes": True, "labels": True, "selection": True},
     "colors": {"links": [46, 64, 110], "nodes": [70, 90, 120], "selection": [255, 140, 59]},
 }
+
+
+@dataclass
+class _Loaded:
+    """A job's loaded network, waiting for :meth:`Session._commit` to register it."""
+
+    net: Network
+    frames: dict[str, Any]
+    source: str
+    label: str | None
+    net_id: str | None = None
+    extra: dict[str, Any] = field(default_factory=dict)  # merged into the job result after ``net_id``
 
 
 @dataclass
@@ -126,6 +138,7 @@ class Session:
         self.http = http
         self.jobs = JobRunner(lambda event: self.events.publish(event))  # late-bound, like every other publish
         self._lock = threading.RLock()
+        self._committed: dict[str, int] = {}  # job id -> history seq its ``_commit`` recorded
 
     # ------------------------------------------------------------------ public API
 
@@ -165,12 +178,12 @@ class Session:
         if isinstance(action, dict):
             action = parse_action(action)
         if action.runs_as_job:
-            # The job thread needs the lock (``_register``/``_finish``) and we wait for it below, so a
+            # The job thread needs the lock (``_commit``/``_finish``) and we wait for it below, so a
             # caller already holding the lock (e.g. a handler) would deadlock: fail loudly instead.
             if self._lock._is_owned():  # type: ignore[attr-defined]  # RLock's owner check
                 raise RuntimeError("cannot run a job action while holding the session lock (it would deadlock)")
             job = self.submit(action)
-            # Wait OUTSIDE the session lock: the job thread takes it in ``_register`` and ``_finish``,
+            # Wait OUTSIDE the session lock: the job thread takes it in ``_commit`` and ``_finish``,
             # so waiting while holding it would deadlock. Never call this with the lock held.
             job.wait()
             if job.history_seq is None:  # on_finish itself failed (already logged by the runner)
@@ -201,22 +214,41 @@ class Session:
         return self.jobs.submit(
             action.type,
             action.job_label(),
-            lambda ctx: run(action, ctx),
+            lambda ctx: self._commit(action, ctx, run(action, ctx)),
             on_finish=lambda job: self._finish(action, job),
         )
 
-    def _finish(self, action: Action, job: Job) -> None:
-        """Job callback: record the outcome as a history entry (under the lock) and link it to the job."""
-        ok = job.status == "done"
+    def _commit(self, action: Action, ctx: JobContext, loaded: _Loaded) -> dict[str, Any]:
+        """Register ``loaded`` and record the success entry in ONE critical section; return the job result.
+
+        Doing both under one lock acquisition is what keeps history order equal to registry order:
+        with separate acquisitions two overlapping jobs could register A, B but record B, A, and a
+        replay would then hand out swapped ids. The caller's last ``ctx.stage`` was the final
+        cancellation checkpoint, so nothing can cancel the job once this runs.
+        """
         with self._lock:
-            entry = self._record(
-                action,
-                ok=ok,
-                result=job.result if ok else job.payload,
-                error=job.error,
-                error_type=job.error_type,
-            )
-        self.jobs.update(job, history_seq=entry.seq)
+            handle = self.registry.add(loaded.net, source=loaded.source, label=loaded.label, net_id=loaded.net_id)
+            handle.prime(**loaded.frames)
+            self.active = handle.id
+            result = {"net_id": handle.id, **loaded.extra}
+            entry = self._record(action, ok=True, result=result, error=None, error_type=None)
+            self._committed[ctx.job_id] = entry.seq
+        return result
+
+    def _finish(self, action: Action, job: Job) -> None:
+        """Job callback: link the committed entry to the job, or record a failure/cancellation entry."""
+        with self._lock:
+            seq = self._committed.pop(job.id, None)
+            if seq is None:
+                ok = job.status == "done"  # only a job whose commit never ran gets here: normally a failure
+                seq = self._record(
+                    action,
+                    ok=ok,
+                    result=job.result if ok else job.payload,
+                    error=job.error,
+                    error_type=job.error_type,
+                ).seq
+        self.jobs.update(job, history_seq=seq)
 
     def _record(
         self, action: Action, *, ok: bool, result: Any, error: str | None, error_type: str | None
@@ -289,26 +321,15 @@ class Session:
             raise ActionError(f"could not open {source}: {exc}") from exc
         return net, frames
 
-    def _register(
-        self, net: Network, frames: dict[str, Any], *, source: str, label: str | None, net_id: str | None = None
-    ) -> NetworkHandle:
-        """Add a loaded network to the registry and make it active (takes the lock briefly)."""
-        with self._lock:
-            handle = self.registry.add(net, source=source, label=label, net_id=net_id)
-            handle.prime(**frames)
-            self.active = handle.id
-        return handle
-
-    def _job_open_network(self, action: OpenNetwork, ctx: JobContext) -> dict[str, Any]:
+    def _job_open_network(self, action: OpenNetwork, ctx: JobContext) -> _Loaded:
         settings = self.settings
         source = open_locator(action.source, settings)  # only remote URLs skip io.allowed_roots
         ctx.stage("open", progress=0.1)
         net, frames = self._load(source, settings.io.spec_version)
-        ctx.stage("register", progress=0.9)  # last cancellation checkpoint
-        handle = self._register(net, frames, source=source, label=action.label, net_id=action.net_id)
-        return {"net_id": handle.id}
+        ctx.stage("register", progress=0.9)  # last cancellation checkpoint before ``_commit``
+        return _Loaded(net, frames, source=source, label=action.label, net_id=action.net_id)
 
-    def _job_build_network(self, action: BuildNetwork, ctx: JobContext) -> dict[str, Any]:
+    def _job_build_network(self, action: BuildNetwork, ctx: JobContext) -> _Loaded:
         settings = self.settings
         plan = build.plan_build(action, settings)
         threshold = settings.app.approve_above_s
@@ -343,14 +364,13 @@ class Session:
             )
             failed.payload = {"output": output, "estimate": estimate.to_dict()}
             raise failed from exc
-        handle = self._register(loaded, frames, source=output, label=action.label or action.name)
-        return {
-            "net_id": handle.id,
+        extra = {
             "output": output,
             "estimate": estimate.to_dict(),
             "threshold_s": threshold,
             "approval": "given" if over else "not_needed",
         }
+        return _Loaded(loaded, frames, source=output, label=action.label or action.name, extra=extra)
 
     def _do_close_network(self, action: CloseNetwork) -> None:
         self._handle(action.net_id)

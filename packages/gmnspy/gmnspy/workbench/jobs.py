@@ -87,6 +87,11 @@ class JobContext:
         self._runner = runner
 
     @property
+    def job_id(self) -> str:
+        """The id of the job this context belongs to."""
+        return self._job.id
+
+    @property
     def cancelled(self) -> bool:
         """Whether cancellation was requested."""
         return self._job._cancel.is_set()

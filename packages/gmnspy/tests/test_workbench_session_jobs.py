@@ -197,6 +197,37 @@ def test_http_like_reads_during_open_do_not_fail(make_session, rdu_source):
     assert errors == []
 
 
+def test_overlapping_opens_record_history_in_registry_order(make_session, rdu_source):
+    """A job stalled after loading must not let a later job's history entry overtake its registration."""
+    session = make_session()
+    stalled, release = threading.Event(), threading.Event()
+    real_settle = session.jobs._settle
+
+    def slow_settle(job, outcome):  # runs after the job function returned, before ``on_finish``
+        if job.id == "job-1":
+            stalled.set()
+            release.wait(WAIT)
+        real_settle(job, outcome)
+
+    session.jobs._settle = slow_settle
+    first = session.submit(OpenNetwork(source=rdu_source))
+    assert stalled.wait(WAIT)
+    second = session.submit(OpenNetwork(source=rdu_source))
+    assert second.wait(WAIT)
+    release.set()
+    assert first.wait(WAIT)
+
+    ids = session.registry.ids()
+    assert ids == ["rdu-i40", "rdu-i40-2"]
+    assert [e.result["net_id"] for e in session.history] == ids
+    assert [session.jobs.snapshot(j)["history_seq"] for j in (first, second)] == [1, 2]
+
+    replay = make_session()
+    exec("\n".join(e.python for e in session.history), {"app": replay, "OpenNetwork": OpenNetwork})
+    assert replay.registry.ids() == ids and replay.active == session.active
+    assert [e.result for e in replay.history] == [e.result for e in session.history]
+
+
 # ------------------------------------------------------------------ BuildNetwork
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
