@@ -44,6 +44,17 @@
 #     recalibrated -- they could not be measured until that bug is fixed. The old pinned
 #     `OVERTURE_RELEASE = "2025-12-17.0"` in gmnspy/overture/query.py was also found stale
 #     (retired from the public bucket); this calibration ran against release 2026-09-23.1.
+#   * sources.overture follow-up (2026-10-02, after the GEOMETRY fix): two live XS builds
+#     against release 2026-09-23.1 succeeded -- the calibration XS bbox via the workbench
+#     pipeline (447 segments -> 2,181 links / 968 nodes, fetch+convert 21.7s, parquet write
+#     0.02s, 252,017 bytes) and (-120.67, 47.59, -120.65, 47.61) via
+#     build_network_from_overture (680 segments -> 3,336 links / 1,513 nodes, 23.3s).
+#     links/segment = 4.88 and 4.91, so links_per_element = 4.9. s_per_link is NOT re-fit:
+#     both builds are dominated by the ~20s of remote S3 reads (a 2-point fit through
+#     latency_s gives 1.8e-3 s/link, which is that latency smeared over a few thousand
+#     links and would overestimate large areas ~20x). The S area failed for an unrelated
+#     reason (a segment's connector lies beyond the 0.01 deg connector-read padding), so a
+#     size spread that could separate slope from latency is still missing.
 #   * sources.osm_file: ONE sample (the XS area's own Overpass JSON export, 401,774 bytes ->
 #     1,709 links). links_per_element = 1709 / 401774 = 0.00425 (links show up roughly every
 #     235 bytes of Overpass JSON, not every ~700 bytes as originally guessed). latency_s is a
@@ -72,8 +83,8 @@ s_per_link = 9.1e-5        # OLS-fit, 2026-10-02 (same 10 runs)
 
 [sources.overture]
 latency_s = 17.5           # measured, 2026-10-02: median COUNT(*) pre-query time (8 samples, XS+S)
-links_per_element = 1.6    # guess: segments split at connectors, two-way for most classes (UNCHANGED -- build path broken, see note)
-s_per_link = 1.0e-4        # borrowed from OSM; full Overture build still not measurable (see note)
+links_per_element = 4.9    # measured, 2026-10-02: 2 live XS builds (4.88, 4.91 links/segment); see follow-up note
+s_per_link = 1.0e-4        # borrowed from OSM; not re-fit (XS builds are latency-bound; see follow-up note)
 
 [sources.osm_file]
 latency_s = 0.1            # guess, scaled down for local parsing (no network round trip)
