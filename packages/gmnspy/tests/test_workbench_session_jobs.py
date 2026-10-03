@@ -398,6 +398,21 @@ def test_failed_write_leaves_no_partial_output(make_session, out_dir, monkeypatc
     assert session.history[-1].result["estimate"]["basis"].startswith("osm_file:")
 
 
+def test_unexpected_build_failure_keeps_its_estimate(make_session, out_dir, monkeypatch):
+    def buggy_convert(*args, **kwargs):
+        raise RuntimeError("converter bug")
+
+    monkeypatch.setattr(build, "fetch_and_convert", buggy_convert)
+    session = make_session()
+    with pytest.raises(ActionError, match="build failed: RuntimeError: converter bug"):
+        session.dispatch(
+            BuildNetwork(source="osm", input_file=OSM_FILE, output_dir=out_dir, output_format="parquet", name="tiny")
+        )
+    entry = session.history[-1]
+    assert entry.error_type == "ActionError" and entry.result["estimate"]["basis"].startswith("osm_file:")
+    assert list(Path(out_dir).iterdir()) == []
+
+
 def test_output_outside_roots_rejected(make_session, tmp_path_factory):
     elsewhere = str(tmp_path_factory.mktemp("not-allowed"))
     with pytest.raises(PathNotAllowed):

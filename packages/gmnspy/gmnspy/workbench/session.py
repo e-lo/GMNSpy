@@ -355,6 +355,11 @@ class Session:
                 except ActionError as exc:  # includes JobCancelled: keep the estimate for the history entry
                     exc.payload = {**(exc.payload or {}), "estimate": estimate.to_dict()}
                     raise
+                except Exception as exc:  # boundary: an unexpected failure keeps its estimate too
+                    logger.exception("workbench build %s failed", action.name)
+                    failed = ActionError(f"build failed: {type(exc).__name__}: {scrub(str(exc), limit=None)}")
+                    failed.payload = {"estimate": estimate.to_dict()}
+                    raise failed from exc
             finally:
                 engine.close()
         output = str(plan.dest)
