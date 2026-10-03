@@ -72,6 +72,7 @@ These are the choices the design doc leaves open, each with a one-line rationale
 9. **`area` and `input_file` are mutually exclusive.** A local file is imported whole. To clip a large local Overture snapshot, set `overture.data_root` to it and give an area.
 10. **The output path is `output_dir / name` (plus `.duckdb` for DuckDB).** `name` is required and must be a plain file name. A build never overwrites an existing output, and removes a partial output if the write fails. The output folder must exist inside the allowed roots.
 11. **`output_format="zip"` stays in the schema but raises `NotSupportedYet`.** `Network.write` has no zip format, and `Network.from_source` cannot reopen a `.csv.zip`: DuckDB fails on the `::member` path, and this was reproduced on the bundled Leavenworth zip. "Write, then open from disk" is therefore impossible for zip today (see Open questions).
+    > **SUPERSEDED (2026-10-02):** zip read/write was fixed in 4b743fb; zip is a normal output format.
 12. **`io.allowed_roots` is enforced everywhere a local path enters:** `OpenNetwork` (local paths only; URLs bypass it), the file listing, and build inputs and outputs, including from Python. Paths are fully resolved before the containment check, so neither `..` nor a symlink can escape a root. One rule means a replay behaves the same in Python as in the UI.
 13. **Paths named on the `gmnspy app` command line are trusted.** The CLI adds exactly those resolved paths to `io.allowed_roots` as a session-layer override, prints a note, and records no extra history entry. The user typed the path in their own shell, and `gmnspy app /data/net` must keep working.
 14. **Recents live in the browser's `localStorage`**, the same pattern as the remembered view mode. They are a per-user convenience that needs no server code. A recent is only a shortcut: opening one is a normal `open_network`, checked against the allowed roots. They are remembered from every successful history entry, including opens made from Python.
@@ -5693,10 +5694,23 @@ a failing test, or fix it, before you open the PR.
 
   **Question:** should a separate fix to the zip read path come before P1a, or should `.zip` be untagged in the
   browser until then?
+
+  > **SUPERSEDED (2026-10-02):** zip read/write was fixed in 4b743fb; zip is a normal output format.
 - **Shared DuckDB connection (pre-existing, widened).** HTTP threads already query networks concurrently on
   datagrove's single default ibis/DuckDB connection. P1a adds job threads that open networks on that same
   connection; builds use a private engine (Decision 16). If concurrent use proves unsafe, the fix belongs in
   datagrove: per-thread cursors or an engine lock.
+
+  > **Outcome (2026-10-02):** it was unsafe: two simultaneous `OpenNetwork` jobs failed in 20 of 20 rounds
+  > ("Attempting to execute an unsuccessful or closed pending query result"). Fixed in datagrove with an engine
+  > lock: `IbisEngine` serializes its ibis backend (`serialize_backend`), wrapping every backend method in one
+  > re-entrant lock stored on the backend, so direct `expr.execute()` calls are covered too; memtable GC
+  > finalizers and the raw-connection spatial install take the same lock. Per-thread cursors were rejected
+  > because ibis `read_*` temp views and the engine's temp tables are private to the connection that created
+  > them. Remaining gaps: batch readers (`to_pyarrow_batches`) are consumed after the lock is released, and
+  > expressions bound to ibis's process-wide default backend are not serialized. Separately, a job now
+  > registers its network and records its history entry in one critical section, so history order matches
+  > registry order.
 - **Cancel is cooperative.** A cancel lands at the next stage boundary, so an in-flight Overpass download can run
   for up to `osm.timeout` (180 s) after you click Cancel.
 - **The cost model is a seed.** One measured run, many guesses, and output sizes taken from a 178-link fixture.
