@@ -21,7 +21,9 @@ from urllib.parse import urlsplit
 
 import fsspec
 from datagrove.io.credentials import credential_source, resolve_credentials
-from datagrove.io.remote import REMOTE_SCHEMES
+
+from .errors import PathNotAllowed
+from .paths import split_source
 
 # Re-imported under urlcheck's own names: ``_check_url`` looks ``_scrub`` up here, so a test can
 # monkeypatch ``urlcheck._scrub`` to prove that ``check_url`` never raises.
@@ -119,8 +121,14 @@ def _check_url(url: str, *, url_to_fs: Callable[..., tuple[Any, str]], timeout_s
     if scheme == "file":
         report["error"] = "file:// is not accepted here; use the local file browser for local paths"
         return report
-    if scheme not in REMOTE_SCHEMES:
-        report["error"] = f"unsupported URL scheme {parts.scheme!r}; use one of {', '.join(REMOTE_SCHEMES)}"
+    # The same rules as OpenNetwork (scheme://host, no '..', no userinfo, ...), so Check and Open agree.
+    try:
+        kind, _ = split_source(url)
+    except PathNotAllowed as exc:
+        report["error"] = _scrub(str(exc))
+        return report
+    if kind == "local":
+        report["error"] = "not a URL; use the local file browser for local paths"
         return report
     # Bare hostname, never userinfo (a presigned/keyed URL's netloc can be "key:secret@host") and
     # never the port: credential_source/resolve_credentials already key on the bare host (see

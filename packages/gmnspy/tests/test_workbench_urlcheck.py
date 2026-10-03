@@ -135,16 +135,27 @@ def test_az_url_scrubs_secrets():
     assert report["error"] == "OSError: fetch failed for az://acct/c/x"
 
 
-def test_s3_url_with_userinfo_scrubs_secrets():
-    def boom(url, **_):
-        raise OSError("s3://AKIA:key@b/k?X-Amz-Signature=SECRET")
+def test_s3_url_with_userinfo_is_rejected_like_open_without_echoing_it():
+    def boom(url, **_):  # pragma: no cover - never reached: the URL is refused before probing
+        raise AssertionError("probed a URL with credentials in it")
 
     report = check_url("s3://AKIA:key@b/k", url_to_fs=boom)
-    assert report["reachable"] is False
-    assert "AKIA" not in report["error"]
-    assert "key" not in report["error"]
-    assert "SECRET" not in report["error"]
-    assert report["error"] == "OSError: s3://b/k"
+    assert report["reachable"] is False and "credential cascade" in report["error"]
+    assert "AKIA" not in repr(report) and "key@" not in repr(report)
+
+
+@pytest.mark.parametrize(
+    ("url", "match"),
+    [
+        ("s3:../x", "scheme://host"),
+        ("https://h.example/a/../x", "'..' path segments"),
+        ("duckdb:///data/x.duckdb", "local file browser"),
+        ("/data/net", "local file browser"),
+    ],
+)
+def test_check_applies_the_same_source_rules_as_open(url, match):
+    report = check_url(url)
+    assert report["reachable"] is False and match in report["error"]
 
 
 def test_url_field_is_scrubbed_too():
