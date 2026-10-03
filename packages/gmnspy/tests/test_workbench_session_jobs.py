@@ -1,5 +1,6 @@
 """Session job actions: OpenNetwork / BuildNetwork run off the session lock, with approval and cancel."""
 
+import errno
 import os
 import sys
 import threading
@@ -535,6 +536,35 @@ def test_promote_never_clobbers_a_file_that_appeared(tmp_path):
     dest.unlink()
     build.promote(tmp, dest)
     assert dest.read_text() == "new" and not tmp.exists()
+
+
+def _no_hard_links(code):
+    def link(src, dst):
+        raise OSError(code, os.strerror(code))
+
+    return link
+
+
+@pytest.mark.parametrize("code", [errno.ENOTSUP, errno.EPERM])
+def test_promote_without_hard_links_still_never_clobbers(tmp_path, monkeypatch, code):
+    monkeypatch.setattr(build.os, "link", _no_hard_links(code))
+    tmp, dest = tmp_path / ".partial-1-net.zip", tmp_path / "net.zip"
+    tmp.write_text("new")
+    dest.write_text("theirs")
+    with pytest.raises(ActionError, match="already exists"):
+        build.promote(tmp, dest)
+    assert dest.read_text() == "theirs" and tmp.read_text() == "new"
+    dest.unlink()
+    build.promote(tmp, dest)
+    assert dest.read_text() == "new" and not tmp.exists()
+
+
+def test_promote_fallback_removes_its_placeholder_if_the_move_fails(tmp_path, monkeypatch):
+    monkeypatch.setattr(build.os, "link", _no_hard_links(errno.ENOTSUP))
+    tmp, dest = tmp_path / ".partial-1-net.zip", tmp_path / "net.zip"  # tmp never written: replace fails
+    with pytest.raises(ActionError, match="could not move the finished output"):
+        build.promote(tmp, dest)
+    assert not dest.exists()
 
 
 def test_promote_never_replaces_an_empty_folder(tmp_path):

@@ -21,6 +21,7 @@ they need the ``[osm]`` / ``[overture]`` extras.
 
 from __future__ import annotations
 
+import errno
 import logging
 import os
 import re
@@ -315,11 +316,32 @@ def write_output(net: Network, tmp: Path, output_format: str, ctx: JobContext) -
         raise ActionError(f"could not write the {output_format} output: {exc}") from exc
 
 
+#: ``os.link`` errors meaning "this filesystem has no hard links" (Linux reports EPERM for FAT/vfat).
+_NO_HARD_LINKS = frozenset({errno.ENOTSUP, errno.EOPNOTSUPP, errno.EPERM})
+
+
+def _claim_then_replace(tmp: Path, dest: Path) -> None:
+    """Move file ``tmp`` to ``dest`` without hard links, still never clobbering an existing ``dest``.
+
+    ``O_CREAT | O_EXCL`` claims ``dest`` atomically (``FileExistsError`` if anything is there), then
+    ``os.replace`` swaps the finished file over our own empty placeholder. Only that placeholder can
+    be replaced; if the swap fails it is removed again.
+    """
+    os.close(os.open(dest, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644))
+    try:
+        os.replace(tmp, dest)
+    except OSError:
+        dest.unlink(missing_ok=True)
+        raise
+
+
 def promote(tmp: Path, dest: Path) -> None:
     """Move the finished staging output to ``dest``, never clobbering anything that appeared there meanwhile.
 
     A file output (DuckDB, zip) is hard-linked to ``dest``, which fails atomically if ``dest`` exists,
-    and then the staging name is unlinked. A folder output (Parquet, CSV) is checked, then renamed.
+    and then the staging name is unlinked. On a filesystem without hard links (exFAT, some network
+    shares) it falls back to :func:`_claim_then_replace`. A folder output (Parquet, CSV) is checked,
+    then renamed.
 
     Raises:
         ActionError: ``dest`` already exists, or the move failed.
@@ -331,8 +353,14 @@ def promote(tmp: Path, dest: Path) -> None:
                 raise ActionError(taken)
             os.replace(tmp, dest)
         else:
-            os.link(tmp, dest)
-            tmp.unlink()
+            try:
+                os.link(tmp, dest)
+            except OSError as exc:
+                if exc.errno not in _NO_HARD_LINKS:
+                    raise
+                _claim_then_replace(tmp, dest)
+            else:
+                tmp.unlink()
     except FileExistsError as exc:
         raise ActionError(taken) from exc
     except OSError as exc:
