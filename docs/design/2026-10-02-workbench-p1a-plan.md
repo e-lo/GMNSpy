@@ -118,6 +118,7 @@ These are the choices the design doc leaves open, each with a one-line rationale
   - docs.
 - **Deferred:**
   - zip output and opening a `.zip` (blocked on the zip read path, see Open questions);
+    **SUPERSEDED (2026-10-02): zip read/write was fixed in 4b743fb; zip is a normal output format.**
   - `.pbf` input (optional pyosmium extra);
   - upload;
   - polygon clipping and a divisions lookup for Overture;
@@ -3456,6 +3457,7 @@ def test_unavailable_estimate_needs_approval(make_session, out_dir):
     assert caught.value.estimate.seconds is None and "overpass unreachable" in caught.value.estimate.basis
 
 
+# SUPERSEDED (2026-10-02): zip read/write was fixed in 4b743fb; zip is a normal output format.
 def test_zip_output_not_supported_yet(make_session, out_dir):
     with pytest.raises(NotSupportedYet, match="zip"):
         make_session().dispatch(
@@ -3703,6 +3705,7 @@ def plan_build(action: BuildNetwork, settings: Settings) -> BuildPlan:
         PathNotAllowed: the output folder or input file is outside ``io.allowed_roots``.
         ActionError: missing output folder, existing destination, or an input of the wrong kind.
     """
+    # SUPERSEDED (2026-10-02): zip read/write was fixed in 4b743fb; zip is a normal output format.
     if action.output_format == "zip":
         raise NotSupportedYet("zip output is not supported yet (gmnspy cannot re-open a zip it wrote); use parquet")
     out_dir = resolve_allowed(action.output_dir, settings)
@@ -4124,6 +4127,7 @@ def test_estimate_over_threshold_flags_approval(make_client, out_dir):
 def test_estimate_invalid_and_unplannable(make_client, out_dir):
     _, client = make_client()
     assert client.post("/api/estimate", json={"source": "osm"}).status_code == 422
+    # SUPERSEDED (2026-10-02): zip read/write was fixed in 4b743fb; zip is a normal output format.
     r = client.post("/api/estimate", json=_build_body(out_dir, output_format="zip"))
     assert r.status_code == 400 and r.json()["error_type"] == "NotSupportedYet"
 
@@ -5704,11 +5708,13 @@ a failing test, or fix it, before you open the PR.
   > **Outcome (2026-10-02):** it was unsafe: two simultaneous `OpenNetwork` jobs failed in 20 of 20 rounds
   > ("Attempting to execute an unsuccessful or closed pending query result"). Fixed in datagrove with an engine
   > lock: `IbisEngine` serializes its ibis backend (`serialize_backend`), wrapping every backend method in one
-  > re-entrant lock stored on the backend, so direct `expr.execute()` calls are covered too; memtable GC
-  > finalizers and the raw-connection spatial install take the same lock. Per-thread cursors were rejected
+  > re-entrant lock stored on the backend, so direct `expr.execute()` calls are covered too; memtable
+  > finalizers (run from `atexit` in ibis 12) and the raw-connection spatial install take the same lock. Per-thread cursors were rejected
   > because ibis `read_*` temp views and the engine's temp tables are private to the connection that created
-  > them. Remaining gaps: batch readers (`to_pyarrow_batches`) are consumed after the lock is released, and
-  > expressions bound to ibis's process-wide default backend are not serialized. Separately, a job now
+  > them. Remaining gaps: batch readers (`to_pyarrow_batches`) are consumed after the lock is released,
+  > `_safe_raw_sql`'s `with` body and `raw_sql`'s returned connection run unlocked, query-running properties
+  > (`current_database`, `version`, `tables`) are not wrapped, and expressions bound to ibis's process-wide
+  > default backend are not serialized (full list in the `ibis_engine` module docstring). Separately, a job now
   > registers its network and records its history entry in one critical section, so history order matches
   > registry order.
 - **Cancel is cooperative.** A cancel lands at the next stage boundary, so an in-flight Overpass download can run
