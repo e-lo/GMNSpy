@@ -64,6 +64,16 @@ class PointArea(_Area):
     lon: float = Field(ge=-180, le=180)
     buffer_m: float = Field(gt=0)
 
+    @model_validator(mode="after")
+    def _valid(self) -> PointArea:
+        # Server-side, like the other areas: a buffer that crosses the antimeridian or a pole (or is
+        # infinite) gives a bbox the builders cannot use, whatever the browser checked.
+        try:
+            _check_bbox(self.to_bbox())
+        except ValueError as exc:
+            raise ValueError(f"point + buffer_m={self.buffer_m:g} does not fit in one bbox: {exc}") from None
+        return self
+
     def to_bbox(self) -> BBox:
         """The square ``buffer_m`` out from the point (``gmnspy.osm.query.point_buffer_bbox`` maths)."""
         dlat = self.buffer_m / _M_PER_DEG_LAT

@@ -31,6 +31,21 @@ def test_point_bbox_matches_the_osm_builder():
         PointArea(lat=35.9, lon=-78.9, buffer_m=0)
 
 
+@pytest.mark.parametrize(
+    "point",
+    [
+        {"lat": 0.0, "lon": 179.999, "buffer_m": 5000},  # crosses the antimeridian
+        {"lat": 89.999, "lon": 0.0, "buffer_m": 5000},  # crosses the pole
+        {"lat": 0.0, "lon": 0.0, "buffer_m": float("inf")},
+    ],
+)
+def test_point_whose_buffer_leaves_the_world_is_rejected(point):
+    with pytest.raises(ValidationError, match="does not fit in one bbox"):
+        PointArea(**point)
+    with pytest.raises(ValidationError):  # the action API path validates the same way
+        AREA.validate_python({"kind": "point", **point})
+
+
 def test_place_keeps_polygon_for_overpass():
     ring = [(35.9, -79.0), (35.9, -78.8), (36.1, -78.8), (35.9, -79.0)]
     area = PlaceArea(name="Durham", bbox=(-79.01, 35.86, -78.75, 36.14), polygon=ring)
