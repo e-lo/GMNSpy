@@ -52,9 +52,22 @@
 #     links/segment = 4.88 and 4.91, so links_per_element = 4.9. s_per_link is NOT re-fit:
 #     both builds are dominated by the ~20s of remote S3 reads (a 2-point fit through
 #     latency_s gives 1.8e-3 s/link, which is that latency smeared over a few thousand
-#     links and would overestimate large areas ~20x). The S area failed for an unrelated
-#     reason (a segment's connector lies beyond the 0.01 deg connector-read padding), so a
-#     size spread that could separate slope from latency is still missing.
+#     links and would overestimate large areas ~20x). The S area then failed (a segment's
+#     connector lay beyond the old 0.01 deg connector-read padding); fixed, and superseded by
+#     the re-fit below.
+#   * sources.overture re-fit (2026-10-02, after the connector-read fix that unblocked larger
+#     areas): 5 live builds against release 2026-09-23.1, (links, fetch+convert+write s):
+#       XS calib bbox (447 seg)          2,181 links / 968 nodes    21.7s, 26.0s (two runs), 252,017 B
+#       XS (-120.67,47.59,-120.65,47.61) 3,336 links / 1,513 nodes  23.3s (680 seg)
+#       S  calib bbox (3,683 seg)        16,052 links / 7,038 nodes 25.0s, 1,663,826 B parquet
+#       S  (-78.92,35.97,-78.87,36.02)   17,982 links / 7,932 nodes 22.8s (4,062 seg), 1,847,288 B
+#     links_per_element = median links/segment over the 4 areas (4.88, 4.91, 4.36, 4.43) = 4.65.
+#     latency_s / s_per_link are a free-intercept OLS fit of those 5 points: 23.7s + 6.5e-6 s/link.
+#     The build is flat in size across an 8x link spread (all ~22-26s, i.e. the remote S3
+#     segment + connector reads dominate; convert is cheap), so the slope is within run-to-run
+#     noise (+/-2s) -- treat it as "small", and re-fit with an M/L Overture area before trusting
+#     it beyond ~20k links. latency_s moves from the 17.5s COUNT(*) pre-query time to the build's
+#     own fixed cost (the pre-query is a separate step, not part of the estimated build seconds).
 #   * sources.osm_file: ONE sample (the XS area's own Overpass JSON export, 401,774 bytes ->
 #     1,709 links). links_per_element = 1709 / 401774 = 0.00425 (links show up roughly every
 #     235 bytes of Overpass JSON, not every ~700 bytes as originally guessed). latency_s is a
@@ -82,9 +95,9 @@ links_per_element = 3.65   # measured: median(links/ways) across 10 runs
 s_per_link = 9.1e-5        # OLS-fit, 2026-10-02 (same 10 runs)
 
 [sources.overture]
-latency_s = 17.5           # measured, 2026-10-02: median COUNT(*) pre-query time (8 samples, XS+S)
-links_per_element = 4.9    # measured, 2026-10-02: 2 live XS builds (4.88, 4.91 links/segment); see follow-up note
-s_per_link = 1.0e-4        # borrowed from OSM; not re-fit (XS builds are latency-bound; see follow-up note)
+latency_s = 23.7           # OLS intercept, 2026-10-02: 5 live builds, 2.2k-18k links (see re-fit note)
+links_per_element = 4.65   # measured, 2026-10-02: median links/segment over 4 areas (XS x2, S x2)
+s_per_link = 6.5e-6        # OLS slope, 2026-10-02 (same 5 builds; within noise -- build is latency-bound)
 
 [sources.osm_file]
 latency_s = 0.1            # guess, scaled down for local parsing (no network round trip)
