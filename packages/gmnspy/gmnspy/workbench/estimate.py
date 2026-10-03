@@ -80,7 +80,7 @@ def estimate_build(
     Examples:
         >>> est = estimate_build("osm", 10_000)
         >>> round(est.seconds, 1), est.n_elements
-        (7.5, 10000)
+        (32.7, 10000)
     """
     coeffs = coefficients or load_coefficients()
     model = coeffs["sources"][source]

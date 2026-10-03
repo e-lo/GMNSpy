@@ -53,10 +53,13 @@ def test_coefficients_cover_every_source_and_format():
         assert set(coeffs["output"][table]) == {"parquet", "csv", "duckdb", "zip"}
 
 
-def test_seed_reproduces_the_one_measured_run():
-    """~269k links in ~27 s (RDU metro): the seeded rate must reproduce it, latency aside."""
+def test_calibrated_osm_model_reproduces_the_rdu_core_run():
+    """Calibrated 2026-10-02 (see build_cost.toml's CALIBRATION NOTE): the L-rung run (Raleigh-
+    Durham core bbox, 303,236 links) took ~52.6 s fetch+convert+write; the fitted model should land
+    within the documented high-variance tolerance (Overpass fetch time varied +/-20s run to run)."""
     osm = load_coefficients()["sources"]["osm"]
-    assert 269_000 * osm["s_per_link"] == pytest.approx(27, rel=0.05)
+    predicted = osm["latency_s"] + 303_236 * osm["s_per_link"]
+    assert predicted == pytest.approx(52.6, rel=0.3)
 
 
 def test_estimate_build_is_linear():
