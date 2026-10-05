@@ -441,3 +441,37 @@ def test_memtable_finalizer_skips_its_drop_while_a_query_holds_the_lock(monkeypa
         assert dropped == ["t"]
     finally:
         con.disconnect()
+
+
+@pytest.mark.parametrize("fmt", ["csv", "parquet"])
+def test_to_pandas_matches_ibis_execute_for_every_leavenworth_table(engine: IbisEngine, fmt: str):
+    import pandas as pd
+
+    folder = leavenworth.csv_dir() if fmt == "csv" else leavenworth.parquet_dir()
+    for path in sorted(folder.glob(f"*.{fmt}")):
+        expr = engine.scan(path)
+        pd.testing.assert_frame_equal(engine.to_pandas(expr), expr.execute().convert_dtypes(), obj=path.name)
+
+
+def test_to_pandas_converts_after_releasing_the_backend_lock(engine: IbisEngine, link_parquet: Path, monkeypatch):
+    from corral.engines import ibis_engine
+
+    lock = backend_lock(engine.con)
+    seen: list[bool] = []
+    real = ibis_engine._arrow_to_pandas
+
+    def probe(*args, **kwargs):
+        def try_lock() -> None:  # another thread: can it take the lock right now?
+            got = lock.acquire(blocking=False)
+            if got:
+                lock.release()
+            seen.append(got)
+
+        t = threading.Thread(target=try_lock)
+        t.start()
+        t.join()
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(ibis_engine, "_arrow_to_pandas", probe)
+    engine.to_pandas(engine.scan(link_parquet))
+    assert seen == [True]

@@ -53,6 +53,10 @@ Corral's own code stays inside these lines (internal uses of the first three
 happen inside an already-locked method); callers that step outside them should
 take :func:`backend_lock`.
 
+:meth:`IbisEngine.to_pandas` deliberately holds the lock only for the query: it fetches Arrow
+(``to_pyarrow``) and converts to pandas after the lock is released, so a large conversion never
+stalls other threads' queries.
+
 Dispatch model (post-issue-#134 inversion)
 ------------------------------------------
 
@@ -582,6 +586,8 @@ class IbisEngine:
         :meth:`pandas.DataFrame.convert_dtypes` — ibis's native
         ``to_pandas`` returns numpy dtypes (``int64``, ``object``,
         ``float64``) which would diverge from polars/pandas engines.
+        Only the query runs under the backend lock; the conversion runs
+        after it is released (see the module docstring).
 
         Examples:
             >>> import tempfile, pathlib
@@ -595,12 +601,16 @@ class IbisEngine:
             >>> engine.close()
         """
         try:
-            df = expr.to_pandas()
+            import pandas  # noqa: F401  (fail with the install hint, not deep inside ibis)
         except ImportError as exc:  # pragma: no cover - pandas is an ibis dep
             raise EngineNotAvailableError(
                 "pandas is required for IbisEngine.to_pandas; install with `pip install dbcorral[pandas]`"
             ) from exc
-        return df.convert_dtypes()
+        if not _is_duckdb(expr):
+            return expr.to_pandas().convert_dtypes()
+        # Only the query holds the backend lock (``to_pyarrow`` is a locked backend method); the
+        # Arrow -> pandas conversion, which can cost as much as the query, runs after it is released.
+        return _arrow_to_pandas(expr.to_pyarrow(), expr.as_table().schema()).convert_dtypes()
 
     def to_polars(self, expr: ir.Table) -> pl.DataFrame:
         """Materialize ``expr`` and return a ``polars.DataFrame``.
@@ -782,6 +792,37 @@ def _coerce_all_null_columns_to_string(arrow_table: Any) -> Any:
         idx = new_schema.get_field_index(name)
         new_schema = new_schema.set(idx, pa.field(name, pa.string()))
     return arrow_table.cast(new_schema)
+
+
+def _is_duckdb(expr: Any) -> bool:
+    """Whether ``expr`` is bound to a duckdb backend (the only one whose conversion we replicate)."""
+    try:
+        return expr._find_backend().name == "duckdb"
+    except Exception:  # an unbound memtable has no backend: use ibis's own path
+        return False
+
+
+def _arrow_to_pandas(table: pa.Table, schema: Any) -> pd.DataFrame:
+    """Arrow -> pandas exactly as ibis 12's duckdb ``Backend.execute`` converts it, without its lock.
+
+    Mirrors ``ibis.backends.duckdb.Backend.execute``: nested, dictionary and null-bearing columns go
+    through ``to_pylist`` (Arrow's own ``to_pandas`` would turn null ints into floats), the rest
+    through ``to_pandas``, then ibis's ``DuckDBPandasData`` coerces to the ibis schema.
+    ``test_to_pandas_matches_ibis_execute_for_every_leavenworth_table`` pins the equivalence.
+    """
+    import pandas as pd
+    import pyarrow.types as pat
+    from ibis.backends.duckdb.converter import DuckDBPandasData
+
+    columns = {
+        name: (
+            col.to_pylist()
+            if pat.is_nested(col.type) or pat.is_dictionary(col.type) or col.null_count
+            else col.to_pandas()
+        )
+        for name, col in zip(table.column_names, table.columns, strict=True)
+    }
+    return DuckDBPandasData.convert_table(pd.DataFrame(columns), schema)
 
 
 _LOCK_ATTR = "_corral_lock"
