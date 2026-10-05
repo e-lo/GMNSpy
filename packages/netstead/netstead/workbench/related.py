@@ -179,7 +179,10 @@ def ids_of(src: Any, matches: Sequence[Match], pk: str, *, limit: int) -> tuple[
 def _distinct(src: Any, column: str, pk: str, ids: Sequence[Any]) -> tuple[Any, ...]:
     """Distinct non-null ``column`` values of the rows whose ``pk`` is in ``ids`` (bounded by ``ids``)."""
     sub = restrict(src, [Match(pk, tuple(ids), "")])
-    frame = sub if isinstance(sub, pd.DataFrame) else sub.select(column).to_pandas()
+    if isinstance(sub, pd.DataFrame):
+        frame = sub
+    else:  # DISTINCT runs in DuckDB: only the distinct values come back (corral's Table has no distinct())
+        frame = sub.select(column).filter(lambda expr: expr.distinct()).to_pandas()
     return tuple(json_scalar(v) for v in pd.unique(frame[column].dropna()))
 
 

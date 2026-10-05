@@ -101,3 +101,15 @@ def test_row_vias_names_the_matching_key_per_row():
     page = pd.DataFrame({"mvmt_id": [7, 8, 9], "ib_link_id": [1, 5, 5], "ob_link_id": [3, 2, 6]})
     assert row_vias(page, rel) == ["movement.ib_link_id → link", "movement.ob_link_id → link", None]
     assert row_vias(page, None) == [None, None, None]
+
+
+def test_outbound_values_are_distinct_on_lazy_tables(graph):
+    """A lane highlight points out at its links: DuckDB returns each referenced link once."""
+    from netstead.workbench.related import _distinct
+
+    lanes = as_pandas(graph.tables["lane"])
+    values = _distinct(graph.tables["lane"], "link_id", "lane_id", lanes.lane_id.astype(int).tolist())
+    assert len(values) == len(set(values)) == lanes.link_id.nunique()
+    first = lanes.head(50)
+    (match,) = relate(graph, {"lane": first.lane_id.astype(int).tolist()})["link"].matches
+    assert sorted(match.values) == sorted(first.link_id.astype(int).unique().tolist())
