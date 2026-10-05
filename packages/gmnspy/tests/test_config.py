@@ -5,7 +5,16 @@ import tomllib
 from pathlib import Path
 
 import pytest
-from gmnspy.config import Settings, SettingsError, dumps_toml, get_value, load_settings, save_setting, user_config_path
+from gmnspy.config import (
+    Settings,
+    SettingsError,
+    dumps_toml,
+    get_value,
+    is_local_url,
+    load_settings,
+    save_setting,
+    user_config_path,
+)
 from gmnspy.spec import DEFAULT_SPEC
 
 
@@ -202,6 +211,16 @@ def test_match_retry_bool_aliases_and_resolution(tmp_path, isolated_env):
     assert not llm(**{"llm.ollama.base_url": "http://gpu-box:11434"}).match_retry_on("ollama")
     assert llm(**{"llm.quality.match_retry": "on"}).match_retry_on("gemini")
     assert not llm(**{"llm.quality.match_retry": "off"}).match_retry_on("ollama")
+
+
+def test_is_local_url_recognises_the_whole_loopback_range():
+    assert is_local_url("http://localhost:11434")
+    assert is_local_url("http://127.0.0.1:11434")
+    assert is_local_url("http://127.0.0.2")  # still 127.0.0.0/8, not just .1
+    assert is_local_url("http://[::1]:8000/v1")
+    assert not is_local_url("http://0.0.0.0")  # bind-all, not loopback: stays remote
+    assert not is_local_url("http://gpu-box:11434")
+    assert not is_local_url("not-a-url")
 
 
 @pytest.mark.parametrize("url", ["https://llm.example.org/v1?key=QMARKER", "https://llm.example.org/v1#QMARKER"])

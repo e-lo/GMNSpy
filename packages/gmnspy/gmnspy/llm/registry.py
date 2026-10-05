@@ -8,6 +8,7 @@ a key is :meth:`ProviderRegistry.provider`, which hands it straight to an adapte
 from __future__ import annotations
 
 import os
+import threading
 import time
 from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any, Literal
@@ -25,10 +26,21 @@ if TYPE_CHECKING:
     # locally instead, by which point gmnspy.config has always finished loading.
     from gmnspy.config import LLMSettings, Settings
 
-__all__ = ["PROBE_TIMEOUT_S", "ProviderRegistry", "build_registry", "default_registry", "is_local_url"]
+__all__ = [
+    "PROBE_CACHE_TTL_S",
+    "PROBE_TIMEOUT_S",
+    "ProviderRegistry",
+    "build_registry",
+    "default_registry",
+    "is_local_url",
+]
 
 #: Status probes of a local server (Ollama) must not stall the UI.
 PROBE_TIMEOUT_S = 1.5
+#: How long a local-provider probe (``list_models``, success or failure) is reused before
+#: re-probing. A down Ollama is otherwise re-probed, at ``PROBE_TIMEOUT_S`` each, on every
+#: ``status()``/``models()`` call made while rendering the picker or the Settings panel.
+PROBE_CACHE_TTL_S = 5.0
 
 
 def is_local_url(url: str) -> bool:
@@ -39,7 +51,13 @@ def is_local_url(url: str) -> bool:
 
 
 class ProviderRegistry:
-    """Build provider adapters with their keys, and report status, models and connection tests."""
+    """Build provider adapters with their keys, and report status, models and connection tests.
+
+    Local-provider probes (:meth:`status`, :meth:`models`) are cached per instance for
+    :data:`PROBE_CACHE_TTL_S`; there is no cross-instance or module-level cache, so rebuilding
+    the registry from fresh settings (as every settings change does -- see
+    :func:`build_registry`) starts with an empty one. :meth:`test` always bypasses and clears it.
+    """
 
     def __init__(self, settings: LLMSettings, secrets: SecretStore, catalog: Catalog, *, transport: Any = None) -> None:
         """Bind endpoint settings, the key store, the catalog, and an optional ``httpx`` transport (tests)."""
@@ -47,6 +65,9 @@ class ProviderRegistry:
         self.secrets = secrets
         self.catalog = catalog
         self._transport = transport
+        self._probe_lock = threading.Lock()
+        #: ``(provider, base_url) -> (monotonic timestamp, installed models or the LLMError raised)``.
+        self._probe_cache: dict[tuple[str, str], tuple[float, list[str] | LLMError]] = {}
 
     def names(self) -> list[str]:
         """Providers with both a catalog entry and an adapter, in catalog order."""
@@ -94,6 +115,38 @@ class ProviderRegistry:
             items.append(f"up to {quality.few_shot_max} earlier selections from this session (utterance and result)")
         return items
 
+    def _probe(self, name: str) -> list[str]:
+        """Installed models for local provider ``name``, from cache when fresh (success or failure alike).
+
+        The whole check-call-store sequence runs under :attr:`_probe_lock`, so concurrent
+        callers for the same (or a different) provider never both pay for a live probe at once;
+        the second simply finds the first's result already cached.
+        """
+        key = (name, self.base_url(name))
+        with self._probe_lock:
+            cached = self._probe_cache.get(key)
+            if cached is not None and time.monotonic() - cached[0] < PROBE_CACHE_TTL_S:
+                outcome = cached[1]
+                if isinstance(outcome, LLMError):
+                    raise outcome
+                return outcome
+            try:
+                installed = self.provider(name, timeout_s=PROBE_TIMEOUT_S).list_models()
+            except LLMError as exc:
+                self._probe_cache[key] = (time.monotonic(), exc)
+                raise
+            self._probe_cache[key] = (time.monotonic(), installed)
+            return installed
+
+    def invalidate_probe_cache(self, name: str | None = None) -> None:
+        """Forget cached local-provider probes for ``name`` (or every provider), so the next call re-probes."""
+        with self._probe_lock:
+            if name is None:
+                self._probe_cache.clear()
+            else:
+                for key in [k for k in self._probe_cache if k[0] == name]:
+                    del self._probe_cache[key]
+
     def provider(self, name: str, *, timeout_s: float | None = None) -> LLMProvider:
         """An adapter for ``name`` holding its key; raises :class:`~gmnspy.llm.errors.MissingKey` if there is none."""
         info = self.catalog[name]
@@ -129,7 +182,7 @@ class ProviderRegistry:
         }
         if info.kind == "local":
             try:
-                installed = self.provider(name, timeout_s=PROBE_TIMEOUT_S).list_models()
+                installed = self._probe(name)
             except LLMError as exc:
                 row["error"] = str(exc)
                 return row
@@ -146,12 +199,18 @@ class ProviderRegistry:
         info = self.catalog[name]
         if info.kind == "remote":
             return [m.to_dict() for m in info.models]
-        installed = self.provider(name, timeout_s=PROBE_TIMEOUT_S).list_models()
+        installed = self._probe(name)
         return [{**_describe(info, model_id), "installed": True} for model_id in installed]
 
     def test(self, name: str, model: str | None = None) -> dict[str, Any]:
-        """An authenticated, token-free call (list models). Failures are reported in the result, not raised."""
+        """An authenticated, token-free call (list models). Failures are reported in the result, not raised.
+
+        A "Test connection" click means "check right now": it always re-probes, bypassing
+        (and clearing) the local-provider cache so the next :meth:`status`/:meth:`models` call
+        reflects what this call just found, not a stale probe from seconds before.
+        """
         info = self.catalog[name]
+        self.invalidate_probe_cache(name)
         started = time.perf_counter()
         try:
             served = self.provider(name).list_models()

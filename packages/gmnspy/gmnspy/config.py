@@ -12,6 +12,7 @@ Secrets never live here: credentials stay in env/keyring/netrc via
 
 from __future__ import annotations
 
+import ipaddress
 import json
 import os
 import re
@@ -50,8 +51,8 @@ Scope = Literal["user", "project"]
 ENV_PREFIX = "GMNSPY_"
 PROJECT_FILE = "gmnspy.toml"
 
-#: Hosts that are this machine: requests to them never leave it.
-_LOCAL_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
+#: The one non-IP hostname that means "this machine".
+_LOCAL_HOSTNAME = "localhost"
 
 #: Old ``select.provider`` names, still accepted and stored under the new name, so existing files keep working.
 PROVIDER_ALIASES = {"claude": "anthropic"}
@@ -64,10 +65,23 @@ class SettingsError(ValueError):
 def is_local_url(url: str) -> bool:
     """Whether ``url`` points at this machine, so requests to it stay local.
 
-    >>> is_local_url("http://localhost:11434"), is_local_url("http://[::1]:8000/v1"), is_local_url("http://gpu:11434")
-    (True, True, False)
+    ``localhost`` and any loopback IP literal count -- the whole ``127.0.0.0/8`` range, not
+    just ``127.0.0.1``, and ``::1`` -- since all of them route back to this machine.
+    ``0.0.0.0`` is a bind-all address, not a loopback one, so a ``base_url`` naming it is
+    treated as remote (and its ``llm.quality`` "auto" settings stay off).
+
+    >>> is_local_url("http://localhost:11434"), is_local_url("http://[::1]:8000/v1")
+    (True, True)
+    >>> is_local_url("http://127.0.0.2"), is_local_url("http://0.0.0.0"), is_local_url("http://gpu:11434")
+    (True, False, False)
     """
-    return (urlsplit(url).hostname or "").lower() in _LOCAL_HOSTS
+    host = (urlsplit(url).hostname or "").lower()
+    if host == _LOCAL_HOSTNAME:
+        return True
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False
 
 
 class _Section(BaseModel):

@@ -1,12 +1,29 @@
 """Tests for gmnspy.llm.registry — adapters from settings + keys, status, models, connection tests."""
 
+import threading
+
 import pytest
 from gmnspy.config import load_settings
-from gmnspy.llm.errors import MissingKey
+from gmnspy.llm import registry as registry_module
+from gmnspy.llm.errors import MissingKey, ProviderUnavailable
 from gmnspy.llm.registry import build_registry, is_local_url
 from gmnspy.llm.secrets import KEYRING_SERVICE
 
 pytestmark = pytest.mark.usefixtures("no_network")
+
+
+class _CountingProvider:
+    """Fake adapter standing in for Ollama: counts ``list_models()`` calls; can be made to fail."""
+
+    def __init__(self, calls: list[int], *, fail: bool = False, **_ignored) -> None:
+        self._calls = calls
+        self._fail = fail
+
+    def list_models(self) -> list[str]:
+        self._calls.append(1)
+        if self._fail:
+            raise ProviderUnavailable("ollama", "Ollama (local): could not be reached.")
+        return ["qwen3:4b"]
 
 
 @pytest.fixture
@@ -112,6 +129,8 @@ def test_connection_test_failures_are_reported_not_raised(make, fake_keyring, fa
 
 def test_is_local_url():
     assert is_local_url("http://localhost:11434") and is_local_url("http://[::1]:8000/v1")
+    assert is_local_url("http://127.0.0.2")  # the whole 127.0.0.0/8 range, not just 127.0.0.1
+    assert not is_local_url("http://0.0.0.0")  # bind-all, not loopback: stays remote
     assert not is_local_url("http://gpu-box:11434") and not is_local_url("https://api.openai.com/v1")
 
 
@@ -135,3 +154,76 @@ def test_auto_quality_settings_follow_the_endpoint_and_the_privacy_note_follows_
     ]
     local_url = make(overrides={"llm.openai.base_url": "http://localhost:1234/v1"})
     assert local_url.grounding_on("openai")  # an OpenAI-compatible server on this machine counts as local
+
+
+def test_local_probe_is_cached_across_status_and_models(make, monkeypatch):
+    reg = make()
+    calls: list[int] = []
+    monkeypatch.setitem(registry_module.ADAPTERS, "ollama", lambda **kw: _CountingProvider(calls))
+    reg.status()
+    reg.models("ollama")
+    reg.status()
+    assert len(calls) == 1  # one live probe serves status() and models() alike, within the TTL
+
+
+def test_local_probe_failure_is_also_cached(make, monkeypatch):
+    reg = make()
+    calls: list[int] = []
+    monkeypatch.setitem(registry_module.ADAPTERS, "ollama", lambda **kw: _CountingProvider(calls, fail=True))
+    first = next(r for r in reg.status() if r["provider"] == "ollama")
+    second = next(r for r in reg.status() if r["provider"] == "ollama")
+    assert len(calls) == 1  # a down Ollama isn't re-probed (at PROBE_TIMEOUT_S) on every call
+    assert first["usable"] is False and second["usable"] is False
+
+
+def test_local_probe_cache_expires_after_the_ttl(make, monkeypatch):
+    reg = make()
+    calls: list[int] = []
+    monkeypatch.setitem(registry_module.ADAPTERS, "ollama", lambda **kw: _CountingProvider(calls))
+    clock = [1000.0]
+    monkeypatch.setattr(registry_module.time, "monotonic", lambda: clock[0])
+    reg.status()
+    assert len(calls) == 1
+    clock[0] += registry_module.PROBE_CACHE_TTL_S - 0.01
+    reg.status()
+    assert len(calls) == 1  # still fresh
+    clock[0] += 0.02
+    reg.status()
+    assert len(calls) == 2  # TTL elapsed: re-probed
+
+
+def test_test_connection_bypasses_and_clears_the_cache(make, monkeypatch):
+    reg = make()
+    calls: list[int] = []
+    monkeypatch.setitem(registry_module.ADAPTERS, "ollama", lambda **kw: _CountingProvider(calls))
+    reg.status()
+    assert len(calls) == 1
+    reg.test("ollama")
+    assert len(calls) == 2  # "Test connection" always re-probes, cache hit or not
+    reg.status()
+    assert len(calls) == 3  # test() also clears the cache, so the very next status() re-probes too
+
+
+def test_invalidate_probe_cache_is_per_provider_or_everything(make, monkeypatch):
+    reg = make()
+    calls: list[int] = []
+    monkeypatch.setitem(registry_module.ADAPTERS, "ollama", lambda **kw: _CountingProvider(calls))
+    reg.status()
+    reg.invalidate_probe_cache("anthropic")  # a different provider's cache: no effect on ollama's
+    reg.status()
+    assert len(calls) == 1
+    reg.invalidate_probe_cache()
+    reg.status()
+    assert len(calls) == 2
+
+
+def test_concurrent_probes_are_serialized_to_one_live_call(make, monkeypatch):
+    reg = make()
+    calls: list[int] = []
+    monkeypatch.setitem(registry_module.ADAPTERS, "ollama", lambda **kw: _CountingProvider(calls))
+    threads = [threading.Thread(target=reg.status) for _ in range(8)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    assert len(calls) == 1
