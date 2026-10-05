@@ -1,10 +1,11 @@
 """Contract tests: recorded provider replies, through the real adapters and LLMParser.
 
 Each fixture under ``tests/fixtures/llm/`` holds one provider exchange (response JSON plus the
-request's top-level body keys). Every shipped fixture is hand-authored from the provider's public
-API reference, not a real recording (see its ``"_recorded": false`` and ``"source"``); re-record
-with ``scripts/record_llm_fixtures.py`` once you have real keys, and re-check "expected" before
-committing.
+request's top-level body keys). ``"_recorded"`` and ``"source"`` say whether a fixture is a real
+recording (Ollama, qwen2.5:7b) or hand-authored from the provider's public API reference (the
+remote providers, until someone with keys re-records them). Re-record with
+``scripts/record_llm_fixtures.py`` and re-check "expected" before committing: it is what the model
+actually wrote (e.g. ``"I-40"``; the resolver normalizes route refs).
 
 The contract test uses a bare :class:`~gmnspy.select.parse.LLMParser`: no prompt context and
 provider-default temperature, so ``request_keys`` describe the minimal request each adapter sends.
