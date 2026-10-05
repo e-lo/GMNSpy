@@ -220,9 +220,8 @@ def test_registry_require_returns_package_for_known_id():
 
 def test_registry_require_raises_http_404_for_unknown_id():
     """`registry.require(missing)` raises fastapi.HTTPException(404)."""
-    from fastapi import HTTPException
-
     from datagrove.api import PackageRegistry
+    from fastapi import HTTPException
 
     settings = ServerSettings(packages=[])
     registry = PackageRegistry(settings)
