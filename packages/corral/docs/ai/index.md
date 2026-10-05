@@ -131,11 +131,11 @@ $ claude code skill add https://github.com/e-lo/netstead#path=skills/gmns-valida
 
 | Skill | When it triggers |
 |---|---|
-| [`corral-validate`](https://github.com/e-lo/netstead/blob/refactor/v1.0/skills/corral-validate/SKILL.md) | User has a Frictionless data package and wants to validate it. |
-| [`gmns-author`](https://github.com/e-lo/netstead/blob/refactor/v1.0/skills/gmns-author/SKILL.md) | User wants to construct a GMNS network from scratch. |
-| [`gmns-validate`](https://github.com/e-lo/netstead/blob/refactor/v1.0/skills/gmns-validate/SKILL.md) | User wants to understand a GMNS validation / quality report. |
-| [`gmns-convert`](https://github.com/e-lo/netstead/blob/refactor/v1.0/skills/gmns-convert/SKILL.md) | User wants to convert GMNS data between formats. |
-| [`gmns-clean`](https://github.com/e-lo/netstead/blob/refactor/v1.0/skills/gmns-clean/SKILL.md) | User wants to edit / clean a network with rollback. |
+| [`corral-validate`](https://github.com/e-lo/netstead/blob/main/skills/corral-validate/SKILL.md) | User has a Frictionless data package and wants to validate it. |
+| [`gmns-author`](https://github.com/e-lo/netstead/blob/main/skills/gmns-author/SKILL.md) | User wants to construct a GMNS network from scratch. |
+| [`gmns-validate`](https://github.com/e-lo/netstead/blob/main/skills/gmns-validate/SKILL.md) | User wants to understand a GMNS validation / quality report. |
+| [`gmns-convert`](https://github.com/e-lo/netstead/blob/main/skills/gmns-convert/SKILL.md) | User wants to convert GMNS data between formats. |
+| [`gmns-clean`](https://github.com/e-lo/netstead/blob/main/skills/gmns-clean/SKILL.md) | User wants to edit / clean a network with rollback. |
 
 Each skill links back to the matching cookbook recipe + concept page on this site so an agent that loads the skill also has the long-form context.
 

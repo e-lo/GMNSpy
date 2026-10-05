@@ -45,7 +45,7 @@ Netstead/                                       # git repo
 
 **Per-package release tags:** `corral-vX.Y.Z`, `netstead-vX.Y.Z`. PyPI trusted publishing fires per-tag.
 
-**Branch model:** `develop` is the integration branch; `refactor/v1.0` is the long-lived branch for this rewrite; per-task short branches (`refactor/v1.0/<phase>-<task>-<slug>`) merge into `refactor/v1.0` via PR. At GA: `refactor/v1.0` → `develop` → `main`.
+**Branch model:** `main` is the trunk; short-lived feature branches merge into `main` via PR. The v0.3 code is preserved on `legacy-gmnspy`.
 
 ## 3. Two packages, one principle
 
@@ -317,11 +317,11 @@ Five phases, ~14–16 weeks to v1.0 GA. Full task tree in the [GitHub issue tree
 ## 11. How to contribute (short version)
 
 1. Pick an issue labeled `subagent-friendly` (or any task on the current phase).
-2. Branch from `refactor/v1.0` as `refactor/v1.0/<phase>-<task>-<slug>`.
+2. Branch from `main` as `<type>/<slug>` (e.g. `feat/scope-zones`).
 3. Write the code per the issue's Deliverable + Acceptance criteria.
 4. Add tests under `packages/<pkg>/tests/`.
 5. Run `uv run ruff check`, `uv run ruff format`, `uv run lint-imports`, `uv run pytest` locally.
-6. Open PR against `refactor/v1.0`. Use the issue body's acceptance checklist as your self-review.
+6. Open PR against `main`. Use the issue body's acceptance checklist as your self-review.
 
 Full contributor workflow: [CONTRIBUTING.md](https://github.com/e-lo/netstead/blob/main/CONTRIBUTING.md).
 

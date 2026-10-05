@@ -2,9 +2,9 @@
 
 Python toolkit for the [General Modeling Network Specification (GMNS)](https://github.com/zephyr-data-specs/GMNS) — Zephyr Foundation's open standard for routable transportation network data.
 
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/e-lo/netstead/blob/refactor/v1.0/packages/netstead/docs/notebooks/quickstart.ipynb) — try the 5-cell quickstart in your browser, no install.
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/e-lo/netstead/blob/main/packages/netstead/docs/notebooks/quickstart.ipynb) — try the 5-cell quickstart in your browser, no install.
 
-**Status:** v1.0 in development on `refactor/v1.0`. See `docs/PRD.md` for the product requirements document.
+**Status:** v1.0 in development on `main`. See `docs/PRD.md` for the product requirements document.
 
 ## What it provides
 
