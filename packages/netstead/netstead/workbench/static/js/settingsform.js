@@ -82,3 +82,18 @@ export function scopeNote(field, scope) {
   }
   return null;
 }
+
+// A form control's state ({type, value, checked, badInput}) -> parseInput's answer. A number input the browser
+// cannot parse ("-", "1e") reports an empty value; that must not read as "reset" and delete the saved value.
+export function parseControl(field, { type, value, checked, badInput }) {
+  if (badInput) return { ok: false, error: `${field.label}: enter a ${field.kind === "int" ? "whole " : ""}number` };
+  return parseInput(field, type === "checkbox" ? checked : value);
+}
+
+// Clearing a field resets it only in the "Save to" layer. When the value comes from another layer that
+// Reset can remove, say so instead of saving a no-op (null when clearing is fine).
+export function clearHint(field, scope) {
+  const layer = resetScope(field);
+  if (!layer || layer === scope) return null;
+  return `${field.label} comes from the ${layer} layer; clearing it in ${scope} changes nothing. Use Reset to remove it.`;
+}
