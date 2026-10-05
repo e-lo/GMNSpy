@@ -4,8 +4,9 @@
 
 Keys come from the env or the OS keyring (this test deliberately uses the real keyring, via
 :func:`~datagrove.io.credentials.system_keyring`, not the ``fake_keyring`` the rest of the suite
-uses). Override a model with ``GMNSPY_LIVE_<PROVIDER>_MODEL``; otherwise each provider's tiny
-default model is used (see ``gmnspy/llm/models.toml``). CI never sets ``GMNSPY_LIVE_LLM``, so
+uses). Override a model with ``GMNSPY_LIVE_<PROVIDER>_MODEL``; otherwise each provider's default
+model is used (see ``gmnspy/llm/models.toml``; for Ollama, an installed stand-in when the default
+isn't installed). CI never sets ``GMNSPY_LIVE_LLM``, so
 every case here is always skipped there, and nobody should run this file without deliberately
 opting in -- it spends real tokens and quota.
 """
@@ -29,7 +30,7 @@ def test_live_selection_round_trip(provider: str) -> None:
     if provider not in LIVE:
         pytest.skip(f"set GMNSPY_LIVE_LLM={provider} to run")
     registry = build_registry(load_settings().settings, keyring=system_keyring())
-    model = os.environ.get(f"GMNSPY_LIVE_{provider.upper()}_MODEL") or registry.catalog[provider].default_model
+    model = registry.resolve_model(provider, os.environ.get(f"GMNSPY_LIVE_{provider.upper()}_MODEL"))
     parser = LLMParser(registry.provider(provider), model)
     intent, mode = parser.parse_detailed("I-40 EB between South Miami Boulevard and Airport Boulevard")
     assert intent.facility is not None and intent.facility.direction == "EB"
