@@ -224,3 +224,278 @@ def test_concurrent_dispatch_publishes_history_before_state_atomically(opened, m
     t2.join()
 
     assert log == ["history", "state", "history", "state"]
+
+
+# ---------------------------------------------------------------- LLM providers (session wiring)
+
+ANTHROPIC_SELECT_REPLY = {
+    "content": [
+        {
+            "type": "tool_use",
+            "id": "toolu_1",
+            "name": "emit_selection_intent",
+            "input": {
+                "facility": {"ref": "I 40", "direction": "EB"},
+                "from_anchor": "South Miami Boulevard",
+                "to_anchor": "Airport Boulevard",
+            },
+        }
+    ],
+    "stop_reason": "tool_use",
+    "usage": {"input_tokens": 700, "output_tokens": 60},
+}
+
+TYPO_INTENT = {
+    "facility": {"ref": "I 40", "direction": "EB"},
+    "from_anchor": "S Miami Blvd",
+    "to_anchor": "Airprt Blvd",
+}
+FIXED_INTENT = {
+    "facility": {"ref": "I 40", "direction": "EB"},
+    "from_anchor": "South Miami Boulevard",
+    "to_anchor": "Airport Boulevard",
+}
+
+
+def _anthropic_tool_reply(payload):
+    return {"content": [{"type": "tool_use", "id": "t", "name": "emit_selection_intent", "input": payload}]}
+
+
+@pytest.fixture
+def llm_session(tmp_path, isolated_env, rdu_source, fake_keyring, fake_api, no_network):
+    s = Session(project_dir=tmp_path, environ=isolated_env, keyring=fake_keyring, llm_transport=fake_api.transport())
+    s.dispatch(OpenNetwork(source=rdu_source))
+    return s
+
+
+def _anthropic_key(session):
+    session.llm.secrets.set(session.llm.slot("anthropic"), "sk-ant-test-0000")
+
+
+def test_select_with_anthropic_records_parsed_by(llm_session, fake_api):
+    fake_api.add("POST", "/v1/messages", body=ANTHROPIC_SELECT_REPLY)
+    _anthropic_key(llm_session)
+    llm_session.dispatch(SetSetting(key="select.provider", value="anthropic"))
+    sel = llm_session.dispatch(Select(utterance=UTTERANCE))
+    assert sel["status"] == "resolved"
+    assert sel["parsed_by"] == {"provider": "anthropic", "model": "claude-haiku-4-5-20251001", "mode": "tools"}
+    assert fake_api.body()["model"] == "claude-haiku-4-5-20251001"
+    assert llm_session.history[-1].result["parsed_by"]["provider"] == "anthropic"
+
+
+def test_missing_key_is_an_action_error_not_a_no_match(llm_session):
+    llm_session.dispatch(SetSetting(key="select.provider", value="openai"))
+    with pytest.raises(ActionError, match="OpenAI: no API key is configured"):
+        llm_session.dispatch(Select(utterance=UTTERANCE))
+    assert llm_session.history[-1].ok is False
+
+
+def test_rate_limit_is_an_action_error_with_no_fallback(llm_session, fake_api):
+    fake_api.add("POST", "/v1/messages", status=429, headers={"retry-after": "7"}, body={"error": {"message": "slow"}})
+    _anthropic_key(llm_session)
+    llm_session.dispatch(SetSetting(key="select.provider", value="anthropic"))
+    with pytest.raises(ActionError, match="retry in 7 s"):
+        llm_session.dispatch(Select(utterance=UTTERANCE))
+    assert llm_session.history[-1].ok is False and llm_session.history[-1].error_type == "ActionError"
+    assert {r.url.path for r in fake_api.requests} == {"/v1/messages"}  # no other provider was tried
+
+
+def test_invalid_model_output_is_a_no_match_selection(llm_session, fake_api):
+    fake_api.add("POST", "/v1/messages", body=_anthropic_tool_reply({"modes": ["drive"]}))
+    _anthropic_key(llm_session)
+    llm_session.dispatch(SetSetting(key="select.provider", value="anthropic"))
+    sel = llm_session.dispatch(Select(utterance=UTTERANCE))
+    assert sel["status"] == "not_found" and sel["diagnostics"][0].startswith("could not parse")
+    assert sel["parsed_by"]["provider"] == "anthropic" and len(fake_api.requests) == 2  # one repair, then give up
+
+
+def test_parser_is_cached_until_llm_or_select_settings_change(llm_session):
+    _anthropic_key(llm_session)
+    llm_session.dispatch(SetSetting(key="select.provider", value="anthropic"))
+    first = llm_session.parser()
+    assert llm_session.parser() is first  # cached: not rebuilt per call
+    llm_session.dispatch(SetSetting(key="app.approve_above_s", value=30))
+    assert llm_session.parser() is first  # unrelated settings keep it
+    llm_session.dispatch(SetSetting(key="select.model", value="claude-haiku-4-5-20251001"))
+    second = llm_session.parser()
+    assert second is not first and second.model == "claude-haiku-4-5-20251001"
+    llm_session.dispatch(SetSetting(key="llm.anthropic.timeout_s", value=5))
+    assert llm_session.parser().provider.timeout_s == 5
+
+
+def test_stub_selection_reports_parsed_by_stub(opened):
+    sel = opened.dispatch(Select(utterance=UTTERANCE))
+    assert sel["parsed_by"] == {"provider": "stub", "model": None, "mode": "pattern"}
+    ids = [int(i) for i in opened.registry.get("rdu-i40").links_df()["link_id"].iloc[:2]]
+    assert opened.dispatch(Select(link_ids=ids))["parsed_by"] is None
+
+
+def _ollama_reply(payload):
+    call = {"function": {"name": "emit_selection_intent", "arguments": payload}}
+    return {"message": {"role": "assistant", "content": "", "tool_calls": [call]}, "done": True}
+
+
+def _system_text(body):
+    return body["messages"][0]["content"]  # Ollama: context + per-call system as one system turn
+
+
+def _anthropic_system(body):
+    return "\n\n".join(block["text"] for block in body["system"])
+
+
+def test_local_provider_gets_vocabulary_and_project_notes_remote_does_not(llm_session, fake_api, tmp_path):
+    # Coordinator override: only an AGENTS.md "## gmnspy" section (or a GMNSPY.md) counts as notes.
+    (tmp_path / "AGENTS.md").write_text("# Repo\n\nRun the linter.\n\n## gmnspy\n\nZebra Parkway means I 440.\n")
+    fake_api.add("POST", "/api/chat", body=_ollama_reply({"facility": {"ref": "I 40", "direction": "EB"}}))
+    fake_api.add("POST", "/v1/messages", body=ANTHROPIC_SELECT_REPLY)
+    llm_session.dispatch(SetSetting(key="select.provider", value="ollama"))
+    llm_session.dispatch(Select(utterance="I-40 EB"))
+    local = _system_text(fake_api.body())
+    assert "# GMNS assistant guide" in local and "Airport Boulevard" in local and "Zebra Parkway means I 440." in local
+    assert "Run the linter." not in local
+    _anthropic_key(llm_session)
+    llm_session.dispatch(SetSetting(key="select.provider", value="anthropic"))
+    llm_session.dispatch(Select(utterance=UTTERANCE))
+    remote = fake_api.body()["system"][0]["text"]
+    assert "# GMNS assistant guide" in remote
+    assert "in the active network:" not in remote and "Zebra Parkway" not in remote
+
+
+def test_remote_project_notes_and_grounding_are_opt_in(llm_session, fake_api, tmp_path):
+    (tmp_path / "GMNSPY.md").write_text("Code 7 means HOV.")
+    fake_api.add("POST", "/v1/messages", body=ANTHROPIC_SELECT_REPLY)
+    _anthropic_key(llm_session)
+    for key, value in (
+        ("select.provider", "anthropic"),
+        ("llm.quality.project_context", "on"),
+        ("llm.quality.grounding", "on"),
+    ):
+        llm_session.dispatch(SetSetting(key=key, value=value))
+    llm_session.dispatch(Select(utterance=UTTERANCE))
+    cached = fake_api.body()["system"][0]["text"]
+    assert "Code 7 means HOV." in cached and "Street names and route numbers in the active network" in cached
+
+
+def test_project_notes_outside_allowed_roots_are_not_sent(tmp_path, isolated_env, rdu_source, fake_api, no_network):
+    outside = tmp_path.parent / f"{tmp_path.name}-outside"
+    outside.mkdir()
+    (outside / "GMNSPY.md").write_text("Secret outside note.")
+    s = Session(project_dir=outside, environ=isolated_env, keyring=None, llm_transport=fake_api.transport())
+    s.dispatch(OpenNetwork(source=rdu_source))
+    fake_api.add("POST", "/api/chat", body=_ollama_reply({"facility": {"ref": "I 40", "direction": "EB"}}))
+    s.dispatch(SetSetting(key="select.provider", value="ollama"))
+    s.dispatch(Select(utterance="I-40 EB"))
+    assert "Secret outside note." not in _system_text(fake_api.body())
+
+
+def test_few_shot_examples_come_from_resolved_selections_when_enabled(llm_session, fake_api):
+    fake_api.add("POST", "/v1/messages", body=ANTHROPIC_SELECT_REPLY)
+    _anthropic_key(llm_session)
+    llm_session.dispatch(SetSetting(key="select.provider", value="anthropic"))
+    llm_session.dispatch(Select(utterance=UTTERANCE))
+    assert len(fake_api.body()["system"]) == 1  # few-shot is off by default: no per-call block
+    llm_session.dispatch(SetSetting(key="llm.quality.few_shot", value=True))
+    llm_session.dispatch(Select(utterance="the same again"))
+    examples = fake_api.body()["system"][1]["text"]
+    assert examples.startswith("Earlier requests") and f"Request: {UTTERANCE}" in examples
+
+
+def test_few_shot_memory_is_per_session(llm_session, tmp_path, isolated_env, fake_keyring, fake_api, rdu_source):
+    fake_api.add("POST", "/v1/messages", body=ANTHROPIC_SELECT_REPLY)
+    _anthropic_key(llm_session)
+    llm_session.dispatch(SetSetting(key="select.provider", value="anthropic"))
+    llm_session.dispatch(Select(utterance=UTTERANCE))
+    assert len(llm_session._examples) == 1
+    other = Session(
+        project_dir=tmp_path, environ=isolated_env, keyring=fake_keyring, llm_transport=fake_api.transport()
+    )
+    assert len(other._examples) == 0
+
+
+def test_no_match_retries_once_with_the_closest_real_names(llm_session, fake_api):
+    fake_api.add("POST", "/api/chat", body=_ollama_reply(TYPO_INTENT))
+    fake_api.add("POST", "/api/chat", body=_ollama_reply(FIXED_INTENT))
+    llm_session.dispatch(SetSetting(key="select.provider", value="ollama"))
+    sel = llm_session.dispatch(Select(utterance="I-40 EB between S Miami Blvd and Airprt Blvd"))
+    assert sel["status"] == "resolved" and sel["parsed_by"]["match_retry"] is True
+    assert "Closest names: Airport Boulevard" in _system_text(fake_api.body())
+    assert len(fake_api.requests) == 2
+
+
+def test_match_retry_off_is_respected_even_for_a_local_provider(llm_session, fake_api):
+    fake_api.add("POST", "/api/chat", body=_ollama_reply(TYPO_INTENT))
+    llm_session.dispatch(SetSetting(key="select.provider", value="ollama"))
+    llm_session.dispatch(SetSetting(key="llm.quality.match_retry", value="off"))  # "off" is a truthy string
+    sel = llm_session.dispatch(Select(utterance="I-40 EB between S Miami Blvd and Airprt Blvd"))
+    assert sel["status"] == "not_found" and "match_retry" not in sel["parsed_by"]
+    assert len(fake_api.requests) == 1
+
+
+def test_remote_provider_does_not_retry_by_default(llm_session, fake_api):
+    fake_api.add("POST", "/v1/messages", body=_anthropic_tool_reply(TYPO_INTENT))
+    _anthropic_key(llm_session)
+    llm_session.dispatch(SetSetting(key="select.provider", value="anthropic"))
+    sel = llm_session.dispatch(Select(utterance=UTTERANCE))
+    assert sel["status"] == "not_found" and "match_retry" not in sel["parsed_by"]
+    assert len(fake_api.requests) == 1
+
+
+def test_remote_match_retry_opt_in_sends_only_the_close_names(llm_session, fake_api):
+    fake_api.add("POST", "/v1/messages", body=_anthropic_tool_reply(TYPO_INTENT))
+    fake_api.add("POST", "/v1/messages", body=_anthropic_tool_reply(FIXED_INTENT))
+    _anthropic_key(llm_session)
+    llm_session.dispatch(SetSetting(key="select.provider", value="anthropic"))
+    llm_session.dispatch(SetSetting(key="llm.quality.match_retry", value="on"))  # grounding stays "auto" (off)
+    sel = llm_session.dispatch(Select(utterance=UTTERANCE))
+    assert sel["status"] == "resolved" and sel["parsed_by"]["match_retry"] is True
+    retry = _anthropic_system(fake_api.body())
+    assert "Closest names: Airport Boulevard" in retry
+    assert "in the active network:" not in retry  # the full vocabulary is never sent
+
+
+def test_llm_call_runs_without_holding_the_session_lock(tmp_path, isolated_env, rdu_source, fake_api, no_network):
+    import httpx
+
+    inner = fake_api.transport()
+    seen: list[bool] = []
+
+    def probe_lock() -> None:
+        got = s._lock.acquire(timeout=2)
+        if got:
+            s._lock.release()
+        seen.append(got)
+
+    def handler(request):
+        t = threading.Thread(target=probe_lock)  # another thread: the RLock is re-entrant for this one
+        t.start()
+        t.join()
+        return inner.handle_request(request)
+
+    s = Session(project_dir=tmp_path, environ=isolated_env, keyring=None, llm_transport=httpx.MockTransport(handler))
+    s.dispatch(OpenNetwork(source=rdu_source))
+    fake_api.add("POST", "/api/chat", body=_ollama_reply(FIXED_INTENT))
+    s.dispatch(SetSetting(key="select.provider", value="ollama"))
+    assert s.dispatch(Select(utterance=UTTERANCE))["status"] == "resolved"
+    assert seen == [True]
+
+
+def test_closing_the_network_mid_parse_is_an_error_not_a_stale_selection(
+    tmp_path, isolated_env, rdu_source, fake_api, no_network
+):
+    import httpx
+
+    inner = fake_api.transport()
+
+    def handler(request):
+        t = threading.Thread(target=lambda: s.dispatch(CloseNetwork(net_id="rdu-i40")))
+        t.start()
+        t.join()
+        return inner.handle_request(request)
+
+    s = Session(project_dir=tmp_path, environ=isolated_env, keyring=None, llm_transport=httpx.MockTransport(handler))
+    s.dispatch(OpenNetwork(source=rdu_source))
+    fake_api.add("POST", "/api/chat", body=_ollama_reply(FIXED_INTENT))
+    s.dispatch(SetSetting(key="select.provider", value="ollama"))
+    with pytest.raises(ActionError, match="unknown network"):
+        s.dispatch(Select(net_id="rdu-i40", utterance=UTTERANCE))
+    assert s.selection is None and s.history[-1].ok is False
