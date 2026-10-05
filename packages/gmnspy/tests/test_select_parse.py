@@ -177,3 +177,18 @@ def test_prompt_context_is_a_cached_prefix_and_examples_are_per_call(fake_api):
     assert cached["cache_control"] == {"type": "ephemeral"}
     assert cached["text"].startswith(SYSTEM_PROMPT) and "GUIDE" in cached["text"] and "Page Road" in cached["text"]
     assert per_call["text"].startswith("Earlier requests") and '{"facility": {"ref": "I 40"}}' in per_call["text"]
+
+
+def test_anchors_nested_inside_facility_are_repaired_not_dropped(fake_api):
+    """qwen2.5:7b nests the anchors in ``facility``; the schema must reject that so the repair loop fixes it."""
+    from gmnspy.llm.providers.ollama import OllamaProvider
+
+    nested = {"facility": {"ref": "I 40", "direction": "EB", "from_anchor": "A Street", "to_anchor": "B Street"}}
+    fixed = {"facility": {"ref": "I 40", "direction": "EB"}, "from_anchor": "A Street", "to_anchor": "B Street"}
+    for payload in (nested, fixed):
+        call = {"function": {"name": "emit_selection_intent", "arguments": payload}}
+        fake_api.add("POST", "/api/chat", body={"message": {"role": "assistant", "tool_calls": [call]}, "done": True})
+    intent = LLMParser(OllamaProvider(transport=fake_api.transport()), "qwen2.5:7b").parse(UTTER)
+    assert (intent.from_anchor, intent.to_anchor) == ("A Street", "B Street")
+    assert len(fake_api.requests) == 2
+    assert "Additional properties" in fake_api.body()["messages"][-1]["content"]
