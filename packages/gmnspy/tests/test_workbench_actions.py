@@ -150,3 +150,48 @@ def test_set_setting_refuses_urls_with_userinfo():
     with pytest.raises(ValidationError, match="must not contain a username"):
         SetSetting(key="llm", value={"ollama": {"base_url": "http://tok@gpu-box:11434"}})
     assert SetSetting(key="llm.ollama.base_url", value="http://gpu-box:11434/a@b").value.endswith("a@b")
+
+
+@pytest.mark.parametrize(
+    ("key", "value"),
+    [
+        ("llm.openai.api_key", "ghp_MARKERtok"),
+        ("llm", {"openai": {"api_key": "MARKERtok"}}),
+        ("llm.openai.token", "MARKERtok"),
+        ("credentials", {"github": {"password": "MARKERtok"}}),
+        ("x.Authorization", "Bearer MARKERtok"),
+    ],
+)
+def test_set_setting_refuses_secret_named_settings_without_echo(key, value):
+    with pytest.raises(ValidationError, match="never settings") as info:
+        SetSetting(key=key, value=value)
+    assert "MARKER" not in str(info.value)
+    with pytest.raises(ValidationError) as info:
+        parse_action({"type": "set_setting", "key": key, "value": value})
+    assert "MARKER" not in str(info.value)
+
+
+def test_set_setting_allows_legitimate_names():
+    assert SetSetting(key="credentials.keyring_hosts", value=["api.example.org"]).key == "credentials.keyring_hosts"
+    assert SetSetting(key="credentials", value={"keyring_hosts": []}).key == "credentials"
+    assert SetSetting(key="llm.quality.match_retry", value="on").value == "on"
+
+
+def test_action_validation_errors_hide_inputs():
+    with pytest.raises(ValidationError) as info:
+        SetSetting(key="select.model", value="x", scope="MARKERscope")
+    assert "MARKER" not in str(info.value)
+    with pytest.raises(ValidationError) as info:
+        parse_action({"type": "set_setting", "key": "select.model", "value": "sk-ant-api03-MARKERabcdefghijklmnopqrst"})
+    assert "MARKER" not in str(info.value)
+
+
+def test_set_setting_url_checks_cover_keys_and_base_url_query():
+    with pytest.raises(ValidationError, match="must not contain a username"):
+        SetSetting(key="llm", value={"https://me:tok@host": 1})
+    with pytest.raises(ValidationError, match="must not contain a username"):
+        SetSetting(key="https://me:tok@host", value=1)
+    with pytest.raises(ValidationError, match="query string or fragment"):
+        SetSetting(key="llm.openai.base_url", value="https://llm.example.org/v1?key=abc")
+    with pytest.raises(ValidationError, match="query string or fragment"):
+        SetSetting(key="llm", value={"ollama": {"base_url": "http://localhost:11434#frag"}})

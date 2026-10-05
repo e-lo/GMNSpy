@@ -168,7 +168,7 @@ def test_llm_base_url_with_userinfo_rejected_without_echo(tmp_path, isolated_env
     with pytest.raises(SettingsError, match="must not contain a username") as info:
         load_settings(project_dir=tmp_path, environ=isolated_env, overrides={"llm.ollama.base_url": url})
     assert "SECRETTOK" not in str(info.value)
-    assert info.value.__cause__ is None and info.value.__suppress_context__
+    assert info.value.__cause__ is None and info.value.__context__ is None
 
 
 def test_llm_quality_defaults_and_bounds(tmp_path, isolated_env):
@@ -182,3 +182,37 @@ def test_llm_quality_defaults_and_bounds(tmp_path, isolated_env):
         load_settings(project_dir=tmp_path, environ=isolated_env, overrides={"llm.quality.grounding": "always"})
     with pytest.raises(SettingsError):
         load_settings(project_dir=tmp_path, environ=isolated_env, overrides={"llm.quality.match_retry": "maybe"})
+
+
+def test_match_retry_bool_aliases_and_resolution(tmp_path, isolated_env):
+    def llm(**overrides):
+        return load_settings(project_dir=tmp_path, environ=isolated_env, overrides=overrides).settings.llm
+
+    assert (
+        llm(**{"llm.quality.match_retry": True}).quality.match_retry,
+        llm(**{"llm.quality.match_retry": False}).quality.match_retry,
+    ) == ("on", "off")
+    auto = llm()
+    assert (auto.match_retry_on("ollama"), auto.match_retry_on("anthropic"), auto.match_retry_on("stub")) == (
+        True,
+        False,
+        False,
+    )
+    assert llm(**{"llm.openai.base_url": "http://127.0.0.1:8000/v1"}).match_retry_on("openai")
+    assert not llm(**{"llm.ollama.base_url": "http://gpu-box:11434"}).match_retry_on("ollama")
+    assert llm(**{"llm.quality.match_retry": "on"}).match_retry_on("gemini")
+    assert not llm(**{"llm.quality.match_retry": "off"}).match_retry_on("ollama")
+
+
+@pytest.mark.parametrize("url", ["https://llm.example.org/v1?key=QMARKER", "https://llm.example.org/v1#QMARKER"])
+def test_base_url_query_or_fragment_rejected(tmp_path, isolated_env, url):
+    with pytest.raises(SettingsError, match="query string or fragment") as info:
+        load_settings(project_dir=tmp_path, environ=isolated_env, overrides={"llm.openai.base_url": url})
+    assert "QMARKER" not in str(info.value)
+
+
+def test_settings_error_carries_no_input_or_context(tmp_path, isolated_env):
+    with pytest.raises(SettingsError) as info:
+        load_settings(project_dir=tmp_path, environ=isolated_env, overrides={"select.model": ["MARKERtok"]})
+    assert "MARKER" not in str(info.value)
+    assert info.value.__cause__ is None and info.value.__context__ is None

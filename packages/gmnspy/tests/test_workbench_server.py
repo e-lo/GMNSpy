@@ -154,3 +154,23 @@ def test_rejected_base_url_with_userinfo_never_echoed(client):
     r = client.post("/api/actions", json=action)  # refused at validation: never recorded, never echoed
     assert r.status_code == 422 and "must not contain a username" in r.text and "ECHOTOKEN" not in r.text
     assert "ECHOTOKEN" not in client.get("/api/history").text
+
+
+@pytest.mark.parametrize(
+    "action",
+    [
+        {"type": "set_setting", "key": "llm.openai.api_key", "value": "ghp_SECRETMARKER123"},
+        {"type": "set_setting", "key": "llm", "value": {"openai": {"api_key": "SECRETMARKER"}}},
+    ],
+)
+def test_secret_named_settings_never_recorded(client, action):
+    r = client.post("/api/actions", json=action)
+    assert r.status_code == 422 and "SECRETMARKER" not in r.text
+    assert "SECRETMARKER" not in client.get("/api/history").text
+    with client.stream("GET", "/api/events", params={"max_events": 1}) as stream:
+        assert "SECRETMARKER" not in "".join(stream.iter_text())
+
+
+def test_estimate_422_never_echoes_values(client):
+    r = client.post("/api/estimate", json={"source": "osm", "output_dir": "d", "output_format": "ECHOMARKER"})
+    assert r.status_code == 422 and "ECHOMARKER" not in r.text

@@ -12,7 +12,7 @@ the ``to_python`` replay snippet.
 from __future__ import annotations
 
 import re
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
 from pathlib import PurePath
 from typing import Annotated, Any, ClassVar, Literal
 
@@ -43,7 +43,7 @@ RGB = Annotated[list[Annotated[int, Field(ge=0, le=255)]], Field(min_length=3, m
 
 
 class _Action(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)  # errors never echo a value (keys)
     mutates: ClassVar[bool] = False
     runs_as_job: ClassVar[bool] = False
     replay_overrides: ClassVar[dict[str, Any]] = {}
@@ -147,28 +147,70 @@ class SetSetting(_Action):
 
     @model_validator(mode="after")
     def _no_secrets(self) -> SetSetting:
-        if looks_like_secret(self.value):
+        # Messages never echo the key or value; ``hide_input_in_errors`` keeps pydantic's own text clean too.
+        if looks_like_secret(self.key) or looks_like_secret(self.value):
             raise ValueError(
                 "that value looks like an API key; set keys in Settings → Language models (they are never settings)"
             )
-        if _has_url_userinfo(self.value):
+        names = [self.key.rsplit(".", 1)[-1], *_nested_keys(self.value)]
+        if any(_SECRET_NAME.search(n) and n.lower() not in _SECRET_NAME_ALLOWED for n in names):
+            raise ValueError(
+                "keys, tokens and passwords are never settings; set API keys in Settings → Language models"
+            )
+        if any(_URL_USERINFO.match(text) for text in (self.key, *_strings(self.value))):
             raise ValueError("URLs in settings must not contain a username, password or token")
+        base_urls = [self.value] if names[0] == "base_url" else []
+        base_urls += _values_under(self.value, "base_url")
+        if any(isinstance(u, str) and ("?" in u or "#" in u) for u in base_urls):
+            raise ValueError("base_url must not contain a query string or fragment")
         return self
 
 
+#: Setting names that could only hold a credential (last key segment, or any key nested in the value).
+_SECRET_NAME = re.compile(
+    r"(?i)(^|[_.-])(api_?key|key|token|secret|password|passwd|authorization|bearer|credential)s?$"
+)
+#: Legitimate names that match :data:`_SECRET_NAME`: ``credentials`` only names keyring hosts;
+#: ``key_env`` names env vars.
+_SECRET_NAME_ALLOWED = frozenset({"credentials", "key_env"})
 #: ``scheme://user[:pass]@`` at the start of a string: a URL carrying credentials.
 _URL_USERINFO = re.compile(r"^\s*[A-Za-z][A-Za-z0-9+.-]*://[^/?#@]*@")
 
 
-def _has_url_userinfo(value: Any) -> bool:
-    """Whether ``value`` -- or any string nested in it -- is a URL with userinfo (refused before recording)."""
-    if isinstance(value, str):
-        return bool(_URL_USERINFO.match(value))
+def _nested_keys(value: Any) -> Iterator[str]:
+    """Every dict key nested anywhere in ``value``."""
     if isinstance(value, Mapping):
-        return any(_has_url_userinfo(v) for v in value.values())
-    if isinstance(value, list | tuple):
-        return any(_has_url_userinfo(v) for v in value)
-    return False
+        for k, v in value.items():
+            yield str(k)
+            yield from _nested_keys(v)
+    elif isinstance(value, list | tuple):
+        for v in value:
+            yield from _nested_keys(v)
+
+
+def _strings(value: Any) -> Iterator[str]:
+    """Every string in ``value``, dict keys included."""
+    if isinstance(value, str):
+        yield value
+    elif isinstance(value, Mapping):
+        for k, v in value.items():
+            yield from _strings(k)
+            yield from _strings(v)
+    elif isinstance(value, list | tuple):
+        for v in value:
+            yield from _strings(v)
+
+
+def _values_under(value: Any, name: str) -> Iterator[Any]:
+    """Every value stored under a dict key ``name`` anywhere in ``value``."""
+    if isinstance(value, Mapping):
+        for k, v in value.items():
+            if k == name:
+                yield v
+            yield from _values_under(v, name)
+    elif isinstance(value, list | tuple):
+        for v in value:
+            yield from _values_under(v, name)
 
 
 #: Name suffixes that imply an output format; a ``BuildNetwork.name`` ending in one must match it.
@@ -230,7 +272,7 @@ Action = Annotated[
     | SetSetting,
     Field(discriminator="type"),
 ]
-_ADAPTER: TypeAdapter[Action] = TypeAdapter(Action)
+_ADAPTER: TypeAdapter[Action] = TypeAdapter(Action, config=ConfigDict(hide_input_in_errors=True))
 
 
 def parse_action(data: dict[str, Any]) -> Action:

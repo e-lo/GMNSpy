@@ -80,7 +80,7 @@ def io_router(session: Session) -> APIRouter:
         try:
             action = BuildNetwork.model_validate({k: v for k, v in body.items() if k != "type"})
         except ValidationError as exc:
-            detail = exc.errors(include_url=False, include_context=False)
+            detail = exc.errors(include_url=False, include_context=False, include_input=False)
             return JSONResponse({"error": "invalid build", "detail": jsonable_encoder(detail)}, status_code=422)
         settings = session.settings
         try:

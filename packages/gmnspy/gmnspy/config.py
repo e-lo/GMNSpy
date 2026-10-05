@@ -39,6 +39,7 @@ __all__ = [
     "SettingsError",
     "dumps_toml",
     "get_value",
+    "is_local_url",
     "load_settings",
     "project_config_path",
     "save_setting",
@@ -49,6 +50,9 @@ Scope = Literal["user", "project"]
 ENV_PREFIX = "GMNSPY_"
 PROJECT_FILE = "gmnspy.toml"
 
+#: Hosts that are this machine: requests to them never leave it.
+_LOCAL_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
+
 #: Old ``select.provider`` names, still accepted and stored under the new name, so existing files keep working.
 PROVIDER_ALIASES = {"claude": "anthropic"}
 
@@ -57,8 +61,17 @@ class SettingsError(ValueError):
     """A settings file, env var, or override failed to parse or validate."""
 
 
+def is_local_url(url: str) -> bool:
+    """Whether ``url`` points at this machine, so requests to it stay local.
+
+    >>> is_local_url("http://localhost:11434"), is_local_url("http://[::1]:8000/v1"), is_local_url("http://gpu:11434")
+    (True, True, False)
+    """
+    return (urlsplit(url).hostname or "").lower() in _LOCAL_HOSTS
+
+
 class _Section(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)  # a rejected value may be a credential
 
 
 class IOSettings(_Section):
@@ -145,13 +158,18 @@ class LLMEndpointSettings(_Section):
         parts = urlsplit(value)
         if parts.scheme not in ("http", "https") or not parts.netloc:
             raise ValueError("base_url must be an http(s) URL, e.g. https://llm.example.org/v1")
+        if parts.query or parts.fragment or "?" in value or "#" in value:
+            raise ValueError("base_url must not contain a query string or fragment")
         try:
             origin_of(value)  # refuses userinfo (``https://user:tok@host``) and an empty host
+            has_host = True
         except ValueError:
+            has_host = False
+        if not has_host:  # raised outside ``except``: no __context__
             raise ValueError(
                 "base_url must not contain a username, password or token, and must name a host; "
                 "API keys go in Settings → Language models"
-            ) from None
+            )
         return value.rstrip("/")
 
 
@@ -184,6 +202,12 @@ class LLMQualitySettings(_Section):
     match_retry: Literal["auto", "on", "off"] = "auto"
     match_candidates: int = Field(default=5, ge=1, le=20)
 
+    @field_validator("match_retry", mode="before")
+    @classmethod
+    def _bool_alias(cls, value: Any) -> Any:
+        # It was a bool once (and a checkbox maps naturally to one): true -> "on", false -> "off".
+        return {True: "on", False: "off"}[value] if isinstance(value, bool) else value
+
 
 class LLMSettings(_Section):
     """Language-model endpoints and quality knobs. API keys never live in settings (see :mod:`gmnspy.llm.secrets`)."""
@@ -193,6 +217,17 @@ class LLMSettings(_Section):
     gemini: LLMEndpointSettings = Field(default_factory=LLMEndpointSettings)
     ollama: OllamaSettings = Field(default_factory=OllamaSettings)
     quality: LLMQualitySettings = Field(default_factory=LLMQualitySettings)
+
+    def is_local(self, provider: str) -> bool:
+        """Whether ``provider``'s endpoint is on this machine (``base_url=None`` is the remote official one)."""
+        endpoint = getattr(self, provider, None)
+        base_url = endpoint.base_url if isinstance(endpoint, LLMEndpointSettings) else None
+        return base_url is not None and is_local_url(base_url)
+
+    def match_retry_on(self, provider: str) -> bool:
+        """Whether a miss re-prompts ``provider`` with the closest real names (``auto``: local endpoints only)."""
+        mode = self.quality.match_retry
+        return mode == "on" or (mode == "auto" and self.is_local(provider))
 
 
 class VizSettings(_Section):
@@ -344,8 +379,10 @@ def _validate(data: Mapping[str, Any], origin: str) -> Settings:
     try:
         return Settings.model_validate(data)
     except ValidationError as exc:
-        # Built without ``input_value`` (and ``from None``): a rejected value may be a credential.
-        raise SettingsError(f"invalid settings ({origin}): {_describe(exc)}") from None
+        message = f"invalid settings ({origin}): {_describe(exc)}"
+    # Raised outside ``except`` and built without ``input_value``: a rejected value may be a credential,
+    # so the error must carry neither it nor a __context__ that does.
+    raise SettingsError(message)
 
 
 def _describe(exc: ValidationError) -> str:
