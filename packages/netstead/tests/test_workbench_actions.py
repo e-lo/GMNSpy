@@ -9,6 +9,7 @@ from netstead.workbench.actions import (
     SetSetting,
     Style,
     action_json_schema,
+    is_secret_name,
     parse_action,
     to_python,
 )
@@ -195,3 +196,19 @@ def test_set_setting_url_checks_cover_keys_and_base_url_query():
         SetSetting(key="llm.openai.base_url", value="https://llm.example.org/v1?key=abc")
     with pytest.raises(ValidationError, match="query string or fragment"):
         SetSetting(key="llm", value={"ollama": {"base_url": "http://localhost:11434#frag"}})
+
+
+@pytest.mark.parametrize(
+    ("name", "expected"),
+    [
+        ("api_key", True),
+        ("token", True),
+        ("password", True),
+        ("credentials", False),
+        ("key_env", False),
+        ("basemap", False),
+        ("keyring_hosts", False),
+    ],
+)
+def test_is_secret_name(name, expected):
+    assert is_secret_name(name) is expected
