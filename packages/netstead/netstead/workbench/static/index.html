@@ -33,6 +33,7 @@
     <button id="go">Select</button>
     <span id="count"></span>
     <button id="jobs-btn" class="mini ghost" aria-label="Background jobs">Jobs <span id="jobs-count" class="pcount">0</span></button>
+    <button id="settings-btn" class="mini ghost">Settings…</button>
   </header>
   <div id="stage" data-mode="map">
     <div id="map">
@@ -41,7 +42,7 @@
         <button class="iconbtn" id="btn-fitnet" data-tip="Zoom to full network" aria-label="Zoom to full network">&#9974;</button>
         <button class="iconbtn" id="btn-fitsel" data-tip="Zoom to selection" aria-label="Zoom to selection">&#9673;</button>
         <button class="iconbtn" id="btn-layers" data-tip="Layers" aria-label="Layers">&#9635;</button>
-        <button class="iconbtn" id="btn-settings" data-tip="Map settings" aria-label="Map settings">&#9881;</button>
+        <button class="iconbtn" id="btn-settings" data-tip="Map display" aria-label="Map display">&#9881;</button>
       </div>
       <div class="panel" id="layers-panel">
         <h4>Layers</h4>
@@ -59,7 +60,7 @@
           <select id="ramp"><option>YlOrRd</option><option>Blues</option><option>Viridis</option></select></div>
       </div>
       <div class="panel" id="settings-panel">
-        <h4>Map settings</h4>
+        <h4>Map display</h4>
         <div class="row"><span class="lbl">Offset directions</span>
           <label class="sw"><input type="checkbox" id="tg-offset"><span></span></label></div>
         <div class="row"><span class="lbl">Show direction</span>
@@ -112,22 +113,6 @@
   <h4>Session as Python</h4>
   <pre id="hist-script"></pre>
   <div class="row"><button class="mini" id="hist-copy-all">Copy all</button></div>
-</div>
-<div class="panel" id="llm-panel" role="dialog" aria-label="Language models">
-  <h4>Language models</h4>
-  <p class="llm-note" id="llm-privacy" aria-live="polite"></p>
-  <p class="llm-note" id="llm-storage"></p>
-  <table id="llm-providers"></table>
-  <h4 style="margin-top:14px">Quality &amp; context</h4>
-  <div id="llm-quality"></div>
-  <h4 style="margin-top:14px">Ollama server</h4>
-  <div class="row"><input id="llm-ollama-url" class="grow" aria-label="Ollama URL" spellcheck="false" placeholder="http://localhost:11434" />
-    <button class="mini" id="llm-ollama-save">Save</button></div>
-  <h4 style="margin-top:14px">Model catalog</h4>
-  <div class="row"><select id="llm-catalog-provider" aria-label="Catalog provider"></select></div>
-  <table id="llm-catalog"></table>
-  <p class="llm-note" id="llm-catalog-hint"></p>
-  <div class="row"><button class="mini ghost" id="llm-close">Close</button></div>
 </div>
 <div class="panel" id="jobs-panel">
   <h4>Jobs</h4>
@@ -212,6 +197,42 @@
     </div>
   </div>
 </div>
+<div id="settings" class="modal" role="dialog" aria-modal="true" aria-labelledby="set-title" hidden>
+  <div class="modal-card set-card">
+    <div class="modal-head">
+      <h3 id="set-title">Settings</h3>
+      <label for="set-scope" class="set-scope-lbl">Save to</label>
+      <select id="set-scope">
+        <option value="user">User (all projects)</option>
+        <option value="project">This project</option>
+        <option value="session">This session only</option>
+      </select>
+      <button class="mini ghost" id="set-close" aria-label="Close">&#10005;</button>
+    </div>
+    <div class="set-layout">
+      <nav id="set-nav" aria-label="Settings sections"></nav>
+      <div class="modal-body">
+        <p class="llm-note" id="set-paths"></p>
+        <div id="set-form"></div>
+        <section id="llm-panel" aria-label="Language models" hidden>
+          <p class="llm-note" id="llm-privacy" aria-live="polite"></p>
+          <p class="llm-note" id="llm-storage"></p>
+          <table id="llm-providers"></table>
+          <h4>Quality &amp; context</h4>
+          <div id="llm-quality"></div>
+          <h4>Ollama server</h4>
+          <div class="row"><input id="llm-ollama-url" class="grow" aria-label="Ollama URL" spellcheck="false" placeholder="http://localhost:11434" />
+            <button class="mini" id="llm-ollama-save">Save</button></div>
+          <h4>Model catalog</h4>
+          <div class="row"><select id="llm-catalog-provider" aria-label="Catalog provider"></select></div>
+          <table id="llm-catalog"></table>
+          <p class="llm-note" id="llm-catalog-hint"></p>
+        </section>
+      </div>
+    </div>
+  </div>
+</div>
+<!-- /settings -->
 <div id="toast" role="status"></div>
 </body>
 </html>

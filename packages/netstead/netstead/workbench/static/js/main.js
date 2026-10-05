@@ -4,11 +4,12 @@ import { $, toast } from "./dom.js";
 import { rememberRecent, renderHeader, renderRecent, wireHeader } from "./header.js";
 import { showEntry, wireHistory } from "./history.js";
 import { loadJobs, onJob, wireJobs } from "./jobs.js";
-import { onHistoryEntry, onLLMEvent, onLLMJob, refreshLLM, wireLLM } from "./llm.js";
+import { onHistoryEntry, onLLMEvent, onLLMJob, refreshLLM, renderLLMPanel, wireLLM } from "./llm.js";
 import { fitBbox, fitLinks, fitNetwork, initMap, render } from "./map.js";
 import { decodeNetwork } from "./netbuf.js";
 import { populateColorby, renderLegend, syncControls, wirePanels } from "./panels.js";
 import { clearDetails, renderHighlights, renderSelection, showLinkDetails, wireSide } from "./side.js";
+import { onSettingsHistory, registerSection, wireSettings } from "./settings.js";
 import { activeSelection, store } from "./store.js";
 import { onNetworkChanged, onSelectionChanged, restoreViewMode, wireTable } from "./table.js";
 import { onWizardJob, wireWizard } from "./wizard.js";
@@ -85,7 +86,8 @@ function wireStore() {
 }
 
 async function boot() {
-  wireStore(); wirePanels(); wireSide(); wireTable(); wireHeader(); wireHistory(); wireMapButtons(); wireJobs(); wireWizard(); wireLLM();
+  wireStore(); wirePanels(); wireSide(); wireTable(); wireHeader(); wireHistory(); wireMapButtons(); wireJobs(); wireWizard(); wireLLM(); wireSettings();
+  registerSection("llm", "Language models", "llm-panel", () => renderLLMPanel());
   renderRecent();
   const [cfg, server, history] = await Promise.all([getJSON("/api/config"), getJSON("/api/state"), getJSON("/api/history")]);
   store.set({ server, basemap: cfg.style });
@@ -100,7 +102,7 @@ async function boot() {
   let mapReady = false;
   subscribe({
     state: e => { if (mapReady) onState(e.state); else store.set({ server: e.state }); },
-    history: e => { showEntry(e.entry); rememberRecent(e.entry); onHistoryEntry(e.entry); },
+    history: e => { showEntry(e.entry); rememberRecent(e.entry); onHistoryEntry(e.entry); onSettingsHistory(e.entry); },
     navigate: e => { if (mapReady) onNavigate(e); },
     job: e => { onJob(e.job); onWizardJob(e.job); onLLMJob(e.job); },
     llm: onLLMEvent,

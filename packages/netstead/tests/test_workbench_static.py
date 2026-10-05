@@ -151,3 +151,17 @@ def test_ollama_setup_links_point_at_the_published_guide():
     src = (JS_DIR / "llm.js").read_text()
     assert f'const OLLAMA_GUIDE = "{SETUP_DOCS_URL}"' in src
     assert '"/api/llm/ollama/pull", { model }, SECRETS' in src  # the pull carries the write-guard header
+
+
+def test_settings_dialog_hosts_the_language_models_section():
+    html = (STATIC_DIR / "index.html").read_text()
+    start, end = html.index('id="settings"'), html.index("<!-- /settings -->")
+    dialog = html[start:end]
+    for element_id in ("set-nav", "set-scope", "set-form", "set-close", "llm-panel", "llm-providers", "llm-quality"):
+        assert f'id="{element_id}"' in dialog
+    assert 'id="settings-btn"' in html and 'id="llm-close"' not in html
+
+
+def test_settings_module_is_wired_from_main():
+    main = (JS_DIR / "main.js").read_text()
+    assert 'from "./settings.js"' in main and "registerSection(" in main and "wireSettings()" in main

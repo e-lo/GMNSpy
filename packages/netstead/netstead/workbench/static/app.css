@@ -204,8 +204,7 @@
   .dot.warn { background:var(--accent); }
   .dot.off { background:#3a4150; }
   /* --header-h is the header's live height (set by llm.js): the header wraps, so floating panels sit below it. */
-  #llm-panel { position:fixed; top:calc(var(--header-h, 52px) + 8px); right:12px; width:min(580px, calc(100vw - 24px));
-               max-height:calc(100vh - var(--header-h, 52px) - 60px); overflow:auto; z-index:6; }
+  #llm-panel h4 { margin:14px 0 8px; font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); }
   #jobs-panel { top:calc(var(--header-h, 52px) + 4px); }
   #llm-panel table { width:100%; border-collapse:collapse; margin:4px 0 8px; }
   #llm-panel th { text-align:left; color:var(--muted); font-weight:600; font-size:11px; padding:4px 6px; }
@@ -230,5 +229,26 @@
   @media (max-width: 640px) {
     #nl-picker { flex-wrap:wrap; }
     #nl-picker select { max-width:120px; }
-    #llm-panel { top:auto; bottom:44px; }
+  }
+  /* ---- settings dialog ---- */
+  .set-card { width:min(920px, calc(100vw - 32px)); }
+  .set-scope-lbl { color:var(--muted); font-size:12px; }
+  .set-layout { display:grid; grid-template-columns:170px 1fr; min-height:0; flex:1; overflow:hidden; }
+  #set-nav { display:flex; flex-direction:column; gap:2px; padding:10px 8px; border-right:1px solid var(--edge); overflow:auto; }
+  #set-nav button { text-align:left; background:none; border:0; color:var(--muted); padding:7px 10px; border-radius:6px; cursor:pointer; }
+  #set-nav button.on { background:#20242e; color:var(--ink); }
+  .set-field { display:grid; grid-template-columns:minmax(140px, 220px) 1fr auto auto; gap:6px 10px; align-items:center;
+               padding:8px 0; border-bottom:1px solid var(--edge); }
+  .set-field input:not([type=checkbox]), .set-field select, .set-field textarea { background:#0c0e12; color:var(--ink);
+               border:1px solid var(--edge); border-radius:6px; padding:5px 8px; min-width:0; font:inherit; }
+  .set-field textarea { font-family:ui-monospace,monospace; font-size:12px; }
+  .set-why { grid-column:1 / -1; color:var(--muted); font-size:12px; }
+  .set-note { color:var(--accent); font-size:12px; margin:0 0 8px; }
+  .src { font-size:10.5px; padding:1px 7px; border-radius:999px; background:#20242e; color:var(--muted); }
+  .src-user, .src-project { color:var(--hl); }
+  .src-env, .src-session { color:var(--accent); }
+  @media (max-width: 640px) {
+    .set-layout { grid-template-columns:1fr; }
+    #set-nav { flex-direction:row; flex-wrap:wrap; border-right:0; border-bottom:1px solid var(--edge); }
+    .set-field { grid-template-columns:1fr auto; }
   }
