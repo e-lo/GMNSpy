@@ -58,6 +58,19 @@ def test_select_utterance_resolves_with_anchors(opened):
     assert opened.state()["selection"] == sel
 
 
+def test_select_picked_link_ids_carries_a_fragment(opened):
+    """Picked ids (a box-select, the old viz ``/api/fragment``) resolve to a selection with a fragment."""
+    ids = opened.dispatch(Select(utterance=UTTERANCE))["link_ids"][:3]
+    sel = opened.dispatch(Select(link_ids=ids))
+    assert sel["status"] == "resolved" and sorted(sel["link_ids"]) == sorted(ids)
+    assert sel["fragment"] is not None
+
+
+def test_select_unknown_link_ids_is_not_found(opened):
+    sel = opened.dispatch(Select(link_ids=[999_999_999]))
+    assert sel["status"] == "not_found" and sel["fragment"] is None
+
+
 def test_select_unparseable_is_not_found_not_error(opened):
     sel = opened.dispatch(Select(utterance="???"))
     assert sel["status"] == "not_found" and sel["diagnostics"][0].startswith("could not parse")
