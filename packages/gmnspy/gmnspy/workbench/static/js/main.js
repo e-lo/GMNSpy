@@ -4,7 +4,7 @@ import { $, toast } from "./dom.js";
 import { rememberRecent, renderHeader, renderRecent, wireHeader } from "./header.js";
 import { showEntry, wireHistory } from "./history.js";
 import { loadJobs, onJob, wireJobs } from "./jobs.js";
-import { onHistoryEntry, onLLMEvent, refreshLLM, wireLLM } from "./llm.js";
+import { onHistoryEntry, onLLMEvent, onLLMJob, refreshLLM, wireLLM } from "./llm.js";
 import { fitBbox, fitLinks, fitNetwork, initMap, render } from "./map.js";
 import { decodeNetwork } from "./netbuf.js";
 import { populateColorby, renderLegend, syncControls, wirePanels } from "./panels.js";
@@ -102,7 +102,7 @@ async function boot() {
     state: e => { if (mapReady) onState(e.state); else store.set({ server: e.state }); },
     history: e => { showEntry(e.entry); rememberRecent(e.entry); onHistoryEntry(e.entry); },
     navigate: e => { if (mapReady) onNavigate(e); },
-    job: e => { onJob(e.job); onWizardJob(e.job); },
+    job: e => { onJob(e.job); onWizardJob(e.job); onLLMJob(e.job); },
     llm: onLLMEvent,
   });
   initMap(cfg.style, {

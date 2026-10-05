@@ -180,7 +180,8 @@ class OllamaProvider(HTTPProvider):
 
         ``chunk_timeout_s`` bounds connecting and each read, never the whole download. Closing the
         generator (a cancel) closes the connection. Raises :class:`~gmnspy.llm.errors.LLMError`
-        subclasses: :class:`ProviderUnavailable` if Ollama can't be reached,
+        subclasses: :class:`ProviderUnavailable` if Ollama can't be reached, :class:`BadResponse`
+        if a chunk can't be decoded (``httpx.DecodingError``, e.g. a corrupted transfer encoding),
         :class:`ModelNotFound` for an unknown name, and the server's message for any other failure.
         """
         if not valid_model_name(model):
@@ -206,6 +207,10 @@ class OllamaProvider(HTTPProvider):
         except httpx.TimeoutException:
             raise ProviderTimeout(
                 self.name, f"{self.label} sent nothing for {chunk_timeout_s:g} s while pulling {model}; try again."
+            ) from None
+        except httpx.DecodingError as exc:
+            raise BadResponse(
+                self.name, f"{self.label} sent an undecodable response while pulling {model} ({type(exc).__name__})."
             ) from None
         except httpx.TransportError as exc:
             raise ProviderUnavailable(

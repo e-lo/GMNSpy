@@ -69,6 +69,11 @@ def _size_text(registry: Any, model: str) -> str:
     return f"about {known.size_gb:g} GB" if known and known.size_gb else "several GB"
 
 
+def _is_installed(model: str, installed: list[str]) -> bool:
+    """Whether ``model`` matches a tag in ``installed``; a bare name (no ``:tag``) also matches ``name:latest``."""
+    return model in installed or (":" not in model and f"{model}:latest" in installed)
+
+
 def _pull_with_progress(registry: Any, model: str) -> None:
     """Stream the pull to a rich progress bar on stderr; LLMError propagates to the caller."""
     from rich.console import Console
@@ -214,7 +219,7 @@ def register(app: typer.Typer) -> None:
             typer.echo(f"error: {exc}", err=True)
             raise typer.Exit(1) from None
         where = "" if registry.is_local("ollama") else f" on {base} (a remote server)"
-        if model in installed:
+        if _is_installed(model, installed):
             typer.echo(f"{model} is already installed{where}; pulling again checks for an update.")
         if not yes and not typer.confirm(f"Download {model} ({_size_text(registry, model)}) with {info.label}{where}?"):
             typer.echo("cancelled")

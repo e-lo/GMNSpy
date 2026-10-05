@@ -34,7 +34,9 @@ let savedDefault = null; // the non-session pair: seen before any session overri
 let baseSources = null;  // where that pair came from ({provider, model}: "user" | "project" | "env" | "default")
 let refreshSeq = 0;      // drop out-of-order refresh responses
 let modelsSeq = 0;
-const pulling = new Set(); // Ollama models this tab asked to pull, until the next status snapshot
+const pulling = new Set(); // Ollama models this tab asked to pull, until that model's own pull job ends
+// "Pull {model} (Ollama)" (see routes/llm.py:_pull_label); used to recover the model id from a job event.
+const PULL_JOB_LABEL = /^Pull (.+) \(Ollama\)$/;
 
 const providerRow = name => (name === "stub" ? STUB : llm ? llm.providers.find(p => p.provider === name) : null);
 const panelOpen = () => $("llm-panel").classList.contains("open");
@@ -83,10 +85,19 @@ async function renderAll() {
 // Status-only snapshot (SSE `llm` event, or a key route's reply). It supersedes any refresh in flight.
 export function onLLMEvent(ev) {
   const { type, ...snapshot } = ev;
-  pulling.clear(); // a pull publishes fresh status when it ends; any snapshot re-enables the button
   refreshSeq++;
   llm = snapshot;
   renderAll().catch(report);
+}
+
+// `job` events (shared SSE channel with jobs.js/wizard.js): clear a model's "pulling" state only
+// when that model's OWN pull job ends. Wiping the whole set on every `llm` snapshot would also
+// re-enable the Pull button for a second model whose pull is still running.
+export function onLLMJob(job) {
+  if (job.kind !== "ollama_pull" || job.status === "running") return;
+  const model = PULL_JOB_LABEL.exec(job.label)?.[1];
+  if (model) pulling.delete(model);
+  if (model && panelOpen()) renderPanel().catch(report);
 }
 
 // A project file or GMNSPY_SELECT__* env var outranks the user file, so a saved default would not take effect.

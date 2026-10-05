@@ -197,11 +197,12 @@ Pick a larger model from the picker if parses go wrong.
 - **Keys are bound to their endpoint.** If you point a provider at a different `base_url` (for
   example an OpenAI-compatible server), it needs a new key entered for that endpoint; an existing
   key is never sent there.
-- The Workbench's key routes (`/api/llm/keys/*`, `/api/llm/test`) are loopback-only (refused unless
-  the server is bound to `127.0.0.1`/`localhost`/`[::1]`) and every request must also carry an
-  `X-GMNSpy-Secrets: 1` header, which a cross-origin page cannot add without a CORS preflight this
-  server never approves. When the Workbench is bound elsewhere, manage keys from a terminal with
-  `gmnspy llm set-key`/`remove-key` instead.
+- The Workbench's key routes (`/api/llm/keys/*`, `/api/llm/test`, `/api/llm/ollama/pull`) are
+  loopback-only (refused unless the server is bound to `127.0.0.1`/`localhost`/`[::1]`) and every
+  request must also carry an `X-GMNSpy-Secrets: 1` header, which a cross-origin page cannot add
+  without a CORS preflight this server never approves. When the Workbench is bound elsewhere,
+  manage keys from a terminal with `gmnspy llm set-key`/`remove-key` instead, and pull models with
+  `gmnspy llm pull`.
 - **Known limitation:** a key written by the CLI (or another process) while the Workbench is
   already running may take up to about 5 seconds to be seen by that running Workbench.
 

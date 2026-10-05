@@ -96,6 +96,19 @@ def test_header_has_the_llm_picker_and_panel():
     assert 'from "./llm.js"' in main and "llm:" in main  # wired, and subscribed to the `llm` SSE event
 
 
+def test_pull_button_clears_only_its_own_model_on_job_events():
+    # A pull in progress must stay disabled while a DIFFERENT model's pull job finishes: the
+    # panel must not clear every "pulling" entry on each `llm` status snapshot (the bug this
+    # replaces), but only the one model whose own `ollama_pull` job just ended.
+    src = (JS_DIR / "llm.js").read_text()
+    assert "pulling.clear()" not in src
+    assert re.search(r"export function onLLMJob\(job\)", src)
+    assert 'job.kind !== "ollama_pull"' in src
+    main = (JS_DIR / "main.js").read_text()
+    assert "onLLMJob" in main and 'from "./llm.js"' in main
+    assert re.search(r"job:\s*e\s*=>\s*\{[^}]*onLLMJob\(e\.job\)", main)
+
+
 def test_ollama_setup_links_point_at_the_published_guide():
     from pathlib import Path
 

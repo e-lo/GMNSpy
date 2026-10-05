@@ -368,9 +368,50 @@ class LLMSettings(_Section):            # endpoints and quality knobs, never key
 | `PUT /api/llm/keys/{provider}` body `{key}` | **no** (log line + SSE status) | Host + Origin + loopback bind + `X-GMNSpy-Secrets: 1` | the providers snapshot |
 | `DELETE /api/llm/keys/{provider}` | **no** | same | the providers snapshot |
 | `POST /api/llm/test` body `{provider, model?}` | no | same | `{ok, latency_ms, models_served, catalog_missing, message}` or `{ok:false, error_type, message}` |
+| `POST /api/llm/ollama/pull` body `{model}` | **no** (job events only; see below) | Host + Origin + loopback bind + `X-GMNSpy-Secrets: 1` | `202 {job}` |
 
 - `source` is `"env"`, `"keyring"` or `null`. The `PUT` body is validated inside the handler, so a 422 can never echo it.
 - Choosing a provider or model is **not** a route. It is a recorded, replayable `set_setting` action.
+
+### Pulling a model (`POST /api/llm/ollama/pull`, `gmnspy llm pull`)
+
+Downloading a model can be several gigabytes, so it gets its own guards and lifecycle rather than
+reusing the key-write or Action machinery above.
+
+- **Guards.** The same loopback bind and `X-GMNSpy-Secrets: 1` header as a key write (`pull_guard`
+  in `routes/llm.py`), plus `llm.ollama.base_url` must resolve to *this* machine
+  (`ProviderRegistry.is_local("ollama")`): the browser can only make this process download, never
+  point it at another host. The model name itself is validated by
+  `valid_model_name` (`gmnspy.llm.providers.ollama`): a plain `[namespace/]name[:tag]`, never a URL
+  or a dotted registry host (which Ollama would read as a different registry).
+- **A background job, not an Action.** The route submits an `ollama_pull` job
+  (`session.jobs.submit`) and answers `202` with the job's snapshot immediately; progress streams
+  as `job` events (Cancel closes the HTTP stream, which stops Ollama's own download) exactly like
+  any other job in the Jobs panel. It is deliberately **not recorded** in session history, for the
+  same reason a key write isn't: replaying a session must never re-trigger a multi-gigabyte
+  download, and the model stays on disk long after any one session ends.
+- **409 on a duplicate.** A second `POST` for the same model while its own pull job is still
+  `running` is refused with `409` ("… is already being pulled; see Jobs") instead of starting a
+  second download of the same model.
+- **The CLI's `gmnspy llm pull MODEL`** runs the same download from a terminal, with a Rich
+  progress bar instead of job events, and treats a bare name as `name:latest` when checking
+  whether the model is already installed, so `gmnspy llm pull qwen3` recognizes an installed
+  `qwen3:latest` and warns before re-downloading rather than always reporting it as new.
+
+**Catalog `thinking` flag and the reasoning-model token budget.** Two related fixes (commit
+`bab6083`) keep a model's hidden reasoning from silently spending the whole output budget before
+any visible reply, which otherwise shows up as an empty or truncated selection:
+- `ModelInfo.thinking` (`gmnspy/llm/catalog.py`) marks an Ollama model that emits hidden `thinking`
+  output by default (`qwen3:4b` and `qwen3:8b` in `models.toml`). The Ollama adapter sends
+  `"think": false` for exactly those models, and omits the `think` key entirely for every other
+  model (sending it to a model the catalog doesn't mark errors with "does not support thinking").
+- OpenAI's reasoning-tier models (o1/o3/o4-mini, gpt-5, gpt-6) count hidden reasoning tokens
+  against `max_completion_tokens`, so the default 1024-token cap could leave nothing for the
+  visible reply (HTTP 200, empty content, `finish_reason="length"`). The cap is now floored to
+  8192 tokens for those models, and they get `reasoning_effort="low"` to leave more of that budget
+  for the reply (`gpt-6-luna` keeps `"none"` when a tool call is forced, per its own docs, and
+  otherwise is left alone). An empty reply with `finish_reason="length"` now raises a clear "ran
+  out of output tokens" error instead of the generic "reply was not a JSON object" one.
 
 ## UX
 

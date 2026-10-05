@@ -104,6 +104,12 @@ def test_unreachable_server_is_provider_unavailable(fake_api):
         list(OllamaProvider(transport=fake_api.transport()).pull("qwen3:4b"))
 
 
+def test_undecodable_response_is_typed_bad_response(fake_api):
+    fake_api.add("POST", "/api/pull", raises=httpx.DecodingError("bad gzip"))
+    with pytest.raises(BadResponse, match="undecodable"):
+        list(OllamaProvider(transport=fake_api.transport()).pull("qwen3:4b"))
+
+
 def test_stream_that_ends_without_success_is_an_error(fake_api):
     fake_api.add("POST", "/api/pull", body=ndjson({"status": "pulling manifest"}))
     with pytest.raises(BadResponse, match="ended before"):

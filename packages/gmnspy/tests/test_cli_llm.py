@@ -140,6 +140,14 @@ def test_pull_asks_first_with_the_catalog_size(ring, fake_api):
     assert len(_pulls(fake_api)) == 1
 
 
+def test_pull_bare_name_matches_an_installed_latest_tag(ring, fake_api):
+    fake_api.add("GET", "/api/tags", body={"models": [{"name": "qwen3:latest"}]})
+    fake_api.add("POST", "/api/pull", body=PULL_LINES)
+    result = _llm("pull", "qwen3", "--yes")
+    assert result.exit_code == 0, result.output
+    assert "qwen3 is already installed; pulling again checks for an update." in result.output
+
+
 def test_pull_unknown_size_says_several_gb(ring, fake_api):
     fake_api.add("GET", "/api/tags", body={"models": []})
     result = _llm("pull", "llama3.2:3b", input="n\n")

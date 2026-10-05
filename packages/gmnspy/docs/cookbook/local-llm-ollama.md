@@ -18,10 +18,12 @@ open models such as Qwen on your own computer, and gmnspy talks to it over
 
 - **Nothing leaves your machine.** Your utterances, street names and project notes go to a
   server on `localhost`, not to a vendor.
-- **Better answers by default.** Because nothing leaves the machine, the `"auto"` quality settings
-  turn on for a local endpoint: grounding (the network's street names and route numbers), project
-  notes (`GMNSPY.md`) and the close-match retry. See
-  [What is sent, and quality settings](workbench.md#what-is-sent-and-quality-settings).
+- **Better answers by default — in the Workbench.** Because nothing leaves the machine, the
+  `"auto"` quality settings turn on for a local endpoint there: grounding (the network's street
+  names and route numbers), project notes (`GMNSPY.md`) and the close-match retry. See
+  [What is sent, and quality settings](workbench.md#what-is-sent-and-quality-settings). The CLI's
+  `gmnspy select` sends only your utterance to the parser, with none of that extra context,
+  whichever provider you choose.
 - **No API key.** There is nothing to store or rotate.
 
 The trade-off is that a small local model is slower than a hosted one on most laptops, and makes
