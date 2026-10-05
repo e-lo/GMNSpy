@@ -164,3 +164,18 @@ def test_related_is_computed_once_per_question_and_version(client, session, monk
     session.registry.get("leavenworth").bump()  # a mutated network asks again
     client.post(f"{BASE}/related", json=related)
     assert len(calls) == 3
+
+
+def test_oversized_filters_are_rejected_without_echoing_values(client):
+    many = [{"col": "link_id", "op": "notnull"}] * 51
+    assert client.post(f"{BASE}/table/link/rows", json={"filter": many}).status_code == 422
+    assert client.post(f"{BASE}/table/link/rows", json={"filter": many[:50]}).status_code == 200
+    long_in = [{"col": "link_id", "op": "in", "val": list(range(10_001))}]
+    r = client.post(f"{BASE}/table/lane/rows", json={"filter": long_in})
+    assert r.status_code == 422 and "too many values" in r.text and "10000" not in r.text
+    r = client.post(f"{BASE}/table/link/locate", json={"id": 1, "filter": long_in})
+    assert r.status_code == 422
+    r = client.get(f"{BASE}/table/link/rows", params={"filter": json.dumps(many)})
+    assert r.status_code == 422
+    ok_in = [{"col": "link_id", "op": "in", "val": list(range(10_000))}]
+    assert client.post(f"{BASE}/table/lane/rows", json={"filter": ok_in}).status_code == 200

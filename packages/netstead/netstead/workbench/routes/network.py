@@ -21,7 +21,7 @@ import duckdb
 import pandas as pd
 from fastapi import APIRouter, HTTPException, Response
 from ibis.common.exceptions import IbisTypeError
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from netstead.viz.buffers import network_attrs, pack_network
 from netstead.viz.styling import json_scalar, property_payload, styleable_columns
@@ -58,6 +58,22 @@ __all__ = ["LocateQuery", "RelatedQuery", "RowsQuery", "network_router"]
 ScalarId = int | str
 #: Related-records answers remembered per network version (each holds up to MAX_SOURCE_IDS ids).
 RELATED_MEMO = 16
+#: Conditions accepted in one filter, and values in one ``in`` condition.
+MAX_FILTER_CONDITIONS = 50
+MAX_IN_VALUES = 10_000
+
+
+def _bounded_filter(spec: list[dict[str, Any]] | None) -> list[dict[str, Any]] | None:
+    """``spec`` unchanged, or ``ValueError`` when it is too large to run (no values echoed)."""
+    if spec is None:
+        return None
+    if len(spec) > MAX_FILTER_CONDITIONS:
+        raise ValueError(f"too many filter conditions (over {MAX_FILTER_CONDITIONS})")
+    for cond in spec:
+        val = cond.get("val") if isinstance(cond, dict) else None
+        if isinstance(val, list) and len(val) > MAX_IN_VALUES:
+            raise ValueError(f"a filter condition lists too many values (over {MAX_IN_VALUES:,})")
+    return spec
 
 
 class RelatedQuery(BaseModel):
@@ -86,6 +102,11 @@ class RowsQuery(BaseModel):
     ids: list[ScalarId] | None = Field(default=None, max_length=MAX_SOURCE_IDS)
     related: RelatedQuery | None = None
     related_mode: Literal["tint", "filter"] = "tint"
+
+    @field_validator("filter")
+    @classmethod
+    def _filter_bounded(cls, spec: list[dict[str, Any]] | None) -> list[dict[str, Any]] | None:
+        return _bounded_filter(spec)
 
 
 class LocateQuery(RowsQuery):
@@ -261,6 +282,10 @@ def network_router(session: Session) -> APIRouter:
             spec = _json.loads(filter) if filter else None
         except _json.JSONDecodeError as exc:
             raise HTTPException(400, f"bad filter json: {exc}") from exc
+        try:
+            _bounded_filter(spec)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
         id_list = parse_ids(ids)
         with _bad_request():
             payload = page_table(
