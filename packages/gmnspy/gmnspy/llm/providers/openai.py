@@ -15,6 +15,14 @@ from ._base import HTTPProvider
 
 __all__ = ["OpenAIProvider", "chat_messages", "function_tools", "parse_function_calls"]
 
+#: Reasoning-tier model id prefixes that reject ``max_tokens`` and require ``max_completion_tokens`` instead.
+_REASONING_PREFIXES = ("o1", "o3", "o4", "gpt-5")
+
+
+def _max_tokens_key(model: str) -> str:
+    """Which body key caps output length for ``model``: reasoning-tier models use the newer name."""
+    return "max_completion_tokens" if model.startswith(_REASONING_PREFIXES) else "max_tokens"
+
 
 def chat_messages(request: CompletionRequest) -> list[dict[str, str]]:
     """``messages`` with the system prompt (context + system) as the leading ``system`` turn."""
@@ -58,8 +66,8 @@ def parse_function_calls(raw_calls: list[dict[str, Any]] | None) -> tuple[tuple[
 class OpenAIProvider(HTTPProvider):
     """``POST {base_url}/chat/completions`` with function tools and a forced ``tool_choice``.
 
-    Sends no ``max_tokens``/``max_completion_tokens``: compatible servers disagree on the
-    name, and a forced tool call is short.
+    Sends the output-length cap under ``max_tokens``, or ``max_completion_tokens`` for
+    reasoning-tier model ids (``o1``/``o3``/``o4``/``gpt-5``), which reject ``max_tokens``.
     """
 
     name = "openai"
@@ -72,6 +80,8 @@ class OpenAIProvider(HTTPProvider):
     def complete(self, request: CompletionRequest) -> Completion:
         """Run one chat completion; function calls become :class:`~gmnspy.llm.types.ToolCall`."""
         body: dict[str, Any] = {"model": request.model, "messages": chat_messages(request)}
+        if request.max_tokens:
+            body[_max_tokens_key(request.model)] = request.max_tokens
         if request.tools:
             body["tools"] = function_tools(request)
             if request.force_tool:
@@ -100,5 +110,5 @@ class OpenAIProvider(HTTPProvider):
         data = self._call("GET", "/models")
         try:
             return [m["id"] for m in data["data"]]
-        except (KeyError, TypeError) as exc:
+        except (KeyError, TypeError, AttributeError, IndexError) as exc:
             raise self._bad_shape(exc) from None

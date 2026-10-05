@@ -47,6 +47,7 @@ def test_request_shape_and_parsing(fake_api):
             {"role": "assistant", "content": "prev"},
             {"role": "user", "content": "again"},
         ],
+        "max_tokens": 1024,
         "tools": [
             {
                 "type": "function",
@@ -57,6 +58,13 @@ def test_request_shape_and_parsing(fake_api):
     }
     assert done.tool_calls[0].arguments == {"x": 3}
     assert (done.stop_reason, done.input_tokens, done.output_tokens) == ("tool_calls", 20, 5)
+
+
+def test_reasoning_tier_model_uses_max_completion_tokens(fake_api):
+    fake_api.add("POST", "/v1/chat/completions", body=_reply("{}"))
+    _provider(fake_api).complete(replace(REQUEST, model="o3-mini"))
+    body = fake_api.body()
+    assert body["max_completion_tokens"] == 1024 and "max_tokens" not in body
 
 
 def test_unparseable_arguments_come_back_as_text(fake_api):

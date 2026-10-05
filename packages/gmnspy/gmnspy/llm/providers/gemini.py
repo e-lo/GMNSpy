@@ -40,6 +40,9 @@ class GeminiProvider(HTTPProvider):
         if request.temperature is not None:
             body["generationConfig"]["temperature"] = request.temperature
         if request.tools:
+            # `parametersJsonSchema` takes a full JSON Schema object (vs. the older, narrower
+            # `parameters` field) per the Gemini API reference for FunctionDeclaration, checked
+            # 2026-10-05: https://ai.google.dev/api/caching#FunctionDeclaration
             body["tools"] = [
                 {
                     "functionDeclarations": [
@@ -85,5 +88,5 @@ class GeminiProvider(HTTPProvider):
                 for m in data["models"]
                 if "generateContent" in m.get("supportedGenerationMethods", [])
             ]
-        except (KeyError, TypeError, AttributeError) as exc:
+        except (KeyError, TypeError, AttributeError, IndexError) as exc:
             raise self._bad_shape(exc) from None

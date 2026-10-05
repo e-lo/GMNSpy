@@ -58,5 +58,5 @@ class OllamaProvider(HTTPProvider):
         data = self._call("GET", "/api/tags")
         try:
             return [m["name"] for m in data["models"]]
-        except (KeyError, TypeError) as exc:
+        except (KeyError, TypeError, AttributeError, IndexError) as exc:
             raise self._bad_shape(exc) from None
