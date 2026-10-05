@@ -71,17 +71,22 @@ def test_app_loopback_bind_has_no_warning(served):
     assert "no authentication" not in result.output
 
 
-def test_viz_passes_url_source_unmangled():
-    """A ``Path`` argument would collapse ``https://`` to ``https:/``; ``viz`` must take a raw string."""
-    url = "https://example.invalid/net"
-    result = runner.invoke(app, ["viz", url])
-    assert result.exit_code == 1
-    assert url in result.output
+@pytest.mark.parametrize("alias", ["viz", "select-serve"])
+def test_alias_passes_url_source_unmangled(monkeypatch, alias):
+    """A ``Path`` argument would collapse ``https://`` to ``https:/``; both aliases must take a raw string.
 
+    The URL is unresolvable (``example.invalid``), so loading it fails fast; ``socket.getaddrinfo``
+    is monkeypatched to raise immediately so the test doesn't pay for a real DNS lookup/timeout.
+    """
+    import socket
 
-def test_select_serve_passes_url_source_unmangled():
+    def _fake_getaddrinfo(*args, **kwargs):
+        raise socket.gaierror(socket.EAI_NONAME, "nodename nor servname provided, or not known")
+
+    monkeypatch.setattr(socket, "getaddrinfo", _fake_getaddrinfo)
+
     url = "https://example.invalid/net"
-    result = runner.invoke(app, ["select-serve", url])
+    result = runner.invoke(app, [alias, url])
     assert result.exit_code == 1
     assert url in result.output
 
