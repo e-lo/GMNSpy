@@ -5,7 +5,7 @@ import { rememberRecent, renderHeader, renderRecent, wireHeader } from "./header
 import { showEntry, wireHistory } from "./history.js";
 import { loadJobs, onJob, wireJobs } from "./jobs.js";
 import { onHistoryEntry, onLLMEvent, onLLMJob, refreshLLM, renderLLMPanel, wireLLM } from "./llm.js";
-import { fitBbox, fitLinks, fitNetwork, initMap, render } from "./map.js";
+import { fitBbox, fitLinks, fitNetwork, initMap, render, setBasemap } from "./map.js";
 import { decodeNetwork } from "./netbuf.js";
 import { populateColorby, renderLegend, syncControls, wirePanels } from "./panels.js";
 import { clearDetails, renderHighlights, renderSelection, showLinkDetails, wireSide } from "./side.js";
@@ -67,6 +67,16 @@ function onLinkClick(linkId) {
   store.set({ highlights });
 }
 
+// A viz.* setting (from the Settings dialog, Python, or the assistant) may change the basemap: swap it in place.
+async function onSettingChanged(entry) {
+  const a = entry.action;
+  if (!entry.ok || a.type !== "set_setting" || !/^viz(\.|$)/.test(a.key)) return;
+  const cfg = await getJSON("/api/config");
+  if (JSON.stringify(cfg.style) === JSON.stringify(store.get().basemap)) return;
+  store.set({ basemap: cfg.style });
+  setBasemap(cfg.style);
+}
+
 function wireMapButtons() {
   $("btn-fitnet").onclick = () => fitNetwork();
   $("btn-fitsel").onclick = () => { const sel = activeSelection(store.get()); if (sel) fitLinks(sel.link_ids); };
@@ -102,7 +112,9 @@ async function boot() {
   let mapReady = false;
   subscribe({
     state: e => { if (mapReady) onState(e.state); else store.set({ server: e.state }); },
-    history: e => { showEntry(e.entry); rememberRecent(e.entry); onHistoryEntry(e.entry); onSettingsHistory(e.entry); },
+    history: e => { showEntry(e.entry); rememberRecent(e.entry); onHistoryEntry(e.entry); onSettingsHistory(e.entry);
+      onSettingChanged(e.entry).catch(err => toast(err.message));
+    },
     navigate: e => { if (mapReady) onNavigate(e); },
     job: e => { onJob(e.job); onWizardJob(e.job); onLLMJob(e.job); },
     llm: onLLMEvent,

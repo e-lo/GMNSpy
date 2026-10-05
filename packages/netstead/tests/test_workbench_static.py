@@ -175,3 +175,9 @@ def test_header_puts_the_utterance_and_picker_on_their_own_row():
     main_row = html[html.index("<header>") : html.index('id="nl-row"')]
     for element_id in ("net-select", "open-wizard", "recent", "viewmode", "jobs-btn", "settings-btn"):
         assert f'id="{element_id}"' in main_row
+
+
+def test_basemap_swaps_in_place_on_a_viz_setting():
+    assert "export function setBasemap(" in (JS_DIR / "map.js").read_text()
+    main = (JS_DIR / "main.js").read_text()
+    assert "setBasemap(" in main and "viz" in main

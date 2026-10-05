@@ -203,3 +203,11 @@ function wireBoxSelect() {
   mapEl.addEventListener("pointerup", finish);
   mapEl.addEventListener("pointerleave", e => { if (start) finish(e); });
 }
+
+// Swap the basemap in place. The deck.gl overlay is a non-interleaved control and survives setStyle;
+// label visibility belongs to the old style's layers, so it is re-applied once the new style loads.
+export function setBasemap(style) {
+  if (!map) return;
+  map.once("style.load", () => { labelsShown = true; render(); });
+  map.setStyle(style);
+}
