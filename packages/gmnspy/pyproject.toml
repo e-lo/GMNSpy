@@ -155,6 +155,8 @@ include = [
     "gmnspy/workbench/static/*.html",
     "gmnspy/workbench/static/*.css",
     "gmnspy/workbench/static/js/*.js",
+    # Maintained LLM provider/model catalog (gmnspy.llm).
+    "gmnspy/llm/*.toml",
     # Maintained build-cost coefficients for the Open / Import wizard's estimate.
     "gmnspy/workbench/data/*.toml",
     # Maintained OSM->GMNS tag-mapping + network-filter data (gmnspy.osm).

@@ -1,0 +1,121 @@
+# Maintained catalog of the LLM providers and models the Workbench offers for its
+# natural-language features. Edit freely. A user overlay at
+# <user config dir>/llm_models.toml (same shape) may add or relabel models and change
+# a provider's label/default_model; it can NOT change base_url, key_env or kind
+# (those decide where API keys are sent).
+#
+# Per provider:
+#   label          display name
+#   kind           "remote" (needs an API key) | "local" (no key; Ollama)
+#   base_url       the official endpoint; a key is only ever sent to the endpoint it was entered for
+#   key_env        env vars checked, in order, before the OS keyring (official endpoint only)
+#   default_model  used when select.model is unset. Defaults are each provider's small, fast tier:
+#                  one forced tool call per utterance doesn't need a large model (design: "Tiny models").
+# Per model: id (sent to the API), label, tier (fast | balanced | best), tools (tool calling).
+#
+# VERIFY: OpenAI, Gemini and Ollama model ids are editable starting points, not
+# checked against the provider docs. `gmnspy llm test <provider>` lists every catalog
+# id the live endpoint does not serve; fix this file before each release.
+
+[anthropic]
+label = "Anthropic"
+kind = "remote"
+base_url = "https://api.anthropic.com"
+key_env = ["GMNSPY_ANTHROPIC_API_KEY", "ANTHROPIC_API_KEY"]
+default_model = "claude-haiku-4-5-20251001"
+
+[[anthropic.models]]
+id = "claude-haiku-4-5-20251001"
+label = "Haiku 4.5"
+tier = "fast"
+tools = true
+
+[[anthropic.models]]
+id = "claude-sonnet-5"
+label = "Sonnet 5"
+tier = "balanced"
+tools = true
+
+[[anthropic.models]]
+id = "claude-opus-5-5"
+label = "Opus 5.5"
+tier = "best"
+tools = true
+
+[openai]
+label = "OpenAI"
+kind = "remote"
+base_url = "https://api.openai.com/v1"
+key_env = ["GMNSPY_OPENAI_API_KEY", "OPENAI_API_KEY"]
+default_model = "gpt-4.1-mini"
+
+# VERIFY against https://platform.openai.com/docs/models
+[[openai.models]]
+id = "gpt-4.1-mini"
+label = "GPT-4.1 mini"
+tier = "fast"
+tools = true
+
+# VERIFY
+[[openai.models]]
+id = "gpt-4.1"
+label = "GPT-4.1"
+tier = "balanced"
+tools = true
+
+# VERIFY
+[[openai.models]]
+id = "gpt-5"
+label = "GPT-5"
+tier = "best"
+tools = true
+
+[gemini]
+label = "Gemini"
+kind = "remote"
+base_url = "https://generativelanguage.googleapis.com/v1beta"
+key_env = ["GMNSPY_GEMINI_API_KEY", "GEMINI_API_KEY"]
+default_model = "gemini-2.5-flash-lite"
+
+# VERIFY against https://ai.google.dev/gemini-api/docs/models
+[[gemini.models]]
+id = "gemini-2.5-flash-lite"
+label = "Gemini 2.5 Flash-Lite"
+tier = "fast"
+tools = true
+
+# VERIFY
+[[gemini.models]]
+id = "gemini-2.5-flash"
+label = "Gemini 2.5 Flash"
+tier = "balanced"
+tools = true
+
+# VERIFY
+[[gemini.models]]
+id = "gemini-2.5-pro"
+label = "Gemini 2.5 Pro"
+tier = "best"
+tools = true
+
+[ollama]
+label = "Ollama (local)"
+kind = "local"
+base_url = "http://localhost:11434"
+key_env = []
+default_model = "qwen3:4b"
+
+# Ollama's installed models are discovered at run time (GET /api/tags). These entries
+# only label known tags and power the "ollama pull <id>" hint. VERIFY tags at
+# https://ollama.com/library before release.
+[[ollama.models]]
+id = "qwen3:4b"
+label = "Qwen 3 4B"
+tier = "fast"
+tools = true
+
+[[ollama.models]]
+id = "qwen3:8b"
+label = "Qwen 3 8B"
+tier = "balanced"
+tools = true
