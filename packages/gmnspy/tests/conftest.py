@@ -19,6 +19,7 @@ import hashlib
 import json
 from importlib import resources
 from pathlib import Path
+from typing import Any
 
 import gmnspy.fixtures
 import pytest
@@ -79,3 +80,86 @@ def isolated_env(tmp_path: Path) -> dict[str, str]:
     """
     roots = [str(tmp_path.resolve()), str(_FIXTURES_ROOT.resolve()), str(TEST_FIXTURES)]
     return {"GMNSPY_CONFIG_DIR": str(tmp_path / "user"), "GMNSPY_IO__ALLOWED_ROOTS": json.dumps(roots)}
+
+
+class FakeKeyring:
+    """In-memory stand-in for the ``keyring`` module: tests never touch the real OS keychain."""
+
+    def __init__(self) -> None:
+        self.store: dict[tuple[str, str], str] = {}
+
+    def get_password(self, service_name: str, username: str) -> str | None:
+        return self.store.get((service_name, username))
+
+    def set_password(self, service_name: str, username: str, password: str) -> None:
+        self.store[(service_name, username)] = password
+
+    def delete_password(self, service_name: str, username: str) -> None:
+        del self.store[(service_name, username)]
+
+
+@pytest.fixture
+def fake_keyring() -> FakeKeyring:
+    """A fresh in-memory keyring."""
+    return FakeKeyring()
+
+
+class FakeAPI:
+    """Canned JSON per ``(METHOD, path)`` behind an ``httpx.MockTransport``; every request is kept.
+
+    ``add`` queues responses for a route; once one is left it repeats. ``raises`` makes the
+    transport raise that exception instead (e.g. ``httpx.ConnectError("refused")``).
+    """
+
+    def __init__(self) -> None:
+        self.routes: dict[tuple[str, str], list[tuple[int, Any, dict[str, str], Exception | None]]] = {}
+        self.requests: list[Any] = []
+
+    def add(
+        self,
+        method: str,
+        path: str,
+        *,
+        status: int = 200,
+        body: Any = None,
+        headers: dict[str, str] | None = None,
+        raises: Exception | None = None,
+    ) -> FakeAPI:
+        self.routes.setdefault((method.upper(), path), []).append((status, body, headers or {}, raises))
+        return self
+
+    def transport(self) -> Any:
+        import httpx
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            self.requests.append(request)
+            queue = self.routes.get((request.method, request.url.path))
+            if not queue:
+                return httpx.Response(599, json={"error": f"no fake route for {request.method} {request.url.path}"})
+            status, body, headers, raises = queue.pop(0) if len(queue) > 1 else queue[0]
+            if raises is not None:
+                raise raises
+            return httpx.Response(status, json=body, headers=headers)
+
+        return httpx.MockTransport(handler)
+
+    def body(self, index: int = -1) -> dict[str, Any]:
+        """The JSON body of a recorded request (default: the last one)."""
+        return json.loads(self.requests[index].content)
+
+
+@pytest.fixture
+def fake_api() -> FakeAPI:
+    """A fresh fake provider API."""
+    return FakeAPI()
+
+
+@pytest.fixture
+def no_network(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Fail loudly if code under test opens a real HTTP connection (LLM tests use ``fake_api``)."""
+    httpx = pytest.importorskip("httpx")
+
+    def refuse(self: Any, request: Any) -> Any:
+        raise AssertionError(f"real network call in a test: {request.method} {request.url}")
+
+    monkeypatch.setattr(httpx.HTTPTransport, "handle_request", refuse)

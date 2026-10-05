@@ -190,6 +190,7 @@ markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "perf: performance regression bench",
     "integration: cross-package integration",
+    "live_llm: calls real LLM provider APIs; skipped unless GMNSPY_LIVE_LLM=anthropic,openai,gemini,ollama (any subset)",
 ]
 
 # ---------------------------------------------------------------------------
