@@ -12,7 +12,7 @@
 members = ["packages/*"]
 
 [tool.uv.sources]
-corral = { workspace = true }
+dbcorral = { workspace = true }
 
 # ---------------------------------------------------------------------------
 # Shared dev tooling
@@ -23,18 +23,25 @@ dev = [
     "pytest>=8",
     "pytest-cov>=5",
     "pytest-benchmark>=4",
+    "pytest-xdist>=3.6",
     "hypothesis>=6.100",
     "ruff>=0.5",
     "pyright>=1.1.370",
     "import-linter>=2.0",
     "pre-commit>=3.7",
+]
+docs = [
     "mkdocs>=1.6",
     "mkdocs-material>=9.5",
     "mkdocs-macros-plugin>=1.0",
     "mkdocs-mermaid2-plugin>=1.1",
     "mkdocstrings[python]>=0.25",
-    "mike>=2.1",
-    "pytest-xdist>=3.6",
+    "mkdocs-autorefs>=1.0",
+    "mkdocs-awesome-pages-plugin>=2.9",
+    "mkdocs-section-index>=0.3",
+    "mkdocs-glightbox>=0.4",
+    "mkdocs-git-revision-date-localized-plugin>=1.2",
+    "mkdocs-htmlproofer-plugin>=1.2",
 ]
 
 # ---------------------------------------------------------------------------

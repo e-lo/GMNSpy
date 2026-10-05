@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "corral"
+name = "dbcorral"
 version = "1.0.0b2"
 description = "Generic Frictionless-aligned tabular-data-package engine. Code-agnostic schemas, lazy ibis/duckdb pipelines, foreign-key + sync-state validation, geographic scoping, and edit/rollback primitives."
 readme = "README.md"

@@ -32,7 +32,7 @@ pkg = Package.from_source("./mydata.csv.zip")                   # zipped CSV bun
 
 **Generic surfaces** — CLI, FastAPI HTTP server, and MCP server — all reusable for any domain-specific spec that builds on corral (netstead being the canonical example).
 
-## Use cases — when to install corral directly
+## Use cases — when to install dbcorral directly
 
 <div class="grid cards" markdown>
 
@@ -62,7 +62,7 @@ pkg = Package.from_source("./mydata.csv.zip")                   # zipped CSV bun
 
 </div>
 
-## Why install corral
+## Why install dbcorral
 
 **It's small and focused.** Generic data-package primitives only — no domain semantics. Easy to reason about, easy to extend.
 
@@ -79,7 +79,7 @@ Pick the tool you already use — these all produce the same install:
 === "uv (recommended)"
 
     ```bash
-    uv add corral
+    uv add dbcorral
     ```
 
     Fastest. Works inside a `uv`-managed project and writes to your `pyproject.toml` + `uv.lock`.
@@ -87,7 +87,7 @@ Pick the tool you already use — these all produce the same install:
 === "uv pip"
 
     ```bash
-    uv pip install corral
+    uv pip install dbcorral
     ```
 
     Drop-in `pip` replacement. Use this in a plain `venv` without a project file.
@@ -95,7 +95,7 @@ Pick the tool you already use — these all produce the same install:
 === "pip"
 
     ```bash
-    pip install corral
+    pip install dbcorral
     ```
 
     Classic. Works anywhere Python does.
@@ -103,7 +103,7 @@ Pick the tool you already use — these all produce the same install:
 === "pipx"
 
     ```bash
-    pipx install corral
+    pipx install dbcorral
     ```
 
     Isolated env for the `corral` CLI only — your project env stays untouched.
@@ -123,11 +123,11 @@ The default install ships the ibis + DuckDB engine and Frictionless loader. Extr
 Install with the same syntax (uv shown — substitute your tool):
 
 ```bash
-uv add 'corral[polars,s3,keyring]'   # combine with commas
+uv add 'dbcorral[polars,s3,keyring]'   # combine with commas
 ```
 
 !!! tip "zsh users: quote the brackets"
-    On **zsh** (the default shell on macOS), `[` and `]` are glob characters. Running `uv add corral[polars]` unquoted gives `zsh: no matches found: corral[polars]`. Always wrap the extras in quotes (`'corral[polars]'` or `"corral[polars]"`), or run `setopt no_nomatch` once per session to disable the check. bash users don't hit this.
+    On **zsh** (the default shell on macOS), `[` and `]` are glob characters. Running `uv add dbcorral[polars]` unquoted gives `zsh: no matches found: corral[polars]`. Always wrap the extras in quotes (`'corral[polars]'` or `"corral[polars]"`), or run `setopt no_nomatch` once per session to disable the check. bash users don't hit this.
 
 ## Where to go next
 

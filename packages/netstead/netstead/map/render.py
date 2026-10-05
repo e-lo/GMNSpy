@@ -76,7 +76,8 @@ def render_validation_html(
         from jinja2 import Environment, StrictUndefined
     except ImportError as e:  # pragma: no cover - defensive
         raise ImportError(
-            "netstead.map.render_validation_html requires jinja2 from the [reports] extra: pip install 'netstead[reports]'"
+            "netstead.map.render_validation_html requires jinja2 from the [reports] extra: "
+            "pip install 'netstead[reports]'"
         ) from e
 
     title = opts.pop("title", None) or f"validation: {report.source or 'gmns network'}"

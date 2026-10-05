@@ -598,7 +598,7 @@ class IbisEngine:
             df = expr.to_pandas()
         except ImportError as exc:  # pragma: no cover - pandas is an ibis dep
             raise EngineNotAvailableError(
-                "pandas is required for IbisEngine.to_pandas; install with `pip install corral[pandas]`"
+                "pandas is required for IbisEngine.to_pandas; install with `pip install dbcorral[pandas]`"
             ) from exc
         return df.convert_dtypes()
 
@@ -625,7 +625,7 @@ class IbisEngine:
             return expr.to_polars()
         except ImportError as exc:
             raise EngineNotAvailableError(
-                "polars is required for IbisEngine.to_polars; install with `pip install corral[polars]`"
+                "polars is required for IbisEngine.to_polars; install with `pip install dbcorral[polars]`"
             ) from exc
 
     # ------------------------------------------------------------------

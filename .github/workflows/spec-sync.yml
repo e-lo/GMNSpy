@@ -22,12 +22,12 @@ jobs:
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       UPSTREAM: zephyr-data-specs/GMNS
-      BASE_BRANCH: refactor/v1.0
+      BASE_BRANCH: main
       SPEC_DIR: packages/netstead/netstead/spec
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: refactor/v1.0
+          ref: main
 
       - name: Find first un-vendored upstream release
         id: pick

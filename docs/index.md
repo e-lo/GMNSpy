@@ -43,7 +43,7 @@ Installing `netstead` brings `corral` along automatically. You only install `cor
 
 ```bash
 pip install netstead            # GMNS toolkit (brings corral with it)
-pip install corral         # generic engine only — for non-GMNS use cases
+pip install dbcorral         # generic engine only — for non-GMNS use cases
 ```
 
 ## Source

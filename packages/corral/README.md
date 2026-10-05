@@ -40,35 +40,35 @@ Pick the tool you already use — these are equivalent:
 
 ```bash
 # uv (recommended — fastest, handles workspace projects + lockfiles)
-uv add corral
+uv add dbcorral
 
 # uv pip (drop-in pip replacement, no project file needed)
-uv pip install corral
+uv pip install dbcorral
 
 # pip (classic)
-pip install corral
+pip install dbcorral
 
 # pipx (CLI-only, isolated env; gives you the `corral` command without
 #       polluting your project env)
-pipx install corral
+pipx install dbcorral
 ```
 
 ### Optional extras
 
 ```bash
 # Engines (pick the one your downstream code already uses)
-uv add 'corral[polars]'      # lazy polars frames
-uv add 'corral[pandas]'      # eager pandas DataFrames
+uv add 'dbcorral[polars]'      # lazy polars frames
+uv add 'dbcorral[pandas]'      # eager pandas DataFrames
 
 # Cloud storage backends (read from s3://, gs://, azure://)
-uv add 'corral[s3]'          # add 'gcs' or 'azure' as needed
+uv add 'dbcorral[s3]'          # add 'gcs' or 'azure' as needed
 
 # Credential helpers + AI surface
-uv add 'corral[keyring]'     # resolve creds from system keychain
-uv add 'corral[mcp]'         # `corral mcp serve` for Claude Desktop / Code
+uv add 'dbcorral[keyring]'     # resolve creds from system keychain
+uv add 'dbcorral[mcp]'         # `corral mcp serve` for Claude Desktop / Code
 ```
 
-Combine extras with commas: `uv add 'corral[polars,s3,keyring]'`.
+Combine extras with commas: `uv add 'dbcorral[polars,s3,keyring]'`.
 
 ## Repo
 

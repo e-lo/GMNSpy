@@ -16,7 +16,7 @@ You want to load + validate + (optionally) spatially scope a Frictionless data p
 The fastest way to confirm `corral` is wired up is to load a real Frictionless package, run the four-pass validator, and print a one-line summary. The example below uses the bundled Leavenworth GMNS fixture as a stand-in for "any Frictionless package" — the API is identical regardless of spec.
 
 ```bash
-pip install corral
+pip install dbcorral
 ```
 
 Then in Python:
@@ -47,25 +47,25 @@ The default install ships everything for the four-pass validator below. Pick you
 === "uv (recommended)"
 
     ```bash
-    uv add corral
+    uv add dbcorral
     ```
 
 === "uv pip"
 
     ```bash
-    uv pip install corral
+    uv pip install dbcorral
     ```
 
 === "pip"
 
     ```bash
-    pip install corral
+    pip install dbcorral
     ```
 
 === "pipx"
 
     ```bash
-    pipx install corral
+    pipx install dbcorral
     ```
 
 Optional extras (`polars` / `pandas` / `s3` / `gcs` / `azure` / `keyring` / `mcp`) opt in to alternative engines, cloud backends, and the AI surface — see the [install guide](index.md#optional-extras) for the full list.

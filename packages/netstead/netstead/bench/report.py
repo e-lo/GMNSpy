@@ -51,7 +51,7 @@ _DIST_NAMES = {
     "pyarrow": "pyarrow",
     "numpy": "numpy",
     "netstead": "netstead",
-    "corral": "corral",
+    "corral": "dbcorral",
 }
 
 

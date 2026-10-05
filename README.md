@@ -5,7 +5,7 @@ Two Python packages for the [General Modeling Network Specification (GMNS)](http
 | Package | What it is | PyPI | Docs |
 |---|---|---|---|
 | [`netstead`](packages/netstead/) | GMNS toolkit — load, validate, scope, edit GMNS networks | [`netstead`](https://pypi.org/project/netstead/) | [e-lo.github.io/netstead/netstead/](https://e-lo.github.io/netstead/netstead/) |
-| [`corral`](packages/corral/) | Generic Frictionless Data Package engine that `netstead` builds on | [`corral`](https://pypi.org/project/corral/) | [e-lo.github.io/netstead/corral/](https://e-lo.github.io/netstead/corral/) |
+| [`corral`](packages/corral/) | Generic Frictionless Data Package engine that `netstead` builds on | [`dbcorral`](https://pypi.org/project/dbcorral/) | [e-lo.github.io/netstead/corral/](https://e-lo.github.io/netstead/corral/) |
 
 Most users only install `netstead`. `corral` comes as a transitive dependency.
 
