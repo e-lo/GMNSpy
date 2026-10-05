@@ -12,7 +12,7 @@
 members = ["packages/*"]
 
 [tool.uv.sources]
-corral = { workspace = true }
+dbcorral = { workspace = true }
 
 # ---------------------------------------------------------------------------
 # Shared dev tooling

@@ -32,7 +32,7 @@ classifiers = [
 dependencies = [
     # Co-evolving sibling package — pinned to the same major so a future
     # corral 2.x doesn't silently break installed netstead 1.x.
-    "corral>=1.0.0b1,<2",  # transitively brings typer + rich + ibis + duckdb + pyarrow + fsspec
+    "dbcorral>=1.0.0b2,<2",  # transitively brings typer + rich + ibis + duckdb + pyarrow + fsspec
 ]
 
 [project.optional-dependencies]

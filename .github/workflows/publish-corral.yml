@@ -20,7 +20,7 @@ jobs:
       - uses: actions/checkout@v6
       - uses: astral-sh/setup-uv@v7
       - name: Build sdist + wheel
-        run: uv build --package corral --out-dir dist
+        run: uv build --package dbcorral --out-dir dist
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
@@ -34,7 +34,7 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: pypi
-      url: https://pypi.org/p/corral
+      url: https://pypi.org/p/dbcorral
     permissions:
       id-token: write  # OIDC for PyPI trusted publishing
     steps:
@@ -51,7 +51,7 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: testpypi
-      url: https://test.pypi.org/p/corral
+      url: https://test.pypi.org/p/dbcorral
     permissions:
       id-token: write
     steps:

@@ -30,7 +30,7 @@ class EngineNotAvailableError(RuntimeError):
     you that engine". Reasons include:
 
     - The engine's optional dependencies are not installed (e.g. user
-      asked for ``"polars"`` without ``pip install corral[polars]``).
+      asked for ``"polars"`` without ``pip install dbcorral[polars]``).
     - The name is not registered (typo, or a module that failed to
       import at registration time).
     - The registry is empty (no engines successfully registered at

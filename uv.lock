@@ -18,7 +18,7 @@ resolution-markers = [
 
 [manifest]
 members = [
-    "corral",
+    "dbcorral",
     "netstead",
 ]
 
@@ -616,64 +616,6 @@ wheels = [
 ]
 
 [[package]]
-name = "corral"
-version = "1.0.0b2"
-source = { editable = "packages/corral" }
-dependencies = [
-    { name = "duckdb" },
-    { name = "fsspec" },
-    { name = "ibis-framework", extra = ["duckdb"] },
-    { name = "jinja2" },
-    { name = "pyarrow" },
-    { name = "pydantic" },
-    { name = "rich" },
-    { name = "typer" },
-]
-
-[package.optional-dependencies]
-azure = [
-    { name = "adlfs" },
-]
-gcs = [
-    { name = "gcsfs" },
-]
-keyring = [
-    { name = "keyring" },
-]
-mcp = [
-    { name = "mcp" },
-]
-pandas = [
-    { name = "pandas" },
-]
-polars = [
-    { name = "polars" },
-]
-s3 = [
-    { name = "s3fs" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "adlfs", marker = "extra == 'azure'", specifier = ">=2024.3" },
-    { name = "duckdb", specifier = ">=1.1" },
-    { name = "fsspec", specifier = ">=2024.3" },
-    { name = "gcsfs", marker = "extra == 'gcs'", specifier = ">=2024.3" },
-    { name = "ibis-framework", extras = ["duckdb"], specifier = ">=10" },
-    { name = "jinja2", specifier = ">=3.1" },
-    { name = "keyring", marker = "extra == 'keyring'", specifier = ">=24" },
-    { name = "mcp", marker = "extra == 'mcp'", specifier = ">=1.0" },
-    { name = "pandas", marker = "extra == 'pandas'", specifier = ">=2.2" },
-    { name = "polars", marker = "extra == 'polars'", specifier = ">=1.0" },
-    { name = "pyarrow", specifier = ">=17" },
-    { name = "pydantic", specifier = ">=2.6" },
-    { name = "rich", specifier = ">=13" },
-    { name = "s3fs", marker = "extra == 's3'", specifier = ">=2024.3" },
-    { name = "typer", specifier = ">=0.12" },
-]
-provides-extras = ["polars", "pandas", "s3", "gcs", "azure", "keyring", "mcp"]
-
-[[package]]
 name = "coverage"
 version = "7.14.0"
 source = { registry = "https://pypi.org/simple" }
@@ -835,6 +777,64 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/b4/e1/48cedb2fe63626e91ded1edad159e2a4fb8b6906c4425eb7749673077ce7/cryptography-48.0.0-pp311-pypy311_pp73-manylinux_2_34_x86_64.whl", hash = "sha256:4defde8685ae324a9eb9d818717e93b4638ef67070ac9bc15b8ca85f63048355", size = 4666800, upload_time = "2026-05-04T22:59:27.474Z" },
     { url = "https://files.pythonhosted.org/packages/a2/ca/7e8365deec19afb2b2c7be7c1c0aa8f99633b54e90c570999acda93260fc/cryptography-48.0.0-pp311-pypy311_pp73-win_amd64.whl", hash = "sha256:db63bf618e5dea46c07de12e900fe1cdd2541e6dc9dbae772a70b7d4d4765f6a", size = 3739536, upload_time = "2026-05-04T22:59:29.61Z" },
 ]
+
+[[package]]
+name = "dbcorral"
+version = "1.0.0b2"
+source = { editable = "packages/corral" }
+dependencies = [
+    { name = "duckdb" },
+    { name = "fsspec" },
+    { name = "ibis-framework", extra = ["duckdb"] },
+    { name = "jinja2" },
+    { name = "pyarrow" },
+    { name = "pydantic" },
+    { name = "rich" },
+    { name = "typer" },
+]
+
+[package.optional-dependencies]
+azure = [
+    { name = "adlfs" },
+]
+gcs = [
+    { name = "gcsfs" },
+]
+keyring = [
+    { name = "keyring" },
+]
+mcp = [
+    { name = "mcp" },
+]
+pandas = [
+    { name = "pandas" },
+]
+polars = [
+    { name = "polars" },
+]
+s3 = [
+    { name = "s3fs" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "adlfs", marker = "extra == 'azure'", specifier = ">=2024.3" },
+    { name = "duckdb", specifier = ">=1.1" },
+    { name = "fsspec", specifier = ">=2024.3" },
+    { name = "gcsfs", marker = "extra == 'gcs'", specifier = ">=2024.3" },
+    { name = "ibis-framework", extras = ["duckdb"], specifier = ">=10" },
+    { name = "jinja2", specifier = ">=3.1" },
+    { name = "keyring", marker = "extra == 'keyring'", specifier = ">=24" },
+    { name = "mcp", marker = "extra == 'mcp'", specifier = ">=1.0" },
+    { name = "pandas", marker = "extra == 'pandas'", specifier = ">=2.2" },
+    { name = "polars", marker = "extra == 'polars'", specifier = ">=1.0" },
+    { name = "pyarrow", specifier = ">=17" },
+    { name = "pydantic", specifier = ">=2.6" },
+    { name = "rich", specifier = ">=13" },
+    { name = "s3fs", marker = "extra == 's3'", specifier = ">=2024.3" },
+    { name = "typer", specifier = ">=0.12" },
+]
+provides-extras = ["polars", "pandas", "s3", "gcs", "azure", "keyring", "mcp"]
 
 [[package]]
 name = "decorator"
@@ -2451,7 +2451,7 @@ name = "netstead"
 version = "1.0.0b2"
 source = { editable = "packages/netstead" }
 dependencies = [
-    { name = "corral" },
+    { name = "dbcorral" },
 ]
 
 [package.optional-dependencies]
@@ -2531,7 +2531,7 @@ server = [
 requires-dist = [
     { name = "anthropic", marker = "extra == 'nl'", specifier = ">=0.40" },
     { name = "anywidget", marker = "extra == 'notebook'", specifier = ">=0.9" },
-    { name = "corral", editable = "packages/corral" },
+    { name = "dbcorral", editable = "packages/corral" },
     { name = "duckdb", marker = "extra == 'dev-fixtures'", specifier = ">=1.0" },
     { name = "fastapi", marker = "extra == 'server'", specifier = ">=0.110" },
     { name = "geopandas", marker = "extra == 'clean'", specifier = ">=1.0" },
