@@ -10,26 +10,26 @@ build runs, the wizard shows an estimate, and anything over `app.approve_above_s
 Opens and builds run as cancellable background jobs that push progress over SSE.
 
 **Architecture:**
-- `gmnspy.workbench.paths` enforces `io.allowed_roots` (empty = home) for every local read and write.
-- `gmnspy.workbench.jobs.JobRunner` runs one daemon thread per job, publishes `job` events, and cancels
+- `netstead.workbench.paths` enforces `io.allowed_roots` (empty = home) for every local read and write.
+- `netstead.workbench.jobs.JobRunner` runs one daemon thread per job, publishes `job` events, and cancels
   cooperatively at stage boundaries.
 - `OpenNetwork` and the new `BuildNetwork` are **job actions**:
   - their load/build runs on the job thread without the session lock;
   - only registering the network and recording history take the lock;
   - `Session.dispatch` waits for the job (Python, CLI), while `POST /api/actions` answers `202` at once.
-- `gmnspy.workbench.build` stages a build: plan → estimate → query → convert → write. It runs on a private
+- `netstead.workbench.build` stages a build: plan → estimate → query → convert → write. It runs on a private
   DuckDB connection.
-- `gmnspy.workbench.estimate` turns a cheap pre-query count into seconds and bytes. Its coefficients live in
+- `netstead.workbench.estimate` turns a cheap pre-query count into seconds and bytes. Its coefficients live in
   the maintained data file `workbench/data/build_cost.toml`.
 - New read-only routes (`routes/io.py`): file listing, URL check, place search, estimate, jobs list and cancel.
 - The front end gains `wizard.js`, `filebrowser.js`, `areapicker.js` and `jobs.js` (no build step).
 
 **Tech Stack:**
-- Python 3.11 (`tomllib`, `xml.etree`), pydantic v2, FastAPI, `threading`, fsspec (already a datagrove dependency).
+- Python 3.11 (`tomllib`, `xml.etree`), pydantic v2, FastAPI, `threading`, fsspec (already a corral dependency).
 - DuckDB via ibis for the Overture count.
 - MapLibre GL 4.7.1 for the area map (already loaded from the CDN). No new dependencies.
 
-**Spec:** [2026-10-02-gmnspy-workbench-design.md](2026-10-02-gmnspy-workbench-design.md), section
+**Spec:** [2026-10-02-netstead-workbench-design.md](2026-10-02-netstead-workbench-design.md), section
 "Open / Import wizard (P1a, agreed 2026-10-02)", plus "Core idea", "Two audit logs" and "Transit".
 
 **Branch:** implement on a new branch `feat/workbench-p1a`, cut from `feat/workbench-p0` (P0 is done there).
@@ -46,8 +46,8 @@ Opens and builds run as cancellable background jobs that push progress over SSE.
   - HTTP goes through an injected fake (`Session(http=...)`, `session=` on the OSM helpers);
   - the URL check takes an injectable `url_to_fs`;
   - Overture reads use the committed GeoParquet fixture `tests/fixtures/overture`.
-- Never write under `gmnspy/fixtures`: the conftest guard fails the session. New committed test inputs go
-  under `packages/gmnspy/tests/fixtures/`, and all outputs go to `tmp_path`.
+- Never write under `netstead/fixtures`: the conftest guard fails the session. New committed test inputs go
+  under `packages/netstead/tests/fixtures/`, and all outputs go to `tmp_path`.
 - Every code block in this plan was run against a copy of `feat/workbench-p0`. The expected test counts are
   from that run.
 
@@ -57,11 +57,11 @@ Opens and builds run as cancellable background jobs that push progress over SSE.
 
 These are the choices the design doc leaves open, each with a one-line rationale.
 
-1. **`OpenNetwork` always runs as a background job, like `BuildNetwork`.** One rule for both. A slow open never holds the session lock. `Session.dispatch` waits for the job, so Python and the `gmnspy app` CLI keep their blocking behaviour unchanged.
+1. **`OpenNetwork` always runs as a background job, like `BuildNetwork`.** One rule for both. A slow open never holds the session lock. `Session.dispatch` waits for the job, so Python and the `netstead app` CLI keep their blocking behaviour unchanged.
 2. **A job action's history entry is recorded when the job ends**, whether it succeeds, fails, is cancelled, or needs approval. `seq` follows completion order. The audit log records outcomes, not intents.
 3. **The approval gate runs inside the build job, in its `estimate` stage.** The pre-query is network I/O, so it must not run under the lock. The job re-runs the cheap count rather than trusting an estimate sent by the client.
 4. **A Python replay counts as approval.** `to_python(BuildNetwork(...))` always emits `approved=True` via a `replay_overrides` class variable. A fresh Python call without `approved=True` raises `ApprovalRequired`, which carries `.estimate`.
-5. **The gate is a plain comparison, not datagrove's `gate()`:** approval is needed when `seconds is None or seconds > app.approve_above_s`. `OperationCost` has no latency term and no injectable coefficients, so wrapping it would cost more code than the one-line comparison. The semantics (an approve flag and a typed exception) are the same.
+5. **The gate is a plain comparison, not corral's `gate()`:** approval is needed when `seconds is None or seconds > app.approve_above_s`. `OperationCost` has no latency term and no injectable coefficients, so wrapping it would cost more code than the one-line comparison. The semantics (an approve flag and a typed exception) are the same.
 6. **Cost model: `seconds = latency_s + links * s_per_link`, with `links = n_elements * links_per_element`.** It lives in `workbench/data/build_cost.toml`, read with `tomllib`. It is seeded from the single measured RDU run (about 27 s for 269k links), and the file says which numbers are guesses.
 7. **Each source has its own pre-query unit:**
    - OSM: matching **ways** (Overpass `out count;`, without recursing to nodes).
@@ -74,7 +74,7 @@ These are the choices the design doc leaves open, each with a one-line rationale
 11. **`output_format="zip"` stays in the schema but raises `NotSupportedYet`.** `Network.write` has no zip format, and `Network.from_source` cannot reopen a `.csv.zip`: DuckDB fails on the `::member` path, and this was reproduced on the bundled Leavenworth zip. "Write, then open from disk" is therefore impossible for zip today (see Open questions).
     > **SUPERSEDED (2026-10-02):** zip read/write was fixed in 4b743fb; zip is a normal output format.
 12. **`io.allowed_roots` is enforced everywhere a local path enters:** `OpenNetwork` (local paths only; URLs bypass it), the file listing, and build inputs and outputs, including from Python. Paths are fully resolved before the containment check, so neither `..` nor a symlink can escape a root. One rule means a replay behaves the same in Python as in the UI.
-13. **Paths named on the `gmnspy app` command line are trusted.** The CLI adds exactly those resolved paths to `io.allowed_roots` as a session-layer override, prints a note, and records no extra history entry. The user typed the path in their own shell, and `gmnspy app /data/net` must keep working.
+13. **Paths named on the `netstead app` command line are trusted.** The CLI adds exactly those resolved paths to `io.allowed_roots` as a session-layer override, prints a note, and records no extra history entry. The user typed the path in their own shell, and `netstead app /data/net` must keep working.
 14. **Recents live in the browser's `localStorage`**, the same pattern as the remembered view mode. They are a per-user convenience that needs no server code. A recent is only a shortcut: opening one is a normal `open_network`, checked against the allowed roots. They are remembered from every successful history entry, including opens made from Python.
 15. **Jobs:**
     - one daemon thread per job, with no queue or limit;
@@ -82,7 +82,7 @@ These are the choices the design doc leaves open, each with a one-line rationale
     - cancellation is cooperative at stage boundaries, and a download or read already in progress is not interrupted.
 16. **Builds run on a private `IbisEngine`**, closed after the write, so a build never shares a DuckDB connection with the networks the browser is reading. Opening from disk uses the default engine, as P0 does.
 17. **The open job materialises the link and node frames before taking the lock**, and seeds them with the new `NetworkHandle.prime()`. That keeps `state()`, which runs under the lock, cheap.
-18. **Optional extras are imported at run time** via `workbench.extras.optional_module`. A static import of `gmnspy.osm` from anything `gmnspy.cli` imports breaks the import-linter contract. The Overture snapshot layout lives in the dependency-free `gmnspy.overture.layout` for the same reason.
+18. **Optional extras are imported at run time** via `workbench.extras.optional_module`. A static import of `netstead.osm` from anything `netstead.cli` imports breaks the import-linter contract. The Overture snapshot layout lives in the dependency-free `netstead.overture.layout` for the same reason.
 19. **New settings:**
     - `app.approve_above_s` (default 90, must be ≥ 0);
     - a `build` section (`network_type`, `buffer_m`, `extra_tags`) that the wizard pre-fills from.
@@ -91,10 +91,10 @@ These are the choices the design doc leaves open, each with a one-line rationale
 20. **Local OSM files are read with stdlib `ElementTree.iterparse` or `json`.**
     - The highway filter runs locally: a way is kept if it has a `highway` tag and `tags.accepts_highway` accepts it.
     - A way that references a missing node is dropped, with one warning, rather than failing the import.
-21. **The URL check uses `fsspec.core.url_to_fs` and a new `datagrove.io.credentials.credential_source(host)`**, which returns only the layer's name. It is a `POST` (as specified). Tables are the `csv`/`parquet` stems directly inside the folder.
+21. **The URL check uses `fsspec.core.url_to_fs` and a new `corral.io.credentials.credential_source(host)`**, which returns only the layer's name. It is a `POST` (as specified). Tables are the `csv`/`parquet` stems directly inside the folder.
 22. **The read-only routes live in a new `routes/io.py`.** They sit behind the existing loopback Host/Origin middleware and are never recorded. Place search runs only on an explicit Search, because Nominatim's usage policy allows about one request per second.
 23. **The area picker has its own small MapLibre map inside the modal**, not the main map. That avoids fighting the network layers and the highlight box-select. The editable corners are four draggable `maplibregl.Marker`s.
-24. **No estimate or gate code is shared with `gmnspy build` in P1a.** Adding a gate to the CLI would change its behaviour and is out of scope. Recommended follow-up: `gmnspy build --estimate/--yes`, reusing `workbench.build.plan_build` and `estimate_for` (neither imports FastAPI).
+24. **No estimate or gate code is shared with `netstead build` in P1a.** Adding a gate to the CLI would change its behaviour and is out of scope. Recommended follow-up: `netstead build --estimate/--yes`, reusing `workbench.build.plan_build` and `estimate_for` (neither imports FastAPI).
 25. **`network_type` stays a free string**, validated against `osm_network_filters.yaml` / `overture_network_filters.yaml` at build time, because the mapping file is the source of truth. The wizard offers `drive`, `walk`, `bike` and `all`.
 26. **`BuildNetwork` mutates the session, but it is not a `NetworkChange`.** It creates a network rather than editing one, so it goes only to session history, never to the draft ProjectCard. The new handle's `source` is the output path, and its `lineage` stays empty.
 27. **Transit:** a build produces the `roadway` component only, and `BuildNetwork` has no `component` field. Attaching GTFS is a later, separate action, as the Transit section plans.
@@ -123,46 +123,46 @@ These are the choices the design doc leaves open, each with a one-line rationale
   - upload;
   - polygon clipping and a divisions lookup for Overture;
   - attaching GTFS;
-  - a `gmnspy build --estimate/--yes` CLI gate;
+  - a `netstead build --estimate/--yes` CLI gate;
   - pruning the in-memory job list.
-- **Unchanged:** `gmnspy build` behaviour, the P0 actions, and the per-network data routes.
+- **Unchanged:** `netstead build` behaviour, the P0 actions, and the per-network data routes.
 
 ## File structure
 
 | Path | Responsibility |
 |---|---|
-| `packages/gmnspy/gmnspy/config.py` (modify) | `AppSettings.approve_above_s`, new `BuildSettings` section |
-| `packages/gmnspy/gmnspy/workbench/errors.py` (new) | `ActionError` (moved from `session.py`), `NotSupportedYet`, `PathNotAllowed`, `JobCancelled`, `ApprovalRequired` |
-| `packages/gmnspy/gmnspy/workbench/paths.py` (new) | `is_url`, `allowed_roots`, `is_allowed`, `resolve_allowed` |
-| `packages/gmnspy/gmnspy/workbench/files.py` (new) | `detect_kind`, `list_dir`, `open_target`: the server-side file browser |
-| `packages/gmnspy/gmnspy/overture/layout.py` (new) | Dependency-free `LOCAL_SNAPSHOT_FILES` and `is_local_snapshot`, with the documented layout |
-| `packages/gmnspy/gmnspy/osm/local.py` (new) | `read_osm_file` for `.osm` XML and Overpass JSON, with the highway filter applied locally |
-| `packages/gmnspy/gmnspy/osm/build.py`, `osm/__init__.py` (modify) | `build_network_from_osm_file` |
-| `packages/gmnspy/gmnspy/osm/query.py` (modify) | `build_overpass_query(out="count")`, `geocode_candidates` |
-| `packages/gmnspy/gmnspy/overture/query.py`, `overture/__init__.py` (modify) | `count_segments` (predicate shared with `read_segments`) |
-| `packages/datagrove/datagrove/io/credentials.py` (modify) | `credential_source(host)`: the layer name, never the value |
-| `packages/gmnspy/gmnspy/workbench/urlcheck.py` (new) | `check_url`: reachable, credential source, tables |
-| `packages/gmnspy/gmnspy/workbench/area.py` (new) | `Area` = `BboxArea \| PointArea \| PlaceArea` |
-| `packages/gmnspy/gmnspy/workbench/extras.py` (new) | `optional_module`: run-time import of `[osm]`/`[overture]` modules |
-| `packages/gmnspy/gmnspy/workbench/estimate.py` (new) | `Estimate`, `estimate_build`, `count_osm`, `count_overture`, `needs_approval`, `fit_s_per_link` |
-| `packages/gmnspy/gmnspy/workbench/data/build_cost.toml` (new) | Maintained cost-model coefficients |
-| `packages/gmnspy/gmnspy/workbench/jobs.py` (new) | `Job`, `JobContext`, `JobRunner` |
-| `packages/gmnspy/gmnspy/workbench/build.py` (new) | `plan_build`, `estimate_for`, `fetch_and_convert`, `write_output` |
-| `packages/gmnspy/gmnspy/workbench/actions.py` (modify) | `runs_as_job`/`replay_overrides`, `BuildNetwork`, top-level-default `to_python` |
-| `packages/gmnspy/gmnspy/workbench/registry.py` (modify) | Public `as_pandas`, `NetworkHandle.prime` |
-| `packages/gmnspy/gmnspy/workbench/session.py` (modify) | Job actions: `submit`, `_finish`, `_record`, `_job_open_network`, `_job_build_network`; `http=` |
-| `packages/gmnspy/gmnspy/workbench/__init__.py` (modify) | Export `BuildNetwork`, the areas, and the errors |
-| `packages/gmnspy/gmnspy/workbench/routes/io.py` (new) | `/api/fs/list`, `/api/check-url`, `/api/geocode`, `/api/estimate`, `/api/jobs`, `/api/jobs/{id}/cancel` |
-| `packages/gmnspy/gmnspy/workbench/routes/core.py`, `server.py` (modify) | Job actions answer `202`; mount the io router |
-| `packages/gmnspy/gmnspy/workbench/static/index.html`, `app.css` (modify) | Header buttons, jobs panel, wizard modal |
-| `packages/gmnspy/gmnspy/workbench/static/js/{api,header,main,store,history}.js` (modify) | `postJSON`, recents, jobs/wizard wiring, basemap in store |
-| `packages/gmnspy/gmnspy/workbench/static/js/{jobs,filebrowser,areapicker,wizard}.js` (new) | Wizard UI |
-| `packages/gmnspy/gmnspy/cli/commands/workbench.py` (modify) | Trust command-line sources for the session |
-| `packages/gmnspy/pyproject.toml` (modify) | Wheel includes `workbench/data/*.toml` |
-| `packages/gmnspy/docs/cookbook/workbench.md` (modify) | Open / Import section |
-| `packages/gmnspy/tests/conftest.py`, `test_workbench_network_routes.py` (modify) | Allowed roots pinned in test environments |
-| `packages/gmnspy/tests/fixtures/osm/tiny.osm`, `tiny_overpass.json` (new) | Hand-written local OSM inputs |
-| `packages/gmnspy/tests/test_*.py` (new/modify) | Tests listed per task |
+| `packages/netstead/netstead/config.py` (modify) | `AppSettings.approve_above_s`, new `BuildSettings` section |
+| `packages/netstead/netstead/workbench/errors.py` (new) | `ActionError` (moved from `session.py`), `NotSupportedYet`, `PathNotAllowed`, `JobCancelled`, `ApprovalRequired` |
+| `packages/netstead/netstead/workbench/paths.py` (new) | `is_url`, `allowed_roots`, `is_allowed`, `resolve_allowed` |
+| `packages/netstead/netstead/workbench/files.py` (new) | `detect_kind`, `list_dir`, `open_target`: the server-side file browser |
+| `packages/netstead/netstead/overture/layout.py` (new) | Dependency-free `LOCAL_SNAPSHOT_FILES` and `is_local_snapshot`, with the documented layout |
+| `packages/netstead/netstead/osm/local.py` (new) | `read_osm_file` for `.osm` XML and Overpass JSON, with the highway filter applied locally |
+| `packages/netstead/netstead/osm/build.py`, `osm/__init__.py` (modify) | `build_network_from_osm_file` |
+| `packages/netstead/netstead/osm/query.py` (modify) | `build_overpass_query(out="count")`, `geocode_candidates` |
+| `packages/netstead/netstead/overture/query.py`, `overture/__init__.py` (modify) | `count_segments` (predicate shared with `read_segments`) |
+| `packages/corral/corral/io/credentials.py` (modify) | `credential_source(host)`: the layer name, never the value |
+| `packages/netstead/netstead/workbench/urlcheck.py` (new) | `check_url`: reachable, credential source, tables |
+| `packages/netstead/netstead/workbench/area.py` (new) | `Area` = `BboxArea \| PointArea \| PlaceArea` |
+| `packages/netstead/netstead/workbench/extras.py` (new) | `optional_module`: run-time import of `[osm]`/`[overture]` modules |
+| `packages/netstead/netstead/workbench/estimate.py` (new) | `Estimate`, `estimate_build`, `count_osm`, `count_overture`, `needs_approval`, `fit_s_per_link` |
+| `packages/netstead/netstead/workbench/data/build_cost.toml` (new) | Maintained cost-model coefficients |
+| `packages/netstead/netstead/workbench/jobs.py` (new) | `Job`, `JobContext`, `JobRunner` |
+| `packages/netstead/netstead/workbench/build.py` (new) | `plan_build`, `estimate_for`, `fetch_and_convert`, `write_output` |
+| `packages/netstead/netstead/workbench/actions.py` (modify) | `runs_as_job`/`replay_overrides`, `BuildNetwork`, top-level-default `to_python` |
+| `packages/netstead/netstead/workbench/registry.py` (modify) | Public `as_pandas`, `NetworkHandle.prime` |
+| `packages/netstead/netstead/workbench/session.py` (modify) | Job actions: `submit`, `_finish`, `_record`, `_job_open_network`, `_job_build_network`; `http=` |
+| `packages/netstead/netstead/workbench/__init__.py` (modify) | Export `BuildNetwork`, the areas, and the errors |
+| `packages/netstead/netstead/workbench/routes/io.py` (new) | `/api/fs/list`, `/api/check-url`, `/api/geocode`, `/api/estimate`, `/api/jobs`, `/api/jobs/{id}/cancel` |
+| `packages/netstead/netstead/workbench/routes/core.py`, `server.py` (modify) | Job actions answer `202`; mount the io router |
+| `packages/netstead/netstead/workbench/static/index.html`, `app.css` (modify) | Header buttons, jobs panel, wizard modal |
+| `packages/netstead/netstead/workbench/static/js/{api,header,main,store,history}.js` (modify) | `postJSON`, recents, jobs/wizard wiring, basemap in store |
+| `packages/netstead/netstead/workbench/static/js/{jobs,filebrowser,areapicker,wizard}.js` (new) | Wizard UI |
+| `packages/netstead/netstead/cli/commands/workbench.py` (modify) | Trust command-line sources for the session |
+| `packages/netstead/pyproject.toml` (modify) | Wheel includes `workbench/data/*.toml` |
+| `packages/netstead/docs/cookbook/workbench.md` (modify) | Open / Import section |
+| `packages/netstead/tests/conftest.py`, `test_workbench_network_routes.py` (modify) | Allowed roots pinned in test environments |
+| `packages/netstead/tests/fixtures/osm/tiny.osm`, `tiny_overpass.json` (new) | Hand-written local OSM inputs |
+| `packages/netstead/tests/test_*.py` (new/modify) | Tests listed per task |
 
 ---
 
@@ -173,8 +173,8 @@ pytest's `tmp_path` (on macOS, `/private/var/folders/...`) is outside it. Pin th
 environment now, so the suite behaves the same wherever the repo is checked out.
 
 **Files:**
-- Modify: `packages/gmnspy/tests/conftest.py`
-- Modify: `packages/gmnspy/tests/test_workbench_network_routes.py`
+- Modify: `packages/netstead/tests/conftest.py`
+- Modify: `packages/netstead/tests/test_workbench_network_routes.py`
 
 - [ ] **Step 1: Cut the branch**
 
@@ -184,13 +184,13 @@ git checkout feat/workbench-p0 && git checkout -b feat/workbench-p1a
 
 - [ ] **Step 2: Pin allowed roots in `isolated_env`**
 
-In `packages/gmnspy/tests/conftest.py`, add `import json` after `import hashlib`. Then replace:
+In `packages/netstead/tests/conftest.py`, add `import json` after `import hashlib`. Then replace:
 
 ```python
 @pytest.fixture
 def isolated_env(tmp_path: Path) -> dict[str, str]:
-    """An environ whose gmnspy user-config dir lives under ``tmp_path``, never the real ``~/.config``."""
-    return {"GMNSPY_CONFIG_DIR": str(tmp_path / "user")}
+    """An environ whose netstead user-config dir lives under ``tmp_path``, never the real ``~/.config``."""
+    return {"NETSTEAD_CONFIG_DIR": str(tmp_path / "user")}
 ```
 
 with:
@@ -204,12 +204,12 @@ TEST_FIXTURES = Path(__file__).resolve().parent / "fixtures"
 def isolated_env(tmp_path: Path) -> dict[str, str]:
     """An environ isolated from the real machine.
 
-    The gmnspy user-config dir lives under ``tmp_path`` (never the real ``~/.config``), and
+    The netstead user-config dir lives under ``tmp_path`` (never the real ``~/.config``), and
     ``io.allowed_roots`` is pinned to ``tmp_path`` plus the two read-only fixture trees, so the
     workbench's allowed-roots policy behaves the same wherever the repo is checked out.
     """
     roots = [str(tmp_path.resolve()), str(_FIXTURES_ROOT.resolve()), str(TEST_FIXTURES)]
-    return {"GMNSPY_CONFIG_DIR": str(tmp_path / "user"), "GMNSPY_IO__ALLOWED_ROOTS": json.dumps(roots)}
+    return {"NETSTEAD_CONFIG_DIR": str(tmp_path / "user"), "NETSTEAD_IO__ALLOWED_ROOTS": json.dumps(roots)}
 ```
 
 - [ ] **Step 3: Give the module-scoped network-routes client the same policy**
@@ -218,26 +218,26 @@ def isolated_env(tmp_path: Path) -> dict[str, str]:
 fixture, replace:
 
 ```python
-    s = Session(project_dir=tmp, environ={"GMNSPY_CONFIG_DIR": str(tmp / "user")}, parser=StubParser())
+    s = Session(project_dir=tmp, environ={"NETSTEAD_CONFIG_DIR": str(tmp / "user")}, parser=StubParser())
 ```
 
 with:
 
 ```python
-    env = {"GMNSPY_CONFIG_DIR": str(tmp / "user"), "GMNSPY_IO__ALLOWED_ROOTS": json.dumps([rdu_source])}
+    env = {"NETSTEAD_CONFIG_DIR": str(tmp / "user"), "NETSTEAD_IO__ALLOWED_ROOTS": json.dumps([rdu_source])}
     s = Session(project_dir=tmp, environ=env, parser=StubParser())
 ```
 
 - [ ] **Step 4: Confirm the workbench suite is unchanged**
 
-Run: `uv run --all-extras pytest packages/gmnspy/tests -q -k "workbench or config"`
+Run: `uv run --all-extras pytest packages/netstead/tests -q -k "workbench or config"`
 Expected: all pass. Nothing enforces roots yet, so the extra environment variable has no effect.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add packages/gmnspy/tests/conftest.py packages/gmnspy/tests/test_workbench_network_routes.py
-git commit -m "test(gmnspy): pin io.allowed_roots in workbench test environments"
+git add packages/netstead/tests/conftest.py packages/netstead/tests/test_workbench_network_routes.py
+git commit -m "test(netstead): pin io.allowed_roots in workbench test environments"
 ```
 
 ---
@@ -245,10 +245,10 @@ git commit -m "test(gmnspy): pin io.allowed_roots in workbench test environments
 ### Task 1: Settings: `app.approve_above_s` and the `build` section
 
 **Files:**
-- Modify: `packages/gmnspy/gmnspy/config.py`
-- Test: `packages/gmnspy/tests/test_config.py`
+- Modify: `packages/netstead/netstead/config.py`
+- Test: `packages/netstead/tests/test_config.py`
 
-- [ ] **Step 1: Append the failing tests to `packages/gmnspy/tests/test_config.py`**
+- [ ] **Step 1: Append the failing tests to `packages/netstead/tests/test_config.py`**
 
 ```python
 def test_approval_threshold_and_build_defaults(tmp_path, isolated_env):
@@ -258,19 +258,19 @@ def test_approval_threshold_and_build_defaults(tmp_path, isolated_env):
 
 
 def test_negative_approval_threshold_rejected(tmp_path, isolated_env):
-    (tmp_path / "gmnspy.toml").write_text("[app]\napprove_above_s = -1\n")
+    (tmp_path / "netstead.toml").write_text("[app]\napprove_above_s = -1\n")
     with pytest.raises(SettingsError, match="approve_above_s"):
         load_settings(project_dir=tmp_path, environ=isolated_env)
 ```
 
 - [ ] **Step 2: Run them to confirm they fail**
 
-Run: `uv run --all-extras pytest packages/gmnspy/tests/test_config.py -q`
+Run: `uv run --all-extras pytest packages/netstead/tests/test_config.py -q`
 Expected: `1 failed, 17 passed`. The failure is `AttributeError: 'AppSettings' object has no attribute
 'approve_above_s'`. The negative-threshold test already passes, because an unknown key is rejected too; it guards
 the `ge=0` bound once the field exists.
 
-- [ ] **Step 3: Implement in `packages/gmnspy/gmnspy/config.py`**
+- [ ] **Step 3: Implement in `packages/netstead/netstead/config.py`**
 
 Insert this class directly above `class RuleSettings(_Section):`:
 
@@ -297,13 +297,13 @@ In `Settings`, add a field after `overture: OvertureSettings = Field(default_fac
 
 - [ ] **Step 4: Run the tests**
 
-Run: `uv run --all-extras pytest packages/gmnspy/tests/test_config.py -q`
+Run: `uv run --all-extras pytest packages/netstead/tests/test_config.py -q`
 Expected: `18 passed`.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add packages/gmnspy/gmnspy/config.py packages/gmnspy/tests/test_config.py
+git add packages/netstead/netstead/config.py packages/netstead/tests/test_config.py
 git commit -m "feat(config): app.approve_above_s and build.* wizard defaults"
 ```
 
@@ -312,12 +312,12 @@ git commit -m "feat(config): app.approve_above_s and build.* wizard defaults"
 ### Task 2: Typed errors and the allowed-roots path policy
 
 **Files:**
-- Create: `packages/gmnspy/gmnspy/workbench/errors.py`
-- Create: `packages/gmnspy/gmnspy/workbench/paths.py`
-- Modify: `packages/gmnspy/gmnspy/workbench/session.py` (import the errors from their new home)
-- Test: `packages/gmnspy/tests/test_workbench_paths.py`
+- Create: `packages/netstead/netstead/workbench/errors.py`
+- Create: `packages/netstead/netstead/workbench/paths.py`
+- Modify: `packages/netstead/netstead/workbench/session.py` (import the errors from their new home)
+- Test: `packages/netstead/tests/test_workbench_paths.py`
 
-- [ ] **Step 1: Write the failing tests in `packages/gmnspy/tests/test_workbench_paths.py`**
+- [ ] **Step 1: Write the failing tests in `packages/netstead/tests/test_workbench_paths.py`**
 
 ```python
 """Tests for the workbench allowed-roots path policy."""
@@ -326,9 +326,9 @@ import os
 from pathlib import Path
 
 import pytest
-from gmnspy.config import Settings
-from gmnspy.workbench.errors import PathNotAllowed
-from gmnspy.workbench.paths import allowed_roots, is_allowed, is_url, resolve_allowed
+from netstead.config import Settings
+from netstead.workbench.errors import PathNotAllowed
+from netstead.workbench.paths import allowed_roots, is_allowed, is_url, resolve_allowed
 
 
 def _settings(*roots: Path) -> Settings:
@@ -382,10 +382,10 @@ def test_symlink_escape_rejected(tmp_path):
 
 - [ ] **Step 2: Run them to confirm they fail**
 
-Run: `uv run --all-extras pytest packages/gmnspy/tests/test_workbench_paths.py -q`
-Expected: collection error, `ModuleNotFoundError: No module named 'gmnspy.workbench.errors'`.
+Run: `uv run --all-extras pytest packages/netstead/tests/test_workbench_paths.py -q`
+Expected: collection error, `ModuleNotFoundError: No module named 'netstead.workbench.errors'`.
 
-- [ ] **Step 3: Create `packages/gmnspy/gmnspy/workbench/errors.py`**
+- [ ] **Step 3: Create `packages/netstead/netstead/workbench/errors.py`**
 
 `ApprovalRequired` is added in Task 10, once `Estimate` exists.
 
@@ -422,7 +422,7 @@ class JobCancelled(ActionError):
     """A background job stopped at a checkpoint because cancellation was requested."""
 ```
 
-- [ ] **Step 4: Create `packages/gmnspy/gmnspy/workbench/paths.py`**
+- [ ] **Step 4: Create `packages/netstead/netstead/workbench/paths.py`**
 
 ```python
 """Local-path policy for the workbench: every local read or write stays under ``io.allowed_roots``.
@@ -438,7 +438,7 @@ from __future__ import annotations
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from gmnspy.config import Settings
+from netstead.config import Settings
 
 from .errors import PathNotAllowed
 
@@ -478,7 +478,7 @@ def resolve_allowed(path: str | Path, settings: Settings) -> Path:
 
 - [ ] **Step 5: Make `session.py` import the moved errors**
 
-In `packages/gmnspy/gmnspy/workbench/session.py`, delete:
+In `packages/netstead/netstead/workbench/session.py`, delete:
 
 ```python
 class ActionError(Exception):
@@ -495,40 +495,40 @@ and add this import directly after `from .actions import (...)`:
 from .errors import ActionError, NotSupportedYet
 ```
 
-`session.__all__` still lists both names, so `from gmnspy.workbench.session import ActionError` (used by tests and
+`session.__all__` still lists both names, so `from netstead.workbench.session import ActionError` (used by tests and
 `__init__.py`) keeps working.
 
 - [ ] **Step 6: Run the tests**
 
-Run: `uv run --all-extras pytest packages/gmnspy/tests/test_workbench_paths.py packages/gmnspy/tests/test_workbench_session.py -q`
+Run: `uv run --all-extras pytest packages/netstead/tests/test_workbench_paths.py packages/netstead/tests/test_workbench_session.py -q`
 Expected: `33 passed`.
 
 - [ ] **Step 7: Commit**
 
 ```bash
-git add packages/gmnspy/gmnspy/workbench/errors.py packages/gmnspy/gmnspy/workbench/paths.py \
-  packages/gmnspy/gmnspy/workbench/session.py packages/gmnspy/tests/test_workbench_paths.py
+git add packages/netstead/netstead/workbench/errors.py packages/netstead/netstead/workbench/paths.py \
+  packages/netstead/netstead/workbench/session.py packages/netstead/tests/test_workbench_paths.py
 git commit -m "feat(workbench): typed errors module + io.allowed_roots path policy (resolve before contain)"
 ```
 
 ---
 
-### Task 3: `gmnspy app` trusts the sources named on its command line
+### Task 3: `netstead app` trusts the sources named on its command line
 
-This lands before enforcement (Task 12), so `gmnspy app <path outside home>` never breaks in between.
+This lands before enforcement (Task 12), so `netstead app <path outside home>` never breaks in between.
 
 **Files:**
-- Modify: `packages/gmnspy/gmnspy/cli/commands/workbench.py`
-- Test: `packages/gmnspy/tests/test_cli_workbench.py`
+- Modify: `packages/netstead/netstead/cli/commands/workbench.py`
+- Test: `packages/netstead/tests/test_cli_workbench.py`
 
 - [ ] **Step 1: Write the failing tests**
 
-In `packages/gmnspy/tests/test_cli_workbench.py`, add `import json` above `from pathlib import Path`, then append:
+In `packages/netstead/tests/test_cli_workbench.py`, add `import json` above `from pathlib import Path`, then append:
 
 ```python
 def test_cli_sources_outside_allowed_roots_are_trusted_for_the_session(served, monkeypatch, rdu_source, tmp_path):
     """A path typed on the command line is the user's explicit choice: the CLI allows exactly that path."""
-    monkeypatch.setenv("GMNSPY_IO__ALLOWED_ROOTS", json.dumps([str(tmp_path / "elsewhere")]))
+    monkeypatch.setenv("NETSTEAD_IO__ALLOWED_ROOTS", json.dumps([str(tmp_path / "elsewhere")]))
     result = runner.invoke(app, ["app", rdu_source])
     assert result.exit_code == 0, result.output
     (session,) = served
@@ -539,7 +539,7 @@ def test_cli_sources_outside_allowed_roots_are_trusted_for_the_session(served, m
 
 
 def test_cli_does_not_widen_roots_when_already_allowed(served, monkeypatch, rdu_source):
-    monkeypatch.setenv("GMNSPY_IO__ALLOWED_ROOTS", json.dumps([str(Path(rdu_source).parent)]))
+    monkeypatch.setenv("NETSTEAD_IO__ALLOWED_ROOTS", json.dumps([str(Path(rdu_source).parent)]))
     result = runner.invoke(app, ["app", rdu_source])
     assert result.exit_code == 0 and "allowing" not in result.output
     assert served[0].loaded.sources["io.allowed_roots"] == "env"
@@ -547,18 +547,18 @@ def test_cli_does_not_widen_roots_when_already_allowed(served, monkeypatch, rdu_
 
 - [ ] **Step 2: Run them to confirm they fail**
 
-Run: `uv run --all-extras pytest packages/gmnspy/tests/test_cli_workbench.py -q`
+Run: `uv run --all-extras pytest packages/netstead/tests/test_cli_workbench.py -q`
 Expected: `1 failed, 12 passed`. `test_cli_sources_outside_allowed_roots_are_trusted_for_the_session` fails with
 `AssertionError` because the fixture path is not in `allowed_roots`.
 
-- [ ] **Step 3: Implement in `packages/gmnspy/gmnspy/cli/commands/workbench.py`**
+- [ ] **Step 3: Implement in `packages/netstead/netstead/cli/commands/workbench.py`**
 
 In `run_workbench`, replace:
 
 ```python
-    from gmnspy import workbench
-    from gmnspy.config import SettingsError
-    from gmnspy.workbench.actions import OpenNetwork
+    from netstead import workbench
+    from netstead.config import SettingsError
+    from netstead.workbench.actions import OpenNetwork
 
     flags = {"select.provider": provider, "viz.basemap": basemap, "app.host": host, "app.port": port}
     try:
@@ -578,10 +578,10 @@ In `run_workbench`, replace:
 with:
 
 ```python
-    from gmnspy import workbench
-    from gmnspy.config import SettingsError
-    from gmnspy.workbench.actions import OpenNetwork
-    from gmnspy.workbench.paths import allowed_roots, is_allowed, is_url
+    from netstead import workbench
+    from netstead.config import SettingsError
+    from netstead.workbench.actions import OpenNetwork
+    from netstead.workbench.paths import allowed_roots, is_allowed, is_url
 
     flags = {"select.provider": provider, "viz.basemap": basemap, "app.host": host, "app.port": port}
     overrides = {k: v for k, v in flags.items() if v is not None}
@@ -607,14 +607,14 @@ later with `could not open ...` (exit 1), as `test_app_bad_source_exits_1` expec
 
 - [ ] **Step 4: Run the tests**
 
-Run: `uv run --all-extras pytest packages/gmnspy/tests/test_cli_workbench.py -q`
+Run: `uv run --all-extras pytest packages/netstead/tests/test_cli_workbench.py -q`
 Expected: `13 passed`.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add packages/gmnspy/gmnspy/cli/commands/workbench.py packages/gmnspy/tests/test_cli_workbench.py
-git commit -m "feat(cli): gmnspy app allows its command-line sources for the session"
+git add packages/netstead/netstead/cli/commands/workbench.py packages/netstead/tests/test_cli_workbench.py
+git commit -m "feat(cli): netstead app allows its command-line sources for the session"
 ```
 
 ---
@@ -622,22 +622,22 @@ git commit -m "feat(cli): gmnspy app allows its command-line sources for the ses
 ### Task 4: The Overture snapshot layout and the server-side file browser
 
 **Files:**
-- Create: `packages/gmnspy/gmnspy/overture/layout.py`
-- Modify: `packages/gmnspy/gmnspy/overture/__init__.py` (docstring pointer)
-- Create: `packages/gmnspy/gmnspy/workbench/files.py`
-- Test: `packages/gmnspy/tests/test_workbench_files.py`, `packages/gmnspy/tests/test_overture_query.py`
+- Create: `packages/netstead/netstead/overture/layout.py`
+- Modify: `packages/netstead/netstead/overture/__init__.py` (docstring pointer)
+- Create: `packages/netstead/netstead/workbench/files.py`
+- Test: `packages/netstead/tests/test_workbench_files.py`, `packages/netstead/tests/test_overture_query.py`
 
 - [ ] **Step 1: Write the failing tests**
 
-Create `packages/gmnspy/tests/test_workbench_files.py`:
+Create `packages/netstead/tests/test_workbench_files.py`:
 
 ```python
 """Tests for the workbench server-side file browser."""
 
 import pytest
-from gmnspy.config import Settings
-from gmnspy.workbench.errors import PathNotAllowed
-from gmnspy.workbench.files import detect_kind, list_dir
+from netstead.config import Settings
+from netstead.workbench.errors import PathNotAllowed
+from netstead.workbench.files import detect_kind, list_dir
 
 
 @pytest.fixture
@@ -720,8 +720,8 @@ def test_missing_and_file_paths(tree):
         list_dir(str(tree / "net.zip"), _settings(tree))
 ```
 
-In `packages/gmnspy/tests/test_overture_query.py`, add `from gmnspy.overture.layout import is_local_snapshot` below
-`from gmnspy.overture import query`, then append:
+In `packages/netstead/tests/test_overture_query.py`, add `from netstead.overture.layout import is_local_snapshot` below
+`from netstead.overture import query`, then append:
 
 ```python
 class TestLocalSnapshotLayout:
@@ -736,14 +736,14 @@ class TestLocalSnapshotLayout:
 
 - [ ] **Step 2: Run them to confirm they fail**
 
-Run: `uv run --all-extras pytest packages/gmnspy/tests/test_workbench_files.py packages/gmnspy/tests/test_overture_query.py -q`
-Expected: collection errors, `ModuleNotFoundError: No module named 'gmnspy.workbench.files'` and
-`... 'gmnspy.overture.layout'`.
+Run: `uv run --all-extras pytest packages/netstead/tests/test_workbench_files.py packages/netstead/tests/test_overture_query.py -q`
+Expected: collection errors, `ModuleNotFoundError: No module named 'netstead.workbench.files'` and
+`... 'netstead.overture.layout'`.
 
-- [ ] **Step 3: Create `packages/gmnspy/gmnspy/overture/layout.py`**
+- [ ] **Step 3: Create `packages/netstead/netstead/overture/layout.py`**
 
-It must import nothing from `gmnspy.overture`. Importing that package's `__init__` would pull in `build` and then
-`gmnspy.osm`, and break the import-linter contract that `gmnspy.cli` (which imports the workbench) must not
+It must import nothing from `netstead.overture`. Importing that package's `__init__` would pull in `build` and then
+`netstead.osm`, and break the import-linter contract that `netstead.cli` (which imports the workbench) must not
 require optional extras.
 
 ```python
@@ -778,20 +778,20 @@ def is_local_snapshot(path: str | Path) -> bool:
     return folder.is_dir() and all((folder / name).is_file() for name in LOCAL_SNAPSHOT_FILES)
 ```
 
-In `packages/gmnspy/gmnspy/overture/__init__.py`, extend the paragraph that ends
+In `packages/netstead/netstead/overture/__init__.py`, extend the paragraph that ends
 `so importing this package is cheap and the import-linter boundary stays static.` with two more lines:
 
 ```text
 The flat local-snapshot folder layout (``segment.parquet`` + ``connector.parquet``)
-is documented in :mod:`gmnspy.overture.layout`.
+is documented in :mod:`netstead.overture.layout`.
 ```
 
-- [ ] **Step 4: Create `packages/gmnspy/gmnspy/workbench/files.py`**
+- [ ] **Step 4: Create `packages/netstead/netstead/workbench/files.py`**
 
 ```python
 """Server-side file browser for the Open / Import wizard: list a folder, tag what each entry can be opened as.
 
-Listing never leaves ``io.allowed_roots`` (see :mod:`gmnspy.workbench.paths`), skips hidden entries, and
+Listing never leaves ``io.allowed_roots`` (see :mod:`netstead.workbench.paths`), skips hidden entries, and
 reads no file contents: a kind is decided from names alone, so browsing a large folder stays cheap.
 """
 
@@ -800,8 +800,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from gmnspy.config import Settings
-from gmnspy.overture.layout import is_local_snapshot
+from netstead.config import Settings
+from netstead.overture.layout import is_local_snapshot
 
 from .paths import allowed_roots, resolve_allowed
 
@@ -880,15 +880,15 @@ def list_dir(path: str | None, settings: Settings) -> dict[str, Any]:
 
 - [ ] **Step 5: Run the tests**
 
-Run: `uv run --all-extras pytest packages/gmnspy/tests/test_workbench_files.py packages/gmnspy/tests/test_overture_query.py -q`
+Run: `uv run --all-extras pytest packages/netstead/tests/test_workbench_files.py packages/netstead/tests/test_overture_query.py -q`
 Expected: `19 passed`.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add packages/gmnspy/gmnspy/overture/layout.py packages/gmnspy/gmnspy/overture/__init__.py \
-  packages/gmnspy/gmnspy/workbench/files.py packages/gmnspy/tests/test_workbench_files.py \
-  packages/gmnspy/tests/test_overture_query.py
+git add packages/netstead/netstead/overture/layout.py packages/netstead/netstead/overture/__init__.py \
+  packages/netstead/netstead/workbench/files.py packages/netstead/tests/test_workbench_files.py \
+  packages/netstead/tests/test_overture_query.py
 git commit -m "feat(workbench): server-side file listing with kind tags; document the Overture snapshot layout"
 ```
 
@@ -897,10 +897,10 @@ git commit -m "feat(workbench): server-side file listing with kind tags; documen
 ### Task 5: Read local OSM files (`.osm` XML, Overpass JSON) and build from them
 
 **Files:**
-- Create: `packages/gmnspy/tests/fixtures/osm/tiny.osm`, `packages/gmnspy/tests/fixtures/osm/tiny_overpass.json`
-- Create: `packages/gmnspy/gmnspy/osm/local.py`
-- Modify: `packages/gmnspy/gmnspy/osm/build.py`, `packages/gmnspy/gmnspy/osm/__init__.py`
-- Test: `packages/gmnspy/tests/test_osm_local.py`
+- Create: `packages/netstead/tests/fixtures/osm/tiny.osm`, `packages/netstead/tests/fixtures/osm/tiny_overpass.json`
+- Create: `packages/netstead/netstead/osm/local.py`
+- Modify: `packages/netstead/netstead/osm/build.py`, `packages/netstead/netstead/osm/__init__.py`
+- Test: `packages/netstead/tests/test_osm_local.py`
 
 - [ ] **Step 1: Add the hand-written fixtures**
 
@@ -910,12 +910,12 @@ Both files hold the same 4 nodes and 4 ways:
 - a residential way that references the missing node 99, so it is dropped;
 - a building, which is not a highway.
 
-`packages/gmnspy/tests/fixtures/osm/tiny.osm`:
+`packages/netstead/tests/fixtures/osm/tiny.osm`:
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- Hand-written test fixture for gmnspy.osm.local (not real OSM data). -->
-<osm version="0.6" generator="gmnspy-tests">
+<!-- Hand-written test fixture for netstead.osm.local (not real OSM data). -->
+<osm version="0.6" generator="netstead-tests">
   <bounds minlat="42.0" minlon="-71.002" maxlat="42.002" maxlon="-71.0"/>
   <node id="1" lat="42.000" lon="-71.000"/>
   <node id="2" lat="42.001" lon="-71.000"/>
@@ -941,12 +941,12 @@ Both files hold the same 4 nodes and 4 ways:
 </osm>
 ```
 
-`packages/gmnspy/tests/fixtures/osm/tiny_overpass.json`:
+`packages/netstead/tests/fixtures/osm/tiny_overpass.json`:
 
 ```json
 {
   "version": 0.6,
-  "generator": "gmnspy-tests (hand-written fixture, not real OSM data)",
+  "generator": "netstead-tests (hand-written fixture, not real OSM data)",
   "elements": [
     {"type": "node", "id": 1, "lat": 42.000, "lon": -71.000},
     {"type": "node", "id": 2, "lat": 42.001, "lon": -71.000},
@@ -960,17 +960,17 @@ Both files hold the same 4 nodes and 4 ways:
 }
 ```
 
-- [ ] **Step 2: Write the failing tests in `packages/gmnspy/tests/test_osm_local.py`**
+- [ ] **Step 2: Write the failing tests in `packages/netstead/tests/test_osm_local.py`**
 
 ```python
-"""Tests for gmnspy.osm.local + build_network_from_osm_file (local files only, no network)."""
+"""Tests for netstead.osm.local + build_network_from_osm_file (local files only, no network)."""
 
 import logging
 from pathlib import Path
 
 import pytest
-from gmnspy.osm import build_network_from_osm_file
-from gmnspy.osm.local import read_osm_file
+from netstead.osm import build_network_from_osm_file
+from netstead.osm.local import read_osm_file
 
 OSM_DIR = Path(__file__).resolve().parent / "fixtures" / "osm"
 OSM_XML = OSM_DIR / "tiny.osm"
@@ -979,7 +979,7 @@ OVERPASS_JSON = OSM_DIR / "tiny_overpass.json"
 
 @pytest.mark.parametrize("path", [OSM_XML, OVERPASS_JSON], ids=["xml", "json"])
 def test_reads_nodes_and_filters_ways_for_drive(path, caplog):
-    with caplog.at_level(logging.WARNING, logger="gmnspy.osm.local"):
+    with caplog.at_level(logging.WARNING, logger="netstead.osm.local"):
         nodes, ways = read_osm_file(path, network_type="drive")
     assert nodes == {1: (-71.0, 42.0), 2: (-71.0, 42.001), 3: (-71.0, 42.002), 4: (-71.002, 42.002)}
     assert [w["id"] for w in ways] == [100]  # footway filtered, incomplete 102 dropped, building 103 not a highway
@@ -1036,17 +1036,17 @@ def test_build_from_file_with_no_matching_ways(tmp_path):
 
 - [ ] **Step 3: Run them to confirm they fail**
 
-Run: `uv run --all-extras pytest packages/gmnspy/tests/test_osm_local.py -q`
-Expected: collection error, `ImportError: cannot import name 'build_network_from_osm_file' from 'gmnspy.osm'`.
+Run: `uv run --all-extras pytest packages/netstead/tests/test_osm_local.py -q`
+Expected: collection error, `ImportError: cannot import name 'build_network_from_osm_file' from 'netstead.osm'`.
 
-- [ ] **Step 4: Create `packages/gmnspy/gmnspy/osm/local.py`**
+- [ ] **Step 4: Create `packages/netstead/netstead/osm/local.py`**
 
 ```python
 """Read a local OSM extract (``.osm`` XML or an Overpass JSON export) into the ``(nodes, ways)`` contract.
 
 The Overpass path filters ``highway`` ways on the server; a local file holds whatever its exporter
 kept, so this reader applies the same ``network_type`` allow-list itself via
-:func:`gmnspy.osm.tags.accepts_highway`, and keeps only ways that carry a ``highway`` tag.
+:func:`netstead.osm.tags.accepts_highway`, and keeps only ways that carry a ``highway`` tag.
 
 Ways that reference a node missing from the file (typical where an extract cuts a road at its
 edge) are dropped, with one warning naming how many, rather than failing the whole import.
@@ -1103,7 +1103,7 @@ def _parse_json(path: Path) -> tuple[dict[int, tuple[float, float]], list[dict[s
 def read_osm_file(
     path: str | Path, *, network_type: str = "drive"
 ) -> tuple[dict[int, tuple[float, float]], list[dict[str, Any]]]:
-    """Read ``path`` and return ``(nodes, ways)`` for :func:`gmnspy.osm.convert.build_node_link_tables`.
+    """Read ``path`` and return ``(nodes, ways)`` for :func:`netstead.osm.convert.build_node_link_tables`.
 
     Args:
         path: An ``.osm`` XML file or an Overpass ``[out:json]`` export (``.json``).
@@ -1135,7 +1135,7 @@ def read_osm_file(
     return nodes, complete
 ```
 
-- [ ] **Step 5: Add `build_network_from_osm_file` to `packages/gmnspy/gmnspy/osm/build.py`**
+- [ ] **Step 5: Add `build_network_from_osm_file` to `packages/netstead/netstead/osm/build.py`**
 
 Add `from pathlib import Path` to the imports. Change `from . import convert, query` to
 `from . import convert, local, query`. Change `__all__` to
@@ -1153,14 +1153,14 @@ def build_network_from_osm_file(
     """Build a GMNS network from a local ``.osm`` XML file or Overpass JSON export (no network access).
 
     Args:
-        path: The local OSM file (see :func:`gmnspy.osm.local.read_osm_file` for formats).
+        path: The local OSM file (see :func:`netstead.osm.local.read_osm_file` for formats).
         network_type: One of ``drive``/``walk``/``bike``/``all``; applied locally to the ``highway`` tag.
         extra_tags: OSM tag keys to carry onto each link as extra columns.
-        spec_version: GMNS spec version (default :data:`gmnspy.spec.DEFAULT_SPEC`).
-        engine: Engine to materialise through (default: datagrove ibis).
+        spec_version: GMNS spec version (default :data:`netstead.spec.DEFAULT_SPEC`).
+        engine: Engine to materialise through (default: corral ibis).
 
     Returns:
-        A populated :class:`~gmnspy.network.Network`.
+        A populated :class:`~netstead.network.Network`.
 
     Raises:
         ValueError: Unsupported/malformed file, or no ways match ``network_type``.
@@ -1172,7 +1172,7 @@ def build_network_from_osm_file(
     return network_from_records(node_records, link_records, spec_version=spec_version, engine=engine)
 ```
 
-- [ ] **Step 6: Expose it lazily in `packages/gmnspy/gmnspy/osm/__init__.py`**
+- [ ] **Step 6: Expose it lazily in `packages/netstead/netstead/osm/__init__.py`**
 
 Make three edits:
 - In the `TYPE_CHECKING` block, import `build_network_from_osm_file` alongside `build_network_from_osm`.
@@ -1181,14 +1181,14 @@ Make three edits:
 
 - [ ] **Step 7: Run the tests**
 
-Run: `uv run --all-extras pytest packages/gmnspy/tests/test_osm_local.py packages/gmnspy/tests/test_osm_build.py -q`
+Run: `uv run --all-extras pytest packages/netstead/tests/test_osm_local.py packages/netstead/tests/test_osm_build.py -q`
 Expected: all pass (`test_osm_local.py`: `10 passed`).
 
 - [ ] **Step 8: Commit**
 
 ```bash
-git add packages/gmnspy/gmnspy/osm/local.py packages/gmnspy/gmnspy/osm/build.py packages/gmnspy/gmnspy/osm/__init__.py \
-  packages/gmnspy/tests/fixtures/osm packages/gmnspy/tests/test_osm_local.py
+git add packages/netstead/netstead/osm/local.py packages/netstead/netstead/osm/build.py packages/netstead/netstead/osm/__init__.py \
+  packages/netstead/tests/fixtures/osm packages/netstead/tests/test_osm_local.py
 git commit -m "feat(osm): read local .osm XML / Overpass JSON with the highway filter applied locally"
 ```
 
@@ -1197,10 +1197,10 @@ git commit -m "feat(osm): read local .osm XML / Overpass JSON with the highway f
 ### Task 6: Count Overture segments with the read's own predicate
 
 **Files:**
-- Modify: `packages/gmnspy/gmnspy/overture/query.py`
-- Test: `packages/gmnspy/tests/test_overture_query.py`
+- Modify: `packages/netstead/netstead/overture/query.py`
+- Test: `packages/netstead/tests/test_overture_query.py`
 
-- [ ] **Step 1: Append the failing tests to `packages/gmnspy/tests/test_overture_query.py`**
+- [ ] **Step 1: Append the failing tests to `packages/netstead/tests/test_overture_query.py`**
 
 ```python
 class TestCountSegments:
@@ -1215,10 +1215,10 @@ class TestCountSegments:
 
 - [ ] **Step 2: Run them to confirm they fail**
 
-Run: `uv run --all-extras pytest packages/gmnspy/tests/test_overture_query.py -q -k Count`
-Expected: `2 failed`, `AttributeError: module 'gmnspy.overture.query' has no attribute 'count_segments'`.
+Run: `uv run --all-extras pytest packages/netstead/tests/test_overture_query.py -q -k Count`
+Expected: `2 failed`, `AttributeError: module 'netstead.overture.query' has no attribute 'count_segments'`.
 
-- [ ] **Step 3: Implement in `packages/gmnspy/gmnspy/overture/query.py`**
+- [ ] **Step 3: Implement in `packages/netstead/netstead/overture/query.py`**
 
 Add `"count_segments",` to `__all__`, after `"OVERTURE_RELEASE",`. Insert these two functions directly above
 `def read_segments(`:
@@ -1263,7 +1263,7 @@ def count_segments(
         network_type: One of ``drive``/``walk``/``bike``/``all``.
         overture_release: Pinned release string (ignored when ``data_root`` set).
         data_root: Override base URI (Azure mirror / local snapshot dir).
-        engine: Compute engine (default: datagrove ibis/duckdb).
+        engine: Compute engine (default: corral ibis/duckdb).
 
     Returns:
         The number of matching segments.
@@ -1301,13 +1301,13 @@ with:
 
 - [ ] **Step 4: Run the tests**
 
-Run: `uv run --all-extras pytest packages/gmnspy/tests/test_overture_query.py packages/gmnspy/tests/test_overture_build.py -q`
+Run: `uv run --all-extras pytest packages/netstead/tests/test_overture_query.py packages/netstead/tests/test_overture_build.py -q`
 Expected: all pass (`test_overture_query.py`: `14 passed`). The build tests prove `read_segments` is unchanged.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add packages/gmnspy/gmnspy/overture/query.py packages/gmnspy/tests/test_overture_query.py
+git add packages/netstead/netstead/overture/query.py packages/netstead/tests/test_overture_query.py
 git commit -m "feat(overture): count_segments, sharing the bbox+class predicate with read_segments"
 ```
 
@@ -1316,10 +1316,10 @@ git commit -m "feat(overture): count_segments, sharing the bbox+class predicate 
 ### Task 7: Overpass `out count` and multi-candidate place search
 
 **Files:**
-- Modify: `packages/gmnspy/gmnspy/osm/query.py`
-- Test: `packages/gmnspy/tests/test_osm_query.py`
+- Modify: `packages/netstead/netstead/osm/query.py`
+- Test: `packages/netstead/tests/test_osm_query.py`
 
-- [ ] **Step 1: Append the failing tests to `packages/gmnspy/tests/test_osm_query.py`**
+- [ ] **Step 1: Append the failing tests to `packages/netstead/tests/test_osm_query.py`**
 
 They reuse that file's `_FakeSession`, `_FakeResponse` and `_NO_SLEEP` helpers.
 
@@ -1361,14 +1361,14 @@ class TestGeocodeCandidates:
 
 - [ ] **Step 2: Run them to confirm they fail**
 
-Run: `uv run --all-extras pytest packages/gmnspy/tests/test_osm_query.py -q`
+Run: `uv run --all-extras pytest packages/netstead/tests/test_osm_query.py -q`
 Expected: `3 failed, 20 passed`. The failures are:
 - `TypeError: build_overpass_query() got an unexpected keyword argument 'out'`;
 - `AttributeError: ... 'geocode_candidates'` (twice).
 
 - [ ] **Step 3: Add `out=` to `build_overpass_query`**
 
-In `packages/gmnspy/gmnspy/osm/query.py`:
+In `packages/netstead/netstead/osm/query.py`:
 - Change `from typing import Any` to `from typing import Any, Literal`.
 - Add `"geocode_candidates",` to `__all__`, after `"geocode_area",`.
 - Add a keyword parameter after `timeout: int = 180,`:
@@ -1477,13 +1477,13 @@ def geocode_candidates(
 
 - [ ] **Step 5: Run the tests**
 
-Run: `uv run --all-extras pytest packages/gmnspy/tests/test_osm_query.py -q`
+Run: `uv run --all-extras pytest packages/netstead/tests/test_osm_query.py -q`
 Expected: `23 passed`.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add packages/gmnspy/gmnspy/osm/query.py packages/gmnspy/tests/test_osm_query.py
+git add packages/netstead/netstead/osm/query.py packages/netstead/tests/test_osm_query.py
 git commit -m "feat(osm): Overpass out-count query and multi-candidate geocode_candidates"
 ```
 
@@ -1492,14 +1492,14 @@ git commit -m "feat(osm): Overpass out-count query and multi-candidate geocode_c
 ### Task 8: Credential source names and the URL check
 
 **Files:**
-- Modify: `packages/datagrove/datagrove/io/credentials.py`
-- Test: `packages/datagrove/tests/io/test_credentials.py`
-- Create: `packages/gmnspy/gmnspy/workbench/urlcheck.py`
-- Test: `packages/gmnspy/tests/test_workbench_urlcheck.py`
+- Modify: `packages/corral/corral/io/credentials.py`
+- Test: `packages/corral/tests/io/test_credentials.py`
+- Create: `packages/netstead/netstead/workbench/urlcheck.py`
+- Test: `packages/netstead/tests/test_workbench_urlcheck.py`
 
 - [ ] **Step 1: Write the failing tests**
 
-Append to `packages/datagrove/tests/io/test_credentials.py`:
+Append to `packages/corral/tests/io/test_credentials.py`:
 
 ```python
 # ---------------------------------------------------------------------------
@@ -1519,7 +1519,7 @@ Append to `packages/datagrove/tests/io/test_credentials.py`:
 def test_credential_source_names_the_first_layer(
     monkeypatch: pytest.MonkeyPatch, env: dict, keyring_value: dict, netrc_value: dict, expected: str
 ) -> None:
-    from datagrove.io import credentials as creds_mod
+    from corral.io import credentials as creds_mod
 
     monkeypatch.setattr(creds_mod, "_lookup_env", lambda host: env)
     monkeypatch.setattr(creds_mod, "_lookup_keyring", lambda host: keyring_value)
@@ -1527,7 +1527,7 @@ def test_credential_source_names_the_first_layer(
     assert creds_mod.credential_source("data.example.com") == expected
 ```
 
-Create `packages/gmnspy/tests/test_workbench_urlcheck.py`. It uses an in-memory filesystem, so it never touches
+Create `packages/netstead/tests/test_workbench_urlcheck.py`. It uses an in-memory filesystem, so it never touches
 the network:
 
 ```python
@@ -1536,9 +1536,9 @@ the network:
 import uuid
 
 import pytest
-from datagrove.io import credentials as creds_mod
+from corral.io import credentials as creds_mod
 from fsspec.implementations.memory import MemoryFileSystem
-from gmnspy.workbench.urlcheck import check_url
+from netstead.workbench.urlcheck import check_url
 
 
 @pytest.fixture(autouse=True)
@@ -1610,12 +1610,12 @@ def test_backend_error_is_reported_not_raised():
 
 - [ ] **Step 2: Run them to confirm they fail**
 
-Run: `uv run --all-extras pytest packages/datagrove/tests/io/test_credentials.py packages/gmnspy/tests/test_workbench_urlcheck.py -q`
+Run: `uv run --all-extras pytest packages/corral/tests/io/test_credentials.py packages/netstead/tests/test_workbench_urlcheck.py -q`
 Expected:
-- `4 failed`: `AttributeError: module 'datagrove.io.credentials' has no attribute 'credential_source'`;
-- a collection error: `ModuleNotFoundError: No module named 'gmnspy.workbench.urlcheck'`.
+- `4 failed`: `AttributeError: module 'corral.io.credentials' has no attribute 'credential_source'`;
+- a collection error: `ModuleNotFoundError: No module named 'netstead.workbench.urlcheck'`.
 
-- [ ] **Step 3: Add `credential_source` to `packages/datagrove/datagrove/io/credentials.py`**
+- [ ] **Step 3: Add `credential_source` to `packages/corral/corral/io/credentials.py`**
 
 Change `__all__` to `["credential_source", "resolve_credentials"]`. Then insert directly above the
 `# Layer helpers` banner comment:
@@ -1647,13 +1647,13 @@ def credential_source(host: str) -> str:
     return "none"
 ```
 
-- [ ] **Step 4: Create `packages/gmnspy/gmnspy/workbench/urlcheck.py`**
+- [ ] **Step 4: Create `packages/netstead/netstead/workbench/urlcheck.py`**
 
 ```python
 """The wizard's URL **Check**: is a remote GMNS source reachable, which credential layer applies, what's in it.
 
 Read-only and never records an action. It reports the *name* of the credential source
-(``env``/``keyring``/``netrc``/``none``, from :func:`datagrove.io.credentials.credential_source`),
+(``env``/``keyring``/``netrc``/``none``, from :func:`corral.io.credentials.credential_source`),
 never a credential value, and lists table names only (no data is read).
 """
 
@@ -1666,13 +1666,13 @@ from typing import Any
 from urllib.parse import urlsplit
 
 import fsspec
-from datagrove.io.credentials import credential_source, resolve_credentials
+from corral.io.credentials import credential_source, resolve_credentials
 
 __all__ = ["REMOTE_SCHEMES", "check_url"]
 
 logger = logging.getLogger(__name__)
 
-#: URL schemes the wizard accepts for "GMNS at a URL" (the datagrove remote adapter's schemes).
+#: URL schemes the wizard accepts for "GMNS at a URL" (the corral remote adapter's schemes).
 REMOTE_SCHEMES = ("http", "https", "s3", "gs", "gcs", "az", "abfs", "abfss")
 
 _TABLE_SUFFIXES = (".csv", ".parquet")
@@ -1728,14 +1728,14 @@ def check_url(url: str, *, url_to_fs: Callable[..., tuple[Any, str]] = fsspec.co
 
 - [ ] **Step 5: Run the tests (including the new doctest)**
 
-Run: `uv run --all-extras pytest packages/datagrove/tests/io/test_credentials.py packages/datagrove/datagrove/io/credentials.py packages/gmnspy/tests/test_workbench_urlcheck.py -q`
+Run: `uv run --all-extras pytest packages/corral/tests/io/test_credentials.py packages/corral/corral/io/credentials.py packages/netstead/tests/test_workbench_urlcheck.py -q`
 Expected: all pass (`19` credential tests, `2` doctests, `6` URL-check tests).
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add packages/datagrove/datagrove/io/credentials.py packages/datagrove/tests/io/test_credentials.py \
-  packages/gmnspy/gmnspy/workbench/urlcheck.py packages/gmnspy/tests/test_workbench_urlcheck.py
+git add packages/corral/corral/io/credentials.py packages/corral/tests/io/test_credentials.py \
+  packages/netstead/netstead/workbench/urlcheck.py packages/netstead/tests/test_workbench_urlcheck.py
 git commit -m "feat: credential_source (layer name only) + workbench URL check"
 ```
 
@@ -1744,17 +1744,17 @@ git commit -m "feat: credential_source (layer name only) + workbench URL check"
 ### Task 9: The `Area` union
 
 **Files:**
-- Create: `packages/gmnspy/gmnspy/workbench/area.py`
-- Test: `packages/gmnspy/tests/test_workbench_area.py`
+- Create: `packages/netstead/netstead/workbench/area.py`
+- Test: `packages/netstead/tests/test_workbench_area.py`
 
-- [ ] **Step 1: Write the failing tests in `packages/gmnspy/tests/test_workbench_area.py`**
+- [ ] **Step 1: Write the failing tests in `packages/netstead/tests/test_workbench_area.py`**
 
 ```python
 """Tests for the build Area union."""
 
 import pytest
-from gmnspy.osm.query import point_buffer_bbox
-from gmnspy.workbench.area import Area, BboxArea, PlaceArea, PointArea
+from netstead.osm.query import point_buffer_bbox
+from netstead.workbench.area import Area, BboxArea, PlaceArea, PointArea
 from pydantic import TypeAdapter, ValidationError
 
 AREA = TypeAdapter(Area)
@@ -1793,10 +1793,10 @@ def test_place_keeps_polygon_for_overpass():
 
 - [ ] **Step 2: Run them to confirm they fail**
 
-Run: `uv run --all-extras pytest packages/gmnspy/tests/test_workbench_area.py -q`
-Expected: collection error, `ModuleNotFoundError: No module named 'gmnspy.workbench.area'`.
+Run: `uv run --all-extras pytest packages/netstead/tests/test_workbench_area.py -q`
+Expected: collection error, `ModuleNotFoundError: No module named 'netstead.workbench.area'`.
 
-- [ ] **Step 3: Create `packages/gmnspy/gmnspy/workbench/area.py`**
+- [ ] **Step 3: Create `packages/netstead/netstead/workbench/area.py`**
 
 ```python
 """Build areas: the one shape every Area-step tab (draw, coordinates, place) produces.
@@ -1866,7 +1866,7 @@ class PointArea(_Area):
     buffer_m: float = Field(gt=0)
 
     def to_bbox(self) -> BBox:
-        """The square ``buffer_m`` out from the point (``gmnspy.osm.query.point_buffer_bbox`` maths)."""
+        """The square ``buffer_m`` out from the point (``netstead.osm.query.point_buffer_bbox`` maths)."""
         dlat = self.buffer_m / _M_PER_DEG_LAT
         cos_lat = math.cos(math.radians(self.lat))
         dlon = self.buffer_m / (_M_PER_DEG_LAT * cos_lat) if cos_lat else dlat
@@ -1902,13 +1902,13 @@ Area = Annotated[BboxArea | PointArea | PlaceArea, Field(discriminator="kind")]
 
 - [ ] **Step 4: Run the tests**
 
-Run: `uv run --all-extras pytest packages/gmnspy/tests/test_workbench_area.py -q`
+Run: `uv run --all-extras pytest packages/netstead/tests/test_workbench_area.py -q`
 Expected: `4 passed`.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add packages/gmnspy/gmnspy/workbench/area.py packages/gmnspy/tests/test_workbench_area.py
+git add packages/netstead/netstead/workbench/area.py packages/netstead/tests/test_workbench_area.py
 git commit -m "feat(workbench): Area union (bbox / point+buffer / place with polygon)"
 ```
 
@@ -1917,16 +1917,16 @@ git commit -m "feat(workbench): Area union (bbox / point+buffer / place with pol
 ### Task 10: The build estimate, its data file, and `ApprovalRequired`
 
 **Files:**
-- Create: `packages/gmnspy/gmnspy/workbench/data/build_cost.toml`
-- Create: `packages/gmnspy/gmnspy/workbench/extras.py`
-- Create: `packages/gmnspy/gmnspy/workbench/estimate.py`
-- Modify: `packages/gmnspy/gmnspy/workbench/errors.py` (add `ApprovalRequired`)
-- Modify: `packages/gmnspy/pyproject.toml` (ship the data file in the wheel)
-- Test: `packages/gmnspy/tests/test_workbench_estimate.py`
+- Create: `packages/netstead/netstead/workbench/data/build_cost.toml`
+- Create: `packages/netstead/netstead/workbench/extras.py`
+- Create: `packages/netstead/netstead/workbench/estimate.py`
+- Modify: `packages/netstead/netstead/workbench/errors.py` (add `ApprovalRequired`)
+- Modify: `packages/netstead/pyproject.toml` (ship the data file in the wheel)
+- Test: `packages/netstead/tests/test_workbench_estimate.py`
 
-- [ ] **Step 1: Write the failing tests in `packages/gmnspy/tests/test_workbench_estimate.py`**
+- [ ] **Step 1: Write the failing tests in `packages/netstead/tests/test_workbench_estimate.py`**
 
-The last test is the opt-in calibration path. It is skipped unless `GMNSPY_CALIBRATE=1`, and it is the only test
+The last test is the opt-in calibration path. It is skipped unless `NETSTEAD_CALIBRATE=1`, and it is the only test
 in this plan that touches the network.
 
 ```python
@@ -1937,9 +1937,9 @@ import time
 from pathlib import Path
 
 import pytest
-from datagrove.engines.ibis_engine import IbisEngine
-from gmnspy.workbench.area import BboxArea, PlaceArea
-from gmnspy.workbench.estimate import (
+from corral.engines.ibis_engine import IbisEngine
+from netstead.workbench.area import BboxArea, PlaceArea
+from netstead.workbench.estimate import (
     Estimate,
     count_osm,
     count_overture,
@@ -2041,14 +2041,14 @@ def test_fit_s_per_link():
         fit_s_per_link([], latency_s=1.0)
 
 
-@pytest.mark.skipif(not os.environ.get("GMNSPY_CALIBRATE"), reason="opt-in live calibration (GMNSPY_CALIBRATE=1)")
+@pytest.mark.skipif(not os.environ.get("NETSTEAD_CALIBRATE"), reason="opt-in live calibration (NETSTEAD_CALIBRATE=1)")
 def test_calibrate_osm_live(tmp_path):  # pragma: no cover - live network, run by hand
     """Time real OSM builds for a few bboxes and print a fitted ``s_per_link`` for data/build_cost.toml.
 
     Run from the repo root:
-    ``GMNSPY_CALIBRATE=1 uv run --all-extras pytest packages/gmnspy/tests/test_workbench_estimate.py -k calibrate -s``
+    ``NETSTEAD_CALIBRATE=1 uv run --all-extras pytest packages/netstead/tests/test_workbench_estimate.py -k calibrate -s``
     """
-    from gmnspy.osm import build_network_from_osm
+    from netstead.osm import build_network_from_osm
 
     bboxes = [(-78.65, 35.77, -78.62, 35.80), (-78.70, 35.74, -78.60, 35.82)]  # downtown Raleigh, small to medium
     latency = load_coefficients()["sources"]["osm"]["latency_s"]
@@ -2062,13 +2062,13 @@ def test_calibrate_osm_live(tmp_path):  # pragma: no cover - live network, run b
 
 - [ ] **Step 2: Run them to confirm they fail**
 
-Run: `uv run --all-extras pytest packages/gmnspy/tests/test_workbench_estimate.py -q`
-Expected: collection error, `ModuleNotFoundError: No module named 'gmnspy.workbench.estimate'`.
+Run: `uv run --all-extras pytest packages/netstead/tests/test_workbench_estimate.py -q`
+Expected: collection error, `ModuleNotFoundError: No module named 'netstead.workbench.estimate'`.
 
-- [ ] **Step 3: Create the maintained coefficients file `packages/gmnspy/gmnspy/workbench/data/build_cost.toml`**
+- [ ] **Step 3: Create the maintained coefficients file `packages/netstead/netstead/workbench/data/build_cost.toml`**
 
 ```toml
-# Build-cost model for the workbench's Open / Import wizard (gmnspy.workbench.estimate).
+# Build-cost model for the workbench's Open / Import wizard (netstead.workbench.estimate).
 #
 #   links   = n_elements * links_per_element
 #   seconds = latency_s + links * s_per_link
@@ -2088,8 +2088,8 @@ Expected: collection error, `ModuleNotFoundError: No module named 'gmnspy.workbe
 #   * Guessed, not measured: every latency_s, every links_per_element, and the Overture rates.
 #   * Output sizes: measured on the 178-link RDU I-40 fixture, where fixed per-file overhead
 #     dominates; expect real per-link sizes to be smaller.
-# Re-fit with the opt-in calibration test (GMNSPY_CALIBRATE=1, see
-# packages/gmnspy/tests/test_workbench_estimate.py) and replace these values.
+# Re-fit with the opt-in calibration test (NETSTEAD_CALIBRATE=1, see
+# packages/netstead/tests/test_workbench_estimate.py) and replace these values.
 
 [sources.osm]
 latency_s = 5.0            # guess: Overpass queueing + transfer start
@@ -2124,21 +2124,21 @@ duckdb = 800000            # an empty DuckDB file is ~0.8 MB of preallocated blo
 zip = 0
 ```
 
-Add it to the wheel. In `packages/gmnspy/pyproject.toml`, under `[tool.hatch.build.targets.wheel] include`,
-directly after `"gmnspy/workbench/static/js/*.js",`, add:
+Add it to the wheel. In `packages/netstead/pyproject.toml`, under `[tool.hatch.build.targets.wheel] include`,
+directly after `"netstead/workbench/static/js/*.js",`, add:
 
 ```toml
     # Maintained build-cost coefficients for the Open / Import wizard's estimate.
-    "gmnspy/workbench/data/*.toml",
+    "netstead/workbench/data/*.toml",
 ```
 
-- [ ] **Step 4: Create `packages/gmnspy/gmnspy/workbench/extras.py`**
+- [ ] **Step 4: Create `packages/netstead/netstead/workbench/extras.py`**
 
 ```python
 """Import an optional-extra module at runtime (``[osm]``, ``[overture]``), as a user-facing error if missing.
 
 Runtime :func:`importlib.import_module` rather than a static import keeps the import-linter contract
-"gmnspy core (incl. ``gmnspy.cli``, which imports the workbench) must not require optional extras".
+"netstead core (incl. ``netstead.cli``, which imports the workbench) must not require optional extras".
 """
 
 from __future__ import annotations
@@ -2156,10 +2156,10 @@ def optional_module(name: str, extra: str) -> ModuleType:
     try:
         return importlib.import_module(name)
     except ImportError as exc:
-        raise ActionError(f"this needs the [{extra}] extra: pip install 'gmnspy[{extra}]' ({exc})") from exc
+        raise ActionError(f"this needs the [{extra}] extra: pip install 'netstead[{extra}]' ({exc})") from exc
 ```
 
-- [ ] **Step 5: Create `packages/gmnspy/gmnspy/workbench/estimate.py`**
+- [ ] **Step 5: Create `packages/netstead/netstead/workbench/estimate.py`**
 
 ```python
 """Size a build before running it: a cheap pre-query count, then a calibrated linear cost model.
@@ -2219,7 +2219,7 @@ class Estimate:
 @cache
 def load_coefficients() -> dict[str, Any]:
     """The parsed ``data/build_cost.toml`` (cached; edit the file, not this module, to re-tune)."""
-    text = resources.files("gmnspy.workbench").joinpath("data", "build_cost.toml").read_text(encoding="utf-8")
+    text = resources.files("netstead.workbench").joinpath("data", "build_cost.toml").read_text(encoding="utf-8")
     return tomllib.loads(text)
 
 
@@ -2273,10 +2273,10 @@ def count_osm(
 ) -> int:
     """Number of OSM ways the build's Overpass query would return (Overpass ``out count;``).
 
-    Raises whatever the HTTP layer raises; :func:`gmnspy.workbench.build.estimate_for` turns any
+    Raises whatever the HTTP layer raises; :func:`netstead.workbench.build.estimate_for` turns any
     failure into an "unavailable" estimate.
     """
-    osm_query = optional_module("gmnspy.osm.query", "osm")
+    osm_query = optional_module("netstead.osm.query", "osm")
     q = osm_query.build_overpass_query(
         bbox=area.to_bbox(), polygon=area.to_polygon(), network_type=network_type, timeout=COUNT_TIMEOUT_S, out="count"
     )
@@ -2295,7 +2295,7 @@ def count_overture(
     engine: Any = None,
 ) -> int:
     """Number of Overture road segments the build would read (``COUNT(*)``, same predicate as the read)."""
-    overture_query = optional_module("gmnspy.overture.query", "overture")
+    overture_query = optional_module("netstead.overture.query", "overture")
     return overture_query.count_segments(
         bbox, network_type=network_type, overture_release=overture_release, data_root=data_root, engine=engine
     )
@@ -2315,7 +2315,7 @@ def fit_s_per_link(samples: Sequence[tuple[float, float]], *, latency_s: float) 
     return num / den
 ```
 
-- [ ] **Step 6: Add `ApprovalRequired` to `packages/gmnspy/gmnspy/workbench/errors.py`**
+- [ ] **Step 6: Add `ApprovalRequired` to `packages/netstead/netstead/workbench/errors.py`**
 
 Replace `from typing import Any` with:
 
@@ -2346,15 +2346,15 @@ class ApprovalRequired(ActionError):
 
 - [ ] **Step 7: Run the tests (including the module's doctests)**
 
-Run: `uv run --all-extras pytest packages/gmnspy/tests/test_workbench_estimate.py packages/gmnspy/gmnspy/workbench/estimate.py -q`
+Run: `uv run --all-extras pytest packages/netstead/tests/test_workbench_estimate.py packages/netstead/netstead/workbench/estimate.py -q`
 Expected: `14 passed, 1 skipped` (12 tests, 2 doctests, 1 opt-in calibration test).
 
 - [ ] **Step 8: Commit**
 
 ```bash
-git add packages/gmnspy/gmnspy/workbench/data/build_cost.toml packages/gmnspy/gmnspy/workbench/extras.py \
-  packages/gmnspy/gmnspy/workbench/estimate.py packages/gmnspy/gmnspy/workbench/errors.py \
-  packages/gmnspy/pyproject.toml packages/gmnspy/tests/test_workbench_estimate.py
+git add packages/netstead/netstead/workbench/data/build_cost.toml packages/netstead/netstead/workbench/extras.py \
+  packages/netstead/netstead/workbench/estimate.py packages/netstead/netstead/workbench/errors.py \
+  packages/netstead/pyproject.toml packages/netstead/tests/test_workbench_estimate.py
 git commit -m "feat(workbench): build estimate (pre-query count + data-file cost model) and ApprovalRequired"
 ```
 
@@ -2366,10 +2366,10 @@ Thread safety is the main risk here. The tests pin the cancellation checkpoint s
 broken callback, and real concurrency, which uses a `Barrier` that deadlocks unless the two jobs run at once.
 
 **Files:**
-- Create: `packages/gmnspy/gmnspy/workbench/jobs.py`
-- Test: `packages/gmnspy/tests/test_workbench_jobs.py`
+- Create: `packages/netstead/netstead/workbench/jobs.py`
+- Test: `packages/netstead/tests/test_workbench_jobs.py`
 
-- [ ] **Step 1: Write the failing tests in `packages/gmnspy/tests/test_workbench_jobs.py`**
+- [ ] **Step 1: Write the failing tests in `packages/netstead/tests/test_workbench_jobs.py`**
 
 ```python
 """Tests for the background JobRunner: lifecycle, events, cancellation, failure, concurrency."""
@@ -2377,8 +2377,8 @@ broken callback, and real concurrency, which uses a `Barrier` that deadlocks unl
 import threading
 
 import pytest
-from gmnspy.workbench.errors import ActionError
-from gmnspy.workbench.jobs import JobRunner
+from netstead.workbench.errors import ActionError
+from netstead.workbench.jobs import JobRunner
 
 WAIT = 5.0  # generous upper bound; every wait below normally returns in milliseconds
 
@@ -2497,17 +2497,17 @@ def test_unknown_job():
 
 - [ ] **Step 2: Run them to confirm they fail**
 
-Run: `uv run --all-extras pytest packages/gmnspy/tests/test_workbench_jobs.py -q`
-Expected: collection error, `ModuleNotFoundError: No module named 'gmnspy.workbench.jobs'`.
+Run: `uv run --all-extras pytest packages/netstead/tests/test_workbench_jobs.py -q`
+Expected: collection error, `ModuleNotFoundError: No module named 'netstead.workbench.jobs'`.
 
-- [ ] **Step 3: Create `packages/gmnspy/gmnspy/workbench/jobs.py`**
+- [ ] **Step 3: Create `packages/netstead/netstead/workbench/jobs.py`**
 
 ```python
 """Background jobs: one thread per job, staged progress pushed as ``job`` events, cooperative cancel.
 
 A job function receives a :class:`JobContext`. It calls ``ctx.stage(name, ...)`` at each stage
 boundary; that publishes progress and is also the cancellation checkpoint (it raises
-:class:`~gmnspy.workbench.errors.JobCancelled` once :meth:`JobRunner.cancel` was called). Work
+:class:`~netstead.workbench.errors.JobCancelled` once :meth:`JobRunner.cancel` was called). Work
 inside one stage (an Overpass download, a DuckDB read) is not interrupted, so a cancel takes
 effect at the next boundary.
 
@@ -2614,7 +2614,7 @@ class JobRunner:
             job = Job(id=f"job-{next(self._ids)}", kind=kind, label=label)
             self._jobs[job.id] = job
         self._emit(job)
-        threading.Thread(target=self._run, args=(job, fn, on_finish), name=f"gmnspy-{job.id}", daemon=True).start()
+        threading.Thread(target=self._run, args=(job, fn, on_finish), name=f"netstead-{job.id}", daemon=True).start()
         return job
 
     def get(self, job_id: str) -> Job:
@@ -2687,13 +2687,13 @@ class JobRunner:
 
 - [ ] **Step 4: Run the tests three times to shake out timing flakiness**
 
-Run: `for i in 1 2 3; do uv run --all-extras pytest packages/gmnspy/tests/test_workbench_jobs.py -q || break; done`
+Run: `for i in 1 2 3; do uv run --all-extras pytest packages/netstead/tests/test_workbench_jobs.py -q || break; done`
 Expected: `8 passed` on each of the 3 runs.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add packages/gmnspy/gmnspy/workbench/jobs.py packages/gmnspy/tests/test_workbench_jobs.py
+git add packages/netstead/netstead/workbench/jobs.py packages/netstead/tests/test_workbench_jobs.py
 git commit -m "feat(workbench): JobRunner (thread per job, staged progress events, cooperative cancel)"
 ```
 
@@ -2709,14 +2709,14 @@ This is the central concurrency change.
   without the lock. Only `_register` and the history record (`_finish`) take the lock.
 
 **Files:**
-- Modify: `packages/gmnspy/gmnspy/workbench/registry.py` (`as_pandas`, `NetworkHandle.prime`)
-- Modify: `packages/gmnspy/gmnspy/workbench/actions.py` (`runs_as_job`, `replay_overrides`, `to_python`)
-- Modify: `packages/gmnspy/gmnspy/workbench/session.py` (replace the whole file)
-- Test: `packages/gmnspy/tests/test_workbench_session_jobs.py` (new), `packages/gmnspy/tests/test_workbench_actions.py`
+- Modify: `packages/netstead/netstead/workbench/registry.py` (`as_pandas`, `NetworkHandle.prime`)
+- Modify: `packages/netstead/netstead/workbench/actions.py` (`runs_as_job`, `replay_overrides`, `to_python`)
+- Modify: `packages/netstead/netstead/workbench/session.py` (replace the whole file)
+- Test: `packages/netstead/tests/test_workbench_session_jobs.py` (new), `packages/netstead/tests/test_workbench_actions.py`
 
 - [ ] **Step 1: Write the failing tests**
 
-Create `packages/gmnspy/tests/test_workbench_session_jobs.py`. Task 13 extends it with the build tests.
+Create `packages/netstead/tests/test_workbench_session_jobs.py`. Task 13 extends it with the build tests.
 
 ```python
 """Session job actions: OpenNetwork / BuildNetwork run off the session lock, with approval and cancel."""
@@ -2724,11 +2724,11 @@ Create `packages/gmnspy/tests/test_workbench_session_jobs.py`. Task 13 extends i
 import threading
 
 import pytest
-from gmnspy import Network
-from gmnspy.select.parse import StubParser
-from gmnspy.workbench.actions import OpenNetwork
-from gmnspy.workbench.errors import ActionError, PathNotAllowed
-from gmnspy.workbench.session import Session
+from netstead import Network
+from netstead.select.parse import StubParser
+from netstead.workbench.actions import OpenNetwork
+from netstead.workbench.errors import ActionError, PathNotAllowed
+from netstead.workbench.session import Session
 
 WAIT = 10.0
 
@@ -2821,7 +2821,7 @@ def test_cancel_open_before_register(make_session, rdu_source, monkeypatch):
     assert session.history[-1].error_type == "JobCancelled" and len(session.registry) == 0
 ```
 
-Append to `packages/gmnspy/tests/test_workbench_actions.py`:
+Append to `packages/netstead/tests/test_workbench_actions.py`:
 
 ```python
 def test_open_network_is_a_job_action():
@@ -2831,15 +2831,15 @@ def test_open_network_is_a_job_action():
 
 - [ ] **Step 2: Run them to confirm they fail**
 
-Run: `uv run --all-extras pytest packages/gmnspy/tests/test_workbench_session_jobs.py packages/gmnspy/tests/test_workbench_actions.py -q`
+Run: `uv run --all-extras pytest packages/netstead/tests/test_workbench_session_jobs.py packages/netstead/tests/test_workbench_actions.py -q`
 Expected: failures with `AttributeError: 'Session' object has no attribute 'submit'` and
 `AttributeError: type object 'OpenNetwork' has no attribute 'runs_as_job'`.
 
 - [ ] **Step 3: Make the registry's pandas helper public and add `NetworkHandle.prime`**
 
-In `packages/gmnspy/gmnspy/workbench/registry.py`:
+In `packages/netstead/netstead/workbench/registry.py`:
 - rename `_as_pandas` to `as_pandas`, in its definition and its two call sites in `links_df`/`nodes_df`;
-- give it the docstring `"""Materialise an ibis/datagrove table (or pass a pandas frame through) as pandas."""`;
+- give it the docstring `"""Materialise an ibis/corral table (or pass a pandas frame through) as pandas."""`;
 - add `"as_pandas"` to `__all__`, keeping it sorted;
 - insert this method directly above `def bump(`:
 
@@ -2851,7 +2851,7 @@ In `packages/gmnspy/gmnspy/workbench/registry.py`:
                 self._cache[(key, self.version)] = value
 ```
 
-- [ ] **Step 4: Add the job flags to `packages/gmnspy/gmnspy/workbench/actions.py`**
+- [ ] **Step 4: Add the job flags to `packages/netstead/netstead/workbench/actions.py`**
 
 Replace the end of the module docstring:
 
@@ -2865,7 +2865,7 @@ with:
 ```python
 code. ``mutates`` marks actions the assistant must draft-before-apply;
 ``runs_as_job`` marks actions whose slow work runs on a background job thread
-(see :mod:`gmnspy.workbench.jobs`); ``replay_overrides`` are fields forced in
+(see :mod:`netstead.workbench.jobs`); ``replay_overrides`` are fields forced in
 the ``to_python`` replay snippet.
 """
 ```
@@ -2926,7 +2926,7 @@ def to_python(action: _Action) -> str:
 This omits top-level defaults exactly as before, so every existing snippet is unchanged. Nested models (Task 13's
 `area`) are now written in full, so their `kind` discriminator survives a replay.
 
-- [ ] **Step 5: Replace `packages/gmnspy/gmnspy/workbench/session.py` with**
+- [ ] **Step 5: Replace `packages/netstead/netstead/workbench/session.py` with**
 
 ```python
 """Workbench session: the one place state changes, via :meth:`Session.dispatch`.
@@ -2955,12 +2955,12 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
-from gmnspy import Network
-from gmnspy.config import LoadedSettings, Settings, SettingsError, get_value, load_settings, save_setting
-from gmnspy.select.intent import SelectionIntent
-from gmnspy.select.parse import ClaudeParser, StubParser
-from gmnspy.select.resolve import resolve_frames
-from gmnspy.viz.styling import styleable_columns
+from netstead import Network
+from netstead.config import LoadedSettings, Settings, SettingsError, get_value, load_settings, save_setting
+from netstead.select.intent import SelectionIntent
+from netstead.select.parse import ClaudeParser, StubParser
+from netstead.select.resolve import resolve_frames
+from netstead.viz.styling import styleable_columns
 
 from .actions import (
     Action,
@@ -3027,7 +3027,7 @@ class Session:
         environ: Mapping[str, str] | None = None,
         http: Any = None,
     ) -> None:
-        """Load settings (raises :class:`~gmnspy.config.SettingsError` on bad config) and start empty.
+        """Load settings (raises :class:`~netstead.config.SettingsError` on bad config) and start empty.
 
         ``http`` is the HTTP session for Overpass/Nominatim (anything with ``get``/``post`` like
         :mod:`requests`); ``None`` means ``requests`` itself. Tests inject a fake.
@@ -3065,9 +3065,9 @@ class Session:
     def dispatch(self, action: Action | dict[str, Any]) -> Any:
         """Apply ``action`` (waiting for a job action to finish) and return its result.
 
-        Raises the recorded failure's type: :class:`~gmnspy.workbench.errors.ApprovalRequired` (with
-        ``.estimate``), :class:`NotSupportedYet`, :class:`~gmnspy.workbench.errors.PathNotAllowed`,
-        :class:`~gmnspy.workbench.errors.JobCancelled`, else :class:`ActionError`.
+        Raises the recorded failure's type: :class:`~netstead.workbench.errors.ApprovalRequired` (with
+        ``.estimate``), :class:`NotSupportedYet`, :class:`~netstead.workbench.errors.PathNotAllowed`,
+        :class:`~netstead.workbench.errors.JobCancelled`, else :class:`ActionError`.
         """
         entry = self.dispatch_recorded(action)
         if entry.ok:
@@ -3294,7 +3294,7 @@ _ERROR_TYPES: dict[str, type[ActionError]] = {
 
 - [ ] **Step 6: Run the session, action, server and CLI suites**
 
-Run: `uv run --all-extras pytest packages/gmnspy/tests/test_workbench_session_jobs.py packages/gmnspy/tests/test_workbench_session.py packages/gmnspy/tests/test_workbench_actions.py packages/gmnspy/tests/test_workbench_server.py packages/gmnspy/tests/test_workbench_network_routes.py packages/gmnspy/tests/test_cli_workbench.py -q`
+Run: `uv run --all-extras pytest packages/netstead/tests/test_workbench_session_jobs.py packages/netstead/tests/test_workbench_session.py packages/netstead/tests/test_workbench_actions.py packages/netstead/tests/test_workbench_server.py packages/netstead/tests/test_workbench_network_routes.py packages/netstead/tests/test_cli_workbench.py -q`
 Expected: all pass:
 - `test_workbench_session_jobs.py`: 6
 - `test_workbench_session.py`: 22, unchanged (including `test_history_python_replays_to_same_state` and the publish-ordering test)
@@ -3306,9 +3306,9 @@ Expected: all pass:
 - [ ] **Step 7: Commit**
 
 ```bash
-git add packages/gmnspy/gmnspy/workbench/registry.py packages/gmnspy/gmnspy/workbench/actions.py \
-  packages/gmnspy/gmnspy/workbench/session.py packages/gmnspy/tests/test_workbench_session_jobs.py \
-  packages/gmnspy/tests/test_workbench_actions.py
+git add packages/netstead/netstead/workbench/registry.py packages/netstead/netstead/workbench/actions.py \
+  packages/netstead/netstead/workbench/session.py packages/netstead/tests/test_workbench_session_jobs.py \
+  packages/netstead/tests/test_workbench_actions.py
 git commit -m "feat(workbench): OpenNetwork runs as a job off the session lock; enforce io.allowed_roots"
 ```
 
@@ -3317,27 +3317,27 @@ git commit -m "feat(workbench): OpenNetwork runs as a job off the session lock; 
 ### Task 13: `BuildNetwork`: plan → estimate → (approval) → query → convert → write → open
 
 **Files:**
-- Modify: `packages/gmnspy/gmnspy/workbench/actions.py` (`BuildNetwork`, union)
-- Create: `packages/gmnspy/gmnspy/workbench/build.py`
-- Modify: `packages/gmnspy/gmnspy/workbench/session.py` (build job, typed `ApprovalRequired` re-raise, job label)
-- Modify: `packages/gmnspy/gmnspy/workbench/__init__.py` (exports)
-- Test: `packages/gmnspy/tests/test_workbench_session_jobs.py`, `packages/gmnspy/tests/test_workbench_actions.py`
+- Modify: `packages/netstead/netstead/workbench/actions.py` (`BuildNetwork`, union)
+- Create: `packages/netstead/netstead/workbench/build.py`
+- Modify: `packages/netstead/netstead/workbench/session.py` (build job, typed `ApprovalRequired` re-raise, job label)
+- Modify: `packages/netstead/netstead/workbench/__init__.py` (exports)
+- Test: `packages/netstead/tests/test_workbench_session_jobs.py`, `packages/netstead/tests/test_workbench_actions.py`
 
 - [ ] **Step 1: Write the failing tests**
 
-In `packages/gmnspy/tests/test_workbench_session_jobs.py`, replace the import block (everything from
-`import threading` to `from gmnspy.workbench.session import Session`) with:
+In `packages/netstead/tests/test_workbench_session_jobs.py`, replace the import block (everything from
+`import threading` to `from netstead.workbench.session import Session`) with:
 
 ```python
 import threading
 from pathlib import Path
 
 import pytest
-from gmnspy import Network
-from gmnspy.select.parse import StubParser
-from gmnspy.workbench.actions import BuildNetwork, OpenNetwork
-from gmnspy.workbench.errors import ActionError, ApprovalRequired, JobCancelled, NotSupportedYet, PathNotAllowed
-from gmnspy.workbench.session import Session
+from netstead import Network
+from netstead.select.parse import StubParser
+from netstead.workbench.actions import BuildNetwork, OpenNetwork
+from netstead.workbench.errors import ActionError, ApprovalRequired, JobCancelled, NotSupportedYet, PathNotAllowed
+from netstead.workbench.session import Session
 ```
 
 and append:
@@ -3518,7 +3518,7 @@ def test_cancel_build_during_query_leaves_no_output(make_session, out_dir):
     assert session.history[-1].error_type == "JobCancelled" and not (Path(out_dir) / "tiny").exists()
 ```
 
-In `packages/gmnspy/tests/test_workbench_actions.py`, add `BuildNetwork,` to the `from gmnspy.workbench.actions import (...)`
+In `packages/netstead/tests/test_workbench_actions.py`, add `BuildNetwork,` to the `from netstead.workbench.actions import (...)`
 list (first, keeping it sorted), and append:
 
 ```python
@@ -3568,10 +3568,10 @@ def test_build_snippet_keeps_area_kind_and_forces_approval():
 
 - [ ] **Step 2: Run them to confirm they fail**
 
-Run: `uv run --all-extras pytest packages/gmnspy/tests/test_workbench_session_jobs.py packages/gmnspy/tests/test_workbench_actions.py -q`
-Expected: collection errors, `ImportError: cannot import name 'BuildNetwork' from 'gmnspy.workbench.actions'`.
+Run: `uv run --all-extras pytest packages/netstead/tests/test_workbench_session_jobs.py packages/netstead/tests/test_workbench_actions.py -q`
+Expected: collection errors, `ImportError: cannot import name 'BuildNetwork' from 'netstead.workbench.actions'`.
 
-- [ ] **Step 3: Add `BuildNetwork` to `packages/gmnspy/gmnspy/workbench/actions.py`**
+- [ ] **Step 3: Add `BuildNetwork` to `packages/netstead/netstead/workbench/actions.py`**
 
 Add `from .area import Area` above `from .registry import Component`. Add `"BuildNetwork",` to `__all__`, after
 `"Action",`. Insert this class directly above `Action = Annotated[`:
@@ -3583,7 +3583,7 @@ class BuildNetwork(_Action):
     Give exactly one of ``area`` (fetch from the service) or ``input_file`` (a local ``.osm`` /
     Overpass ``.json`` for OSM, or a local snapshot folder for Overture). Without ``approved``, a
     build whose estimate is over ``app.approve_above_s``, or cannot be estimated, fails with
-    :class:`~gmnspy.workbench.errors.ApprovalRequired` (carrying the estimate). A replayed snippet
+    :class:`~netstead.workbench.errors.ApprovalRequired` (carrying the estimate). A replayed snippet
     always passes ``approved=True``: re-running a recorded build counts as approval.
     """
 
@@ -3639,18 +3639,18 @@ Action = Annotated[
 ]
 ```
 
-- [ ] **Step 4: Create `packages/gmnspy/gmnspy/workbench/build.py`**
+- [ ] **Step 4: Create `packages/netstead/netstead/workbench/build.py`**
 
 ```python
 """The ``BuildNetwork`` pipeline, staged for a background job: plan → estimate → query → convert → write.
 
 The session's job function calls these in order and owns the final open + register (which needs the
-session lock). Each stage boundary is a :class:`~gmnspy.workbench.jobs.JobContext` checkpoint, so a
+session lock). Each stage boundary is a :class:`~netstead.workbench.jobs.JobContext` checkpoint, so a
 cancel stops the build between stages. Query, convert, and write run on a private
-:class:`~datagrove.engines.ibis_engine.IbisEngine` that the caller closes afterwards, so a build never
+:class:`~corral.engines.ibis_engine.IbisEngine` that the caller closes afterwards, so a build never
 shares a DuckDB connection with the networks the browser is reading.
 
-The OSM/Overture modules are imported at run time via :func:`~gmnspy.workbench.extras.optional_module`:
+The OSM/Overture modules are imported at run time via :func:`~netstead.workbench.extras.optional_module`:
 they need the ``[osm]`` / ``[overture]`` extras.
 """
 
@@ -3663,12 +3663,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from datagrove.engines.ibis_engine import IbisEngine
+from corral.engines.ibis_engine import IbisEngine
 
-from gmnspy._network_build import network_from_records
-from gmnspy.config import Settings
-from gmnspy.network import Network
-from gmnspy.overture.layout import LOCAL_SNAPSHOT_FILES, is_local_snapshot
+from netstead._network_build import network_from_records
+from netstead.config import Settings
+from netstead.network import Network
+from netstead.overture.layout import LOCAL_SNAPSHOT_FILES, is_local_snapshot
 
 from .actions import BuildNetwork
 from .errors import ActionError, NotSupportedYet
@@ -3701,13 +3701,13 @@ def plan_build(action: BuildNetwork, settings: Settings) -> BuildPlan:
     """Check the action against the filesystem before any work: allowed roots, inputs, a free destination.
 
     Raises:
-        NotSupportedYet: ``output_format="zip"`` (gmnspy cannot re-open a zip it wrote yet).
+        NotSupportedYet: ``output_format="zip"`` (netstead cannot re-open a zip it wrote yet).
         PathNotAllowed: the output folder or input file is outside ``io.allowed_roots``.
         ActionError: missing output folder, existing destination, or an input of the wrong kind.
     """
     # SUPERSEDED (2026-10-02): zip read/write was fixed in 4b743fb; zip is a normal output format.
     if action.output_format == "zip":
-        raise NotSupportedYet("zip output is not supported yet (gmnspy cannot re-open a zip it wrote); use parquet")
+        raise NotSupportedYet("zip output is not supported yet (netstead cannot re-open a zip it wrote); use parquet")
     out_dir = resolve_allowed(action.output_dir, settings)
     if not out_dir.is_dir():
         raise ActionError(f"output folder does not exist: {action.output_dir}")
@@ -3725,7 +3725,7 @@ def plan_build(action: BuildNetwork, settings: Settings) -> BuildPlan:
 
 
 def _osm_options(settings: Settings) -> dict[str, Any]:
-    osm_query = optional_module("gmnspy.osm.query", "osm")
+    osm_query = optional_module("netstead.osm.query", "osm")
     return {
         "endpoint": settings.osm.endpoint or osm_query.OVERPASS_URL,
         "user_agent": settings.osm.user_agent or osm_query.USER_AGENT,
@@ -3734,7 +3734,7 @@ def _osm_options(settings: Settings) -> dict[str, Any]:
 
 def _overture_read(action: BuildNetwork, plan: BuildPlan, settings: Settings) -> dict[str, Any]:
     """bbox, release, and data root for an Overture read (a local snapshot is read in full)."""
-    overture_query = optional_module("gmnspy.overture.query", "overture")
+    overture_query = optional_module("netstead.overture.query", "overture")
     if plan.input_path is not None:
         bbox, data_root = WORLD_BBOX, str(plan.input_path)
     else:
@@ -3774,9 +3774,9 @@ def estimate_for(
 
 
 def _osm_records(action: BuildNetwork, plan: BuildPlan, settings: Settings, http: Any, tick: Tick) -> Records:
-    convert = optional_module("gmnspy.osm.convert", "osm")
-    local = optional_module("gmnspy.osm.local", "osm")
-    query = optional_module("gmnspy.osm.query", "osm")
+    convert = optional_module("netstead.osm.convert", "osm")
+    local = optional_module("netstead.osm.local", "osm")
+    query = optional_module("netstead.osm.query", "osm")
     if plan.input_path is not None:
         nodes, ways = local.read_osm_file(plan.input_path, network_type=action.network_type)
     else:
@@ -3794,8 +3794,8 @@ def _osm_records(action: BuildNetwork, plan: BuildPlan, settings: Settings, http
 
 
 def _overture_records(action: BuildNetwork, plan: BuildPlan, settings: Settings, engine: Any, tick: Tick) -> Records:
-    convert = optional_module("gmnspy.overture.convert", "overture")
-    query = optional_module("gmnspy.overture.query", "overture")
+    convert = optional_module("netstead.overture.convert", "overture")
+    query = optional_module("netstead.overture.query", "overture")
     read = _overture_read(action, plan, settings)
     bbox = read.pop("bbox")
     segments = query.read_segments(
@@ -3834,7 +3834,7 @@ def fetch_and_convert(
         else:
             node_records, link_records = _overture_records(action, plan, settings, engine, tick)
     except (ValueError, LookupError, OSError) as exc:
-        # The same set `gmnspy build` reports: bad network_type / malformed input / missing connector
+        # The same set `netstead build` reports: bad network_type / malformed input / missing connector
         # (ValueError, LookupError) and Overpass or object-store I/O (requests' errors subclass OSError).
         raise ActionError(f"build failed: {exc}") from exc
     if not link_records:
@@ -3861,10 +3861,10 @@ def write_output(net: Network, plan: BuildPlan, output_format: str, ctx: JobCont
         raise
 ```
 
-- [ ] **Step 5: Wire the build job into `packages/gmnspy/gmnspy/workbench/session.py`**
+- [ ] **Step 5: Wire the build job into `packages/netstead/netstead/workbench/session.py`**
 
 Make these edits:
-- Above `from gmnspy import Network`, add `from datagrove.engines.ibis_engine import IbisEngine` followed by a blank line.
+- Above `from netstead import Network`, add `from corral.engines.ibis_engine import IbisEngine` followed by a blank line.
 - Above `from .actions import (`, add `from . import build`.
 - In the `from .actions import (...)` list, add `BuildNetwork,` after `Action,`.
 - Replace `from .errors import ActionError, JobCancelled, NotSupportedYet, PathNotAllowed` with these two lines:
@@ -3912,7 +3912,7 @@ from .estimate import Estimate, needs_approval
         return {"net_id": handle.id, "output": str(plan.dest), "estimate": estimate.to_dict()}
 ```
 
-- [ ] **Step 6: Export the new public names from `packages/gmnspy/gmnspy/workbench/__init__.py`**
+- [ ] **Step 6: Export the new public names from `packages/netstead/netstead/workbench/__init__.py`**
 
 Replace everything from `from .actions import (` up to (not including) `if TYPE_CHECKING:` with:
 
@@ -3965,15 +3965,15 @@ listed for a recorded build to replay.
 
 - [ ] **Step 7: Run the tests**
 
-Run: `uv run --all-extras pytest packages/gmnspy/tests/test_workbench_session_jobs.py packages/gmnspy/tests/test_workbench_actions.py packages/gmnspy/tests/test_workbench_session.py -q`
+Run: `uv run --all-extras pytest packages/netstead/tests/test_workbench_session_jobs.py packages/netstead/tests/test_workbench_actions.py packages/netstead/tests/test_workbench_session.py -q`
 Expected: `55 passed` (17 + 16 + 22).
 
 - [ ] **Step 8: Commit**
 
 ```bash
-git add packages/gmnspy/gmnspy/workbench/actions.py packages/gmnspy/gmnspy/workbench/build.py \
-  packages/gmnspy/gmnspy/workbench/session.py packages/gmnspy/gmnspy/workbench/__init__.py \
-  packages/gmnspy/tests/test_workbench_session_jobs.py packages/gmnspy/tests/test_workbench_actions.py
+git add packages/netstead/netstead/workbench/actions.py packages/netstead/netstead/workbench/build.py \
+  packages/netstead/netstead/workbench/session.py packages/netstead/netstead/workbench/__init__.py \
+  packages/netstead/tests/test_workbench_session_jobs.py packages/netstead/tests/test_workbench_actions.py
 git commit -m "feat(workbench): BuildNetwork job: estimate + approval gate, always write then open from disk"
 ```
 
@@ -3982,11 +3982,11 @@ git commit -m "feat(workbench): BuildNetwork job: estimate + approval gate, alwa
 ### Task 14: Read-only wizard routes, jobs routes, and `202` for job actions
 
 **Files:**
-- Create: `packages/gmnspy/gmnspy/workbench/routes/io.py`
-- Modify: `packages/gmnspy/gmnspy/workbench/routes/core.py`, `packages/gmnspy/gmnspy/workbench/server.py`
-- Test: `packages/gmnspy/tests/test_workbench_io_routes.py`
+- Create: `packages/netstead/netstead/workbench/routes/io.py`
+- Modify: `packages/netstead/netstead/workbench/routes/core.py`, `packages/netstead/netstead/workbench/server.py`
+- Test: `packages/netstead/tests/test_workbench_io_routes.py`
 
-- [ ] **Step 1: Write the failing tests in `packages/gmnspy/tests/test_workbench_io_routes.py`**
+- [ ] **Step 1: Write the failing tests in `packages/netstead/tests/test_workbench_io_routes.py`**
 
 ```python
 """Tests for the wizard's read-only routes, the jobs routes, and job actions over HTTP (no network)."""
@@ -3994,10 +3994,10 @@ git commit -m "feat(workbench): BuildNetwork job: estimate + approval gate, alwa
 from pathlib import Path
 
 import pytest
-from datagrove.io import credentials as creds_mod
+from corral.io import credentials as creds_mod
 from fastapi.testclient import TestClient
-from gmnspy.select.parse import StubParser
-from gmnspy.workbench import Session, build_app
+from netstead.select.parse import StubParser
+from netstead.workbench import Session, build_app
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
 OSM_FILE = str(FIXTURES / "osm" / "tiny.osm")
@@ -4161,11 +4161,11 @@ def test_cancel_route(make_client, out_dir):
 
 - [ ] **Step 2: Run them to confirm they fail**
 
-Run: `uv run --all-extras pytest packages/gmnspy/tests/test_workbench_io_routes.py -q`
+Run: `uv run --all-extras pytest packages/netstead/tests/test_workbench_io_routes.py -q`
 Expected: most tests fail with `404 Not Found` on the new routes. `test_job_action_answers_202_then_finishes`
 fails with `assert 200 == 202`.
 
-- [ ] **Step 3: Create `packages/gmnspy/gmnspy/workbench/routes/io.py`**
+- [ ] **Step 3: Create `packages/netstead/netstead/workbench/routes/io.py`**
 
 ```python
 """Read-only helpers for the Open / Import wizard, plus the jobs list and cancel.
@@ -4173,7 +4173,7 @@ fails with `assert 200 == 202`.
 None of these are recorded as actions: browsing, checking a URL, searching for a place, and
 estimating a build change no session state. (Cancel acts on a job, not on the session; the
 cancelled action is recorded when its job ends.) All of them sit behind the app-wide loopback
-Host/Origin guard in :mod:`gmnspy.workbench.server`.
+Host/Origin guard in :mod:`netstead.workbench.server`.
 """
 
 from __future__ import annotations
@@ -4225,7 +4225,7 @@ def io_router(session: Session) -> APIRouter:
     def geocode(q: str, limit: int = 8) -> dict[str, Any]:
         """Nominatim place candidates (bbox + simplified outline) for the Area step."""
         try:
-            osm_query = optional_module("gmnspy.osm.query", "osm")
+            osm_query = optional_module("netstead.osm.query", "osm")
         except ActionError as exc:
             raise HTTPException(501, str(exc)) from exc
         osm = session.settings.osm
@@ -4272,7 +4272,7 @@ def io_router(session: Session) -> APIRouter:
     return router
 ```
 
-- [ ] **Step 4: Answer job actions with `202` in `packages/gmnspy/gmnspy/workbench/routes/core.py`**
+- [ ] **Step 4: Answer job actions with `202` in `packages/netstead/netstead/workbench/routes/core.py`**
 
 Add `from ..actions import parse_action` above `from ..events import sse_format`. Replace:
 
@@ -4306,21 +4306,21 @@ with:
 
 The `payload = ...` and `return JSONResponse(...)` lines that follow are unchanged.
 
-- [ ] **Step 5: Mount the router in `packages/gmnspy/gmnspy/workbench/server.py`**
+- [ ] **Step 5: Mount the router in `packages/netstead/netstead/workbench/server.py`**
 
 Add `from .routes.io import io_router` after `from .routes.core import core_router`, and
 `app.include_router(io_router(session))` after `app.include_router(core_router(session))`.
 
 - [ ] **Step 6: Run the tests**
 
-Run: `uv run --all-extras pytest packages/gmnspy/tests/test_workbench_io_routes.py packages/gmnspy/tests/test_workbench_server.py -q`
+Run: `uv run --all-extras pytest packages/netstead/tests/test_workbench_io_routes.py packages/netstead/tests/test_workbench_server.py -q`
 Expected: `37 passed` (15 + 22).
 
 - [ ] **Step 7: Commit**
 
 ```bash
-git add packages/gmnspy/gmnspy/workbench/routes/io.py packages/gmnspy/gmnspy/workbench/routes/core.py \
-  packages/gmnspy/gmnspy/workbench/server.py packages/gmnspy/tests/test_workbench_io_routes.py
+git add packages/netstead/netstead/workbench/routes/io.py packages/netstead/netstead/workbench/routes/core.py \
+  packages/netstead/netstead/workbench/server.py packages/netstead/tests/test_workbench_io_routes.py
 git commit -m "feat(workbench): fs/check-url/geocode/estimate/jobs routes; job actions answer 202"
 ```
 
@@ -4332,13 +4332,13 @@ This task removes `#open-src`/`#open-go` and adds the **Open / Import…** butto
 **Recent** dropdown, and the **Jobs** indicator and panel, plus the static markup for the wizard modal.
 
 **Files:**
-- Modify: `packages/gmnspy/gmnspy/workbench/static/index.html` (replace the whole file), `static/app.css`
+- Modify: `packages/netstead/netstead/workbench/static/index.html` (replace the whole file), `static/app.css`
 - Modify: `static/js/api.js` (replace), `static/js/header.js` (replace), `static/js/main.js` (replace),
   `static/js/store.js`, `static/js/history.js`
 - Create: `static/js/jobs.js`
-- Test: `packages/gmnspy/tests/test_workbench_static.py`
+- Test: `packages/netstead/tests/test_workbench_static.py`
 
-- [ ] **Step 1: Append the failing test to `packages/gmnspy/tests/test_workbench_static.py`**
+- [ ] **Step 1: Append the failing test to `packages/netstead/tests/test_workbench_static.py`**
 
 ```python
 def test_header_has_open_import_recent_and_jobs_not_the_path_box():
@@ -4350,10 +4350,10 @@ def test_header_has_open_import_recent_and_jobs_not_the_path_box():
 
 - [ ] **Step 2: Run it to confirm it fails**
 
-Run: `uv run --all-extras pytest packages/gmnspy/tests/test_workbench_static.py -q`
+Run: `uv run --all-extras pytest packages/netstead/tests/test_workbench_static.py -q`
 Expected: `1 failed, 16 passed`, `AssertionError` on `id="open-wizard"`.
 
-- [ ] **Step 3: Replace `packages/gmnspy/gmnspy/workbench/static/index.html` with**
+- [ ] **Step 3: Replace `packages/netstead/netstead/workbench/static/index.html` with**
 
 Every element id that the Task 16 modules look up is already here. `test_every_element_id_used_by_js_exists_in_index`
 enforces that from then on.
@@ -4364,7 +4364,7 @@ enforces that from then on.
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>GMNSpy Workbench</title>
+<title>Netstead Workbench</title>
 <link href="https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet" />
 <link href="/static/app.css" rel="stylesheet" />
 <script src="https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
@@ -4374,7 +4374,7 @@ enforces that from then on.
 <body>
 <div id="app">
   <header>
-    <h1>GMNSpy Workbench</h1>
+    <h1>Netstead Workbench</h1>
     <select id="net-select" aria-label="Active network"></select>
     <button id="open-wizard" class="mini">Open / Import…</button>
     <select id="recent" aria-label="Recent networks"></select>
@@ -4554,7 +4554,7 @@ enforces that from then on.
 </html>
 ```
 
-- [ ] **Step 4: Update `packages/gmnspy/gmnspy/workbench/static/app.css`**
+- [ ] **Step 4: Update `packages/netstead/netstead/workbench/static/app.css`**
 
 Replace:
 
@@ -4732,7 +4732,7 @@ import { fitLinks } from "./map.js";
 
 // Recents live in this browser's localStorage: a per-user convenience that needs no server code.
 // They are only shortcuts: re-opening one is a normal open_network action, checked against io.allowed_roots.
-const RECENT_KEY = "gmnspy.workbench.recent";
+const RECENT_KEY = "netstead.workbench.recent";
 const RECENT_MAX = 10;
 
 async function run(action, after) {
@@ -4805,13 +4805,13 @@ In `static/js/store.js`, add this line to the `createStore({...})` initial state
 In `static/js/history.js`, replace:
 
 ```javascript
-    "from gmnspy.workbench import Session, OpenNetwork, CloseNetwork, SetActiveNetwork, Select, ClearSelection, Style, Navigate, SetSetting",
+    "from netstead.workbench import Session, OpenNetwork, CloseNetwork, SetActiveNetwork, Select, ClearSelection, Style, Navigate, SetSetting",
 ```
 
 with:
 
 ```javascript
-    "from gmnspy.workbench import Session, OpenNetwork, BuildNetwork, CloseNetwork, SetActiveNetwork, Select, ClearSelection, Style, Navigate, SetSetting",
+    "from netstead.workbench import Session, OpenNetwork, BuildNetwork, CloseNetwork, SetActiveNetwork, Select, ClearSelection, Style, Navigate, SetSetting",
 ```
 
 - [ ] **Step 9: Replace `static/js/main.js` with**
@@ -4930,14 +4930,14 @@ boot().catch(e => toast(e.message));
 
 - [ ] **Step 10: Run the static checks**
 
-Run: `uv run --all-extras pytest packages/gmnspy/tests/test_workbench_static.py -q`
+Run: `uv run --all-extras pytest packages/netstead/tests/test_workbench_static.py -q`
 Expected: `18 passed`. The import/export graph check, the ids-exist check, and `node --check` all cover the new
 and changed modules.
 
 - [ ] **Step 11: Commit**
 
 ```bash
-git add packages/gmnspy/gmnspy/workbench/static packages/gmnspy/tests/test_workbench_static.py
+git add packages/netstead/netstead/workbench/static packages/netstead/tests/test_workbench_static.py
 git commit -m "feat(workbench-ui): Open/Import button, Recent (localStorage), jobs indicator + panel, wizard markup"
 ```
 
@@ -4948,9 +4948,9 @@ git commit -m "feat(workbench-ui): Open/Import button, Recent (localStorage), jo
 **Files:**
 - Create: `static/js/filebrowser.js`, `static/js/areapicker.js`, `static/js/wizard.js`
 - Modify: `static/js/header.js`, `static/js/main.js`
-- Test: `packages/gmnspy/tests/test_workbench_static.py`
+- Test: `packages/netstead/tests/test_workbench_static.py`
 
-- [ ] **Step 1: Append the failing test to `packages/gmnspy/tests/test_workbench_static.py`**
+- [ ] **Step 1: Append the failing test to `packages/netstead/tests/test_workbench_static.py`**
 
 ```python
 def test_wizard_modules_exist_and_are_wired_from_main():
@@ -4962,7 +4962,7 @@ def test_wizard_modules_exist_and_are_wired_from_main():
 
 - [ ] **Step 2: Run it to confirm it fails**
 
-Run: `uv run --all-extras pytest packages/gmnspy/tests/test_workbench_static.py -q`
+Run: `uv run --all-extras pytest packages/netstead/tests/test_workbench_static.py -q`
 Expected: `1 failed, 18 passed`. `test_wizard_modules_exist_and_are_wired_from_main` fails its subset `AssertionError`.
 
 - [ ] **Step 3: Create `static/js/filebrowser.js`**
@@ -5048,7 +5048,7 @@ import { getJSON } from "./api.js";
 import { $, esc, toast } from "./dom.js";
 import { createFileBrowser } from "./filebrowser.js";
 
-const M_PER_DEG_LAT = 111320; // same spherical approximation as gmnspy.osm.query.point_buffer_bbox
+const M_PER_DEG_LAT = 111320; // same spherical approximation as netstead.osm.query.point_buffer_bbox
 const OPPOSITE = [2, 3, 0, 1]; // corner order SW, SE, NE, NW; dragging one keeps its opposite fixed
 const FILE_KINDS = { osm: ["osm", "json"], overture: ["overture"] };
 const EMPTY = { type: "FeatureCollection", features: [] };
@@ -5420,13 +5420,13 @@ In `static/js/main.js`, add `import { wireWizard } from "./wizard.js";` after th
 
 - [ ] **Step 7: Run the static checks**
 
-Run: `uv run --all-extras pytest packages/gmnspy/tests/test_workbench_static.py -q`
+Run: `uv run --all-extras pytest packages/netstead/tests/test_workbench_static.py -q`
 Expected: `22 passed`.
 
 - [ ] **Step 8: Commit**
 
 ```bash
-git add packages/gmnspy/gmnspy/workbench/static packages/gmnspy/tests/test_workbench_static.py
+git add packages/netstead/netstead/workbench/static packages/netstead/tests/test_workbench_static.py
 git commit -m "feat(workbench-ui): Open/Import wizard (file browser, area picker with editable bbox, estimate + approve)"
 ```
 
@@ -5435,27 +5435,27 @@ git commit -m "feat(workbench-ui): Open/Import wizard (file browser, area picker
 ### Task 17: Docs, the full suite and lint, then an end-to-end browser check
 
 **Files:**
-- Modify: `packages/gmnspy/docs/cookbook/workbench.md`
+- Modify: `packages/netstead/docs/cookbook/workbench.md`
 
 - [ ] **Step 1: Update the cookbook page**
 
-In `packages/gmnspy/docs/cookbook/workbench.md`, replace:
+In `packages/netstead/docs/cookbook/workbench.md`, replace:
 
 ```markdown
 Open <http://127.0.0.1:8850>. You can open more networks from the header (a path or URL) and switch between
-them with the network picker. `gmnspy viz` and `gmnspy select-serve` are aliases of `gmnspy app`.
+them with the network picker. `netstead viz` and `netstead select-serve` are aliases of `netstead app`.
 ```
 
 with:
 
 ```markdown
 Open <http://127.0.0.1:8850>. Open more networks with **Open / Import…** in the header (see below) or
-the **Recent** list, and switch between them with the network picker. `gmnspy viz` and `gmnspy select-serve`
-are aliases of `gmnspy app`.
+the **Recent** list, and switch between them with the network picker. `netstead viz` and `netstead select-serve`
+are aliases of `netstead app`.
 ```
 
 Insert this section directly above `## Settings`. The Python block carries `<!-- doctest: skip -->` because it
-would call Overpass. Every symbol it names (`gmnspy.workbench.ApprovalRequired`, `gmnspy.overture.layout`) exists
+would call Overpass. Every symbol it names (`netstead.workbench.ApprovalRequired`, `netstead.overture.layout`) exists
 and is exported, so the doc-contract tests pass.
 
 ````markdown
@@ -5470,7 +5470,7 @@ and is exported, so the doc-contract tests pass.
 - **Build from OpenStreetMap** or **Build from Overture**: choose an area by drawing a rectangle (drag its corners
   to adjust), typing `W,S,E,N` or a point plus a buffer, or searching for a place and picking one of the
   outlines. You can instead pick a local file: a `.osm` XML file or an Overpass JSON export for OSM, or an
-  Overture snapshot folder holding `segment.parquet` + `connector.parquet` (see `gmnspy.overture.layout`).
+  Overture snapshot folder holding `segment.parquet` + `connector.parquet` (see `netstead.overture.layout`).
 
 A build always writes to the output folder and format you choose (Parquet, CSV, or DuckDB) and then opens the
 result from disk, so what you see is what was saved. It never overwrites an existing output. Zip output is not
@@ -5480,7 +5480,7 @@ Before a build runs, the wizard shows an estimate of its time and size, from a q
 `out count`, or a DuckDB `COUNT(*)` over Overture) and a simple cost model. When the estimate is over
 `app.approve_above_s` (90 s by default), or when the count fails, the button changes to **Run (~N min)** or
 **Run anyway**, and the build only starts when you click it. The cost model's numbers are in
-`gmnspy/workbench/data/build_cost.toml`; they are rough, so treat the estimate as a guide.
+`netstead/workbench/data/build_cost.toml`; they are rough, so treat the estimate as a guide.
 
 Opens and builds run as background jobs. The **Jobs** button in the header shows their stage and progress and
 lets you cancel one; a cancel takes effect when the job reaches its next stage.
@@ -5489,10 +5489,10 @@ lets you cancel one; a cancel takes effect when the job reaches its next stage.
 
 The file browser, opening a local path, and build input and output folders are all limited to
 `io.allowed_roots`. When that list is empty (the default) it means your home folder. Paths given to
-`gmnspy app` on the command line are always allowed for that session.
+`netstead app` on the command line are always allowed for that session.
 
 ```toml
-# ./gmnspy.toml
+# ./netstead.toml
 [io]
 allowed_roots = ["~/networks", "/data/gmns"]
 
@@ -5507,7 +5507,7 @@ passes `approved=True`, because re-running a build you already approved counts a
 
 <!-- doctest: skip -->
 ```python
-from gmnspy.workbench import BuildNetwork, Session
+from netstead.workbench import BuildNetwork, Session
 
 app = Session()
 app.do(
@@ -5522,33 +5522,33 @@ app.do(
 )
 ```
 
-Without `approved=True`, a build over the threshold raises `gmnspy.workbench.ApprovalRequired`, and its
+Without `approved=True`, a build over the threshold raises `netstead.workbench.ApprovalRequired`, and its
 `.estimate` holds the estimate.
 ````
 
 - [ ] **Step 2: Run the doc-contract tests**
 
-Run: `uv run --all-extras pytest packages/gmnspy/tests/test_documented_api_contract.py packages/gmnspy/tests/test_documented_cli_contract.py packages/gmnspy/tests/test_documented_python_contract.py -q`
+Run: `uv run --all-extras pytest packages/netstead/tests/test_documented_api_contract.py packages/netstead/tests/test_documented_cli_contract.py packages/netstead/tests/test_documented_python_contract.py -q`
 Expected: all pass.
 
 - [ ] **Step 3: Run everything CI runs**
 
-Run: `uv run --all-extras pytest packages/gmnspy packages/datagrove -q && uv run ruff check packages && uv run ruff format --check packages && uv run lint-imports && uv run python scripts/lint_no_sql.py`
+Run: `uv run --all-extras pytest packages/netstead packages/corral -q && uv run ruff check packages && uv run ruff format --check packages && uv run lint-imports && uv run python scripts/lint_no_sql.py`
 Expected:
 - pytest: all pass; the only new skip is the opt-in calibration test;
 - ruff: `All checks passed!` and every file already formatted;
 - import-linter: `2 kept, 0 broken`;
 - `lint_no_sql.py`: exits 0.
 
-If import-linter reports `gmnspy.cli is not allowed to import gmnspy.osm`, a static `from gmnspy.osm ...` or
-`from gmnspy.overture import ...` has crept into a workbench module. Route it through `optional_module`
+If import-linter reports `netstead.cli is not allowed to import netstead.osm`, a static `from netstead.osm ...` or
+`from netstead.overture import ...` has crept into a workbench module. Route it through `optional_module`
 (Decision 18).
 
 - [ ] **Step 4: Commit the docs**
 
 ```bash
-git add packages/gmnspy/docs/cookbook/workbench.md
-git commit -m "docs(gmnspy): Workbench Open / Import wizard, allowed roots, estimate + approval"
+git add packages/netstead/docs/cookbook/workbench.md
+git commit -m "docs(netstead): Workbench Open / Import wizard, allowed roots, estimate + approval"
 ```
 
 - [ ] **Step 5: Browser verification checklist**
@@ -5556,11 +5556,11 @@ git commit -m "docs(gmnspy): Workbench Open / Import wizard, allowed roots, esti
 Prepare a scratch area outside the repo, so nothing is written into tracked fixtures:
 
 ```bash
-D=$(mktemp -d) && mkdir -p $D/out && cp -R packages/gmnspy/tests/fixtures/osm packages/gmnspy/tests/fixtures/overture $D/ \
-  && cp -R packages/gmnspy/gmnspy/fixtures/rdu_i40/parquet $D/rdu && echo $D
+D=$(mktemp -d) && mkdir -p $D/out && cp -R packages/netstead/tests/fixtures/osm packages/netstead/tests/fixtures/overture $D/ \
+  && cp -R packages/netstead/netstead/fixtures/rdu_i40/parquet $D/rdu && echo $D
 ```
 
-Create `.claude/launch.json` (do not commit it). Use the printed `$D` as the value of `GMNSPY_IO__ALLOWED_ROOTS`
+Create `.claude/launch.json` (do not commit it). Use the printed `$D` as the value of `NETSTEAD_IO__ALLOWED_ROOTS`
 and in the source path:
 
 ```json
@@ -5570,7 +5570,7 @@ and in the source path:
     {
       "name": "workbench",
       "runtimeExecutable": "env",
-      "runtimeArgs": ["GMNSPY_IO__ALLOWED_ROOTS=[\"<D>\"]", "uv", "run", "--all-extras", "gmnspy", "app", "<D>/rdu", "--port", "8850"],
+      "runtimeArgs": ["NETSTEAD_IO__ALLOWED_ROOTS=[\"<D>\"]", "uv", "run", "--all-extras", "netstead", "app", "<D>/rdu", "--port", "8850"],
       "port": 8850
     }
   ]
@@ -5655,7 +5655,7 @@ a failing test, or fix it, before you open the PR.
 | Two audit logs: a build is not a `NetworkChange` | Decision 26 |
 | Transit: roadway component only, no retrofit needed | Decision 27 |
 | Read-only routes behind the loopback guard | Task 14 (`test_check_url_respects_the_origin_guard`, `test_reads_respect_the_host_guard`) |
-| CLI keeps working; minimal sharing with `gmnspy build` | Task 3; Task 12 (dispatch waits); Decision 24 |
+| CLI keeps working; minimal sharing with `netstead build` | Task 3; Task 12 (dispatch waits); Decision 24 |
 | Doc-contract tests | Task 17, Steps 1–2 |
 
 - **Placeholder scan:**
@@ -5677,8 +5677,8 @@ a failing test, or fix it, before you open the PR.
     `2 kept`; `lint_no_sql` was clean.
   - The browser walk-through of items 1, 2, 4, 5 and 8 passed against that build.
 - **Fixed during the review:**
-  - The first draft imported `gmnspy.osm` / `gmnspy.overture` statically from the workbench, which broke the
-    import-linter contract. The fix is `optional_module` plus the dependency-free `gmnspy.overture.layout`.
+  - The first draft imported `netstead.osm` / `netstead.overture` statically from the workbench, which broke the
+    import-linter contract. The fix is `optional_module` plus the dependency-free `netstead.overture.layout`.
   - The first draft bound `JobRunner` to `events.publish` eagerly, so tests that replace `publish` missed the job
     events. It is now late-bound.
   - Job labels had embedded full paths. They now use `default_label`.
@@ -5701,12 +5701,12 @@ a failing test, or fix it, before you open the PR.
 
   > **SUPERSEDED (2026-10-02):** zip read/write was fixed in 4b743fb; zip is a normal output format.
 - **Shared DuckDB connection (pre-existing, widened).** HTTP threads already query networks concurrently on
-  datagrove's single default ibis/DuckDB connection. P1a adds job threads that open networks on that same
+  corral's single default ibis/DuckDB connection. P1a adds job threads that open networks on that same
   connection; builds use a private engine (Decision 16). If concurrent use proves unsafe, the fix belongs in
-  datagrove: per-thread cursors or an engine lock.
+  corral: per-thread cursors or an engine lock.
 
   > **Outcome (2026-10-02):** it was unsafe: two simultaneous `OpenNetwork` jobs failed in 20 of 20 rounds
-  > ("Attempting to execute an unsuccessful or closed pending query result"). Fixed in datagrove with an engine
+  > ("Attempting to execute an unsuccessful or closed pending query result"). Fixed in corral with an engine
   > lock: `IbisEngine` serializes its ibis backend (`serialize_backend`), wrapping every backend method in one
   > re-entrant lock stored on the backend, so direct `expr.execute()` calls are covered too; memtable
   > finalizers (run from `atexit` in ibis 12) and the raw-connection spatial install take the same lock. Per-thread cursors were rejected
@@ -5720,7 +5720,7 @@ a failing test, or fix it, before you open the PR.
 - **Cancel is cooperative.** A cancel lands at the next stage boundary, so an in-flight Overpass download can run
   for up to `osm.timeout` (180 s) after you click Cancel.
 - **The cost model is a seed.** One measured run, many guesses, and output sizes taken from a 178-link fixture.
-  The calibration test (`GMNSPY_CALIBRATE=1`) prints a fitted `s_per_link`. **Question:** who runs it, and
+  The calibration test (`NETSTEAD_CALIBRATE=1`) prints a fitted `s_per_link`. **Question:** who runs it, and
   against which bboxes, to replace the seed before release?
 - **Pre-query cost:**
   - A remote Overture `COUNT(*)` over S3 can take tens of seconds, and `/api/estimate` blocks one request

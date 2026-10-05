@@ -8,15 +8,15 @@ description: Apply network-editing operations (simplify geometries, merge close 
 Use this skill when a user wants to clean up a GMNS network — drop stranded
 nodes, merge nodes that are within a few meters of each other, simplify
 overdetailed link geometries, or remove duplicate links — and wants to
-preview the result before committing. The `gmnspy.clean` operations all run
-inside a `datagrove.editing.Session`, which records every mutation so you
+preview the result before committing. The `netstead.clean` operations all run
+inside a `corral.editing.Session`, which records every mutation so you
 can either `commit()` or `rollback()` at the end.
 
 This skill requires the `[clean]` extra, which pulls in `shapely` (for
 geometry ops) and `igraph` (for connectivity analysis):
 
 ```bash
-pip install "gmnspy[clean]"
+pip install "netstead[clean]"
 # or, in this repo:
 uv sync --extra clean
 ```
@@ -28,7 +28,7 @@ warnings tell you which operations to run.
 
 1. **Validate first** so you know what's actually wrong:
    ```bash
-   gmnspy validate ./net --json | jq '.issues | group_by(.code)
+   netstead validate ./net --json | jq '.issues | group_by(.code)
        | map({code: .[0].code, count: length})'
    ```
 2. **Open a `Session` around the network.** The `with` block is the
@@ -55,14 +55,14 @@ End-to-end clean of a network with stranded nodes and over-detailed
 geometries:
 
 ```python
-from gmnspy import Network
-from gmnspy.clean import (
+from netstead import Network
+from netstead.clean import (
     simplify_geometry,
     merge_close_nodes,
     drop_stranded_nodes,
     dedupe_links,
 )
-from datagrove.editing import Session
+from corral.editing import Session
 
 net = Network.from_source("./network")
 
@@ -132,5 +132,5 @@ If the `RuntimeError` fires, the `Session` exits without committing and
 
 - `gmns-validate` — find what needs cleaning before you start
 - `gmns-author` — manual edits as an alternative to ops
-- `packages/gmnspy/tests/test_clean.py` — runnable examples for every op
-- `packages/datagrove/datagrove/editing/session.py` — Session internals
+- `packages/netstead/tests/test_clean.py` — runnable examples for every op
+- `packages/corral/corral/editing/session.py` — Session internals

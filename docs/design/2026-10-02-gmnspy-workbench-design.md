@@ -1,19 +1,19 @@
-# GMNSpy Workbench — unified front-end UX design
+# Netstead Workbench — unified front-end UX design
 
-Status: **accepted, P0 next** · Date: 2026-10-02 · Owner: gmnspy
+Status: **accepted, P0 next** · Date: 2026-10-02 · Owner: netstead
 
 Related: [network-viewer PRD](2026-09-30-network-viewer-prd.md) · [data-table scope](data-table-exploration-scope.md) · [NL selection design](2026-09-23-nl-selection-design.md) · [ProjectCard](https://github.com/network-wrangler/projectcard) · [network_wrangler](https://github.com/network-wrangler/network_wrangler)
 
 ## Context
 
-GMNSpy has grown several separate web surfaces, and none of them covers the whole workflow:
+Netstead has grown several separate web surfaces, and none of them covers the whole workflow:
 
 | Surface | Stack | Strength | Gap |
 |---|---|---|---|
-| `gmnspy viz` (`gmnspy/viz/server.py`, `templates/index.html`) | FastAPI, MapLibre + deck.gl, binary buffers | Fast map, colour-by, paged tables, NL select, pick to fragment | Holds one network frozen at startup; one 737-line inline script; map→table link is partial |
+| `netstead viz` (`netstead/viz/server.py`, `templates/index.html`) | FastAPI, MapLibre + deck.gl, binary buffers | Fast map, colour-by, paged tables, NL select, pick to fragment | Holds one network frozen at startup; one 737-line inline script; map→table link is partial |
 | `select-serve` (`select/webapp.py`) | MapLibre + GeoJSON | — | Superseded prototype |
-| `NetworkMap` and the validation report (`gmnspy/map/*`) | Leaflet + Jinja, offline | Issue markers, "fix locally" editor, edit log | Static; no row→map link; 2000-item cap |
-| datagrove `ValidationReport.to_html` | Jinja + Vega-Lite | Generic report | No map link |
+| `NetworkMap` and the validation report (`netstead/map/*`) | Leaflet + Jinja, offline | Issue markers, "fix locally" editor, edit log | Static; no row→map link; 2000-item cap |
+| corral `ValidationReport.to_html` | Jinja + Vega-Lite | Generic report | No map link |
 
 Several things are missing entirely:
 - Opening or building a network from the UI.
@@ -21,7 +21,7 @@ Several things are missing entirely:
 - A settings or config system: today settings are scattered across kwargs, CLI flags and env vars, with no persisted config.
 - Sharing a live session between Python and the UI.
 
-**Goal:** one local app, `gmnspy app`, that lets a modeller:
+**Goal:** one local app, `netstead app`, that lets a modeller:
 - **a.** Open a local or remote GMNS folder, or build one from OSM or Overture using a drawn bbox or a place/entity search.
 - **b.** Inspect and validate the network, with map, table and issue list linked both ways.
 - **c.** Verify selections.
@@ -37,7 +37,7 @@ Several things are missing entirely:
 
 ## Core idea: one Action bus
 
-Every state change is a typed **Action**: a pydantic discriminated union in `gmnspy/workbench/actions.py`. Examples: `OpenNetwork`, `BuildNetwork`, `Select`, `Style`, `Filter`, `Navigate`, `RunValidation`, `ApplyEdit`, `Compare`, `SetSetting`.
+Every state change is a typed **Action**: a pydantic discriminated union in `netstead/workbench/actions.py`. Examples: `OpenNetwork`, `BuildNetwork`, `Select`, `Style`, `Filter`, `Navigate`, `RunValidation`, `ApplyEdit`, `Compare`, `SetSetting`.
 
 Three front doors share this one deterministic `Session.dispatch(action)`:
 1. **UI clicks**, sent as `POST /api/actions`.
@@ -57,14 +57,14 @@ ProjectCard compatibility changes what the logs are organised around. There are 
 
 **1. Session history (Actions).** This records everything: navigate, style, select, validate, settings, and so on.
 - It exists for replay, undo and "copy as Python".
-- It is internal to gmnspy, and other tools are not expected to read it.
+- It is internal to netstead, and other tools are not expected to read it.
 
 **2. Change log, made of ProjectCard units.** This is the durable, interoperable record of edits.
 - Every *mutating* Action does not touch tables directly. It compiles to a `NetworkChange`, which mirrors a ProjectCard change type:
   - `roadway_property_change`: a facility selection plus `property_changes {prop: {existing, set | change}}`
   - `roadway_addition`
   - `roadway_deletion`
-- One applier, `gmnspy.changes.apply_change(net, change) -> ChangeResult`, executes the change. It lowers to datagrove `apply_edit` / `reverse_edit`.
+- One applier, `netstead.changes.apply_change(net, change) -> ChangeResult`, executes the change. It lowers to corral `apply_edit` / `reverse_edit`.
 - Each applied change is appended to the session's active **draft ProjectCard**, which has project name, tags, dependencies and `changes[]`.
   - The draft can be exported as `.yml`.
   - It is validated against the projectcard JSON schema. This uses the optional `[projectcard]` extra, keeping the base install lean.
@@ -81,10 +81,10 @@ ProjectCard compatibility changes what the logs are organised around. There are 
 **Why this matters now (near-term item 1).** The P2 "fix" editor must be built on `NetworkChange` and draft cards from the start. Bolting cards onto raw table edits later would lose the selection and intent.
 
 **Groundwork for far-term items 2 and 3, kept cheap:**
-- `apply_change` is already the per-change engine, so **applying a card** later is just: parse the card, check `existing` values, and apply each change in order. That is a `gmnspy.changes.apply_card` added later.
+- `apply_change` is already the per-change engine, so **applying a card** later is just: parse the card, check `existing` values, and apply each change in order. That is a `netstead.changes.apply_card` added later.
 - `NetworkHandle` carries a `lineage`: the base source plus an ordered list of applied card ids and versions. **Scenario management** later becomes a first-class `Scenario(base, cards[])` that rebuilds that lineage. The registry and the Compare workspace (base vs scenario) don't change.
 - Compare can later export a `NetworkDiff` as cards (diff → changes).
-- Interoperability is at the card file and schema level, not by depending on network_wrangler. Its pandas/geopandas/pandera stack conflicts with the DuckDB-only engine. The cards we write should load in Wrangler, and the cards Wrangler users write should apply in gmnspy.
+- Interoperability is at the card file and schema level, not by depending on network_wrangler. Its pandas/geopandas/pandera stack conflicts with the DuckDB-only engine. The cards we write should load in Wrangler, and the cards Wrangler users write should apply in netstead.
 - Field-name mapping (`link_id` ↔ `model_link_id`, `from_node_id` ↔ `A`, etc.) lives in a maintained data file, `changes/mappings/gmns_to_wrangler.yaml`.
 
 **Out of scope for now:**
@@ -98,7 +98,7 @@ Transit is part of the data model from P0, even though its features ship later. 
 
 **Bundle model.** A `NetworkHandle` is a bundle of components:
 - `roadway`: the GMNS `Network`.
-- `transit`: an optional `TransitFeed`, which is GTFS tables loaded as a datagrove package. That means GTFS has a spec in datagrove and runs on the same DuckDB engine.
+- `transit`: an optional `TransitFeed`, which is GTFS tables loaded as a corral package. That means GTFS has a spec in corral and runs on the same DuckDB engine.
 
 This mirrors Wrangler's `Scenario` of roadway + transit.
 
@@ -133,8 +133,8 @@ This mirrors Wrangler's `Scenario` of roadway + transit.
 ## Architecture
 
 ```
-gmnspy/workbench/
-  __init__.py      Session/build_app/serve; P4 adds launch(net=None, *, port) -> AppHandle, exposed as gmnspy.app
+netstead/workbench/
+  __init__.py      Session/build_app/serve; P4 adds launch(net=None, *, port) -> AppHandle, exposed as netstead.app
   session.py       Session: NetworkRegistry, selections, style spec, history, settings ref
   registry.py      NetworkHandle(id, label, source, Network, version, caches keyed by version)
   actions.py       Action union + handlers; to_python(action) snippet renderer
@@ -142,10 +142,10 @@ gmnspy/workbench/
   events.py        SSE broadcaster
   routes/          networks.py, tables.py, validate.py, select.py, compare.py, settings.py, assistant.py, console.py
   static/          index.html + js/{store,api,map,table,issues,select,compare,settings,assistant,console}.js + app.css
-gmnspy/config.py   layered Settings (see below)
-gmnspy/compare/    diff_networks(a, b, *, keys, columns) -> NetworkDiff
-gmnspy/changes/    NetworkChange types, apply_change, DraftCard, to/from ProjectCard YAML, mappings/gmns_to_wrangler.yaml
-cli/commands/app.py  `gmnspy app [SOURCE ...] [--console] [--port] [--provider]`
+netstead/config.py   layered Settings (see below)
+netstead/compare/    diff_networks(a, b, *, keys, columns) -> NetworkDiff
+netstead/changes/    NetworkChange types, apply_change, DraftCard, to/from ProjectCard YAML, mappings/gmns_to_wrangler.yaml
+cli/commands/app.py  `netstead app [SOURCE ...] [--console] [--port] [--provider]`
 ```
 
 **Multi-network.** All network routes are namespaced as `/api/n/{net_id}/...`. Caches are keyed by `(net_id, version)`, and an edit bumps the version. This fixes viz's frozen `lru_cache` state.
@@ -162,8 +162,8 @@ cli/commands/app.py  `gmnspy app [SOURCE ...] [--console] [--port] [--provider]`
 - `select.resolve` / `resolve_frames` / `to_fragment` / `to_projectcard` / `validate_fragment` and `ClaudeParser`
 - `osm.build_network_from_osm` and `overture.build_network_from_overture`
 - `osm/query.geocode_area`
-- `gmnspy.validate` plus datagrove `run_quality` with `RuleConfig`
-- datagrove `editing` (`apply_edit`, `reverse_edit`, `Session` edit log), plus `map/edits.apply_edits` for importing an edit log
+- `netstead.validate` plus corral `run_quality` with `RuleConfig`
+- corral `editing` (`apply_edit`, `reverse_edit`, `Session` edit log), plus `map/edits.apply_edits` for importing an edit log
 - the editor logic in `map/templates/map_component.js`, ported to a module
 - `io/credentials.resolve_credentials`, for showing credential status only
 
@@ -212,7 +212,7 @@ The app is a single page:
   - **Output folder + format are required:** builds always write to disk first and then open from disk, so the result is reproducible.
 - **Estimate → approve → run:**
   - A cheap pre-query sizes the request: Overpass `out count`, or Overture `COUNT(*)` over the bbox.
-  - A calibrated cost model (`latency + rate × elements`, built on datagrove `OperationCost`/`gate`) produces a time and an output size.
+  - A calibrated cost model (`latency + rate × elements`, built on corral `OperationCost`/`gate`) produces a time and an output size.
   - Above `app.approve_above_s` (default 90 s), the action needs an explicit **Run (~N min)** click.
   - If the pre-query itself fails, the user is told and asked before running anyway.
 - **Jobs:**
@@ -258,7 +258,7 @@ The app is a single page:
 - Selections can be named and saved in the session ("Save selection…"), so Python and Compare can use them. "Save" is reserved for this; building a selection on the map is "Highlight links" → "Set as selection".
 
 ### d. Python: shared live session
-- **In a notebook:** `app = gmnspy.app(net)` starts uvicorn in a background thread, in the same process, on the same `Network` objects. The handle offers:
+- **In a notebook:** `app = netstead.app(net)` starts uvicorn in a background thread, in the same process, on the same `Network` objects. The handle offers:
   - `app.networks["base"]`
   - `app.selection` (the live `SelectionResult` or ids)
   - `app.show(frame_or_ids, style=...)`, which pushes a temporary layer
@@ -266,7 +266,7 @@ The app is a single page:
   - `app.history.to_python()`
   - `app.refresh()`
   - `app._repr_html_`, which embeds the app in an iframe
-- **From the CLI:** `gmnspy app` serves the same app.
+- **From the CLI:** `netstead app` serves the same app.
 - **Optional console panel:** `--console` adds a Python console that runs code in the server namespace, with `app`, `net` and `nets` bound. For safety it is only offered on a localhost bind (reusing `is_public_bind`) and needs a per-launch token. Output is text, or `_repr_html_` when an object has one.
 - **Pyodide/WASM was rejected.** The DuckDB/ibis stack and the network data live on the server, and Pyodide can't share the live objects.
 
@@ -280,7 +280,7 @@ The app is a single page:
 - The provider and model come from Settings: `stub` or `claude` (the existing `ClaudeParser` pattern, default `claude-sonnet-5`).
 
 ### f. Compare workspace
-- `gmnspy.compare.diff_networks(a, b, keys=("link_id", "node_id"), columns=None)` is a DuckDB join that returns a `NetworkDiff`:
+- `netstead.compare.diff_networks(a, b, keys=("link_id", "node_id"), columns=None)` is a DuckDB join that returns a `NetworkDiff`:
   - per-table `status` (added, removed, modified, same)
   - per-column deltas
   - summary counts
@@ -295,11 +295,11 @@ The app is a single page:
 - **Later:** swipe or side-by-side views, and geometry-based matching for networks with different ids, such as OSM vs Overture. That needs conflation, which v1 does not do; v1 matches on ids.
 
 ### g. Settings workspace
-`gmnspy/config.py` is a new layered `Settings` pydantic model. Precedence is:
+`netstead/config.py` is a new layered `Settings` pydantic model. Precedence is:
 
-**defaults < user file < project file < `GMNSPY_*` env < explicit kwargs**
+**defaults < user file < project file < `NETSTEAD_*` env < explicit kwargs**
 
-- The user file is `~/.config/gmnspy/config.toml`; the project file is `./gmnspy.toml`.
+- The user file is `~/.config/netstead/config.toml`; the project file is `./netstead.toml`.
 - Reading uses `tomllib`. Writing uses a small hand-rolled flat TOML writer, so no new dependency.
 
 Sections:
@@ -326,20 +326,20 @@ Sections:
 - `run_quality` config
 - the viz basemap
 
-This also fixes the stale `GMNSPY_AUTO_APPROVE` vs `DATAGROVE_AUTO_APPROVE` docstrings.
+This also fixes the stale `NETSTEAD_AUTO_APPROVE` vs `CORRAL_AUTO_APPROVE` docstrings.
 
 ## Phasing (each phase gets its own spec → plan → PR off `refactor/v1.0`)
 
 | Phase | Scope | Builds |
 |---|---|---|
-| P0 | Foundations | `config.py`; the `workbench/` package with Session, Registry, Action bus and SSE (background jobs arrive with Build in P1); split the front end into ES modules; port the viz features; `gmnspy app` CLI; retire `select-serve` (`gmnspy viz` becomes an alias) |
+| P0 | Foundations | `config.py`; the `workbench/` package with Session, Registry, Action bus and SSE (background jobs arrive with Build in P1); split the front end into ES modules; port the viz features; `netstead app` CLI; retire `select-serve` (`netstead viz` becomes an alias) |
 | P1a | Open/Import wizard | Wizard (local browser, URL check, OSM/Overture by draw/coords/place, local .osm/Overture files), estimate + approval, background jobs, always-save builds |
 | P1b | Inspect + settings |  map↔table linking both ways, FK navigation, Settings UI |
-| P2 | Validate + fix + change log | Issues triad; `gmnspy.changes` (NetworkChange, `apply_change`, DraftCard, ProjectCard export and schema validation); editor built on it; undo; export report |
+| P2 | Validate + fix + change log | Issues triad; `netstead.changes` (NetworkChange, `apply_change`, DraftCard, ProjectCard export and schema validation); editor built on it; undo; export report |
 | P3 | Selection verification + NL assistant | Pinning ambiguous anchors; Style/Filter/Navigate actions |
-| P4 | Python live session | `gmnspy.app()` handle, `show`, history `to_python`, `--console` |
+| P4 | Python live session | `netstead.app()` handle, `show`, history `to_python`, `--console` |
 | P5 | Compare | `diff_networks` + Compare workspace |
-| P6 | Transit | datagrove GTFS spec, `TransitFeed` component, transit layers, selection, validation, changes, compare |
+| P6 | Transit | corral GTFS spec, `TransitFeed` component, transit layers, selection, validation, changes, compare |
 | Later | Apply cards; scenarios | `apply_card`, then `Scenario(base, cards[])` built on the lineage, and diff → cards |
 
 Next: the P0 implementation plan (`docs/design/2026-10-02-workbench-p0-plan.md`).
@@ -356,7 +356,7 @@ Next: the P0 implementation plan (`docs/design/2026-10-02-workbench-p0-plan.md`)
   - Exported cards load with `projectcard.read_card`, as an interop check in the `[projectcard]` extra tests
 - **API tests:** FastAPI `TestClient` for `/api/n/{id}/...`, `/api/actions` and the SSE stream (receive an event after a dispatch). A build job runs with mocked OSM/Overture fetchers.
 - **End-to-end:**
-  - Run `gmnspy app <fixture network>` through `preview_start`.
+  - Run `netstead app <fixture network>` through `preview_start`.
   - In the browser pane:
     - open a network
     - check that row click flies the map and map click scrolls the row
@@ -365,4 +365,4 @@ Next: the P0 implementation plan (`docs/design/2026-10-02-workbench-p0-plan.md`)
     - run an NL select (stub provider) and approve a draft
     - compare the fixture with an edited copy
     - change a setting and confirm the TOML file is written
-- **Notebook smoke test:** `app = gmnspy.app(net)`; `app.show(ids)` updates the open browser over SSE; `app.selection` reflects a UI pick.
+- **Notebook smoke test:** `app = netstead.app(net)`; `app.show(ids)` updates the open browser over SSE; `app.selection` reflects a UI pick.

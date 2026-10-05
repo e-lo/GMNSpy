@@ -1,18 +1,18 @@
-# Workspace root for the GMNSpy + datagrove monorepo.
+# Workspace root for the Netstead + corral monorepo.
 #
 # This file is NOT a publishable package — it carries the uv workspace
 # declaration and shared development tooling configuration (ruff,
 # pyright, import-linter, pytest, coverage) for both packages.
 #
 # Distributable packages live in packages/ — see:
-#   packages/datagrove/pyproject.toml   (generic engine)
-#   packages/gmnspy/pyproject.toml      (GMNS-specific)
+#   packages/corral/pyproject.toml   (generic engine)
+#   packages/netstead/pyproject.toml      (GMNS-specific)
 
 [tool.uv.workspace]
 members = ["packages/*"]
 
 [tool.uv.sources]
-datagrove = { workspace = true }
+corral = { workspace = true }
 
 # ---------------------------------------------------------------------------
 # Shared dev tooling
@@ -45,14 +45,14 @@ dev = [
 line-length = 120
 target-version = "py311"
 # Only exclude vendored upstream content (no Python source in these
-# directories). The previous `["gmnspy", "tests", "_archive"]` exclusion
+# directories). The previous `["netstead", "tests", "_archive"]` exclusion
 # was for the legacy pre-monorepo tree and inadvertently matched the new
-# package path `packages/gmnspy/gmnspy/`, skipping all of its source from
+# package path `packages/netstead/netstead/`, skipping all of its source from
 # lint. Path-scoped exclusions only.
 extend-exclude = [
-    "packages/gmnspy/gmnspy/spec/0.95",
-    "packages/gmnspy/gmnspy/spec/0.96",
-    "packages/gmnspy/gmnspy/spec/0.97",
+    "packages/netstead/netstead/spec/0.95",
+    "packages/netstead/netstead/spec/0.96",
+    "packages/netstead/netstead/spec/0.97",
 ]
 
 [tool.ruff.lint]
@@ -87,64 +87,64 @@ convention = "google"
 "**/cli/**" = ["B008"]
 
 # ---------------------------------------------------------------------------
-# Pyright (strict on datagrove; standard on gmnspy)
+# Pyright (strict on corral; standard on netstead)
 # ---------------------------------------------------------------------------
 
 [tool.pyright]
-include = ["packages/datagrove/datagrove", "packages/gmnspy/gmnspy"]
+include = ["packages/corral/corral", "packages/netstead/netstead"]
 exclude = ["**/__pycache__", "**/_archive", "**/legacy"]
 pythonVersion = "3.11"
 typeCheckingMode = "basic"
 
 [[tool.pyright.executionEnvironments]]
-root = "packages/datagrove/datagrove"
-extraPaths = ["packages/datagrove"]
+root = "packages/corral/corral"
+extraPaths = ["packages/corral"]
 
 [[tool.pyright.executionEnvironments]]
-root = "packages/gmnspy/gmnspy"
-extraPaths = ["packages/gmnspy", "packages/datagrove"]
+root = "packages/netstead/netstead"
+extraPaths = ["packages/netstead", "packages/corral"]
 
 # ---------------------------------------------------------------------------
 # Import-linter — enforce architectural boundaries
 # ---------------------------------------------------------------------------
 # Rules:
-#   - datagrove may not import from gmnspy
-#   - gmnspy.clean / .server / .mcp are optional extras (no required import
-#     of these from gmnspy core)
-#   - Raw SQL strings outside datagrove.engines.ibis_engine are forbidden
+#   - corral may not import from netstead
+#   - netstead.clean / .server / .mcp are optional extras (no required import
+#     of these from netstead core)
+#   - Raw SQL strings outside corral.engines.ibis_engine are forbidden
 #     (enforced separately by a ruff plugin / custom check; see ./scripts/lint_no_sql.py)
 
 [tool.importlinter]
-root_packages = ["datagrove", "gmnspy"]
+root_packages = ["corral", "netstead"]
 include_external_packages = false
 
 [[tool.importlinter.contracts]]
-name = "datagrove must not depend on gmnspy"
+name = "corral must not depend on netstead"
 type = "forbidden"
-source_modules = ["datagrove"]
-forbidden_modules = ["gmnspy"]
+source_modules = ["corral"]
+forbidden_modules = ["netstead"]
 
 [[tool.importlinter.contracts]]
-name = "gmnspy core must not require optional-extra submodules"
+name = "netstead core must not require optional-extra submodules"
 type = "forbidden"
-# Source modules expand as the package grows; gmnspy.network etc. land in Phase 3.
+# Source modules expand as the package grows; netstead.network etc. land in Phase 3.
 source_modules = [
-    "gmnspy.semantics",
-    "gmnspy.scope",
-    "gmnspy.indexes",
-    "gmnspy.quality",
-    "gmnspy.cli",
+    "netstead.semantics",
+    "netstead.scope",
+    "netstead.indexes",
+    "netstead.quality",
+    "netstead.cli",
 ]
 forbidden_modules = [
-    "gmnspy.clean",
-    "gmnspy.server",
-    "gmnspy.mcp",
-    "gmnspy.osm",
-    "gmnspy.reports",
-    "gmnspy.map",
-    # NB: gmnspy.graph is intentionally NOT forbidden — it is the graph/routing
-    # *backend* (like gmnspy.indexes), which gmnspy.semantics (and, as the
-    # unification proceeds, gmnspy.scope) import. Its scipy dep is lazily
+    "netstead.clean",
+    "netstead.server",
+    "netstead.mcp",
+    "netstead.osm",
+    "netstead.reports",
+    "netstead.map",
+    # NB: netstead.graph is intentionally NOT forbidden — it is the graph/routing
+    # *backend* (like netstead.indexes), which netstead.semantics (and, as the
+    # unification proceeds, netstead.scope) import. Its scipy dep is lazily
     # imported and shipped via the [graph] extra.
 ]
 
@@ -154,7 +154,7 @@ forbidden_modules = [
 
 [tool.pytest.ini_options]
 minversion = "8.0"
-testpaths = ["packages/datagrove/tests", "packages/gmnspy/tests"]
+testpaths = ["packages/corral/tests", "packages/netstead/tests"]
 # importlib mode avoids module-name collisions when multiple packages each
 # have a tests/__init__.py (otherwise both bind to "tests" and the second
 # loses); also required for src-layout monorepos.
@@ -164,7 +164,7 @@ addopts = [
     "--strict-config",
     "--doctest-modules",
     "--import-mode=importlib",
-    "--ignore=gmnspy",          # legacy tree (Phase 0 closeout removes)
+    "--ignore=netstead",          # legacy tree (Phase 0 closeout removes)
     "--ignore=tests",           # legacy tree
     "--ignore=_archive",
     # Fixture BUILD scripts are one-shot data-prep (they hit OSM/Overpass and
@@ -203,7 +203,7 @@ markers = [
     "slow: end-to-end / multi-second tests; skipped by default, run with -m \"\" (full) or -m slow",
     "perf: performance regression bench; skipped by default, run with -m \"\" (full) or -m perf",
     "integration: cross-package integration",
-    "live_llm: calls real LLM provider APIs; skipped unless GMNSPY_LIVE_LLM=anthropic,openai,gemini,ollama (any subset)",
+    "live_llm: calls real LLM provider APIs; skipped unless NETSTEAD_LIVE_LLM=anthropic,openai,gemini,ollama (any subset)",
 ]
 
 # ---------------------------------------------------------------------------
@@ -211,7 +211,7 @@ markers = [
 # ---------------------------------------------------------------------------
 
 [tool.coverage.run]
-source = ["packages/datagrove/datagrove", "packages/gmnspy/gmnspy"]
+source = ["packages/corral/corral", "packages/netstead/netstead"]
 branch = true
 omit = [
     "*/tests/*",
@@ -232,9 +232,9 @@ exclude_lines = [
     "@overload",
 ]
 # Workspace-wide gate. Per-package gates are enforced separately in
-# the Tests workflow (datagrove ≥86%, gmnspy ≥84%) so a regression
+# the Tests workflow (corral ≥86%, netstead ≥84%) so a regression
 # in one package can't be masked by overshoot in the other. Baseline
-# measured 2026-05-26: combined 86%, datagrove 87%, gmnspy 85% —
+# measured 2026-05-26: combined 86%, corral 87%, netstead 85% —
 # gates set one point below current to flag regressions immediately
 # without flaking on stat-noise.
 fail_under = 85

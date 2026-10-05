@@ -1,7 +1,7 @@
 # Drafts GitHub release notes from merged PR titles + labels.
 #
 # Per-package-tag aware: triggered by every push to refactor/v1.0 / main.
-# When the next `datagrove-vX.Y.Z` or `gmnspy-vX.Y.Z` tag is cut, the resulting
+# When the next `corral-vX.Y.Z` or `netstead-vX.Y.Z` tag is cut, the resulting
 # draft release notes pull from PRs merged since the previous matching tag.
 #
 # For v1.0 this is one combined draft across the monorepo (see

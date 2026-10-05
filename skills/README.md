@@ -1,6 +1,6 @@
 # Skills
 
-Claude Code Skills shipped with the GMNSpy + datagrove monorepo.
+Claude Code Skills shipped with the Netstead + corral monorepo.
 
 ## What's a Skill?
 
@@ -19,7 +19,7 @@ Skills are loaded directly from this repository — no separate hosting.
 Install one at a time:
 
 ```bash
-claude code skill add https://github.com/e-lo/GMNSpy.git#path=skills/gmns-validate
+claude code skill add https://github.com/e-lo/netstead.git#path=skills/gmns-validate
 ```
 
 Replace `gmns-validate` with any subdirectory listed below.
@@ -28,10 +28,10 @@ Replace `gmns-validate` with any subdirectory listed below.
 
 | Skill                                              | Use when…                                                                 |
 | -------------------------------------------------- | ------------------------------------------------------------------------- |
-| [`datagrove-validate`](datagrove-validate/SKILL.md) | Validating any Frictionless data package — generic, not GMNS-specific.    |
+| [`corral-validate`](corral-validate/SKILL.md) | Validating any Frictionless data package — generic, not GMNS-specific.    |
 | [`gmns-author`](gmns-author/SKILL.md)               | Authoring or editing a GMNS network from scratch.                         |
 | [`gmns-build`](gmns-build/SKILL.md)                 | Building a GMNS network from OpenStreetMap (place / bbox / point+buffer).  |
-| [`gmns-validate`](gmns-validate/SKILL.md)           | Interpreting `gmnspy validate` and `gmnspy quality` reports.              |
+| [`gmns-validate`](gmns-validate/SKILL.md)           | Interpreting `netstead validate` and `netstead quality` reports.              |
 | [`gmns-convert`](gmns-convert/SKILL.md)             | Converting GMNS data between CSV, Parquet, DuckDB, and zip-CSV formats.   |
 | [`gmns-clean`](gmns-clean/SKILL.md)                 | Simplifying geometries, merging nodes, dropping orphans — with rollback.  |
 

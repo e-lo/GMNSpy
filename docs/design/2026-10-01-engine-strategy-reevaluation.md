@@ -1,10 +1,10 @@
-# Engine strategy re-evaluation — datagrove / gmnspy
+# Engine strategy re-evaluation — corral / netstead
 
-Status: **proposal / for decision** · Date: 2026-10-01 · Owner: datagrove core
+Status: **proposal / for decision** · Date: 2026-10-01 · Owner: corral core
 
 ## Why now
 
-datagrove was built around an **engine-agnostic compute** abstraction — a `Engine`
+corral was built around an **engine-agnostic compute** abstraction — a `Engine`
 protocol with three native implementations (`IbisEngine` on duckdb, `PandasEngine`,
 `PolarsEngine`) so the same pipeline could run on any of them. The premise was that
 "engine-agnostic" was a core value worth the abstraction.
@@ -39,7 +39,7 @@ polars/arrow objects in-process with zero copy (Arrow replacement scans) and emi
 
 ## What we actually have today (blast-radius survey)
 
-A full survey of `engines/`, `dataset/`, `validation/`, `editing/`, `io/`, and all of gmnspy found
+A full survey of `engines/`, `dataset/`, `validation/`, `editing/`, `io/`, and all of netstead found
 that **the compute core is already single-engine; the multi-engine surface is mostly thin readers
 and parity tests:**
 
@@ -56,11 +56,11 @@ and parity tests:**
   write duckdb (raises). `engines/` is ~2,800 LOC, but most is these thin wrappers + three
   near-identical `_scan_dict` helpers + three `_FRICTIONLESS_TO_*` dtype maps kept in sync by one
   parity test.
-- **gmnspy is barely coupled.** It almost never uses lazy engine ops; the dominant idiom is
+- **netstead is barely coupled.** It almost never uses lazy engine ops; the dominant idiom is
   `table.to_pandas()` → work on the frame (graph, select, osm, viz, map, scope, semantics, quality,
   clean, indexes). It assumes only "the Table can materialize to pandas/arrow," never a specific
   compute engine. The lone concrete pins are `map/edits.py` (`PandasEngine()` for writeback) and
-  gmnspy's *own* `graph/source.py` duckdb/polars/parquet `NetworkSource` (independent of datagrove's
+  netstead's *own* `graph/source.py` duckdb/polars/parquet `NetworkSource` (independent of corral's
   `Engine`, already duckdb-native with sanctioned raw SQL).
 - **Tests: ~91 `@parametrize("engine_name", …)` decorators + a dedicated cross-engine dtype-parity
   suite.** These overwhelmingly prove "each engine's `to_ibis` round-trip yields identical results,"
@@ -87,7 +87,7 @@ to duckdb and (b) the upstream (Ibis) is actively retreating from. Pure cost, no
 - `validation/*`, `dataset/view.py`, `dataset/filter.py`, `editing/apply.py` keep their **existing
   ibis code** and simply lose the non-ibis `to_ibis` round-trip branch. io adapters target duckdb
   reads + pandas/polars/arrow writers.
-- **Pros:** smallest, lowest-risk change (mostly *deletion* — gmnspy essentially untouched); keeps the
+- **Pros:** smallest, lowest-risk change (mostly *deletion* — netstead essentially untouched); keeps the
   lazy, composable ibis expression API; `lint_no_sql` ethos intact (ibis, not raw SQL); matches Ibis's
   own blessed path; **cross-SQL-warehouse portability stays possible** (ibis still supports
   postgres/bigquery/snowflake/spark — only the *local* non-SQL backends were removed).
@@ -120,7 +120,7 @@ Set aside (possible minor input-normalization convenience, not the architecture)
 
 **Adopt B now; keep C as a deliberately-deferred option.**
 
-B is almost entirely deletion and gmnspy barely moves, so it's a low-risk, high-clarity win: it kills
+B is almost entirely deletion and netstead barely moves, so it's a low-risk, high-clarity win: it kills
 the maintenance sink (two reader classes, ~91 parametrizations, the dtype-parity maps) and replaces a
 false "3-engine" promise with an honest one — **"a DuckDB/Parquet data-package engine with first-class
 pandas / polars / Arrow interchange."** That is both more accurate and a better story (it's exactly
@@ -153,15 +153,15 @@ the Decision section.)
 3. **Strip the non-ibis branches.** In `validation/*`, `dataset/view.py`, `dataset/filter.py`,
    `editing/apply.py`, delete the `to_ibis`-from-non-ibis round-trip arms; keep the pass-through.
    io adapters stop fanning out to 3 engines' read/write primitives.
-4. **gmnspy cleanup.** Drop `engine=` plumbing on `Network.from_source` + the ~10 CLI `--engine`
-   options; unpin `map/edits.py` from `PandasEngine`; reconcile gmnspy's own `graph/source.py`
-   duckdb path with datagrove's (dedupe if sensible — gmnspy already has a sanctioned duckdb-native
+4. **netstead cleanup.** Drop `engine=` plumbing on `Network.from_source` + the ~10 CLI `--engine`
+   options; unpin `map/edits.py` from `PandasEngine`; reconcile netstead's own `graph/source.py`
+   duckdb path with corral's (dedupe if sensible — netstead already has a sanctioned duckdb-native
    `DuckDBSource`).
 5. **Tests.** Delete `test_cross_engine_dtype_parity.py` and the `engine_name` parametrization; keep
    one duckdb compute path + explicit **format-interop** tests (pandas-in/out, polars-in/out,
    arrow-in/out round-trips). Net: large reduction in test count, same real coverage.
 6. **Docs + positioning.** Rewrite the "engine-agnostic" claim to "DuckDB compute + pandas/polars/arrow
-   interchange." Update the memory and the datagrove description.
+   interchange." Update the memory and the corral description.
 
 Backwards-compat: keep `engine="pandas"|"polars"` accepted-but-deprecated for one release (warn, ignore
 beyond selecting output format) so downstream callers don't break hard.
@@ -171,7 +171,7 @@ beyond selecting output format) so downstream callers don't break hard.
   would be rewritten to *sanction* parameterized SQL in a named data-access layer.
 - **The `ibis>=9,<10` pin** (create_table/from_records codegen break on duckdb) persists under B; C
   removes the dependency and the pin.
-- **gmnspy `graph/source.py`** already contains a duckdb-native `NetworkSource` with `# pragma: allow-sql`
+- **netstead `graph/source.py`** already contains a duckdb-native `NetworkSource` with `# pragma: allow-sql`
   — evidence the duckdb-native style is already in the codebase, and a candidate to unify under C.
 - **The G1/G2 viewer work** (just landed) simplifies under B: the viewer's table path becomes a single
   duckdb query (filter+sort+limit+count pushed down, page-only materialization) for *every* input,
@@ -182,7 +182,7 @@ beyond selecting output format) so downstream callers don't break hard.
 Option C is dropped (parked, not tracked).**
 
 - **Do Option B** (one compute engine = DuckDB; pandas/polars/arrow as I/O formats; Ibis retained as the
-  expression layer, duckdb backend only) — mostly deletion, gmnspy barely moves, and it does **not touch
+  expression layer, duckdb backend only) — mostly deletion, netstead barely moves, and it does **not touch
   the ibis expression API** we rely on.
 - **Option C (drop Ibis → DuckDB-native) is NOT pursued.** Rationale, after evaluating DuckDB's Python
   API directly: DuckDB's Relational API is chainable but its expressions are largely **SQL strings**
@@ -200,4 +200,4 @@ Option C is dropped (parked, not tracked).**
 - Loose end to resolve during B: the `ibis>=9,<10` pin (create_table/from_records codegen break). Prefer
   reading parquet via DuckDB directly and using ibis for *expressions*, which de-risks moving to ibis 10+.
 
-This is a datagrove-wide refactor and should ride its own branch, not `feat/nl-selection`.
+This is a corral-wide refactor and should ride its own branch, not `feat/nl-selection`.

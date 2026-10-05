@@ -115,7 +115,7 @@ venv.bak/
 
 # mkdocs documentation
 /site
-# per-package mkdocs build outputs (datagrove + gmnspy each have their own site)
+# per-package mkdocs build outputs (corral + netstead each have their own site)
 packages/*/site/
 
 # mypy
@@ -150,7 +150,7 @@ packages/*/docs/llms.txt
 packages/*/docs/llms-full.txt
 packages/*/docs/ai/api-index.json
 
-# CLI run artifacts at repo root (gmnspy validate --html, gmnspy build out/)
+# CLI run artifacts at repo root (netstead validate --html, netstead build out/)
 /report.html
 /net.html
 /out/

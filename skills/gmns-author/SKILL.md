@@ -36,13 +36,13 @@ Start small, validate, then add tables as needed.
    Optional: `facility_type`, `link_type`, `geometry` (WKT LINESTRING),
    `dir_flag`.
 4. **Create `datapackage.json`.** The easiest path is to copy the GMNS
-   reference one from `packages/gmnspy/gmnspy/fixtures/leavenworth/csv/` and
+   reference one from `packages/netstead/netstead/fixtures/leavenworth/csv/` and
    trim it to just `node` and `link`.
-5. **Validate after every change.** Run `gmnspy validate <dir> --json`
+5. **Validate after every change.** Run `netstead validate <dir> --json`
    between edits. Fix `schema.required` and `fk.missing_target` before
    adding more rows.
 6. **Load it programmatically** with `Network.from_source(path)` to confirm
-   it round-trips through the gmnspy data model.
+   it round-trips through the netstead data model.
 
 ## Example
 
@@ -114,12 +114,12 @@ link_id,from_node_id,to_node_id,length,lanes,free_speed,capacity,facility_type
 Validate and load:
 
 ```bash
-gmnspy validate ./tiny-gmns --json | jq '.summary'
+netstead validate ./tiny-gmns --json | jq '.summary'
 # {"errors": 0, "warnings": 0, "tables": 2}
 ```
 
 ```python
-from gmnspy import Network
+from netstead import Network
 
 net = Network.from_source("./tiny-gmns")
 print(len(net.nodes), "nodes;", len(net.links), "links")
@@ -145,4 +145,4 @@ print(len(net.nodes), "nodes;", len(net.links), "links")
 - `gmns-convert` — once authored, convert to parquet for sharing
 - `docs/gmns-data-model.md` — full table inventory and field reference
 - GMNS spec: <https://github.com/zephyr-data-specs/GMNS>
-- Reference fixture: `packages/gmnspy/gmnspy/fixtures/leavenworth/csv/`
+- Reference fixture: `packages/netstead/netstead/fixtures/leavenworth/csv/`

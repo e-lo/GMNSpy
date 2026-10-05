@@ -2,11 +2,11 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Replace the single-network `gmnspy viz` server with `gmnspy app`, the GMNSpy Workbench. It has a layered settings system and one live `Session`. Every state change goes through a typed Action bus that records history, which can be replayed as Python. State is pushed to a modular, no-build browser front end over SSE.
+**Goal:** Replace the single-network `netstead viz` server with `netstead app`, the Netstead Workbench. It has a layered settings system and one live `Session`. Every state change goes through a typed Action bus that records history, which can be replayed as Python. State is pushed to a modular, no-build browser front end over SSE.
 
 **Architecture:**
-- `gmnspy.config` loads `Settings` with this precedence (lowest first): defaults, user TOML, project TOML, env, session overrides.
-- `gmnspy.workbench` holds:
+- `netstead.config` loads `Settings` with this precedence (lowest first): defaults, user TOML, project TOML, env, session overrides.
+- `netstead.workbench` holds:
   - a `NetworkRegistry` of `NetworkHandle` bundles (a roadway component now, transit reserved), with caches keyed by version;
   - an `EventBus` that fans events out to SSE;
   - pydantic `Action` schemas;
@@ -19,14 +19,14 @@
 - Browser: MapLibre GL 4.7.1 + deck.gl 9.0.38 from the CDN (unchanged), plain ES modules.
 - Tests: pytest + `fastapi.testclient`, and `node --check` for JS syntax.
 
-**Spec:** [2026-10-02-gmnspy-workbench-design.md](2026-10-02-gmnspy-workbench-design.md) (phase P0).
+**Spec:** [2026-10-02-netstead-workbench-design.md](2026-10-02-netstead-workbench-design.md) (phase P0).
 
 **Branch:** `docs/workbench-design` (off `origin/refactor/v1.0`). Implementation goes on a new branch, `feat/workbench-p0`, cut from it.
 
 **Conventions:**
 - Run commands from the repo root.
 - Run tests with `uv run --all-extras pytest <path> -q`.
-- Lint with `uv run ruff check packages/gmnspy && uv run ruff format --check packages/gmnspy`.
+- Lint with `uv run ruff check packages/netstead && uv run ruff format --check packages/netstead`.
 - Ruff enforces Google-style docstrings (`D`) on every public module-level function, class and method outside `tests/` and `__init__.py`. Each code block below already has them.
 - Line length is 120.
 
@@ -38,8 +38,8 @@
   - settings model, load and save;
   - the session, registry, event bus and actions: `open_network`, `close_network`, `set_active_network`, `select`, `clear_selection`, `style`, `navigate`, `set_setting`;
   - per-network data routes;
-  - the modular front end at parity with `gmnspy viz`, plus a network switcher, open-by-path and a history strip with "copy as Python";
-  - `gmnspy app`, with `viz` and `select-serve` becoming aliases;
+  - the modular front end at parity with `netstead viz`, plus a network switcher, open-by-path and a history strip with "copy as Python";
+  - `netstead app`, with `viz` and `select-serve` becoming aliases;
   - packaging;
   - a docs page.
 - **Deferred:**
@@ -48,40 +48,40 @@
   - wiring `Settings` into the OSM/Overture builders and the validation rules (done in the phase that first calls each one: P1 and P2);
   - undo (P2, on `NetworkChange`).
 - **Transit:** the registry bundle has a `transit` slot. Routes take a `{component}` segment, and `Select` has a `component` field. Transit requests return 501, or raise `NotSupportedYet`.
-- **Package name:** `gmnspy.workbench`, not `gmnspy.app`. That keeps the name `gmnspy.app(net)` free for the P4 notebook handle.
+- **Package name:** `netstead.workbench`, not `netstead.app`. That keeps the name `netstead.app(net)` free for the P4 notebook handle.
 
 ## File structure
 
 | Path | Responsibility |
 |---|---|
-| `packages/gmnspy/gmnspy/config.py` (new) | `Settings` model, layered `load_settings`, `save_setting`, `get_value`, TOML writer |
-| `packages/gmnspy/gmnspy/viz/styling.py` (new) | Moved from `viz/server.py`: `json_scalar`, `styleable_columns`, `property_payload`, `basemap_style` |
-| `packages/gmnspy/gmnspy/viz/tables.py` (modify) | Gains `parse_ids`, moved from `viz/server.py` |
-| `packages/gmnspy/gmnspy/viz/server.py` (modify) | Imports the moved helpers; marked deprecated |
-| `packages/gmnspy/gmnspy/workbench/__init__.py` (new) | Public surface: `Session`, `ActionError`, `build_app`, `serve` |
-| `packages/gmnspy/gmnspy/workbench/registry.py` (new) | `NetworkHandle` bundle and `NetworkRegistry` |
-| `packages/gmnspy/gmnspy/workbench/events.py` (new) | Thread-safe `EventBus`, `sse_format` |
-| `packages/gmnspy/gmnspy/workbench/actions.py` (new) | Action schemas, `parse_action`, `to_python` |
-| `packages/gmnspy/gmnspy/workbench/selection.py` (new) | `SelectionResult` → JSON payload (anchors, fragment) |
-| `packages/gmnspy/gmnspy/workbench/session.py` (new) | `Session`: dispatch, handlers, history, state |
-| `packages/gmnspy/gmnspy/workbench/server.py` (new) | `build_app(session)`: static files, index, routers |
-| `packages/gmnspy/gmnspy/workbench/routes/__init__.py` (new) | Empty package marker |
-| `packages/gmnspy/gmnspy/workbench/routes/core.py` (new) | `/api/state`, `/api/config`, `/api/settings`, `/api/history`, `/api/actions`, `/api/events` |
-| `packages/gmnspy/gmnspy/workbench/routes/network.py` (new) | `/api/n/{net_id}/{component}/...` data routes |
-| `packages/gmnspy/gmnspy/workbench/static/index.html`, `app.css`, `js/*.js` (new) | Front end |
-| `packages/gmnspy/gmnspy/cli/commands/workbench.py` (new) | `gmnspy app` and `run_workbench` |
-| `packages/gmnspy/gmnspy/cli/commands/viz.py`, `select.py`, `cli/app.py` (modify) | Aliases and registration |
-| `packages/gmnspy/pyproject.toml` (modify) | Wheel includes the static assets |
-| `packages/gmnspy/docs/cookbook/workbench.md`, `mkdocs.yml`, `docs/cookbook/index.md` (new/modify) | User docs |
-| `packages/gmnspy/tests/conftest.py` (modify) | `rdu_source` and `isolated_env` fixtures |
-| `packages/gmnspy/tests/test_config.py`, `test_viz_styling.py`, `test_workbench_*.py`, `test_cli_workbench.py` (new) | Tests |
+| `packages/netstead/netstead/config.py` (new) | `Settings` model, layered `load_settings`, `save_setting`, `get_value`, TOML writer |
+| `packages/netstead/netstead/viz/styling.py` (new) | Moved from `viz/server.py`: `json_scalar`, `styleable_columns`, `property_payload`, `basemap_style` |
+| `packages/netstead/netstead/viz/tables.py` (modify) | Gains `parse_ids`, moved from `viz/server.py` |
+| `packages/netstead/netstead/viz/server.py` (modify) | Imports the moved helpers; marked deprecated |
+| `packages/netstead/netstead/workbench/__init__.py` (new) | Public surface: `Session`, `ActionError`, `build_app`, `serve` |
+| `packages/netstead/netstead/workbench/registry.py` (new) | `NetworkHandle` bundle and `NetworkRegistry` |
+| `packages/netstead/netstead/workbench/events.py` (new) | Thread-safe `EventBus`, `sse_format` |
+| `packages/netstead/netstead/workbench/actions.py` (new) | Action schemas, `parse_action`, `to_python` |
+| `packages/netstead/netstead/workbench/selection.py` (new) | `SelectionResult` → JSON payload (anchors, fragment) |
+| `packages/netstead/netstead/workbench/session.py` (new) | `Session`: dispatch, handlers, history, state |
+| `packages/netstead/netstead/workbench/server.py` (new) | `build_app(session)`: static files, index, routers |
+| `packages/netstead/netstead/workbench/routes/__init__.py` (new) | Empty package marker |
+| `packages/netstead/netstead/workbench/routes/core.py` (new) | `/api/state`, `/api/config`, `/api/settings`, `/api/history`, `/api/actions`, `/api/events` |
+| `packages/netstead/netstead/workbench/routes/network.py` (new) | `/api/n/{net_id}/{component}/...` data routes |
+| `packages/netstead/netstead/workbench/static/index.html`, `app.css`, `js/*.js` (new) | Front end |
+| `packages/netstead/netstead/cli/commands/workbench.py` (new) | `netstead app` and `run_workbench` |
+| `packages/netstead/netstead/cli/commands/viz.py`, `select.py`, `cli/app.py` (modify) | Aliases and registration |
+| `packages/netstead/pyproject.toml` (modify) | Wheel includes the static assets |
+| `packages/netstead/docs/cookbook/workbench.md`, `mkdocs.yml`, `docs/cookbook/index.md` (new/modify) | User docs |
+| `packages/netstead/tests/conftest.py` (modify) | `rdu_source` and `isolated_env` fixtures |
+| `packages/netstead/tests/test_config.py`, `test_viz_styling.py`, `test_workbench_*.py`, `test_cli_workbench.py` (new) | Tests |
 
 ---
 
 ### Task 0: Branch and shared test fixtures
 
 **Files:**
-- Modify: `packages/gmnspy/tests/conftest.py`
+- Modify: `packages/netstead/tests/conftest.py`
 
 - [ ] **Step 1: Cut the branch**
 
@@ -89,7 +89,7 @@
 git checkout -b feat/workbench-p0
 ```
 
-- [ ] **Step 2: Add fixtures to the end of `packages/gmnspy/tests/conftest.py`**
+- [ ] **Step 2: Add fixtures to the end of `packages/netstead/tests/conftest.py`**
 
 At the top of the file, add `from importlib import resources` to the imports, next to `import hashlib`. Then append:
 
@@ -97,25 +97,25 @@ At the top of the file, add `from importlib import resources` to the imports, ne
 @pytest.fixture(scope="session")
 def rdu_source() -> str:
     """Path to the committed RDU I-40 parquet fixture network (read-only)."""
-    return str(resources.files("gmnspy.fixtures.rdu_i40").joinpath("parquet"))
+    return str(resources.files("netstead.fixtures.rdu_i40").joinpath("parquet"))
 
 
 @pytest.fixture
 def isolated_env(tmp_path: Path) -> dict[str, str]:
-    """An environ whose gmnspy user-config dir lives under ``tmp_path``, never the real ``~/.config``."""
-    return {"GMNSPY_CONFIG_DIR": str(tmp_path / "user")}
+    """An environ whose netstead user-config dir lives under ``tmp_path``, never the real ``~/.config``."""
+    return {"NETSTEAD_CONFIG_DIR": str(tmp_path / "user")}
 ```
 
 - [ ] **Step 3: Confirm the suite still collects**
 
-Run: `uv run --all-extras pytest packages/gmnspy/tests/test_viz_server.py -q`
+Run: `uv run --all-extras pytest packages/netstead/tests/test_viz_server.py -q`
 Expected: `26 passed` (or the current count, all passing).
 
 - [ ] **Step 4: Commit**
 
 ```bash
-git add packages/gmnspy/tests/conftest.py
-git commit -m "test(gmnspy): shared rdu_source + isolated_env fixtures for workbench tests"
+git add packages/netstead/tests/conftest.py
+git commit -m "test(netstead): shared rdu_source + isolated_env fixtures for workbench tests"
 ```
 
 ---
@@ -123,24 +123,24 @@ git commit -m "test(gmnspy): shared rdu_source + isolated_env fixtures for workb
 ### Task 1: `Settings` model and layered loader
 
 **Files:**
-- Create: `packages/gmnspy/gmnspy/config.py`
-- Test: `packages/gmnspy/tests/test_config.py`
+- Create: `packages/netstead/netstead/config.py`
+- Test: `packages/netstead/tests/test_config.py`
 
 - [ ] **Step 1: Write the failing tests**
 
 ```python
-"""Tests for gmnspy.config — layered settings."""
+"""Tests for netstead.config — layered settings."""
 
 import sys
 from pathlib import Path
 
 import pytest
-from gmnspy.config import Settings, SettingsError, get_value, load_settings, user_config_path
-from gmnspy.spec import DEFAULT_SPEC
+from netstead.config import Settings, SettingsError, get_value, load_settings, user_config_path
+from netstead.spec import DEFAULT_SPEC
 
 
 def _write_user(env: dict[str, str], text: str) -> Path:
-    path = Path(env["GMNSPY_CONFIG_DIR"]) / "config.toml"
+    path = Path(env["NETSTEAD_CONFIG_DIR"]) / "config.toml"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text)
     return path
@@ -156,8 +156,8 @@ def test_defaults_when_no_files(tmp_path, isolated_env):
 
 def test_precedence_user_project_env_session(tmp_path, isolated_env):
     _write_user(isolated_env, '[app]\nport = 9001\nhost = "0.0.0.0"\n[viz]\nbasemap = "esri"\n')
-    (tmp_path / "gmnspy.toml").write_text("[app]\nport = 9002\n")
-    env = {**isolated_env, "GMNSPY_SELECT__PROVIDER": "claude", "GMNSPY_APP__PORT": "9003"}
+    (tmp_path / "netstead.toml").write_text("[app]\nport = 9002\n")
+    env = {**isolated_env, "NETSTEAD_SELECT__PROVIDER": "claude", "NETSTEAD_APP__PORT": "9003"}
     loaded = load_settings(project_dir=tmp_path, environ=env, overrides={"app.port": 9004})
     s = loaded.settings
     assert (s.viz.basemap, s.app.host, s.select.provider, s.app.port) == ("esri", "0.0.0.0", "claude", 9004)
@@ -168,20 +168,20 @@ def test_precedence_user_project_env_session(tmp_path, isolated_env):
 
 def test_project_beats_user(tmp_path, isolated_env):
     _write_user(isolated_env, "[app]\nport = 9001\n")
-    (tmp_path / "gmnspy.toml").write_text("[app]\nport = 9002\n")
+    (tmp_path / "netstead.toml").write_text("[app]\nport = 9002\n")
     loaded = load_settings(project_dir=tmp_path, environ=isolated_env)
     assert loaded.settings.app.port == 9002
     assert loaded.sources["app.port"] == "project"
 
 
 def test_env_json_list_and_unrelated_vars_ignored(tmp_path, isolated_env):
-    env = {**isolated_env, "GMNSPY_IO__ALLOWED_ROOTS": '["/data", "/tmp"]', "GMNSPY_AUTO_INDEX_THRESHOLD": "5"}
+    env = {**isolated_env, "NETSTEAD_IO__ALLOWED_ROOTS": '["/data", "/tmp"]', "NETSTEAD_AUTO_INDEX_THRESHOLD": "5"}
     loaded = load_settings(project_dir=tmp_path, environ=env)
     assert loaded.settings.io.allowed_roots == ["/data", "/tmp"]
 
 
 def test_rule_settings_nest_under_validation(tmp_path, isolated_env):
-    (tmp_path / "gmnspy.toml").write_text(
+    (tmp_path / "netstead.toml").write_text(
         '[validation.rules.dangling-node]\nenabled = false\nseverity_override = "warning"\n'
     )
     rules = load_settings(project_dir=tmp_path, environ=isolated_env).settings.validation.rules
@@ -190,29 +190,29 @@ def test_rule_settings_nest_under_validation(tmp_path, isolated_env):
 
 
 def test_unknown_key_in_file_rejected(tmp_path, isolated_env):
-    (tmp_path / "gmnspy.toml").write_text("[select]\nbogus = 1\n")
+    (tmp_path / "netstead.toml").write_text("[select]\nbogus = 1\n")
     with pytest.raises(SettingsError, match="project"):
         load_settings(project_dir=tmp_path, environ=isolated_env)
 
 
 def test_invalid_toml_names_the_file(tmp_path, isolated_env):
-    (tmp_path / "gmnspy.toml").write_text("[app\n")
-    with pytest.raises(SettingsError, match="gmnspy.toml"):
+    (tmp_path / "netstead.toml").write_text("[app\n")
+    with pytest.raises(SettingsError, match="netstead.toml"):
         load_settings(project_dir=tmp_path, environ=isolated_env)
 
 
 def test_bad_env_json_rejected(tmp_path, isolated_env):
-    with pytest.raises(SettingsError, match="GMNSPY_IO__ALLOWED_ROOTS"):
-        load_settings(project_dir=tmp_path, environ={**isolated_env, "GMNSPY_IO__ALLOWED_ROOTS": "[oops"})
+    with pytest.raises(SettingsError, match="NETSTEAD_IO__ALLOWED_ROOTS"):
+        load_settings(project_dir=tmp_path, environ={**isolated_env, "NETSTEAD_IO__ALLOWED_ROOTS": "[oops"})
 
 
 def test_user_config_path_override():
-    assert user_config_path({"GMNSPY_CONFIG_DIR": "/cfg"}) == Path("/cfg/config.toml")
+    assert user_config_path({"NETSTEAD_CONFIG_DIR": "/cfg"}) == Path("/cfg/config.toml")
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="XDG applies off Windows only")
 def test_user_config_path_xdg():
-    assert user_config_path({"XDG_CONFIG_HOME": "/x"}) == Path("/x/gmnspy/config.toml")
+    assert user_config_path({"XDG_CONFIG_HOME": "/x"}) == Path("/x/netstead/config.toml")
 
 
 def test_get_value():
@@ -223,21 +223,21 @@ def test_get_value():
 
 - [ ] **Step 2: Run the tests to confirm they fail**
 
-Run: `uv run --all-extras pytest packages/gmnspy/tests/test_config.py -q`
-Expected: FAIL, `ModuleNotFoundError: No module named 'gmnspy.config'`.
+Run: `uv run --all-extras pytest packages/netstead/tests/test_config.py -q`
+Expected: FAIL, `ModuleNotFoundError: No module named 'netstead.config'`.
 
-- [ ] **Step 3: Implement `packages/gmnspy/gmnspy/config.py`**
+- [ ] **Step 3: Implement `packages/netstead/netstead/config.py`**
 
 ```python
-"""Layered, persisted gmnspy settings.
+"""Layered, persisted netstead settings.
 
 Precedence, lowest to highest: model defaults < user file
-(``~/.config/gmnspy/config.toml``) < project file (``./gmnspy.toml``) <
-``GMNSPY_<SECTION>__<FIELD>`` env vars < session overrides (CLI flags, the
+(``~/.config/netstead/config.toml``) < project file (``./netstead.toml``) <
+``NETSTEAD_<SECTION>__<FIELD>`` env vars < session overrides (CLI flags, the
 workbench's ``set_setting`` action with ``scope="session"``).
 
 Secrets never live here: credentials stay in env/keyring/netrc via
-:mod:`datagrove.io.credentials`; ``credentials.keyring_hosts`` only names hosts.
+:mod:`corral.io.credentials`; ``credentials.keyring_hosts`` only names hosts.
 """
 
 from __future__ import annotations
@@ -254,7 +254,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from gmnspy.spec import DEFAULT_SPEC
+from netstead.spec import DEFAULT_SPEC
 
 __all__ = [
     "LoadedSettings",
@@ -269,8 +269,8 @@ __all__ = [
 ]
 
 Scope = Literal["user", "project"]
-ENV_PREFIX = "GMNSPY_"
-PROJECT_FILE = "gmnspy.toml"
+ENV_PREFIX = "NETSTEAD_"
+PROJECT_FILE = "netstead.toml"
 
 
 class SettingsError(ValueError):
@@ -314,7 +314,7 @@ class OvertureSettings(_Section):
 
 
 class RuleSettings(_Section):
-    """One quality rule's config (mirrors :class:`datagrove.quality.base.RuleConfig`)."""
+    """One quality rule's config (mirrors :class:`corral.quality.base.RuleConfig`)."""
 
     enabled: bool = True
     severity_override: str | None = None
@@ -355,7 +355,7 @@ class CredentialSettings(_Section):
 
 
 class Settings(_Section):
-    """All user-tunable gmnspy settings."""
+    """All user-tunable netstead settings."""
 
     io: IOSettings = Field(default_factory=IOSettings)
     engine: EngineSettings = Field(default_factory=EngineSettings)
@@ -379,18 +379,18 @@ class LoadedSettings:
 
 
 def user_config_path(environ: Mapping[str, str] | None = None) -> Path:
-    """Return the user config file path (``GMNSPY_CONFIG_DIR`` overrides the platform default)."""
+    """Return the user config file path (``NETSTEAD_CONFIG_DIR`` overrides the platform default)."""
     env = os.environ if environ is None else environ
-    if override := env.get("GMNSPY_CONFIG_DIR"):
+    if override := env.get("NETSTEAD_CONFIG_DIR"):
         return Path(override) / "config.toml"
     if sys.platform == "win32" and (appdata := env.get("APPDATA")):
-        return Path(appdata) / "gmnspy" / "config.toml"
+        return Path(appdata) / "netstead" / "config.toml"
     base = env.get("XDG_CONFIG_HOME") or str(Path.home() / ".config")
-    return Path(base) / "gmnspy" / "config.toml"
+    return Path(base) / "netstead" / "config.toml"
 
 
 def project_config_path(project_dir: str | Path | None = None) -> Path:
-    """Return the project config file path (``gmnspy.toml`` in ``project_dir``, default cwd)."""
+    """Return the project config file path (``netstead.toml`` in ``project_dir``, default cwd)."""
     return Path(project_dir or Path.cwd()) / PROJECT_FILE
 
 
@@ -556,14 +556,14 @@ def _toml_value(value: Any) -> str:
 
 - [ ] **Step 4: Run the tests to confirm they pass**
 
-Run: `uv run --all-extras pytest packages/gmnspy/tests/test_config.py -q`
+Run: `uv run --all-extras pytest packages/netstead/tests/test_config.py -q`
 Expected: `11 passed` (10 on Windows).
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add packages/gmnspy/gmnspy/config.py packages/gmnspy/tests/test_config.py
-git commit -m "feat(gmnspy): layered Settings (defaults<user<project<env<session) with source tracking"
+git add packages/netstead/netstead/config.py packages/netstead/tests/test_config.py
+git commit -m "feat(netstead): layered Settings (defaults<user<project<env<session) with source tracking"
 ```
 
 ---
@@ -571,24 +571,24 @@ git commit -m "feat(gmnspy): layered Settings (defaults<user<project<env<session
 ### Task 2: Persisting settings (`save_setting`, `dumps_toml`)
 
 **Files:**
-- Modify: `packages/gmnspy/tests/test_config.py` (append)
+- Modify: `packages/netstead/tests/test_config.py` (append)
 - (Implementation already in `config.py` from Task 1; this task proves it.)
 
 - [ ] **Step 1: Append the tests**
 
-First, merge the new imports into the top-of-file import block (ruff E402 rejects mid-file imports). Add `import tomllib` to the stdlib group, and add `dumps_toml, save_setting` to the existing `from gmnspy.config import ...` line. Then append:
+First, merge the new imports into the top-of-file import block (ruff E402 rejects mid-file imports). Add `import tomllib` to the stdlib group, and add `dumps_toml, save_setting` to the existing `from netstead.config import ...` line. Then append:
 
 ```python
 
 def test_save_setting_round_trips_and_coerces(tmp_path, isolated_env):
     path = save_setting("app.port", "9100", scope="user", environ=isolated_env)
-    assert path == Path(isolated_env["GMNSPY_CONFIG_DIR"]) / "config.toml"
+    assert path == Path(isolated_env["NETSTEAD_CONFIG_DIR"]) / "config.toml"
     assert "port = 9100" in path.read_text()
     assert load_settings(project_dir=tmp_path, environ=isolated_env).settings.app.port == 9100
 
 
 def test_save_setting_project_scope_keeps_other_keys(tmp_path, isolated_env):
-    (tmp_path / "gmnspy.toml").write_text('[viz]\nbasemap = "esri"\n')
+    (tmp_path / "netstead.toml").write_text('[viz]\nbasemap = "esri"\n')
     save_setting("select.provider", "claude", scope="project", project_dir=tmp_path, environ=isolated_env)
     s = load_settings(project_dir=tmp_path, environ=isolated_env).settings
     assert (s.viz.basemap, s.select.provider) == ("esri", "claude")
@@ -604,7 +604,7 @@ def test_save_setting_none_resets_to_default(tmp_path, isolated_env):
 def test_save_setting_rejects_unknown_key_without_writing(tmp_path, isolated_env):
     with pytest.raises(SettingsError):
         save_setting("select.bogus", 1, scope="user", environ=isolated_env)
-    assert not (Path(isolated_env["GMNSPY_CONFIG_DIR"]) / "config.toml").exists()
+    assert not (Path(isolated_env["NETSTEAD_CONFIG_DIR"]) / "config.toml").exists()
 
 
 def test_dumps_toml_round_trips_nested_tables_and_quoting():
@@ -617,14 +617,14 @@ def test_dumps_toml_round_trips_nested_tables_and_quoting():
 
 - [ ] **Step 2: Run them**
 
-Run: `uv run --all-extras pytest packages/gmnspy/tests/test_config.py -q`
+Run: `uv run --all-extras pytest packages/netstead/tests/test_config.py -q`
 Expected: `16 passed`. If `test_dumps_toml_round_trips…` fails on the empty `"my rule": {}` table, check that `_emit_table` writes a header when a table has neither scalars nor subtables (the `scalars or not tables` branch).
 
 - [ ] **Step 3: Commit**
 
 ```bash
-git add packages/gmnspy/tests/test_config.py
-git commit -m "test(gmnspy): settings persistence round-trip, coercion, reset, rejection"
+git add packages/netstead/tests/test_config.py
+git commit -m "test(netstead): settings persistence round-trip, coercion, reset, rejection"
 ```
 
 ---
@@ -632,19 +632,19 @@ git commit -m "test(gmnspy): settings persistence round-trip, coercion, reset, r
 ### Task 3: Extract the viz styling helpers so the workbench can reuse them
 
 **Files:**
-- Create: `packages/gmnspy/gmnspy/viz/styling.py`
-- Modify: `packages/gmnspy/gmnspy/viz/tables.py` (add `parse_ids`)
-- Modify: `packages/gmnspy/gmnspy/viz/server.py` (import the moved helpers; deprecation note)
-- Test: `packages/gmnspy/tests/test_viz_styling.py`
+- Create: `packages/netstead/netstead/viz/styling.py`
+- Modify: `packages/netstead/netstead/viz/tables.py` (add `parse_ids`)
+- Modify: `packages/netstead/netstead/viz/server.py` (import the moved helpers; deprecation note)
+- Test: `packages/netstead/tests/test_viz_styling.py`
 
 - [ ] **Step 1: Write the failing test**
 
 ```python
-"""Tests for gmnspy.viz.styling (shared by viz and the workbench)."""
+"""Tests for netstead.viz.styling (shared by viz and the workbench)."""
 
 import pandas as pd
-from gmnspy.viz.styling import basemap_style, json_scalar, property_payload, styleable_columns
-from gmnspy.viz.tables import parse_ids
+from netstead.viz.styling import basemap_style, json_scalar, property_payload, styleable_columns
+from netstead.viz.tables import parse_ids
 
 
 def test_styleable_columns_classifies_and_skips_ids():
@@ -680,15 +680,15 @@ def test_parse_ids():
 
 - [ ] **Step 2: Run it to confirm it fails**
 
-Run: `uv run --all-extras pytest packages/gmnspy/tests/test_viz_styling.py -q`
-Expected: FAIL, `ModuleNotFoundError: No module named 'gmnspy.viz.styling'`.
+Run: `uv run --all-extras pytest packages/netstead/tests/test_viz_styling.py -q`
+Expected: FAIL, `ModuleNotFoundError: No module named 'netstead.viz.styling'`.
 
-- [ ] **Step 3: Create `packages/gmnspy/gmnspy/viz/styling.py`**
+- [ ] **Step 3: Create `packages/netstead/netstead/viz/styling.py`**
 
 These are the helpers from `viz/server.py`, renamed public:
 
 ```python
-"""Map-styling helpers shared by ``gmnspy viz`` and the workbench.
+"""Map-styling helpers shared by ``netstead viz`` and the workbench.
 
 Pure functions over pandas link frames: which columns can drive color-by, the
 per-link values for one property, JSON-safe scalars, and the keyless basemap
@@ -788,7 +788,7 @@ def basemap_style(basemap: str = "positron") -> str | dict:
     return _POSITRON_URL
 ```
 
-- [ ] **Step 4: Add `parse_ids` to `packages/gmnspy/gmnspy/viz/tables.py`**
+- [ ] **Step 4: Add `parse_ids` to `packages/netstead/netstead/viz/tables.py`**
 
 Add `"parse_ids"` to `__all__`, and add this after `primary_key`:
 
@@ -811,7 +811,7 @@ def parse_ids(ids: str | None) -> list | None:
 
 - [ ] **Step 5: Point `viz/server.py` at the moved helpers**
 
-In `packages/gmnspy/gmnspy/viz/server.py`, delete these definitions:
+In `packages/netstead/netstead/viz/server.py`, delete these definitions:
 - `_parse_ids`, `_json_scalar`, `_SKIP_STYLE_COLS`, `_MAX_CATEGORIES`, `_styleable_columns`, `_property_payload`
 - `_ESRI`, `_POSITRON_URL`, `_basemap_style`
 
@@ -829,20 +829,20 @@ from .tables import parse_ids as _parse_ids
 Then append this paragraph to the module docstring:
 
 ```
-Deprecated: ``gmnspy viz`` now launches the workbench (:mod:`gmnspy.workbench`);
+Deprecated: ``netstead viz`` now launches the workbench (:mod:`netstead.workbench`);
 this single-network app remains only for existing callers and is removed in P1.
 ```
 
 - [ ] **Step 6: Run the new and existing viz tests**
 
-Run: `uv run --all-extras pytest packages/gmnspy/tests/test_viz_styling.py packages/gmnspy/tests/test_viz_server.py packages/gmnspy/tests/test_viz_tables.py -q`
+Run: `uv run --all-extras pytest packages/netstead/tests/test_viz_styling.py packages/netstead/tests/test_viz_server.py packages/netstead/tests/test_viz_tables.py -q`
 Expected: all pass.
 
 - [ ] **Step 7: Lint, then commit**
 
 ```bash
-uv run ruff check packages/gmnspy/gmnspy/viz && uv run ruff format packages/gmnspy/gmnspy/viz packages/gmnspy/tests/test_viz_styling.py
-git add packages/gmnspy/gmnspy/viz packages/gmnspy/tests/test_viz_styling.py
+uv run ruff check packages/netstead/netstead/viz && uv run ruff format packages/netstead/netstead/viz packages/netstead/tests/test_viz_styling.py
+git add packages/netstead/netstead/viz packages/netstead/tests/test_viz_styling.py
 git commit -m "refactor(viz): extract styling helpers + parse_ids for reuse by the workbench"
 ```
 
@@ -851,9 +851,9 @@ git commit -m "refactor(viz): extract styling helpers + parse_ids for reuse by t
 ### Task 4: `NetworkHandle` bundle and `NetworkRegistry`
 
 **Files:**
-- Create: `packages/gmnspy/gmnspy/workbench/__init__.py` (temporary minimal; finished in Task 8)
-- Create: `packages/gmnspy/gmnspy/workbench/registry.py`
-- Test: `packages/gmnspy/tests/test_workbench_registry.py`
+- Create: `packages/netstead/netstead/workbench/__init__.py` (temporary minimal; finished in Task 8)
+- Create: `packages/netstead/netstead/workbench/registry.py`
+- Test: `packages/netstead/tests/test_workbench_registry.py`
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -861,8 +861,8 @@ git commit -m "refactor(viz): extract styling helpers + parse_ids for reuse by t
 """Tests for the workbench network registry."""
 
 import pytest
-from gmnspy import Network
-from gmnspy.workbench.registry import NetworkRegistry, default_label
+from netstead import Network
+from netstead.workbench.registry import NetworkRegistry, default_label
 
 
 @pytest.fixture(scope="module")
@@ -918,16 +918,16 @@ def test_remove(net, rdu_source):
 
 - [ ] **Step 2: Run them to confirm they fail**
 
-Run: `uv run --all-extras pytest packages/gmnspy/tests/test_workbench_registry.py -q`
-Expected: FAIL, `ModuleNotFoundError: No module named 'gmnspy.workbench'`.
+Run: `uv run --all-extras pytest packages/netstead/tests/test_workbench_registry.py -q`
+Expected: FAIL, `ModuleNotFoundError: No module named 'netstead.workbench'`.
 
-- [ ] **Step 3: Create a minimal `packages/gmnspy/gmnspy/workbench/__init__.py`**
+- [ ] **Step 3: Create a minimal `packages/netstead/netstead/workbench/__init__.py`**
 
 ```python
-"""GMNSpy Workbench: one live session served as a local web app (``gmnspy app``)."""
+"""Netstead Workbench: one live session served as a local web app (``netstead app``)."""
 ```
 
-- [ ] **Step 4: Create `packages/gmnspy/gmnspy/workbench/registry.py`**
+- [ ] **Step 4: Create `packages/netstead/netstead/workbench/registry.py`**
 
 ```python
 """Open-network registry: one :class:`NetworkHandle` bundle per loaded network.
@@ -949,7 +949,7 @@ from typing import Any, Literal
 
 import pandas as pd
 
-from gmnspy import Network
+from netstead import Network
 
 __all__ = ["COMPONENTS", "Component", "NetworkHandle", "NetworkRegistry", "default_label"]
 
@@ -1099,7 +1099,7 @@ class NetworkRegistry:
 
 - [ ] **Step 5: Run the tests**
 
-Run: `uv run --all-extras pytest packages/gmnspy/tests/test_workbench_registry.py -q`
+Run: `uv run --all-extras pytest packages/netstead/tests/test_workbench_registry.py -q`
 Expected: `6 passed`.
 
 Two notes:
@@ -1109,8 +1109,8 @@ Two notes:
 - [ ] **Step 6: Commit**
 
 ```bash
-uv run ruff check packages/gmnspy/gmnspy/workbench && uv run ruff format packages/gmnspy/gmnspy/workbench packages/gmnspy/tests/test_workbench_registry.py
-git add packages/gmnspy/gmnspy/workbench packages/gmnspy/tests/test_workbench_registry.py
+uv run ruff check packages/netstead/netstead/workbench && uv run ruff format packages/netstead/netstead/workbench packages/netstead/tests/test_workbench_registry.py
+git add packages/netstead/netstead/workbench packages/netstead/tests/test_workbench_registry.py
 git commit -m "feat(workbench): NetworkHandle bundle (roadway + reserved transit) with per-version cache"
 ```
 
@@ -1119,8 +1119,8 @@ git commit -m "feat(workbench): NetworkHandle bundle (roadway + reserved transit
 ### Task 5: Thread-safe `EventBus`
 
 **Files:**
-- Create: `packages/gmnspy/gmnspy/workbench/events.py`
-- Test: `packages/gmnspy/tests/test_workbench_events.py`
+- Create: `packages/netstead/netstead/workbench/events.py`
+- Test: `packages/netstead/tests/test_workbench_events.py`
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -1131,7 +1131,7 @@ import asyncio
 import json
 import threading
 
-from gmnspy.workbench.events import EventBus, sse_format
+from netstead.workbench.events import EventBus, sse_format
 
 
 def test_publish_from_another_thread_reaches_subscriber():
@@ -1172,10 +1172,10 @@ def test_sse_format():
 
 - [ ] **Step 2: Run them to confirm they fail**
 
-Run: `uv run --all-extras pytest packages/gmnspy/tests/test_workbench_events.py -q`
+Run: `uv run --all-extras pytest packages/netstead/tests/test_workbench_events.py -q`
 Expected: FAIL, `ModuleNotFoundError`.
 
-- [ ] **Step 3: Create `packages/gmnspy/gmnspy/workbench/events.py`**
+- [ ] **Step 3: Create `packages/netstead/netstead/workbench/events.py`**
 
 ```python
 """Fan-out of session events to Server-Sent-Events subscribers.
@@ -1239,14 +1239,14 @@ def sse_format(event: dict[str, Any]) -> str:
 
 - [ ] **Step 4: Run the tests**
 
-Run: `uv run --all-extras pytest packages/gmnspy/tests/test_workbench_events.py -q`
+Run: `uv run --all-extras pytest packages/netstead/tests/test_workbench_events.py -q`
 Expected: `4 passed`.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-uv run ruff check packages/gmnspy/gmnspy/workbench && uv run ruff format packages/gmnspy/gmnspy/workbench packages/gmnspy/tests/test_workbench_events.py
-git add packages/gmnspy/gmnspy/workbench/events.py packages/gmnspy/tests/test_workbench_events.py
+uv run ruff check packages/netstead/netstead/workbench && uv run ruff format packages/netstead/netstead/workbench packages/netstead/tests/test_workbench_events.py
+git add packages/netstead/netstead/workbench/events.py packages/netstead/tests/test_workbench_events.py
 git commit -m "feat(workbench): thread-safe EventBus for SSE fan-out"
 ```
 
@@ -1255,8 +1255,8 @@ git commit -m "feat(workbench): thread-safe EventBus for SSE fan-out"
 ### Task 6: Action schemas and `to_python`
 
 **Files:**
-- Create: `packages/gmnspy/gmnspy/workbench/actions.py`
-- Test: `packages/gmnspy/tests/test_workbench_actions.py`
+- Create: `packages/netstead/netstead/workbench/actions.py`
+- Test: `packages/netstead/tests/test_workbench_actions.py`
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -1264,7 +1264,7 @@ git commit -m "feat(workbench): thread-safe EventBus for SSE fan-out"
 """Tests for workbench Action schemas."""
 
 import pytest
-from gmnspy.workbench.actions import (
+from netstead.workbench.actions import (
     Navigate,
     OpenNetwork,
     Select,
@@ -1333,15 +1333,15 @@ def test_action_json_schema_lists_every_type():
 
 - [ ] **Step 2: Run them to confirm they fail**
 
-Run: `uv run --all-extras pytest packages/gmnspy/tests/test_workbench_actions.py -q`
+Run: `uv run --all-extras pytest packages/netstead/tests/test_workbench_actions.py -q`
 Expected: FAIL, `ModuleNotFoundError`.
 
-- [ ] **Step 3: Create `packages/gmnspy/gmnspy/workbench/actions.py`**
+- [ ] **Step 3: Create `packages/netstead/netstead/workbench/actions.py`**
 
 ```python
 """Typed workbench Actions: the one vocabulary for UI clicks, Python, and the NL assistant.
 
-Every state change in a :class:`~gmnspy.workbench.session.Session` is one of these
+Every state change in a :class:`~netstead.workbench.session.Session` is one of these
 pydantic models, discriminated on ``type``. The same JSON schema is what the LLM
 sees as tools (P3), so natural language yields validated Actions, never ids or
 code. ``mutates`` marks actions the assistant must draft-before-apply.
@@ -1487,7 +1487,7 @@ def to_python(action: _Action) -> str:
 
 - [ ] **Step 4: Run the tests**
 
-Run: `uv run --all-extras pytest packages/gmnspy/tests/test_workbench_actions.py -q`
+Run: `uv run --all-extras pytest packages/netstead/tests/test_workbench_actions.py -q`
 Expected: `9 passed`.
 
 If `test_action_json_schema_lists_every_type` fails because pydantic emits each variant under `$defs` with `type` as `{"const": ...}` nested differently, print `action_json_schema()["$defs"]["OpenNetwork"]["properties"]["type"]` and adjust the test's extraction. Do not change the schema.
@@ -1495,8 +1495,8 @@ If `test_action_json_schema_lists_every_type` fails because pydantic emits each 
 - [ ] **Step 5: Commit**
 
 ```bash
-uv run ruff check packages/gmnspy/gmnspy/workbench && uv run ruff format packages/gmnspy/gmnspy/workbench packages/gmnspy/tests/test_workbench_actions.py
-git add packages/gmnspy/gmnspy/workbench/actions.py packages/gmnspy/tests/test_workbench_actions.py
+uv run ruff check packages/netstead/netstead/workbench && uv run ruff format packages/netstead/netstead/workbench packages/netstead/tests/test_workbench_actions.py
+git add packages/netstead/netstead/workbench/actions.py packages/netstead/tests/test_workbench_actions.py
 git commit -m "feat(workbench): typed Action union with to_python replay snippets"
 ```
 
@@ -1505,9 +1505,9 @@ git commit -m "feat(workbench): typed Action union with to_python replay snippet
 ### Task 7: `Session`: dispatch, handlers, history, state
 
 **Files:**
-- Create: `packages/gmnspy/gmnspy/workbench/selection.py`
-- Create: `packages/gmnspy/gmnspy/workbench/session.py`
-- Test: `packages/gmnspy/tests/test_workbench_session.py`
+- Create: `packages/netstead/netstead/workbench/selection.py`
+- Create: `packages/netstead/netstead/workbench/session.py`
+- Test: `packages/netstead/tests/test_workbench_session.py`
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -1517,9 +1517,9 @@ git commit -m "feat(workbench): typed Action union with to_python replay snippet
 from pathlib import Path
 
 import pytest
-from gmnspy import Network
-from gmnspy.select.parse import StubParser
-from gmnspy.workbench.actions import (
+from netstead import Network
+from netstead.select.parse import StubParser
+from netstead.workbench.actions import (
     ClearSelection,
     CloseNetwork,
     Navigate,
@@ -1529,7 +1529,7 @@ from gmnspy.workbench.actions import (
     SetSetting,
     Style,
 )
-from gmnspy.workbench.session import ActionError, NotSupportedYet, Session
+from netstead.workbench.session import ActionError, NotSupportedYet, Session
 
 UTTERANCE = "I-40 EB between South Miami Boulevard and Airport Boulevard"
 
@@ -1628,7 +1628,7 @@ def test_set_setting_session_scope(opened):
 
 def test_set_setting_user_scope_writes_file(opened, isolated_env):
     opened.dispatch(SetSetting(key="app.port", value=9200, scope="user"))
-    assert "port = 9200" in (Path(isolated_env["GMNSPY_CONFIG_DIR"]) / "config.toml").read_text()
+    assert "port = 9200" in (Path(isolated_env["NETSTEAD_CONFIG_DIR"]) / "config.toml").read_text()
     assert opened.loaded.sources["app.port"] == "user"
 
 
@@ -1665,20 +1665,20 @@ def test_settings_payload(opened):
 
 - [ ] **Step 2: Run them to confirm they fail**
 
-Run: `uv run --all-extras pytest packages/gmnspy/tests/test_workbench_session.py -q`
-Expected: FAIL, `ModuleNotFoundError: No module named 'gmnspy.workbench.session'`.
+Run: `uv run --all-extras pytest packages/netstead/tests/test_workbench_session.py -q`
+Expected: FAIL, `ModuleNotFoundError: No module named 'netstead.workbench.session'`.
 
-- [ ] **Step 3: Create `packages/gmnspy/gmnspy/workbench/selection.py`**
+- [ ] **Step 3: Create `packages/netstead/netstead/workbench/selection.py`**
 
 ```python
-"""Turn a :class:`~gmnspy.select.result.SelectionResult` into the workbench's JSON selection payload."""
+"""Turn a :class:`~netstead.select.result.SelectionResult` into the workbench's JSON selection payload."""
 
 from __future__ import annotations
 
 from typing import Any
 
-from gmnspy.select.emit import to_fragment
-from gmnspy.viz.styling import json_scalar
+from netstead.select.emit import to_fragment
+from netstead.viz.styling import json_scalar
 
 from .registry import NetworkHandle
 
@@ -1728,7 +1728,7 @@ def unparsed_payload(handle: NetworkHandle, utterance: str, error: Exception) ->
     }
 ```
 
-- [ ] **Step 4: Create `packages/gmnspy/gmnspy/workbench/session.py`**
+- [ ] **Step 4: Create `packages/netstead/netstead/workbench/session.py`**
 
 ```python
 """Workbench session: the one place state changes, via :meth:`Session.dispatch`.
@@ -1750,12 +1750,12 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
-from gmnspy import Network
-from gmnspy.config import LoadedSettings, Settings, SettingsError, get_value, load_settings, save_setting
-from gmnspy.select.intent import SelectionIntent
-from gmnspy.select.parse import ClaudeParser, StubParser
-from gmnspy.select.resolve import resolve_frames
-from gmnspy.viz.styling import styleable_columns
+from netstead import Network
+from netstead.config import LoadedSettings, Settings, SettingsError, get_value, load_settings, save_setting
+from netstead.select.intent import SelectionIntent
+from netstead.select.parse import ClaudeParser, StubParser
+from netstead.select.resolve import resolve_frames
+from netstead.viz.styling import styleable_columns
 
 from .actions import (
     Action,
@@ -1824,7 +1824,7 @@ class Session:
         parser: Any = None,
         environ: Mapping[str, str] | None = None,
     ) -> None:
-        """Load settings (raises :class:`~gmnspy.config.SettingsError` on bad config) and start empty."""
+        """Load settings (raises :class:`~netstead.config.SettingsError` on bad config) and start empty."""
         self.project_dir = project_dir
         self._environ = environ
         self._overrides: dict[str, Any] = dict(overrides or {})
@@ -2012,14 +2012,14 @@ Two notes:
 
 - [ ] **Step 5: Run the tests**
 
-Run: `uv run --all-extras pytest packages/gmnspy/tests/test_workbench_session.py -q`
+Run: `uv run --all-extras pytest packages/netstead/tests/test_workbench_session.py -q`
 Expected: `19 passed`.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-uv run ruff check packages/gmnspy/gmnspy/workbench && uv run ruff format packages/gmnspy/gmnspy/workbench packages/gmnspy/tests/test_workbench_session.py
-git add packages/gmnspy/gmnspy/workbench packages/gmnspy/tests/test_workbench_session.py
+uv run ruff check packages/netstead/netstead/workbench && uv run ruff format packages/netstead/netstead/workbench packages/netstead/tests/test_workbench_session.py
+git add packages/netstead/netstead/workbench packages/netstead/tests/test_workbench_session.py
 git commit -m "feat(workbench): Session action bus with recorded history and state snapshots"
 ```
 
@@ -2028,12 +2028,12 @@ git commit -m "feat(workbench): Session action bus with recorded history and sta
 ### Task 8: Server core routes (state, actions, history, settings, config, SSE)
 
 **Files:**
-- Create: `packages/gmnspy/gmnspy/workbench/routes/__init__.py` (empty docstring module)
-- Create: `packages/gmnspy/gmnspy/workbench/routes/core.py`
-- Create: `packages/gmnspy/gmnspy/workbench/server.py`
-- Create: `packages/gmnspy/gmnspy/workbench/static/index.html` (placeholder replaced in Task 10; a one-line `<!DOCTYPE html><title>GMNSpy Workbench</title>` for now)
-- Modify: `packages/gmnspy/gmnspy/workbench/__init__.py`
-- Test: `packages/gmnspy/tests/test_workbench_server.py`
+- Create: `packages/netstead/netstead/workbench/routes/__init__.py` (empty docstring module)
+- Create: `packages/netstead/netstead/workbench/routes/core.py`
+- Create: `packages/netstead/netstead/workbench/server.py`
+- Create: `packages/netstead/netstead/workbench/static/index.html` (placeholder replaced in Task 10; a one-line `<!DOCTYPE html><title>Netstead Workbench</title>` for now)
+- Modify: `packages/netstead/netstead/workbench/__init__.py`
+- Test: `packages/netstead/tests/test_workbench_server.py`
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -2042,8 +2042,8 @@ git commit -m "feat(workbench): Session action bus with recorded history and sta
 
 import pytest
 from fastapi.testclient import TestClient
-from gmnspy.select.parse import StubParser
-from gmnspy.workbench import Session, build_app
+from netstead.select.parse import StubParser
+from netstead.workbench import Session, build_app
 
 UTTERANCE = "I-40 EB between South Miami Boulevard and Airport Boulevard"
 
@@ -2109,13 +2109,13 @@ def test_events_stream_starts_with_state_snapshot(client):
 
 - [ ] **Step 2: Run them to confirm they fail**
 
-Run: `uv run --all-extras pytest packages/gmnspy/tests/test_workbench_server.py -q`
-Expected: FAIL, `ImportError: cannot import name 'Session' from 'gmnspy.workbench'`.
+Run: `uv run --all-extras pytest packages/netstead/tests/test_workbench_server.py -q`
+Expected: FAIL, `ImportError: cannot import name 'Session' from 'netstead.workbench'`.
 
-- [ ] **Step 3: Replace `packages/gmnspy/gmnspy/workbench/__init__.py`**
+- [ ] **Step 3: Replace `packages/netstead/netstead/workbench/__init__.py`**
 
 ```python
-"""GMNSpy Workbench: one live session served as a local web app (``gmnspy app``).
+"""Netstead Workbench: one live session served as a local web app (``netstead app``).
 
 ``Session`` is the action bus; ``build_app``/``serve`` need the ``[server]``
 extra (FastAPI + uvicorn) and are imported lazily so ``Session`` works without it.
@@ -2148,13 +2148,13 @@ def serve(session: Session) -> None:
     uvicorn.run(build_app(session), host=app_settings.host, port=app_settings.port)
 ```
 
-- [ ] **Step 4: Create `packages/gmnspy/gmnspy/workbench/routes/__init__.py`**
+- [ ] **Step 4: Create `packages/netstead/netstead/workbench/routes/__init__.py`**
 
 ```python
 """FastAPI routers for the workbench."""
 ```
 
-- [ ] **Step 5: Create `packages/gmnspy/gmnspy/workbench/routes/core.py`**
+- [ ] **Step 5: Create `packages/netstead/netstead/workbench/routes/core.py`**
 
 ```python
 """Session-level routes: state, actions, history, settings, basemap config, and the SSE stream."""
@@ -2170,7 +2170,7 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import ValidationError
 
-from gmnspy.viz.styling import basemap_style
+from netstead.viz.styling import basemap_style
 
 from ..events import sse_format
 from ..session import Session
@@ -2243,7 +2243,7 @@ def core_router(session: Session) -> APIRouter:
     return router
 ```
 
-- [ ] **Step 6: Create `packages/gmnspy/gmnspy/workbench/server.py`**
+- [ ] **Step 6: Create `packages/netstead/netstead/workbench/server.py`**
 
 ```python
 """Assemble the workbench FastAPI app: static front end + API routers."""
@@ -2266,7 +2266,7 @@ STATIC_DIR = Path(__file__).parent / "static"
 
 def build_app(session: Session) -> FastAPI:
     """Return the FastAPI app serving ``session``."""
-    app = FastAPI(title="GMNSpy Workbench")
+    app = FastAPI(title="Netstead Workbench")
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
     app.include_router(core_router(session))
 
@@ -2277,15 +2277,15 @@ def build_app(session: Session) -> FastAPI:
     return app
 ```
 
-- [ ] **Step 7: Create the placeholder `packages/gmnspy/gmnspy/workbench/static/index.html`**
+- [ ] **Step 7: Create the placeholder `packages/netstead/netstead/workbench/static/index.html`**
 
 ```html
-<!DOCTYPE html><title>GMNSpy Workbench</title>
+<!DOCTYPE html><title>Netstead Workbench</title>
 ```
 
 - [ ] **Step 8: Run the tests**
 
-Run: `uv run --all-extras pytest packages/gmnspy/tests/test_workbench_server.py -q`
+Run: `uv run --all-extras pytest packages/netstead/tests/test_workbench_server.py -q`
 Expected: `8 passed`.
 
 If `test_events_stream_starts_with_state_snapshot` hangs, check that `max_events=1` ends the generator straight after the first `yield`. The `while` condition `sent < max_events` must already be false.
@@ -2293,8 +2293,8 @@ If `test_events_stream_starts_with_state_snapshot` hangs, check that `max_events
 - [ ] **Step 9: Commit**
 
 ```bash
-uv run ruff check packages/gmnspy/gmnspy/workbench && uv run ruff format packages/gmnspy/gmnspy/workbench packages/gmnspy/tests/test_workbench_server.py
-git add packages/gmnspy/gmnspy/workbench packages/gmnspy/tests/test_workbench_server.py
+uv run ruff check packages/netstead/netstead/workbench && uv run ruff format packages/netstead/netstead/workbench packages/netstead/tests/test_workbench_server.py
+git add packages/netstead/netstead/workbench packages/netstead/tests/test_workbench_server.py
 git commit -m "feat(workbench): core API routes (state/actions/history/settings) + SSE event stream"
 ```
 
@@ -2303,9 +2303,9 @@ git commit -m "feat(workbench): core API routes (state/actions/history/settings)
 ### Task 9: Per-network data routes
 
 **Files:**
-- Create: `packages/gmnspy/gmnspy/workbench/routes/network.py`
-- Modify: `packages/gmnspy/gmnspy/workbench/server.py` (include the router)
-- Test: `packages/gmnspy/tests/test_workbench_network_routes.py`
+- Create: `packages/netstead/netstead/workbench/routes/network.py`
+- Modify: `packages/netstead/netstead/workbench/server.py` (include the router)
+- Test: `packages/netstead/tests/test_workbench_network_routes.py`
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -2316,9 +2316,9 @@ import json
 
 import pytest
 from fastapi.testclient import TestClient
-from gmnspy.select.parse import StubParser
-from gmnspy.viz.buffers import unpack_network
-from gmnspy.workbench import Session, build_app
+from netstead.select.parse import StubParser
+from netstead.viz.buffers import unpack_network
+from netstead.workbench import Session, build_app
 
 BASE = "/api/n/rdu-i40/roadway"
 
@@ -2326,7 +2326,7 @@ BASE = "/api/n/rdu-i40/roadway"
 @pytest.fixture(scope="module")
 def client(tmp_path_factory, rdu_source):
     tmp = tmp_path_factory.mktemp("wb")
-    s = Session(project_dir=tmp, environ={"GMNSPY_CONFIG_DIR": str(tmp / "user")}, parser=StubParser())
+    s = Session(project_dir=tmp, environ={"NETSTEAD_CONFIG_DIR": str(tmp / "user")}, parser=StubParser())
     s.dispatch({"type": "open_network", "source": rdu_source})
     return TestClient(build_app(s))
 
@@ -2389,10 +2389,10 @@ def test_unknown_network_table_component(client):
 
 - [ ] **Step 2: Run them to confirm they fail**
 
-Run: `uv run --all-extras pytest packages/gmnspy/tests/test_workbench_network_routes.py -q`
+Run: `uv run --all-extras pytest packages/netstead/tests/test_workbench_network_routes.py -q`
 Expected: FAIL, with 404s on every data route.
 
-- [ ] **Step 3: Create `packages/gmnspy/gmnspy/workbench/routes/network.py`**
+- [ ] **Step 3: Create `packages/netstead/netstead/workbench/routes/network.py`**
 
 ```python
 """Per-network data routes: ``/api/n/{net_id}/{component}/...``.
@@ -2408,9 +2408,9 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException, Response
 
-from gmnspy.viz.buffers import network_attrs, pack_network
-from gmnspy.viz.styling import json_scalar, property_payload, styleable_columns
-from gmnspy.viz.tables import (
+from netstead.viz.buffers import network_attrs, pack_network
+from netstead.viz.styling import json_scalar, property_payload, styleable_columns
+from netstead.viz.tables import (
     FilterError,
     columns_of,
     page_table,
@@ -2537,18 +2537,18 @@ def network_router(session: Session) -> APIRouter:
 
 - [ ] **Step 4: Include the router in `server.py`**
 
-In `packages/gmnspy/gmnspy/workbench/server.py`, add `from .routes.network import network_router` next to the `core_router` import, and add `app.include_router(network_router(session))` after `app.include_router(core_router(session))`.
+In `packages/netstead/netstead/workbench/server.py`, add `from .routes.network import network_router` next to the `core_router` import, and add `app.include_router(network_router(session))` after `app.include_router(core_router(session))`.
 
 - [ ] **Step 5: Run the tests**
 
-Run: `uv run --all-extras pytest packages/gmnspy/tests/test_workbench_network_routes.py packages/gmnspy/tests/test_workbench_server.py -q`
-Expected: all pass. If `test_rows_filter_and_ids`'s motorway filter returns 0, check the fixture's `facility_type` values with `uv run --all-extras python -c "import pandas as pd; from importlib import resources; print(pd.read_parquet(resources.files('gmnspy.fixtures.rdu_i40').joinpath('parquet/link.parquet'))['facility_type'].value_counts())"`. Then use a value that exists but doesn't cover every row.
+Run: `uv run --all-extras pytest packages/netstead/tests/test_workbench_network_routes.py packages/netstead/tests/test_workbench_server.py -q`
+Expected: all pass. If `test_rows_filter_and_ids`'s motorway filter returns 0, check the fixture's `facility_type` values with `uv run --all-extras python -c "import pandas as pd; from importlib import resources; print(pd.read_parquet(resources.files('netstead.fixtures.rdu_i40').joinpath('parquet/link.parquet'))['facility_type'].value_counts())"`. Then use a value that exists but doesn't cover every row.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-uv run ruff check packages/gmnspy/gmnspy/workbench && uv run ruff format packages/gmnspy/gmnspy/workbench packages/gmnspy/tests/test_workbench_network_routes.py
-git add packages/gmnspy/gmnspy/workbench packages/gmnspy/tests/test_workbench_network_routes.py
+uv run ruff check packages/netstead/netstead/workbench && uv run ruff format packages/netstead/netstead/workbench packages/netstead/tests/test_workbench_network_routes.py
+git add packages/netstead/netstead/workbench packages/netstead/tests/test_workbench_network_routes.py
 git commit -m "feat(workbench): per-network data routes namespaced by net_id and component"
 ```
 
@@ -2557,10 +2557,10 @@ git commit -m "feat(workbench): per-network data routes namespaced by net_id and
 ### Task 10: Modular front end
 
 **Files:**
-- Create: `packages/gmnspy/gmnspy/workbench/static/index.html` (replace placeholder)
-- Create: `packages/gmnspy/gmnspy/workbench/static/app.css`
-- Create: `packages/gmnspy/gmnspy/workbench/static/js/{dom,api,store,netbuf,palette,map,side,table,panels,header,history,main}.js`
-- Test: `packages/gmnspy/tests/test_workbench_static.py`
+- Create: `packages/netstead/netstead/workbench/static/index.html` (replace placeholder)
+- Create: `packages/netstead/netstead/workbench/static/app.css`
+- Create: `packages/netstead/netstead/workbench/static/js/{dom,api,store,netbuf,palette,map,side,table,panels,header,history,main}.js`
+- Test: `packages/netstead/tests/test_workbench_static.py`
 
 Module dependency direction, with no cycles:
 - `dom`, `api`, `store`, `netbuf` and `palette` are leaves.
@@ -2583,8 +2583,8 @@ import subprocess
 
 import pytest
 from fastapi.testclient import TestClient
-from gmnspy.workbench import Session, build_app
-from gmnspy.workbench.server import STATIC_DIR
+from netstead.workbench import Session, build_app
+from netstead.workbench.server import STATIC_DIR
 
 JS_DIR = STATIC_DIR / "js"
 _IMPORT = re.compile(r'import\s*\{([^}]*)\}\s*from\s*"\./([\w-]+\.js)"')
@@ -2594,7 +2594,7 @@ _EXPORT = re.compile(r"export\s+(?:async\s+)?(?:function|const|let)\s+(\w+)")
 @pytest.fixture(scope="module")
 def client(tmp_path_factory):
     tmp = tmp_path_factory.mktemp("wb")
-    return TestClient(build_app(Session(project_dir=tmp, environ={"GMNSPY_CONFIG_DIR": str(tmp / "u")})))
+    return TestClient(build_app(Session(project_dir=tmp, environ={"NETSTEAD_CONFIG_DIR": str(tmp / "u")})))
 
 
 def test_index_loads_main_module(client):
@@ -2637,14 +2637,14 @@ def test_js_syntax(tmp_path):
 
 - [ ] **Step 2: Run them to confirm they fail**
 
-Run: `uv run --all-extras pytest packages/gmnspy/tests/test_workbench_static.py -q`
+Run: `uv run --all-extras pytest packages/netstead/tests/test_workbench_static.py -q`
 Expected: FAIL. `test_index_loads_main_module` fails because the placeholder has no module script.
 
 - [ ] **Step 3: Create `app.css` from the viz stylesheet, plus workbench additions**
 
 ```bash
-sed -n '11,141p' packages/gmnspy/gmnspy/viz/templates/index.html > packages/gmnspy/gmnspy/workbench/static/app.css
-cat >> packages/gmnspy/gmnspy/workbench/static/app.css <<'EOF'
+sed -n '11,141p' packages/netstead/netstead/viz/templates/index.html > packages/netstead/netstead/workbench/static/app.css
+cat >> packages/netstead/netstead/workbench/static/app.css <<'EOF'
 
   /* ---- workbench additions ---- */
   #app { grid-template-rows:auto 1fr auto; }
@@ -2676,7 +2676,7 @@ Expected: `head -1` of the file is the `:root { --bg:...` line, and `grep -c '</
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>GMNSpy Workbench</title>
+<title>Netstead Workbench</title>
 <link href="https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet" />
 <link href="/static/app.css" rel="stylesheet" />
 <script src="https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
@@ -2686,7 +2686,7 @@ Expected: `head -1` of the file is the `:root { --bg:...` line, and `grep -c '</
 <body>
 <div id="app">
   <header>
-    <h1>GMNSpy Workbench</h1>
+    <h1>Netstead Workbench</h1>
     <select id="net-select" aria-label="Active network"></select>
     <input id="open-src" placeholder="Open network: path or URL" aria-label="Open network" />
     <button id="open-go" class="mini">Open</button>
@@ -2872,7 +2872,7 @@ export function activeSelection(s) {
 - [ ] **Step 8: Write `static/js/netbuf.js`**
 
 ```js
-// Decode the binary network payload from /network.bin (layout: gmnspy.viz.buffers.pack_network).
+// Decode the binary network payload from /network.bin (layout: netstead.viz.buffers.pack_network).
 export function widthForLanes(lanes) { return Math.max(1.2, Math.min(9, 0.9 + 0.8 * lanes)); }
 
 const take = (buf, off, bytes, Ctor) => new Ctor(buf.slice(off, off + bytes));
@@ -3235,7 +3235,7 @@ import { activeSelection, store } from "./store.js";
 
 const TBL = { loaded: false, name: null, schema: null, offset: 0, limit: 100, sort: null, dir: "asc",
   filters: {}, total: 0, toSel: false };
-const VIEW_KEY = "gmnspy.viewmode";
+const VIEW_KEY = "netstead.viewmode";
 let filterTimer = null, lastSelKey = null;
 
 const activeId = () => { const s = store.get().server; return s && s.active; };
@@ -3507,7 +3507,7 @@ export function showEntry(entry) {
 }
 
 export function sessionScript(entries) {
-  const lines = ["# GMNSpy Workbench session: replay against a live workbench handle named `app`"];
+  const lines = ["# Netstead Workbench session: replay against a live workbench handle named `app`"];
   for (const e of entries) lines.push(e.ok ? e.python : `# failed: ${e.python}  # ${e.error}`);
   return lines.join("\n");
 }
@@ -3622,36 +3622,36 @@ boot().catch(e => toast(e.message));
 
 - [ ] **Step 17: Run the static tests**
 
-Run: `uv run --all-extras pytest packages/gmnspy/tests/test_workbench_static.py -q`
+Run: `uv run --all-extras pytest packages/netstead/tests/test_workbench_static.py -q`
 Expected: all pass. That is 12 parametrised "served" cases plus 4 others; the node test is skipped if node is absent. If `test_every_element_id_used_by_js_exists_in_index` fails, add the missing id to `index.html`, or fix the typo in the JS.
 
 - [ ] **Step 18: Commit**
 
 ```bash
-git add packages/gmnspy/gmnspy/workbench/static packages/gmnspy/tests/test_workbench_static.py
+git add packages/netstead/netstead/workbench/static packages/netstead/tests/test_workbench_static.py
 git commit -m "feat(workbench): modular no-build front end (store + SSE + history strip, viz parity)"
 ```
 
 ---
 
-### Task 11: CLI `gmnspy app`, aliases, packaging
+### Task 11: CLI `netstead app`, aliases, packaging
 
 **Files:**
-- Create: `packages/gmnspy/gmnspy/cli/commands/workbench.py`
-- Modify: `packages/gmnspy/gmnspy/cli/commands/viz.py` (becomes an alias)
-- Modify: `packages/gmnspy/gmnspy/cli/commands/select.py` (`select-serve` becomes an alias)
-- Modify: `packages/gmnspy/gmnspy/cli/app.py` (register)
-- Modify: `packages/gmnspy/gmnspy/select/webapp.py` (deprecation note in the module docstring)
-- Modify: `packages/gmnspy/pyproject.toml` (wheel include)
-- Test: `packages/gmnspy/tests/test_cli_workbench.py`
+- Create: `packages/netstead/netstead/cli/commands/workbench.py`
+- Modify: `packages/netstead/netstead/cli/commands/viz.py` (becomes an alias)
+- Modify: `packages/netstead/netstead/cli/commands/select.py` (`select-serve` becomes an alias)
+- Modify: `packages/netstead/netstead/cli/app.py` (register)
+- Modify: `packages/netstead/netstead/select/webapp.py` (deprecation note in the module docstring)
+- Modify: `packages/netstead/pyproject.toml` (wheel include)
+- Test: `packages/netstead/tests/test_cli_workbench.py`
 
 - [ ] **Step 1: Write the failing tests**
 
 ```python
-"""Tests for `gmnspy app` and its viz / select-serve aliases."""
+"""Tests for `netstead app` and its viz / select-serve aliases."""
 
 import pytest
-from gmnspy.cli.app import app
+from netstead.cli.app import app
 from typer.testing import CliRunner
 
 runner = CliRunner()
@@ -3660,10 +3660,10 @@ runner = CliRunner()
 @pytest.fixture
 def served(monkeypatch, tmp_path):
     """Capture the session handed to serve() instead of starting uvicorn; isolate config."""
-    monkeypatch.setenv("GMNSPY_CONFIG_DIR", str(tmp_path / "user"))
+    monkeypatch.setenv("NETSTEAD_CONFIG_DIR", str(tmp_path / "user"))
     monkeypatch.chdir(tmp_path)
     captured = []
-    monkeypatch.setattr("gmnspy.workbench.serve", captured.append)
+    monkeypatch.setattr("netstead.workbench.serve", captured.append)
     return captured
 
 
@@ -3694,7 +3694,7 @@ def test_app_bad_flag_value_exits_2(served):
 
 def test_viz_is_an_alias(served, rdu_source):
     result = runner.invoke(app, ["viz", rdu_source, "--port", "9302"])
-    assert result.exit_code == 0 and "gmnspy app" in result.output
+    assert result.exit_code == 0 and "netstead app" in result.output
     assert served[0].settings.app.port == 9302
 
 
@@ -3705,15 +3705,15 @@ def test_select_serve_is_an_alias(served, rdu_source):
 
 - [ ] **Step 2: Run them to confirm they fail**
 
-Run: `uv run --all-extras pytest packages/gmnspy/tests/test_cli_workbench.py -q`
+Run: `uv run --all-extras pytest packages/netstead/tests/test_cli_workbench.py -q`
 Expected: FAIL, with no such command `app`.
 
-- [ ] **Step 3: Create `packages/gmnspy/gmnspy/cli/commands/workbench.py`**
+- [ ] **Step 3: Create `packages/netstead/netstead/cli/commands/workbench.py`**
 
 ```python
-"""``gmnspy app`` — the GMNSpy Workbench: map + tables + selection over one live session.
+"""``netstead app`` — the Netstead Workbench: map + tables + selection over one live session.
 
-Requires the ``[server]`` extra. ``gmnspy viz`` and ``gmnspy select-serve`` are
+Requires the ``[server]`` extra. ``netstead viz`` and ``netstead select-serve`` are
 aliases that call :func:`run_workbench`.
 """
 
@@ -3735,9 +3735,9 @@ def run_workbench(
     port: int | None = None,
 ) -> None:
     """Build a session from settings + flag overrides, open ``sources``, and serve it (blocks)."""
-    from gmnspy import workbench
-    from gmnspy.config import SettingsError
-    from gmnspy.workbench.actions import OpenNetwork
+    from netstead import workbench
+    from netstead.config import SettingsError
+    from netstead.workbench.actions import OpenNetwork
 
     flags = {"select.provider": provider, "viz.basemap": basemap, "app.host": host, "app.port": port}
     try:
@@ -3753,7 +3753,7 @@ def run_workbench(
             raise typer.Exit(1) from exc
     app_settings = session.settings.app
     opened = ", ".join(session.registry.ids()) or "none (open one from the header)"
-    typer.echo(f"GMNSpy Workbench on http://{app_settings.host}:{app_settings.port}  (networks: {opened})")
+    typer.echo(f"Netstead Workbench on http://{app_settings.host}:{app_settings.port}  (networks: {opened})")
     workbench.serve(session)
 
 
@@ -3768,16 +3768,16 @@ def register(app: typer.Typer) -> None:
         host: str = typer.Option(None, "--host", help="Bind host (default: settings, 127.0.0.1)."),
         port: int = typer.Option(None, "--port", help="Bind port (default: settings, 8850)."),
     ) -> None:
-        """Serve the GMNSpy Workbench: open, inspect, and select on GMNS networks in the browser."""
+        """Serve the Netstead Workbench: open, inspect, and select on GMNS networks in the browser."""
         run_workbench(sources or [], provider=provider, basemap=basemap, host=host, port=port)
 ```
 
 Note that `typer.Exit(2)` echoes the error. The test checks `result.output`, and CliRunner mixes stderr into `output` by default (`mix_stderr` defaults to True in the installed click). If the test can't see the message, switch the tests to `result.stdout + result.stderr`.
 
-- [ ] **Step 4: Rewrite `packages/gmnspy/gmnspy/cli/commands/viz.py` as an alias**
+- [ ] **Step 4: Rewrite `packages/netstead/netstead/cli/commands/viz.py` as an alias**
 
 ```python
-"""``gmnspy viz`` — alias of ``gmnspy app SOURCE`` (the viewer is now the GMNSpy Workbench)."""
+"""``netstead viz`` — alias of ``netstead app SOURCE`` (the viewer is now the Netstead Workbench)."""
 
 from __future__ import annotations
 
@@ -3802,13 +3802,13 @@ def register(app: typer.Typer) -> None:
         host: str = typer.Option(None, "--host", help="Bind host."),
         port: int = typer.Option(None, "--port", help="Bind port."),
     ) -> None:
-        """Serve the network viewer: now an alias of ``gmnspy app SOURCE``."""
+        """Serve the network viewer: now an alias of ``netstead app SOURCE``."""
         del engine  # accepted for backward compatibility only
-        typer.echo("note: `gmnspy viz` is now `gmnspy app`", err=True)
+        typer.echo("note: `netstead viz` is now `netstead app`", err=True)
         run_workbench([str(source)], provider=provider, basemap=basemap, host=host, port=port)
 ```
 
-- [ ] **Step 5: Turn `select-serve` into an alias in `packages/gmnspy/gmnspy/cli/commands/select.py`**
+- [ ] **Step 5: Turn `select-serve` into an alias in `packages/netstead/netstead/cli/commands/select.py`**
 
 Replace the whole `select_serve` function, from `@app.command(name="select-serve")` through its `uvicorn.run(...)` line, with:
 
@@ -3821,49 +3821,49 @@ Replace the whole `select_serve` function, from `@app.command(name="select-serve
         host: str = typer.Option(None, "--host", help="Bind host."),
         port: int = typer.Option(None, "--port", help="Bind port."),
     ) -> None:
-        """Serve the interactive selection map: now an alias of ``gmnspy app SOURCE``."""
+        """Serve the interactive selection map: now an alias of ``netstead app SOURCE``."""
         from .workbench import run_workbench
 
         del engine  # accepted for backward compatibility only
-        typer.echo("note: `gmnspy select-serve` is now `gmnspy app`", err=True)
+        typer.echo("note: `netstead select-serve` is now `netstead app`", err=True)
         run_workbench([str(source)], provider=provider, host=host, port=port)
 ```
 
 Then remove any imports that are now unused (`Network`, `resolve_engine`), but only if `ruff check` reports them unused; the `select` command may still use them.
 
-- [ ] **Step 6: Register the command in `packages/gmnspy/gmnspy/cli/app.py`**
+- [ ] **Step 6: Register the command in `packages/netstead/netstead/cli/app.py`**
 
-Add `workbench,` to the `from .commands import (...)` list, keeping it alphabetical after `viz`. Add `workbench.register(gmnspy_app)` directly after `viz.register(gmnspy_app)`.
+Add `workbench,` to the `from .commands import (...)` list, keeping it alphabetical after `viz`. Add `workbench.register(netstead_app)` directly after `viz.register(netstead_app)`.
 
 - [ ] **Step 7: Mark `select/webapp.py` deprecated**
 
 Append this paragraph to its module docstring:
 
 ```
-Deprecated: ``gmnspy select-serve`` now launches the workbench
-(:mod:`gmnspy.workbench`); this prototype is removed in P1.
+Deprecated: ``netstead select-serve`` now launches the workbench
+(:mod:`netstead.workbench`); this prototype is removed in P1.
 ```
 
 - [ ] **Step 8: Ship the static assets in the wheel**
 
-In `packages/gmnspy/pyproject.toml`, under `[tool.hatch.build.targets.wheel] include`, add these lines after `"gmnspy/viz/templates/*.html",`:
+In `packages/netstead/pyproject.toml`, under `[tool.hatch.build.targets.wheel] include`, add these lines after `"netstead/viz/templates/*.html",`:
 
 ```toml
-    # GMNSpy Workbench static front end (gmnspy.workbench; served by `gmnspy app`).
-    "gmnspy/workbench/static/*.html",
-    "gmnspy/workbench/static/*.css",
-    "gmnspy/workbench/static/js/*.js",
+    # Netstead Workbench static front end (netstead.workbench; served by `netstead app`).
+    "netstead/workbench/static/*.html",
+    "netstead/workbench/static/*.css",
+    "netstead/workbench/static/js/*.js",
 ```
 
 - [ ] **Step 9: Run the CLI tests and the CLI/doc contract tests**
 
-Run: `uv run --all-extras pytest packages/gmnspy/tests/test_cli_workbench.py packages/gmnspy/tests/test_documented_cli_contract.py packages/gmnspy/tests/test_cli.py -q`
+Run: `uv run --all-extras pytest packages/netstead/tests/test_cli_workbench.py packages/netstead/tests/test_documented_cli_contract.py packages/netstead/tests/test_cli.py -q`
 Expected: all pass.
 
 - [ ] **Step 10: Check the wheel contains the assets**
 
 ```bash
-uv build --wheel packages/gmnspy -o /tmp/claude-wheel-check && unzip -l /tmp/claude-wheel-check/gmnspy-*.whl | grep workbench/static
+uv build --wheel packages/netstead -o /tmp/claude-wheel-check && unzip -l /tmp/claude-wheel-check/netstead-*.whl | grep workbench/static
 ```
 
 Expected: 14 lines: `index.html`, `app.css` and 12 `js/*.js` files.
@@ -3871,9 +3871,9 @@ Expected: 14 lines: `index.html`, `app.css` and 12 `js/*.js` files.
 - [ ] **Step 11: Commit**
 
 ```bash
-uv run ruff check packages/gmnspy && uv run ruff format packages/gmnspy/gmnspy/cli packages/gmnspy/tests/test_cli_workbench.py
-git add packages/gmnspy/gmnspy/cli packages/gmnspy/gmnspy/select/webapp.py packages/gmnspy/pyproject.toml packages/gmnspy/tests/test_cli_workbench.py
-git commit -m "feat(cli): gmnspy app (workbench); viz + select-serve become aliases; ship static assets"
+uv run ruff check packages/netstead && uv run ruff format packages/netstead/netstead/cli packages/netstead/tests/test_cli_workbench.py
+git add packages/netstead/netstead/cli packages/netstead/netstead/select/webapp.py packages/netstead/pyproject.toml packages/netstead/tests/test_cli_workbench.py
+git commit -m "feat(cli): netstead app (workbench); viz + select-serve become aliases; ship static assets"
 ```
 
 ---
@@ -3881,21 +3881,21 @@ git commit -m "feat(cli): gmnspy app (workbench); viz + select-serve become alia
 ### Task 12: Docs page, full suite, and end-to-end browser check
 
 **Files:**
-- Create: `packages/gmnspy/docs/cookbook/workbench.md`
-- Modify: `packages/gmnspy/mkdocs.yml` (nav)
-- Modify: `packages/gmnspy/docs/cookbook/index.md` (link)
+- Create: `packages/netstead/docs/cookbook/workbench.md`
+- Modify: `packages/netstead/mkdocs.yml` (nav)
+- Modify: `packages/netstead/docs/cookbook/index.md` (link)
 
-- [ ] **Step 1: Write `packages/gmnspy/docs/cookbook/workbench.md`**
+- [ ] **Step 1: Write `packages/netstead/docs/cookbook/workbench.md`**
 
 ````markdown
 ---
-title: Explore networks in the GMNSpy Workbench
+title: Explore networks in the Netstead Workbench
 audience: users
 kind: howto
 summary: Open one or more GMNS networks in a local browser app. The map and tables are linked, natural-language selection is built in, and every action can be replayed as Python.
 ---
 
-# Explore networks in the GMNSpy Workbench
+# Explore networks in the Netstead Workbench
 
 ## When to use this
 
@@ -3906,14 +3906,14 @@ For a single self-contained HTML file to send someone, see [View a network on a 
 ## Quick start
 
 ```bash
-uv run gmnspy app ./my-network
+uv run netstead app ./my-network
 ```
 
 Open <http://127.0.0.1:8850>. You can open more networks from the header (a path or URL) and switch between
-them with the network picker. `gmnspy viz` and `gmnspy select-serve` are aliases of `gmnspy app`.
+them with the network picker. `netstead viz` and `netstead select-serve` are aliases of `netstead app`.
 
 ```bash
-uv run gmnspy app ./base ./build --port 8900 --basemap esri --provider claude
+uv run netstead app ./base ./build --port 8900 --basemap esri --provider claude
 ```
 
 ## Settings
@@ -3921,13 +3921,13 @@ uv run gmnspy app ./base ./build --port 8900 --basemap esri --provider claude
 The workbench reads layered settings. From lowest to highest precedence:
 
 1. built-in defaults
-2. `~/.config/gmnspy/config.toml`
-3. `./gmnspy.toml`
-4. `GMNSPY_<SECTION>__<FIELD>` environment variables
+2. `~/.config/netstead/config.toml`
+3. `./netstead.toml`
+4. `NETSTEAD_<SECTION>__<FIELD>` environment variables
 5. command-line flags
 
 ```toml
-# ./gmnspy.toml
+# ./netstead.toml
 [app]
 port = 8900
 
@@ -3947,17 +3947,17 @@ a script you can copy.
 
 - [ ] **Step 2: Add the page to the nav and the cookbook index**
 
-In `packages/gmnspy/mkdocs.yml`, under `- Cookbook:`, add this line directly after `- View a network on a map: cookbook/view-your-network.md`:
+In `packages/netstead/mkdocs.yml`, under `- Cookbook:`, add this line directly after `- View a network on a map: cookbook/view-your-network.md`:
 
 ```yaml
       - Explore in the Workbench: cookbook/workbench.md
 ```
 
-In `packages/gmnspy/docs/cookbook/index.md`, add the bullet `- [Explore networks in the GMNSpy Workbench](workbench.md)` next to the "View a network on a map" entry, matching that list's format.
+In `packages/netstead/docs/cookbook/index.md`, add the bullet `- [Explore networks in the Netstead Workbench](workbench.md)` next to the "View a network on a map" entry, matching that list's format.
 
-- [ ] **Step 3: Run the full gmnspy suite and lint**
+- [ ] **Step 3: Run the full netstead suite and lint**
 
-Run: `uv run --all-extras pytest packages/gmnspy -q && uv run ruff check packages && uv run ruff format --check packages`
+Run: `uv run --all-extras pytest packages/netstead -q && uv run ruff check packages && uv run ruff format --check packages`
 Expected: all tests pass (including both documented-contract tests, which scan the new page) and lint is clean.
 
 - [ ] **Step 4: Check the app end to end in the browser pane**
@@ -3971,7 +3971,7 @@ Create `.claude/launch.json` (do not commit it) with:
     {
       "name": "workbench",
       "runtimeExecutable": "uv",
-      "runtimeArgs": ["run", "--all-extras", "gmnspy", "app", "packages/gmnspy/gmnspy/fixtures/rdu_i40/parquet", "--port", "8850"],
+      "runtimeArgs": ["run", "--all-extras", "netstead", "app", "packages/netstead/netstead/fixtures/rdu_i40/parquet", "--port", "8850"],
       "port": 8850
     }
   ]
@@ -3997,8 +3997,8 @@ Stop the preview with `preview_stop`. Record any defects as new failing tests or
 - [ ] **Step 5: Commit**
 
 ```bash
-git add packages/gmnspy/docs/cookbook/workbench.md packages/gmnspy/mkdocs.yml packages/gmnspy/docs/cookbook/index.md
-git commit -m "docs(gmnspy): Workbench cookbook page (gmnspy app, settings layers, replayable actions)"
+git add packages/netstead/docs/cookbook/workbench.md packages/netstead/mkdocs.yml packages/netstead/docs/cookbook/index.md
+git commit -m "docs(netstead): Workbench cookbook page (netstead app, settings layers, replayable actions)"
 ```
 
 ---
@@ -4009,7 +4009,7 @@ git commit -m "docs(gmnspy): Workbench cookbook page (gmnspy app, settings layer
   - `config.py`: Tasks 1–2.
   - Session, Registry, Action bus, SSE: Tasks 4–8.
   - ES-module front end at viz parity: Task 10.
-  - `gmnspy app` and the retired `select-serve`/`viz`: Task 11.
+  - `netstead app` and the retired `select-serve`/`viz`: Task 11.
   - The transit slot (bundle, `{component}` routes, `Select.component`, `NotSupportedYet`): Tasks 4, 6, 7, 9.
   - Deferred items are listed under Scope notes, and the design doc's phasing row has been amended to match.
 - **Type consistency:**

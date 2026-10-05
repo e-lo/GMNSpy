@@ -6,7 +6,7 @@ tl;dr
 
 ## Our Pledge
 
-We as GMNSpy Owners, Maintainers, and Contributors pledge to make participation in our
+We as Netstead Owners, Maintainers, and Contributors pledge to make participation in our
 community a harassment-free experience for everyone, regardless of age, body
 size, visible or invisible disability, ethnicity, sex characteristics, gender
 identity and expression, level of experience, education, socio-economic status,

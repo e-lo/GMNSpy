@@ -18,8 +18,8 @@ resolution-markers = [
 
 [manifest]
 members = [
-    "datagrove",
-    "gmnspy",
+    "corral",
+    "netstead",
 ]
 
 [manifest.dependency-groups]
@@ -599,6 +599,64 @@ wheels = [
 ]
 
 [[package]]
+name = "corral"
+version = "1.0.0b2"
+source = { editable = "packages/corral" }
+dependencies = [
+    { name = "duckdb" },
+    { name = "fsspec" },
+    { name = "ibis-framework", extra = ["duckdb"] },
+    { name = "jinja2" },
+    { name = "pyarrow" },
+    { name = "pydantic" },
+    { name = "rich" },
+    { name = "typer" },
+]
+
+[package.optional-dependencies]
+azure = [
+    { name = "adlfs" },
+]
+gcs = [
+    { name = "gcsfs" },
+]
+keyring = [
+    { name = "keyring" },
+]
+mcp = [
+    { name = "mcp" },
+]
+pandas = [
+    { name = "pandas" },
+]
+polars = [
+    { name = "polars" },
+]
+s3 = [
+    { name = "s3fs" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "adlfs", marker = "extra == 'azure'", specifier = ">=2024.3" },
+    { name = "duckdb", specifier = ">=1.1" },
+    { name = "fsspec", specifier = ">=2024.3" },
+    { name = "gcsfs", marker = "extra == 'gcs'", specifier = ">=2024.3" },
+    { name = "ibis-framework", extras = ["duckdb"], specifier = ">=10" },
+    { name = "jinja2", specifier = ">=3.1" },
+    { name = "keyring", marker = "extra == 'keyring'", specifier = ">=24" },
+    { name = "mcp", marker = "extra == 'mcp'", specifier = ">=1.0" },
+    { name = "pandas", marker = "extra == 'pandas'", specifier = ">=2.2" },
+    { name = "polars", marker = "extra == 'polars'", specifier = ">=1.0" },
+    { name = "pyarrow", specifier = ">=17" },
+    { name = "pydantic", specifier = ">=2.6" },
+    { name = "rich", specifier = ">=13" },
+    { name = "s3fs", marker = "extra == 's3'", specifier = ">=2024.3" },
+    { name = "typer", specifier = ">=0.12" },
+]
+provides-extras = ["polars", "pandas", "s3", "gcs", "azure", "keyring", "mcp"]
+
+[[package]]
 name = "coverage"
 version = "7.14.0"
 source = { registry = "https://pypi.org/simple" }
@@ -760,64 +818,6 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/b4/e1/48cedb2fe63626e91ded1edad159e2a4fb8b6906c4425eb7749673077ce7/cryptography-48.0.0-pp311-pypy311_pp73-manylinux_2_34_x86_64.whl", hash = "sha256:4defde8685ae324a9eb9d818717e93b4638ef67070ac9bc15b8ca85f63048355", size = 4666800, upload_time = "2026-05-04T22:59:27.474Z" },
     { url = "https://files.pythonhosted.org/packages/a2/ca/7e8365deec19afb2b2c7be7c1c0aa8f99633b54e90c570999acda93260fc/cryptography-48.0.0-pp311-pypy311_pp73-win_amd64.whl", hash = "sha256:db63bf618e5dea46c07de12e900fe1cdd2541e6dc9dbae772a70b7d4d4765f6a", size = 3739536, upload_time = "2026-05-04T22:59:29.61Z" },
 ]
-
-[[package]]
-name = "datagrove"
-version = "1.0.0b2"
-source = { editable = "packages/datagrove" }
-dependencies = [
-    { name = "duckdb" },
-    { name = "fsspec" },
-    { name = "ibis-framework", extra = ["duckdb"] },
-    { name = "jinja2" },
-    { name = "pyarrow" },
-    { name = "pydantic" },
-    { name = "rich" },
-    { name = "typer" },
-]
-
-[package.optional-dependencies]
-azure = [
-    { name = "adlfs" },
-]
-gcs = [
-    { name = "gcsfs" },
-]
-keyring = [
-    { name = "keyring" },
-]
-mcp = [
-    { name = "mcp" },
-]
-pandas = [
-    { name = "pandas" },
-]
-polars = [
-    { name = "polars" },
-]
-s3 = [
-    { name = "s3fs" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "adlfs", marker = "extra == 'azure'", specifier = ">=2024.3" },
-    { name = "duckdb", specifier = ">=1.1" },
-    { name = "fsspec", specifier = ">=2024.3" },
-    { name = "gcsfs", marker = "extra == 'gcs'", specifier = ">=2024.3" },
-    { name = "ibis-framework", extras = ["duckdb"], specifier = ">=10" },
-    { name = "jinja2", specifier = ">=3.1" },
-    { name = "keyring", marker = "extra == 'keyring'", specifier = ">=24" },
-    { name = "mcp", marker = "extra == 'mcp'", specifier = ">=1.0" },
-    { name = "pandas", marker = "extra == 'pandas'", specifier = ">=2.2" },
-    { name = "polars", marker = "extra == 'polars'", specifier = ">=1.0" },
-    { name = "pyarrow", specifier = ">=17" },
-    { name = "pydantic", specifier = ">=2.6" },
-    { name = "rich", specifier = ">=13" },
-    { name = "s3fs", marker = "extra == 's3'", specifier = ">=2024.3" },
-    { name = "typer", specifier = ">=0.12" },
-]
-provides-extras = ["polars", "pandas", "s3", "gcs", "azure", "keyring", "mcp"]
 
 [[package]]
 name = "decorator"
@@ -1091,123 +1091,6 @@ sdist = { url = "https://files.pythonhosted.org/packages/d9/29/d40217cbe2f6b1359
 wheels = [
     { url = "https://files.pythonhosted.org/packages/f7/ec/67fbef5d497f86283db54c22eec6f6140243aae73265799baaaa19cd17fb/ghp_import-2.1.0-py3-none-any.whl", hash = "sha256:8337dd7b50877f163d4c0289bc1f1c7f127550241988d568c1db512c4324a619", size = 11034, upload_time = "2022-05-02T15:47:14.552Z" },
 ]
-
-[[package]]
-name = "gmnspy"
-version = "1.0.0b2"
-source = { editable = "packages/gmnspy" }
-dependencies = [
-    { name = "datagrove" },
-]
-
-[package.optional-dependencies]
-all = [
-    { name = "anywidget" },
-    { name = "fastapi" },
-    { name = "geopandas" },
-    { name = "httpx" },
-    { name = "ipywidgets" },
-    { name = "jinja2" },
-    { name = "jsonschema" },
-    { name = "keyring" },
-    { name = "mcp" },
-    { name = "numpy" },
-    { name = "openpyxl" },
-    { name = "pandas" },
-    { name = "psutil" },
-    { name = "pydantic-settings" },
-    { name = "pyproj" },
-    { name = "pyyaml" },
-    { name = "requests" },
-    { name = "scipy" },
-    { name = "shapely" },
-    { name = "uvicorn", extra = ["standard"] },
-]
-bench = [
-    { name = "psutil" },
-]
-clean = [
-    { name = "geopandas" },
-    { name = "pyproj" },
-    { name = "shapely" },
-]
-dev-fixtures = [
-    { name = "duckdb" },
-    { name = "osmnx" },
-    { name = "pandas" },
-    { name = "pyarrow" },
-    { name = "shapely" },
-]
-graph = [
-    { name = "numpy" },
-    { name = "pandas" },
-    { name = "scipy" },
-]
-mcp = [
-    { name = "mcp" },
-]
-nl = [
-    { name = "httpx" },
-    { name = "jsonschema" },
-    { name = "keyring" },
-]
-notebook = [
-    { name = "anywidget" },
-    { name = "ipywidgets" },
-]
-osm = [
-    { name = "pyyaml" },
-    { name = "requests" },
-]
-overture = [
-    { name = "pyyaml" },
-]
-reports = [
-    { name = "jinja2" },
-    { name = "openpyxl" },
-    { name = "pyyaml" },
-]
-server = [
-    { name = "fastapi" },
-    { name = "httpx" },
-    { name = "pydantic-settings" },
-    { name = "uvicorn", extra = ["standard"] },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "anywidget", marker = "extra == 'notebook'", specifier = ">=0.9" },
-    { name = "datagrove", editable = "packages/datagrove" },
-    { name = "duckdb", marker = "extra == 'dev-fixtures'", specifier = ">=1.0" },
-    { name = "fastapi", marker = "extra == 'server'", specifier = ">=0.132.0" },
-    { name = "geopandas", marker = "extra == 'clean'", specifier = ">=1.0" },
-    { name = "gmnspy", extras = ["clean", "server", "mcp", "notebook", "osm", "overture", "graph", "reports", "nl", "bench"], marker = "extra == 'all'" },
-    { name = "httpx", marker = "extra == 'nl'", specifier = ">=0.27" },
-    { name = "httpx", marker = "extra == 'server'", specifier = ">=0.27" },
-    { name = "ipywidgets", marker = "extra == 'notebook'", specifier = ">=8.1" },
-    { name = "jinja2", marker = "extra == 'reports'", specifier = ">=3.1" },
-    { name = "jsonschema", marker = "extra == 'nl'", specifier = ">=4.0" },
-    { name = "keyring", marker = "extra == 'nl'", specifier = ">=24" },
-    { name = "mcp", marker = "extra == 'mcp'", specifier = ">=1.0" },
-    { name = "numpy", marker = "extra == 'graph'", specifier = ">=1.24" },
-    { name = "openpyxl", marker = "extra == 'reports'", specifier = ">=3.1" },
-    { name = "osmnx", marker = "extra == 'dev-fixtures'", specifier = ">=1.9" },
-    { name = "pandas", marker = "extra == 'dev-fixtures'", specifier = ">=2.2" },
-    { name = "pandas", marker = "extra == 'graph'", specifier = ">=2.0" },
-    { name = "psutil", marker = "extra == 'bench'", specifier = ">=5.9" },
-    { name = "pyarrow", marker = "extra == 'dev-fixtures'", specifier = ">=16" },
-    { name = "pydantic-settings", marker = "extra == 'server'", specifier = ">=2.2" },
-    { name = "pyproj", marker = "extra == 'clean'", specifier = ">=3.6" },
-    { name = "pyyaml", marker = "extra == 'osm'", specifier = ">=6" },
-    { name = "pyyaml", marker = "extra == 'overture'", specifier = ">=6" },
-    { name = "pyyaml", marker = "extra == 'reports'", specifier = ">=6" },
-    { name = "requests", marker = "extra == 'osm'", specifier = ">=2" },
-    { name = "scipy", marker = "extra == 'graph'", specifier = ">=1.11" },
-    { name = "shapely", marker = "extra == 'clean'", specifier = ">=2.0" },
-    { name = "shapely", marker = "extra == 'dev-fixtures'", specifier = ">=2.0" },
-    { name = "uvicorn", extras = ["standard"], marker = "extra == 'server'", specifier = ">=0.29" },
-]
-provides-extras = ["osm", "overture", "clean", "graph", "server", "mcp", "nl", "bench", "notebook", "reports", "all", "dev-fixtures"]
 
 [[package]]
 name = "google-api-core"
@@ -2393,6 +2276,123 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/4c/81/4629d0aa32302ef7b2ec65c75a728cc5ff4fa410c50096174c1632e70b3e/multidict-6.7.1-cp314-cp314t-win_arm64.whl", hash = "sha256:2bbd113e0d4af5db41d5ebfe9ccaff89de2120578164f86a5d17d5a576d1e5b2", size = 44719, upload_time = "2026-01-26T02:46:11.146Z" },
     { url = "https://files.pythonhosted.org/packages/81/08/7036c080d7117f28a4af526d794aab6a84463126db031b007717c1a6676e/multidict-6.7.1-py3-none-any.whl", hash = "sha256:55d97cc6dae627efa6a6e548885712d4864b81110ac76fa4e534c03819fa4a56", size = 12319, upload_time = "2026-01-26T02:46:44.004Z" },
 ]
+
+[[package]]
+name = "netstead"
+version = "1.0.0b2"
+source = { editable = "packages/netstead" }
+dependencies = [
+    { name = "corral" },
+]
+
+[package.optional-dependencies]
+all = [
+    { name = "anywidget" },
+    { name = "fastapi" },
+    { name = "geopandas" },
+    { name = "httpx" },
+    { name = "ipywidgets" },
+    { name = "jinja2" },
+    { name = "jsonschema" },
+    { name = "keyring" },
+    { name = "mcp" },
+    { name = "numpy" },
+    { name = "openpyxl" },
+    { name = "pandas" },
+    { name = "psutil" },
+    { name = "pydantic-settings" },
+    { name = "pyproj" },
+    { name = "pyyaml" },
+    { name = "requests" },
+    { name = "scipy" },
+    { name = "shapely" },
+    { name = "uvicorn", extra = ["standard"] },
+]
+bench = [
+    { name = "psutil" },
+]
+clean = [
+    { name = "geopandas" },
+    { name = "pyproj" },
+    { name = "shapely" },
+]
+dev-fixtures = [
+    { name = "duckdb" },
+    { name = "osmnx" },
+    { name = "pandas" },
+    { name = "pyarrow" },
+    { name = "shapely" },
+]
+graph = [
+    { name = "numpy" },
+    { name = "pandas" },
+    { name = "scipy" },
+]
+mcp = [
+    { name = "mcp" },
+]
+nl = [
+    { name = "httpx" },
+    { name = "jsonschema" },
+    { name = "keyring" },
+]
+notebook = [
+    { name = "anywidget" },
+    { name = "ipywidgets" },
+]
+osm = [
+    { name = "pyyaml" },
+    { name = "requests" },
+]
+overture = [
+    { name = "pyyaml" },
+]
+reports = [
+    { name = "jinja2" },
+    { name = "openpyxl" },
+    { name = "pyyaml" },
+]
+server = [
+    { name = "fastapi" },
+    { name = "httpx" },
+    { name = "pydantic-settings" },
+    { name = "uvicorn", extra = ["standard"] },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "anywidget", marker = "extra == 'notebook'", specifier = ">=0.9" },
+    { name = "corral", editable = "packages/corral" },
+    { name = "duckdb", marker = "extra == 'dev-fixtures'", specifier = ">=1.0" },
+    { name = "fastapi", marker = "extra == 'server'", specifier = ">=0.132.0" },
+    { name = "geopandas", marker = "extra == 'clean'", specifier = ">=1.0" },
+    { name = "httpx", marker = "extra == 'nl'", specifier = ">=0.27" },
+    { name = "httpx", marker = "extra == 'server'", specifier = ">=0.27" },
+    { name = "ipywidgets", marker = "extra == 'notebook'", specifier = ">=8.1" },
+    { name = "jinja2", marker = "extra == 'reports'", specifier = ">=3.1" },
+    { name = "jsonschema", marker = "extra == 'nl'", specifier = ">=4.0" },
+    { name = "keyring", marker = "extra == 'nl'", specifier = ">=24" },
+    { name = "mcp", marker = "extra == 'mcp'", specifier = ">=1.0" },
+    { name = "netstead", extras = ["clean", "server", "mcp", "notebook", "osm", "overture", "graph", "reports", "nl", "bench"], marker = "extra == 'all'" },
+    { name = "numpy", marker = "extra == 'graph'", specifier = ">=1.24" },
+    { name = "openpyxl", marker = "extra == 'reports'", specifier = ">=3.1" },
+    { name = "osmnx", marker = "extra == 'dev-fixtures'", specifier = ">=1.9" },
+    { name = "pandas", marker = "extra == 'dev-fixtures'", specifier = ">=2.2" },
+    { name = "pandas", marker = "extra == 'graph'", specifier = ">=2.0" },
+    { name = "psutil", marker = "extra == 'bench'", specifier = ">=5.9" },
+    { name = "pyarrow", marker = "extra == 'dev-fixtures'", specifier = ">=16" },
+    { name = "pydantic-settings", marker = "extra == 'server'", specifier = ">=2.2" },
+    { name = "pyproj", marker = "extra == 'clean'", specifier = ">=3.6" },
+    { name = "pyyaml", marker = "extra == 'osm'", specifier = ">=6" },
+    { name = "pyyaml", marker = "extra == 'overture'", specifier = ">=6" },
+    { name = "pyyaml", marker = "extra == 'reports'", specifier = ">=6" },
+    { name = "requests", marker = "extra == 'osm'", specifier = ">=2" },
+    { name = "scipy", marker = "extra == 'graph'", specifier = ">=1.11" },
+    { name = "shapely", marker = "extra == 'clean'", specifier = ">=2.0" },
+    { name = "shapely", marker = "extra == 'dev-fixtures'", specifier = ">=2.0" },
+    { name = "uvicorn", extras = ["standard"], marker = "extra == 'server'", specifier = ">=0.29" },
+]
+provides-extras = ["osm", "overture", "clean", "graph", "server", "mcp", "nl", "bench", "notebook", "reports", "all", "dev-fixtures"]
 
 [[package]]
 name = "networkx"

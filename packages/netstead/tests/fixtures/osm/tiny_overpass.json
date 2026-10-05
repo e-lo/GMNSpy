@@ -1,0 +1,14 @@
+{
+  "version": 0.6,
+  "generator": "netstead-tests (hand-written fixture, not real OSM data)",
+  "elements": [
+    {"type": "node", "id": 1, "lat": 42.000, "lon": -71.000},
+    {"type": "node", "id": 2, "lat": 42.001, "lon": -71.000},
+    {"type": "node", "id": 3, "lat": 42.002, "lon": -71.000},
+    {"type": "node", "id": 4, "lat": 42.002, "lon": -71.002},
+    {"type": "way", "id": 100, "nodes": [1, 2, 3], "tags": {"highway": "residential", "name": "Main St"}},
+    {"type": "way", "id": 101, "nodes": [3, 4], "tags": {"highway": "footway"}},
+    {"type": "way", "id": 102, "nodes": [4, 99], "tags": {"highway": "residential"}},
+    {"type": "way", "id": 103, "nodes": [1, 2, 4, 1], "tags": {"building": "yes"}}
+  ]
+}

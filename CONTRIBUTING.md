@@ -2,7 +2,7 @@
 
 ## Basic Setup
 
-This is a **uv workspace** with two packages — `datagrove` (generic Frictionless engine) and `gmnspy` (GMNS toolkit on top). Install both packages with **all extras**, editable, in a single command from the repo root:
+This is a **uv workspace** with two packages — `corral` (generic Frictionless engine) and `netstead` (GMNS toolkit on top). Install both packages with **all extras**, editable, in a single command from the repo root:
 
 ```bash
 uv sync --all-packages --all-extras
@@ -13,28 +13,28 @@ That's what CI runs. It creates `.venv/` at the workspace root with both package
 Run things via `uv run`:
 
 ```bash
-uv run gmnspy --help
-uv run datagrove --help
+uv run netstead --help
+uv run corral --help
 uv run pytest packages -n auto    # fast tier; see "Running tests" below
 ```
 
-> **zsh users:** `[` and `]` are glob characters on zsh (the default shell on macOS). If you want to install **just one** extra ad-hoc, quote the brackets: `uv add 'gmnspy[clean]'` (not `uv add gmnspy[clean]`, which gives `zsh: no matches found`). The workspace-level `uv sync --all-packages --all-extras` doesn't hit this — no brackets in the command.
+> **zsh users:** `[` and `]` are glob characters on zsh (the default shell on macOS). If you want to install **just one** extra ad-hoc, quote the brackets: `uv add 'netstead[clean]'` (not `uv add netstead[clean]`, which gives `zsh: no matches found`). The workspace-level `uv sync --all-packages --all-extras` doesn't hit this — no brackets in the command.
 
 ### One package at a time (rare)
 
 If you want to install only one of the two packages (e.g. to mimic what a downstream user sees):
 
 ```bash
-uv pip install -e 'packages/datagrove[polars,s3]'    # quoted for zsh
-uv pip install -e 'packages/gmnspy[clean,server]'    # transitively gets datagrove
+uv pip install -e 'packages/corral[polars,s3]'    # quoted for zsh
+uv pip install -e 'packages/netstead[clean,server]'    # transitively gets corral
 ```
 
 ### Older / non-uv setup (not recommended)
 
 ```bash
 pip install -r dev-requirements.txt
-pip install -e packages/datagrove
-pip install -e packages/gmnspy
+pip install -e packages/corral
+pip install -e packages/netstead
 ```
 
 ## General Process
@@ -86,7 +86,7 @@ Generally:
 
 ## Running tests
 
-Tests live in `packages/datagrove/tests` and `packages/gmnspy/tests` and use `pytest`. Run them through `uv run --all-extras` from the repo root.
+Tests live in `packages/corral/tests` and `packages/netstead/tests` and use `pytest`. Run them through `uv run --all-extras` from the repo root.
 
 **While iterating, run your domain. Before committing a cross-cutting change, run the default. Run the full suite before merge.**
 
@@ -101,29 +101,29 @@ Tests live in `packages/datagrove/tests` and `packages/gmnspy/tests` and use `py
 - **Default** skips tests marked `slow` (end-to-end runs, like executing every documented Python block or running the bench pipeline) and `perf` (performance-regression bounds). `pyproject.toml` sets this with `-m "not slow and not perf"` in `addopts`.
 - **Full** adds `-m ""`, which overrides that filter. Use `-m slow` or `-m perf` to run only one of those groups.
 - **`-n auto`** runs tests in parallel with `pytest-xdist` (a dev dependency). It's opt-in. Leave it off when you use `--pdb` or a single test. `addopts` pins `--dist=loadfile` so each test file stays on one worker.
-- **Naming a slow file is not enough.** `pytest packages/gmnspy/tests/test_cli_bench.py` deselects everything in it unless you add `-m ""`.
-- **`live_llm` tests** call real provider APIs and skip unless you opt in. See the docstring of `packages/gmnspy/tests/test_llm_live.py`.
+- **Naming a slow file is not enough.** `pytest packages/netstead/tests/test_cli_bench.py` deselects everything in it unless you add `-m ""`.
+- **`live_llm` tests** call real provider APIs and skip unless you opt in. See the docstring of `packages/netstead/tests/test_llm_live.py`.
 
 ### Per-domain commands
 
-Paths are relative to the repo root. `T=packages/gmnspy/tests`, `D=packages/datagrove/tests`.
+Paths are relative to the repo root. `T=packages/netstead/tests`, `D=packages/corral/tests`.
 
 | You touched | Run |
 |---|---|
-| `datagrove/engines`, `datagrove/io` | `$D/engines $D/io` |
-| `datagrove/validation`, `datagrove/quality` | `$D/validation $D/quality` |
-| anything else in datagrove | `packages/datagrove` (~15s; ~10s with `-n auto`) |
-| `gmnspy/workbench` | `$T/test_workbench_*.py $T/test_cli_workbench.py` |
-| `gmnspy/llm` | `$T/test_llm_*.py $T/test_cli_llm.py $T/test_workbench_llm_routes.py $T/test_workbench_ollama_pull.py` |
-| `gmnspy/select` | `$T/test_select_*.py` |
-| `gmnspy/osm` | `$T/test_osm_*.py` |
-| `gmnspy/overture` | `$T/test_overture_*.py` |
-| `gmnspy/map`, `gmnspy/viz` | `$T/test_map_*.py $T/test_viz_*.py` |
-| `gmnspy/graph`, `scope`, `semantics`, `indexes` | `$T/test_graph*.py $T/test_scope.py $T/test_semantics.py $T/test_indexes.py $T/test_network_scope_accessor.py` |
-| `gmnspy/network.py`, `quality`, `spec`, `clean`, geometry | `$T/test_network*.py $T/test_quality.py $T/test_spec.py $T/test_geom*.py $T/test_wkt.py $T/test_clean.py` |
-| `gmnspy/cli` | `$T/test_cli*.py` |
+| `corral/engines`, `corral/io` | `$D/engines $D/io` |
+| `corral/validation`, `corral/quality` | `$D/validation $D/quality` |
+| anything else in corral | `packages/corral` (~15s; ~10s with `-n auto`) |
+| `netstead/workbench` | `$T/test_workbench_*.py $T/test_cli_workbench.py` |
+| `netstead/llm` | `$T/test_llm_*.py $T/test_cli_llm.py $T/test_workbench_llm_routes.py $T/test_workbench_ollama_pull.py` |
+| `netstead/select` | `$T/test_select_*.py` |
+| `netstead/osm` | `$T/test_osm_*.py` |
+| `netstead/overture` | `$T/test_overture_*.py` |
+| `netstead/map`, `netstead/viz` | `$T/test_map_*.py $T/test_viz_*.py` |
+| `netstead/graph`, `scope`, `semantics`, `indexes` | `$T/test_graph*.py $T/test_scope.py $T/test_semantics.py $T/test_indexes.py $T/test_network_scope_accessor.py` |
+| `netstead/network.py`, `quality`, `spec`, `clean`, geometry | `$T/test_network*.py $T/test_quality.py $T/test_spec.py $T/test_geom*.py $T/test_wkt.py $T/test_clean.py` |
+| `netstead/cli` | `$T/test_cli*.py` |
 | docs (`*.md` with Python blocks) | `$T/test_documented_*.py -m ""` |
-| `gmnspy/bench` | `$T/bench $T/test_bench_*.py $T/test_cli_bench*.py -m ""` |
+| `netstead/bench` | `$T/bench $T/test_bench_*.py $T/test_cli_bench*.py -m ""` |
 
 A domain run skips the doctests in the source modules. The default run includes them.
 
@@ -141,7 +141,7 @@ Documentation uses `mkdocs` and can be built by:
 pip install docs/requirements.txt
 ```
 
-2. Building and serving a local copy from the `GMNSpy` folder
+2. Building and serving a local copy from the `Netstead` folder
 
 ```bash
 mkdocs serve

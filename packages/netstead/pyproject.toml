@@ -1,0 +1,191 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "netstead"
+version = "1.0.0b2"
+description = "Python toolkit for the General Modeling Network Specification (GMNS). Fast I/O at regional scale (parquet/duckdb/zip/URL), foreign-key validation with out-of-sync awareness, geographic + network-aware scoping, data-quality checks, network editing with atomic rollback, and a CLI + notebook + programmatic API."
+readme = "README.md"
+license = "Apache-2.0"
+# NB: this file is a copy of the workspace-root LICENSE so that the
+# published wheel actually contains it. Hatchling silently skips
+# license-files entries that go outside the package directory
+# (`../../LICENSE` produced wheels with no License-File: metadata and
+# no licenses/ directory). The dev workflow keeps the workspace
+# LICENSE authoritative; the per-package copies are duplicated for
+# wheel-build only.
+license-files = ["LICENSE"]
+requires-python = ">=3.11"
+authors = [{ name = "Elizabeth Sall" }]
+keywords = ["gmns", "transportation", "network", "modeling", "frictionless"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Scientific/Engineering :: GIS",
+]
+dependencies = [
+    # Co-evolving sibling package — pinned to the same major so a future
+    # corral 2.x doesn't silently break installed netstead 1.x.
+    "corral>=1.0.0b1,<2",  # transitively brings typer + rich + ibis + duckdb + pyarrow + fsspec
+]
+
+[project.optional-dependencies]
+osm = [
+    # Build a GMNS network from OpenStreetMap (netstead.osm). requests = Overpass
+    # / Nominatim access; pyyaml = the maintained tag-mapping data loader.
+    "requests>=2",
+    "pyyaml>=6",
+]
+overture = [
+    # Build a GMNS network from Overture Maps (netstead.overture). Overture is
+    # native GeoParquet read directly by corral's bundled duckdb engine
+    # (read_parquet + the spatial/httpfs extensions — no extra dep), so the
+    # only addition is the maintained mapping-data loader. Place-string areas
+    # are geocoded via the [osm] extra's Nominatim helper; bbox/point areas
+    # need nothing more.
+    "pyyaml>=6",
+]
+clean = [
+    "shapely>=2.0",
+    "geopandas>=1.0",
+    "pyproj>=3.6",
+]
+graph = [
+    # Routing/analysis engine (netstead.graph): CSR graph, connectivity,
+    # isochrones, shortest paths. scipy.sparse is the core; numpy/pandas
+    # for assembly. geopandas (for to_geodataframe) rides on [clean].
+    "scipy>=1.11",
+    "numpy>=1.24",
+    "pandas>=2.0",
+]
+server = [
+    # 0.132.0 is the first release whose routes default strict_content_type=True
+    # (rejects a JSON POST with no/invalid Content-Type) — one of the signals
+    # our own local CSRF guard in workbench/server.py relies on being available.
+    "fastapi>=0.132.0",
+    "uvicorn[standard]>=0.29",
+    "pydantic-settings>=2.2",
+    "httpx>=0.27",  # required by fastapi.testclient + nice-to-have client
+]
+mcp = [
+    "mcp>=1.0",
+]
+nl = [
+    # Natural-language features (netstead.select, netstead.llm). httpx drives the
+    # hand-rolled provider adapters (Anthropic, OpenAI and compatible, Gemini,
+    # Ollama; no vendor SDKs); jsonschema validates tool-call output and the
+    # emitted selection fragment; keyring stores API keys in the OS keychain.
+    # The StubParser + resolver need none of these. Requires [graph] for path search.
+    "jsonschema>=4.0",
+    "httpx>=0.27",
+    "keyring>=24",
+]
+bench = [
+    # Benchmark harness (netstead.bench): wall/CPU time + Python-heap peak come
+    # from the stdlib; psutil is the one small dep, for cross-platform process
+    # RSS (the only metric that sees DuckDB's out-of-heap arena). The harness
+    # degrades to RSS=None without it. Selection/viz benchmarks also want the
+    # [nl] / core viz paths; OSM-create wants [osm].
+    "psutil>=5.9",
+]
+notebook = [
+    "ipywidgets>=8.1",
+    "anywidget>=0.9",
+]
+reports = [
+    # Interactive network-on-map HTML viewer (netstead.map): openpyxl for the
+    # XLSX findings writer, jinja2 for the template engine, pyyaml for the
+    # edit log round-trip. Leaflet ships vendored under netstead/map/templates/
+    # so no JS/CSS network calls are needed.
+    "openpyxl>=3.1",
+    "jinja2>=3.1",  # also a transitive corral dep; pinned explicitly here
+    "pyyaml>=6",    # edit-log load/dump (netstead.map.edits)
+]
+all = [
+    "netstead[clean,server,mcp,notebook,osm,overture,graph,reports,nl,bench]",
+]
+dev-fixtures = [
+    # Only required to *rebuild* bundled example fixtures (e.g. Leavenworth).
+    # Consumers loading the bundled csv/parquet/duckdb fixtures need none of these.
+    "osmnx>=1.9",
+    "shapely>=2.0",
+    "pandas>=2.2",
+    "pyarrow>=16",
+    "duckdb>=1.0",
+]
+
+[project.urls]
+Homepage = "https://e-lo.github.io/netstead"
+Source = "https://github.com/e-lo/netstead"
+Issues = "https://github.com/e-lo/netstead/issues"
+Changelog = "https://github.com/e-lo/netstead/blob/main/CHANGELOG.md"
+
+[project.scripts]
+netstead = "netstead.cli.app:app"
+
+[project.entry-points."corral.quality.rules"]
+# Discovered + registered automatically by corral.quality.run_quality on
+# first call. `register_all` is a zero-arg factory returning the rule
+# instances; it also calls register_rule on each so direct-invocation works.
+netstead_rules = "netstead.quality:register_all"
+
+[tool.hatch.build.targets.wheel]
+# Explicit include — we list every non-Python data file the package ships
+# (vendored GMNS spec JSON + bundled example-network binaries) so that a
+# future gitignore tweak can't silently drop them from the wheel.
+#
+# The previous `artifacts = [...]` block was for re-including
+# gitignored files, which doesn't apply here (none of these are
+# gitignored). Switching to `include` makes packaging deterministic
+# regardless of gitignore state.
+packages = ["netstead"]
+include = [
+    "netstead/**/*.py",
+    "netstead/spec/**/*.json",
+    "netstead/spec/**/VERSION",
+    "netstead/spec/**/README.md",
+    # GMNS selection profile schema (netstead.select.emit) + web-app template.
+    "netstead/select/schema/*.json",
+    "netstead/select/templates/*.html",
+    "netstead/viz/templates/*.html",
+    # Netstead Workbench static front end (netstead.workbench; served by `netstead app`).
+    "netstead/workbench/static/*.html",
+    "netstead/workbench/static/*.css",
+    "netstead/workbench/static/js/*.js",
+    # Maintained LLM provider/model catalog (netstead.llm).
+    "netstead/llm/*.toml",
+    # Shipped assistant context sent with NL prompts (netstead.llm.context).
+    "netstead/llm/context/*.md",
+    # Maintained build-cost coefficients for the Open / Import wizard's estimate.
+    "netstead/workbench/data/*.toml",
+    # Maintained OSM->GMNS tag-mapping + network-filter data (netstead.osm).
+    "netstead/osm/mappings/*.yaml",
+    # Maintained Overture->GMNS property-mapping + network-filter data
+    # (netstead.overture).
+    "netstead/overture/mappings/*.yaml",
+    # Bundled example networks (Leavenworth, WA; see
+    # netstead/fixtures/leavenworth/README.md for provenance).
+    "netstead/fixtures/**/*.csv",
+    "netstead/fixtures/**/*.parquet",
+    "netstead/fixtures/**/*.duckdb",
+    "netstead/fixtures/**/*.zip",
+    "netstead/fixtures/**/datapackage.json",
+    "netstead/fixtures/**/README.md",
+    # netstead.reports HTML viewer assets (Jinja template, our own CSS/JS, and
+    # the vendored Leaflet 1.9.4 bundle so the report is fully offline).
+    # netstead.map HTML viewer assets (Jinja templates, our own CSS/JS, the
+    # vendored Leaflet 1.9.4 bundle, and water.css — so reports are fully
+    # offline).
+    "netstead/map/templates/*.j2",
+    "netstead/map/templates/*.css",
+    "netstead/map/templates/*.js",
+]
+
+[tool.hatch.build.targets.sdist]
+include = ["netstead", "README.md"]

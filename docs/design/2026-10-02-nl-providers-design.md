@@ -1,13 +1,13 @@
 # Multi-provider LLM support for the Workbench's natural-language features
 
-Status: **accepted (revised with the user's decisions)** · Date: 2026-10-02 · Owner: gmnspy · Phase: after P1a, before P3
+Status: **accepted (revised with the user's decisions)** · Date: 2026-10-02 · Owner: netstead · Phase: after P1a, before P3
 
-Related: [Workbench design](2026-10-02-gmnspy-workbench-design.md) (core Action bus, §e assistant, §g settings) · [network-viewer PRD §15](2026-09-30-network-viewer-prd.md) (NL action schema) · [NL selection design](2026-09-23-nl-selection-design.md) · [P1a plan](2026-10-02-workbench-p1a-plan.md) · Plan: [2026-10-02-nl-providers-plan.md](2026-10-02-nl-providers-plan.md)
+Related: [Workbench design](2026-10-02-netstead-workbench-design.md) (core Action bus, §e assistant, §g settings) · [network-viewer PRD §15](2026-09-30-network-viewer-prd.md) (NL action schema) · [NL selection design](2026-09-23-nl-selection-design.md) · [P1a plan](2026-10-02-workbench-p1a-plan.md) · Plan: [2026-10-02-nl-providers-plan.md](2026-10-02-nl-providers-plan.md)
 
 ## Context
 
 Today natural language means a single provider:
-- `gmnspy.select.parse.ClaudeParser` wraps the `anthropic` SDK. It forces the `emit_selection_intent` tool, and its model defaults to `claude-sonnet-5`.
+- `netstead.select.parse.ClaudeParser` wraps the `anthropic` SDK. It forces the `emit_selection_intent` tool, and its model defaults to `claude-sonnet-5`.
 - `StubParser` is a regex grammar used offline and in tests.
 - `Settings.select.provider` is `Literal["stub", "claude"]`. The key is whatever `anthropic.Anthropic()` finds in `ANTHROPIC_API_KEY`.
 - There is no UI for keys, no way to choose a model, and no local option.
@@ -45,7 +45,7 @@ PRD §15 already requires the NL layer to stay provider-agnostic. Its action sch
 2. **Keys are write-only from the browser's point of view.** They are never in TOML, any API response, history, `to_python`, SSE, logs or error messages.
 3. **Keys can be configured from the UX** ("Set key / Replace / Remove / Test connection"), and also from the CLI for headless or exposed-bind setups.
 4. **Provider + model picker** at every NL entry point. It lists only usable providers and shows a status dot. Changes apply to the session; **Make default** persists them.
-5. **Model catalog as maintained data** (`gmnspy/llm/models.toml`), with a user overlay file. Ollama models are discovered at runtime.
+5. **Model catalog as maintained data** (`netstead/llm/models.toml`), with a user overlay file. Ollama models are discovered at runtime.
 6. **Better parses and matches, under user control:**
    - the shipped guide;
    - project notes;
@@ -76,19 +76,19 @@ PRD §15 already requires the NL layer to stay provider-agnostic. Its action sch
 | Interface | `LLMProvider.complete(CompletionRequest) -> Completion` and `list_models() -> list[str]`. A request carries a cacheable `context` and a per-call `system`, plus `temperature`. |
 | Parser | `LLMParser(provider, model).parse(utterance, *, context=PromptContext)`. `ClaudeParser` is kept as a back-compat subclass (default Haiku). |
 | Tool-less models | Automatic JSON mode (same provider, same model), validated with a bounded repair loop |
-| Catalog | `gmnspy/llm/models.toml` plus `<user config dir>/llm_models.toml` overlay. Tiny defaults. Ollama comes from `GET /api/tags`. |
-| Key storage | env (`GMNSPY_<P>_API_KEY`, then the provider's own name) → OS keyring (service `gmnspy-llm`). **No file.** |
+| Catalog | `netstead/llm/models.toml` plus `<user config dir>/llm_models.toml` overlay. Tiny defaults. Ollama comes from `GET /api/tags`. |
+| Key storage | env (`NETSTEAD_<P>_API_KEY`, then the provider's own name) → OS keyring (service `netstead-llm`). **No file.** |
 | Key binding | A key slot is bound to the endpoint origin it was entered for. Changing `base_url` never sends an existing key to a new host. |
-| Key routes | `/api/llm/*`: not Actions, not recorded. Writes need a loopback bind plus the `X-GMNSpy-Secrets: 1` header. |
+| Key routes | `/api/llm/*`: not Actions, not recorded. Writes need a loopback bind plus the `X-Netstead-Secrets: 1` header. |
 | Settings | `select.provider ∈ {stub, anthropic, openai, gemini, ollama}` (`claude` → `anthropic`); `select.model: str \| None`; `llm.<provider>.{base_url, timeout_s}`; **`llm.quality.*`** |
 | Picker choice | A recorded `SetSetting(scope="session")`. **Make default** records the same pair with `scope="user"`. |
-| Context | Shipped `gmnspy/llm/context/gmns_assistant.md` (cached prefix) + optional `AGENTS.md`/`CLAUDE.md` (gated per provider) |
+| Context | Shipped `netstead/llm/context/gmns_assistant.md` (cached prefix) + optional `AGENTS.md`/`CLAUDE.md` (gated per provider) |
 | Errors | `LLMError` subclasses become `ActionError` with an actionable message. An invalid model *output* still becomes a "could not parse" selection after repairs. |
 
 ## Architecture
 
 ```
-gmnspy/llm/                         (new, provider-neutral; no gmnspy.select / workbench imports)
+netstead/llm/                         (new, provider-neutral; no netstead.select / workbench imports)
   types.py        Tool, Message, ToolCall, CompletionRequest(context, system, temperature, …), Completion, LLMProvider
   errors.py       LLMError → MissingKey, InvalidKey, RateLimited, ProviderTimeout, ProviderUnavailable,
                   ModelNotFound, BadRequest, BadResponse, ToolsUnsupported
@@ -102,22 +102,22 @@ gmnspy/llm/                         (new, provider-neutral; no gmnspy.select / w
                   is_local(), grounding_on(), project_context_on(), disclosure()
   context/        gmns_assistant.md (shipped guide) + assistant_context(), find_project_context(), read_capped()
 
-gmnspy/select/prompt.py      PromptContext, render_prompt(), vocabulary_from_links(), close_match_hint()
-gmnspy/select/parse.py       LLMParser, ClaudeParser (alias), make_parser(select, registry), payload_from_intent()
-gmnspy/config.py             SelectSettings widened; LLMSettings (+ LLMQualitySettings)
-gmnspy/workbench/session.py  Session.llm; prompt context; few-shot memory; close-match retry; LLMError → ActionError
-gmnspy/workbench/routes/llm.py   /api/llm/{providers, models, keys/{p}, test}
-gmnspy/workbench/static/js/llm.js  header picker (+ Make default) + "Language models" panel (+ quality & context)
-gmnspy/cli/commands/llm.py   gmnspy llm {status, set-key, remove-key, test, models}
-datagrove/io/credentials.py  + system_keyring(): shared "is a real OS keyring usable?" check
+netstead/select/prompt.py      PromptContext, render_prompt(), vocabulary_from_links(), close_match_hint()
+netstead/select/parse.py       LLMParser, ClaudeParser (alias), make_parser(select, registry), payload_from_intent()
+netstead/config.py             SelectSettings widened; LLMSettings (+ LLMQualitySettings)
+netstead/workbench/session.py  Session.llm; prompt context; few-shot memory; close-match retry; LLMError → ActionError
+netstead/workbench/routes/llm.py   /api/llm/{providers, models, keys/{p}, test}
+netstead/workbench/static/js/llm.js  header picker (+ Make default) + "Language models" panel (+ quality & context)
+netstead/cli/commands/llm.py   netstead llm {status, set-key, remove-key, test, models}
+corral/io/credentials.py  + system_keyring(): shared "is a real OS keyring usable?" check
 ```
 
 **Dependency direction:**
-- `gmnspy.llm` → `gmnspy.config` and `datagrove.io.credentials`.
-- `gmnspy.select` → `gmnspy.llm`.
-- `gmnspy.workbench` → both.
+- `netstead.llm` → `netstead.config` and `corral.io.credentials`.
+- `netstead.select` → `netstead.llm`.
+- `netstead.workbench` → both.
 
-`gmnspy.llm` imports nothing optional at module import time: `httpx`, `jsonschema` and `keyring` are imported lazily. So `import gmnspy.select` still works on a core install, and the `--doctest-modules` sweep stays green.
+`netstead.llm` imports nothing optional at module import time: `httpx`, `jsonschema` and `keyring` are imported lazily. So `import netstead.select` still works on a core install, and the `--doctest-modules` sweep stays green.
 
 ## Provider interface
 
@@ -179,7 +179,7 @@ Notes:
 
 ### Prompt caching
 
-`render_prompt` (in `gmnspy.select.prompt`) puts everything that only changes when the network or the settings change first, in one **stable** block:
+`render_prompt` (in `netstead.select.prompt`) puts everything that only changes when the network or the settings change first, in one **stable** block:
 - the system prompt;
 - the shipped guide;
 - the project notes;
@@ -194,7 +194,7 @@ How each provider caches:
 
 ## Structured output: forced tool, JSON mode, repair loop
 
-`gmnspy.llm.structured.request_tool_call(provider, *, model, tool, user, system, context, validate, json_mode=False, max_repairs=1, temperature=None)`:
+`netstead.llm.structured.request_tool_call(provider, *, model, tool, user, system, context, validate, json_mode=False, max_repairs=1, temperature=None)`:
 
 1. **Tools mode:** send `tools=(tool,)` and `force_tool=tool.name`. On `ToolsUnsupported`, switch to JSON mode.
 2. **JSON mode:** append "Reply with ONLY one JSON object … schema: …" to the per-call system text. Set `json_schema` so that Ollama constrains decoding natively.
@@ -220,7 +220,7 @@ Every knob is a normal setting, so it shows in the UI, the CLI's `config.toml`, 
 | `temperature` | `0.0` | — | Deterministic parses by default; blank means the provider default |
 
 **The two context layers in detail.**
-- **(a) `gmnspy/llm/context/gmns_assistant.md`** ships with gmnspy and is maintained like `models.toml`.
+- **(a) `netstead/llm/context/gmns_assistant.md`** ships with netstead and is maintained like `models.toml`.
   - It covers the link fields and their meanings, how to choose one primary selector, how to map direction words and route numbers, how anchors work, how to use `conditions` and `modes`, seven worked examples, and a note that more action tools will come.
   - It is identical for all providers.
   - A drift test checks that it names every property of the selection tool and that every worked example is valid tool input.
@@ -252,7 +252,7 @@ The default models are small. For one forced tool call with a short utterance th
 | Over-filling optional fields | Small models invent anchors or conditions | Guide: "leave out any field you don't need"; null-dropping; `IntentError` validation | Few-shot (`few_shot = true`) once a few selections have resolved |
 | Temperature sensitivity | Sampling noise affects small models most | `temperature = 0.0` | Keep 0 |
 
-## Model catalog (`gmnspy/llm/models.toml`)
+## Model catalog (`netstead/llm/models.toml`)
 
 Maintained data, one table per provider (`label`, `kind`, `base_url`, `key_env`, `default_model`, `[[models]]` with `id`, `label`, `tier`, `tools`).
 
@@ -263,7 +263,7 @@ Maintained data, one table per provider (`label`, `kind`, `base_url`, `key_env`,
 | Gemini | `gemini-2.5-flash-lite` | `gemini-2.5-flash`, `gemini-2.5-pro` | **VERIFY** |
 | Ollama | `qwen3:4b` | `qwen3:8b` (suggestions only; the picker lists `GET /api/tags`) | **VERIFY** tags |
 
-- `gmnspy llm test <provider>` reports every catalog id the live endpoint does not serve (`catalog_missing`), so verification is one command per release.
+- `netstead llm test <provider>` reports every catalog id the live endpoint does not serve (`catalog_missing`), so verification is one command per release.
 - **User overlay:** `<user config dir>/llm_models.toml` can add or relabel models and change `label`/`default_model`. It **cannot** change `base_url`, `key_env` or `kind`, because those decide where keys are sent.
 - `select.model` is a free string. The catalog drives the picker and is never a whitelist.
 
@@ -271,16 +271,16 @@ Maintained data, one table per provider (`label`, `kind`, `base_url`, `key_env`,
 
 ### Storage and resolution
 
-`SecretStore.lookup(slot)` checks, in order (the same "explicit beats ambient" shape as datagrove's `resolve_credentials`):
-1. **env**, for the official endpoint only: `GMNSPY_<PROVIDER>_API_KEY`, then the provider-standard name (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`). The names come from `key_env` in the catalog.
-2. **OS keyring:** `keyring.get_password("gmnspy-llm", slot.name)`. This uses Keychain on macOS, Credential Manager on Windows, and Secret Service on Linux.
+`SecretStore.lookup(slot)` checks, in order (the same "explicit beats ambient" shape as corral's `resolve_credentials`):
+1. **env**, for the official endpoint only: `NETSTEAD_<PROVIDER>_API_KEY`, then the provider-standard name (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`). The names come from `key_env` in the catalog.
+2. **OS keyring:** `keyring.get_password("netstead-llm", slot.name)`. This uses Keychain on macOS, Credential Manager on Windows, and Secret Service on Linux.
 
 **There is no plaintext fallback.** When `system_keyring()` finds no usable backend (headless Linux, a container, or WSL without a Secret Service):
-- `SecretStore.set` refuses, with the same message `MissingKey` gives: "This machine has no OS keyring, so set GMNSPY_OPENAI_API_KEY or OPENAI_API_KEY in the environment that starts gmnspy, then restart it."
+- `SecretStore.set` refuses, with the same message `MissingKey` gives: "This machine has no OS keyring, so set NETSTEAD_OPENAI_API_KEY or OPENAI_API_KEY in the environment that starts netstead, then restart it."
 - The UI hides **Set key** and shows each provider's env var names (`key_env` in the status row).
-- `gmnspy llm status` prints `key storage: none (no OS keyring): use environment variables`.
+- `netstead llm status` prints `key storage: none (no OS keyring): use environment variables`.
 
-Datagrove gains one public helper, `system_keyring()`. Both packages use it, so "is there a keyring?" has one answer. Datagrove's `resolve_credentials` cascade for data hosts is unchanged. LLM keys use their own keyring service, so they never leak into fsspec `storage_options`.
+Corral gains one public helper, `system_keyring()`. Both packages use it, so "is there a keyring?" has one answer. Corral's `resolve_credentials` cascade for data hosts is unchanged. LLM keys use their own keyring service, so they never leak into fsspec `storage_options`.
 
 **Env keys can't be removed from the UI.** The UI shows "key set · env" with no Remove button.
 
@@ -304,10 +304,10 @@ sequenceDiagram
     participant K as OS keyring
     participant P as Provider API
     participant D as Session.dispatch
-    U->>R: PUT /api/llm/keys/openai {key} + X-GMNSpy-Secrets: 1
+    U->>R: PUT /api/llm/keys/openai {key} + X-Netstead-Secrets: 1
     Note over R: loopback bind? header? Host/Origin guard (middleware)
     R->>S: set(KeySlot("openai"), key)
-    S->>K: set_password("gmnspy-llm", "openai", key)
+    S->>K: set_password("netstead-llm", "openai", key)
     R-->>U: {providers:[{provider:"openai", configured:true, source:"keyring", sends:[…]}…]}  (no key)
     R-->>U: SSE event "llm" (status only); log "llm key set for openai (keyring)"
     Note over U: input cleared immediately; key never enters store.js/DOM/storage
@@ -326,7 +326,7 @@ Setting a key is **not an Action**. The only traces are a status-only SSE `llm` 
 
 `SetSetting` rejects values that *look like* an API key before the action is recorded. The `/api/actions` 422 body stops echoing input values.
 
-## Settings changes (`gmnspy/config.py`)
+## Settings changes (`netstead/config.py`)
 
 ```python
 class SelectSettings(_Section):
@@ -359,30 +359,30 @@ class LLMSettings(_Section):            # endpoints and quality knobs, never key
 - Changing any `llm.*` or `select.*` key resets the session's cached parser and provider registry.
 - The P1b Settings form will show these too. P1b should hide `llm.*` there, because the Language-models panel edits it.
 
-## API routes (`gmnspy/workbench/routes/llm.py`)
+## API routes (`netstead/workbench/routes/llm.py`)
 
 | Route | Recorded? | Guard | Returns |
 |---|---|---|---|
 | `GET /api/llm/providers` | no | Host guard | `{providers:[{provider,label,kind,base_url,local,default_model,key_env,sends,configured,source,usable,error,models}], keyring, selected:{provider,model}, key_writes}` |
 | `GET /api/llm/models?provider=` | no | Host guard | `{provider, models:[{id,label,tier,tools,installed?}]}` |
-| `PUT /api/llm/keys/{provider}` body `{key}` | **no** (log line + SSE status) | Host + Origin + loopback bind + `X-GMNSpy-Secrets: 1` | the providers snapshot |
+| `PUT /api/llm/keys/{provider}` body `{key}` | **no** (log line + SSE status) | Host + Origin + loopback bind + `X-Netstead-Secrets: 1` | the providers snapshot |
 | `DELETE /api/llm/keys/{provider}` | **no** | same | the providers snapshot |
 | `POST /api/llm/test` body `{provider, model?}` | no | same | `{ok, latency_ms, models_served, catalog_missing, message}` or `{ok:false, error_type, message}` |
-| `POST /api/llm/ollama/pull` body `{model}` | **no** (job events only; see below) | Host + Origin + loopback bind + `X-GMNSpy-Secrets: 1` | `202 {job}` |
+| `POST /api/llm/ollama/pull` body `{model}` | **no** (job events only; see below) | Host + Origin + loopback bind + `X-Netstead-Secrets: 1` | `202 {job}` |
 
 - `source` is `"env"`, `"keyring"` or `null`. The `PUT` body is validated inside the handler, so a 422 can never echo it.
 - Choosing a provider or model is **not** a route. It is a recorded, replayable `set_setting` action.
 
-### Pulling a model (`POST /api/llm/ollama/pull`, `gmnspy llm pull`)
+### Pulling a model (`POST /api/llm/ollama/pull`, `netstead llm pull`)
 
 Downloading a model can be several gigabytes, so it gets its own guards and lifecycle rather than
 reusing the key-write or Action machinery above.
 
-- **Guards.** The same loopback bind and `X-GMNSpy-Secrets: 1` header as a key write (`pull_guard`
+- **Guards.** The same loopback bind and `X-Netstead-Secrets: 1` header as a key write (`pull_guard`
   in `routes/llm.py`), plus `llm.ollama.base_url` must resolve to *this* machine
   (`ProviderRegistry.is_local("ollama")`): the browser can only make this process download, never
   point it at another host. The model name itself is validated by
-  `valid_model_name` (`gmnspy.llm.providers.ollama`): a plain `[namespace/]name[:tag]`, never a URL
+  `valid_model_name` (`netstead.llm.providers.ollama`): a plain `[namespace/]name[:tag]`, never a URL
   or a dotted registry host (which Ollama would read as a different registry).
 - **A background job, not an Action.** The route submits an `ollama_pull` job
   (`session.jobs.submit`) and answers `202` with the job's snapshot immediately; progress streams
@@ -393,15 +393,15 @@ reusing the key-write or Action machinery above.
 - **409 on a duplicate.** A second `POST` for the same model while its own pull job is still
   `running` is refused with `409` ("… is already being pulled; see Jobs") instead of starting a
   second download of the same model.
-- **The CLI's `gmnspy llm pull MODEL`** runs the same download from a terminal, with a Rich
+- **The CLI's `netstead llm pull MODEL`** runs the same download from a terminal, with a Rich
   progress bar instead of job events, and treats a bare name as `name:latest` when checking
-  whether the model is already installed, so `gmnspy llm pull qwen3` recognizes an installed
+  whether the model is already installed, so `netstead llm pull qwen3` recognizes an installed
   `qwen3:latest` and warns before re-downloading rather than always reporting it as new.
 
 **Catalog `thinking` flag and the reasoning-model token budget.** Two related fixes (commit
 `bab6083`) keep a model's hidden reasoning from silently spending the whole output budget before
 any visible reply, which otherwise shows up as an empty or truncated selection:
-- `ModelInfo.thinking` (`gmnspy/llm/catalog.py`) marks an Ollama model that emits hidden `thinking`
+- `ModelInfo.thinking` (`netstead/llm/catalog.py`) marks an Ollama model that emits hidden `thinking`
   output by default (`qwen3:4b` and `qwen3:8b` in `models.toml`). The Ollama adapter sends
   `"think": false` for exactly those models, and omits the `think` key entirely for every other
   model (sending it to a model the catalog doesn't mark errors with "does not support thinking").
@@ -431,10 +431,10 @@ any visible reply, which otherwise shows up as an empty or truncated selection:
 **"Language models" panel**, opened from **Models…**. Until P1b ships the Settings workspace, it floats. `llm.js` renders the whole panel into `#llm-panel`, so P1b can mount it.
 
 - **Privacy note** for the selected provider. An example for Anthropic with defaults:
-  > Anthropic is a remote service. Each selection sends: your utterance; the selection tool's schema (GMNS field names such as lanes); the GMNS assistant guide that ships with gmnspy. Never your network tables or files.
+  > Anthropic is a remote service. Each selection sends: your utterance; the selection tool's schema (GMNS field names such as lanes); the GMNS assistant guide that ships with netstead. Never your network tables or files.
 
   For Ollama: "Ollama (local) runs on this machine, so nothing leaves it." followed by its list.
-- **Storage line:** "Keys are stored in your OS keychain (keyring), or read from environment variables", or the no-keychain instruction, or "key changes are disabled because the Workbench is exposed to the network; use `gmnspy llm set-key`".
+- **Storage line:** "Keys are stored in your OS keychain (keyring), or read from environment variables", or the no-keychain instruction, or "key changes are disabled because the Workbench is exposed to the network; use `netstead llm set-key`".
 - **One row per provider:** dot, label, `local` tag, status ("key set · keyring", "no key · set OPENAI_API_KEY …", "running · 3 model(s)", or the error text). The actions are **Set key / Replace** (an inline `type=password` field), **Remove** (with confirmation) and **Test**.
 - **Quality & context:** a control per `llm.quality` key. Changes are saved with `scope:"user"` and refresh the privacy note.
 - **Ollama URL**, and the **model catalog** view with the overlay-file hint.
@@ -442,20 +442,20 @@ any visible reply, which otherwise shows up as an empty or truncated selection:
 **Key hygiene in the browser.** The key exists only in the password input until the `PUT`. The input is cleared in the same tick and the form removed from the DOM. Nothing is written to `store.js`, `localStorage` or `sessionStorage`, and a static test asserts it.
 
 **CLI** (for headless use and exposed binds):
-- `gmnspy llm status [--json]`
-- `gmnspy llm set-key PROVIDER [--stdin]`: a hidden prompt, never argv
-- `gmnspy llm remove-key PROVIDER`
-- `gmnspy llm test PROVIDER [--model M]`
-- `gmnspy llm models PROVIDER`
+- `netstead llm status [--json]`
+- `netstead llm set-key PROVIDER [--stdin]`: a hidden prompt, never argv
+- `netstead llm remove-key PROVIDER`
+- `netstead llm test PROVIDER [--model M]`
+- `netstead llm models PROVIDER`
 
-`gmnspy select` and `gmnspy app` accept `--provider {stub,anthropic,openai,gemini,ollama,claude}` and `--model`.
+`netstead select` and `netstead app` accept `--provider {stub,anthropic,openai,gemini,ollama,claude}` and `--model`.
 
 ## Error handling
 
 | Condition | Raised | User sees (toast + failed history entry) |
 |---|---|---|
-| No key (keyring available) | `MissingKey` | "OpenAI: no API key is configured. Add one in Settings → Language models, or set GMNSPY_OPENAI_API_KEY or OPENAI_API_KEY." |
-| No key (no keyring) | `MissingKey` | "OpenAI: no API key is configured. This machine has no OS keyring, so set GMNSPY_OPENAI_API_KEY or OPENAI_API_KEY in the environment that starts gmnspy, then restart it." |
+| No key (keyring available) | `MissingKey` | "OpenAI: no API key is configured. Add one in Settings → Language models, or set NETSTEAD_OPENAI_API_KEY or OPENAI_API_KEY." |
+| No key (no keyring) | `MissingKey` | "OpenAI: no API key is configured. This machine has no OS keyring, so set NETSTEAD_OPENAI_API_KEY or OPENAI_API_KEY in the environment that starts netstead, then restart it." |
 | 401/403 | `InvalidKey` | "OpenAI rejected the API key (HTTP 401). Replace it in Settings → Language models." (no provider detail) |
 | 429 | `RateLimited(retry_after_s)` | "Gemini rate limit or quota reached (HTTP 429); retry in 20 s." |
 | Timeout / 408 | `ProviderTimeout` | "Ollama did not answer within 120 s; try again, or raise the timeout in Settings → Language models." |
@@ -481,7 +481,7 @@ Every message is built by our code. Provider `error.message` text passes through
 ### Adversaries
 
 - **ADV-web:** a malicious web page in the user's browser (cross-origin requests, DNS rebinding).
-- **ADV-repo:** a malicious `gmnspy.toml` or `AGENTS.md` in a cloned project, or a hostile env var.
+- **ADV-repo:** a malicious `netstead.toml` or `AGENTS.md` in a cloned project, or a hostile env var.
 - **ADV-local:** another OS user or process that can reach `127.0.0.1:8850`.
 - **ADV-lan:** a LAN host, when the user binds `--host 0.0.0.0`.
 - **ADV-llm:** a provider's or model's output, including prompt injection.
@@ -492,7 +492,7 @@ Every message is built by our code. Provider `error.message` text passes through
 | # | Threat | Adversary | Mitigation | Residual |
 |---|---|---|---|---|
 | T1 | Read a key through the API | web, local, lan | No route, response, SSE event, history entry or `to_python` snippet carries a key. The canary test (plan Task 15) greps every route, SSE event, log record and config file | None via the API |
-| T2 | Set, replace or delete a key cross-origin | web | Host allowlist + Origin/`Sec-Fetch-Site` guard. Key routes also need `X-GMNSpy-Secrets: 1`, which forces a preflight that is never approved | None known |
+| T2 | Set, replace or delete a key cross-origin | web | Host allowlist + Origin/`Sec-Fetch-Site` guard. Key routes also need `X-Netstead-Secrets: 1`, which forces a preflight that is never approved | None known |
 | T3 | DNS rebinding to read status | web | Host allowlist | Which providers are configured. Low |
 | T4 | **Redirect a key to an attacker host** via `llm.<p>.base_url` (project file, env, CSRF'd `SetSetting`, a future assistant) | repo, web, llm | **Origin-bound key slots**; the catalog overlay can't change `base_url`/`key_env`; P3 excludes `llm.*` from the assistant's vocabulary | The user must type a key for the new origin |
 | T5 | Leak through history, `to_python` or SSE (a key pasted into a setting) | acc | `SetSetting` rejects key-shaped values before recording; 422 omits input | A non-key-shaped token pasted into an unrelated setting |
@@ -535,7 +535,7 @@ Not now (decision 4). Key confidentiality doesn't depend on route auth, cross-or
 
 Because the parser, the session and the routes only see `LLMProvider` and `request_tool_call`, any of these can replace the adapters without touching the Workbench.
 
-**Complementary direction: MCP.** gmnspy already ships an MCP server. Exposing Workbench actions (select, style, navigate, and later drafted edits) as MCP tools would let an external agent (Claude Desktop, an IDE) drive the same Action bus, under the same validation and draft-before-apply rules. That is the inverse of this design (an external model calling us, instead of us calling a model), and it is a later phase.
+**Complementary direction: MCP.** netstead already ships an MCP server. Exposing Workbench actions (select, style, navigate, and later drafted edits) as MCP tools would let an external agent (Claude Desktop, an IDE) drive the same Action bus, under the same validation and draft-before-apply rules. That is the inverse of this design (an external model calling us, instead of us calling a model), and it is a later phase.
 
 ## Testing
 
@@ -565,18 +565,18 @@ Because the parser, the session and the routes only see `LLMProvider` and `reque
   - the no-keyring path names the env vars;
   - the **canary test**.
 - **Contract (recorded fixtures):** one per provider, replayed through the real adapter and `LLMParser`. Re-recorded by script (headers never written).
-- **Live smoke (opt-in):** `@pytest.mark.live_llm`, skipped unless `GMNSPY_LIVE_LLM=…`.
+- **Live smoke (opt-in):** `@pytest.mark.live_llm`, skipped unless `NETSTEAD_LIVE_LLM=…`.
 - **Front end:** the static module graph, ids, `node --check`; "`llm.js` never touches storage or the store"; an end-to-end browser pass.
 
 ## Phasing and merge plan
 
 One PR off `feat/workbench-p1a` (the plan runs after P1a), sequenced so that each task is green on its own:
-1. `gmnspy.llm` core: types, errors, catalog, secrets (+ `datagrove.system_keyring`), `_http`, four adapters, structured output.
+1. `netstead.llm` core: types, errors, catalog, secrets (+ `corral.system_keyring`), `_http`, four adapters, structured output.
 2. Settings (`select.*`, `llm.*`, `llm.quality`), the `SetSetting` guard and the 422 hardening.
 3. The registry (status, privacy disclosure), the shipped guide and project-note discovery.
 4. Prompt assembly, `LLMParser`, the CLI flags and the `[nl]` swap.
 5. Session wiring: prompt context, few-shot, close-match retry.
-6. `/api/llm` routes and the canary test; the `gmnspy llm` CLI.
+6. `/api/llm` routes and the canary test; the `netstead llm` CLI.
 7. Front end: the picker (+ Make default) and the panel (+ quality & context).
 8. Contract fixtures, live smoke, docs, end-to-end.
 
@@ -596,9 +596,9 @@ One PR off `feat/workbench-p1a` (the plan runs after P1a), sequenced so that eac
 
 Decided on 2026-10-02 (see the top of this doc): keyring vs file, default models, picker scope, the token, AI-quality settings, context docs, alternatives. Still open:
 
-1. **Custom endpoints without a keyring.** A keyed OpenAI-compatible endpoint needs a keyring, because env vars apply only to official endpoints. Is that acceptable? The alternative is per-origin env names (for example `GMNSPY_OPENAI_API_KEY__LLM_EXAMPLE_ORG`).
+1. **Custom endpoints without a keyring.** A keyed OpenAI-compatible endpoint needs a keyring, because env vars apply only to official endpoints. Is that acceptable? The alternative is per-origin env names (for example `NETSTEAD_OPENAI_API_KEY__LLM_EXAMPLE_ORG`).
 2. **Ollama default tag.** `qwen3:4b` is the proposed tiny default. Which tag do you actually run? It becomes `default_model` and the pull hint.
-3. **Project-note file names.** `CLAUDE.md` and `AGENTS.md` are also used by coding assistants. In a code repository, `gmnspy app` run from the repo root would pick those up as network notes (local providers only, by default). Should discovery prefer a gmnspy-specific name (for example `GMNSPY.md`), or read only an `## gmnspy` section of `AGENTS.md`/`CLAUDE.md`?
+3. **Project-note file names.** `CLAUDE.md` and `AGENTS.md` are also used by coding assistants. In a code repository, `netstead app` run from the repo root would pick those up as network notes (local providers only, by default). Should discovery prefer a netstead-specific name (for example `NETSTEAD.md`), or read only an `## netstead` section of `AGENTS.md`/`CLAUDE.md`?
 4. **Close-match retry on remote providers.** It only runs when grounding is on (off for remote by default). Should remote providers get a narrower opt-in that sends *only* the few close matches after a miss, not the whole vocabulary up front?
 5. **Few-shot persistence.** Examples live in session memory only. Should resolved selections persist per network (for example in the project dir) so few-shot works from the first query of a new session?
-6. **Catalog verification cadence.** Should `gmnspy llm test` (`catalog_missing`) be a release-checklist item, or a scheduled CI job that has secrets?
+6. **Catalog verification cadence.** Should `netstead llm test` (`catalog_missing`) be a release-checklist item, or a scheduled CI job that has secrets?

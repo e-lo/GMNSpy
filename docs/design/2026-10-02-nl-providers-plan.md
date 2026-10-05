@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Natural-language selection in the Workbench (and in `gmnspy select`) gains four providers: local Ollama (Qwen), Anthropic, OpenAI and Gemini. You pick a provider and model per session in the UI, and **Make default** saves the choice. API keys come from environment variables or the OS keyring. They are managed through write-only UI and CLI paths and never appear in settings, API responses, history, SSE or logs. A group of `llm.quality` settings, all visible in the UI and the privacy note, improves parsing and matching:
+**Goal:** Natural-language selection in the Workbench (and in `netstead select`) gains four providers: local Ollama (Qwen), Anthropic, OpenAI and Gemini. You pick a provider and model per session in the UI, and **Make default** saves the choice. API keys come from environment variables or the OS keyring. They are managed through write-only UI and CLI paths and never appear in settings, API responses, history, SSE or logs. A group of `llm.quality` settings, all visible in the UI and the privacy note, improves parsing and matching:
 - the shipped GMNS assistant guide;
 - an optional project `AGENTS.md`/`CLAUDE.md`;
 - network vocabulary;
@@ -11,7 +11,7 @@
 - the repair budget and temperature.
 
 **Architecture:**
-- A new provider-neutral package, `gmnspy.llm`, contains:
+- A new provider-neutral package, `netstead.llm`, contains:
   - types and errors;
   - one HTTP call path (`_http.request_json`, httpx imported lazily);
   - four hand-rolled adapters behind `LLMProvider.complete()` / `list_models()`, where Anthropic marks the stable prompt prefix for prompt caching;
@@ -19,8 +19,8 @@
   - the TOML model catalog;
   - a `SecretStore` (env → keyring) with origin-bound key slots;
   - a `ProviderRegistry` that also decides what each provider is sent;
-  - `gmnspy.llm.context`, the shipped guide plus project-note discovery.
-- `gmnspy.select.prompt` assembles the optional prompt parts. `LLMParser` takes them per call. `ClaudeParser` is kept as a back-compat subclass.
+  - `netstead.llm.context`, the shipped guide plus project-note discovery.
+- `netstead.select.prompt` assembles the optional prompt parts. `LLMParser` takes them per call. `ClaudeParser` is kept as a back-compat subclass.
 - The Workbench session builds the parser from settings and the registry, adds the prompt context, keeps few-shot memory, retries once with close matches, and turns `LLMError` into `ActionError`.
 - New non-recorded `/api/llm/*` routes handle status, key writes and connection tests.
 - The header gets a picker, and a "Language models" panel holds keys and quality settings.
@@ -45,7 +45,7 @@
 - **How this plan was checked:** every code block was produced from a scratch copy of the P1a-implemented tree (the state the P1a plan describes) and then checked there:
   - each task's files were applied in order onto a fresh copy;
   - the task's own test command was run and its count recorded in that task's Expected line;
-  - at Tasks 10, 13 and 16 the whole gmnspy suite was run as well, and it was green at all three.
+  - at Tasks 10, 13 and 16 the whole netstead suite was run as well, and it was green at all three.
 
 ## Decisions (user, 2026-10-02) and how this plan applies them
 
@@ -67,19 +67,19 @@
 
    `auto` means on for a local endpoint and off for a remote one. The privacy note is generated from these settings (`ProviderRegistry.disclosure`).
 6. **Context docs.**
-   - The shipped `gmnspy/llm/context/gmns_assistant.md` is identical for every provider. It goes in the stable system prefix, which the Anthropic adapter marks with `cache_control`.
+   - The shipped `netstead/llm/context/gmns_assistant.md` is identical for every provider. It goes in the stable system prefix, which the Anthropic adapter marks with `cache_control`.
    - An optional `AGENTS.md` (or `CLAUDE.md`) is read from next to the active network or the project dir. It is sent only when `project_context` allows, which is off for remote providers unless opted in.
 7. **Alternatives (PydanticAI, LiteLLM, instructor; MCP).** These are recorded in the design. Out of scope here.
 
 ## Scope notes
 
 - **In scope:**
-  - `gmnspy.llm` (types, errors, catalog, secrets, `_http`, four adapters, structured output, registry, context);
-  - `datagrove.io.credentials.system_keyring`;
+  - `netstead.llm` (types, errors, catalog, secrets, `_http`, four adapters, structured output, registry, context);
+  - `corral.io.credentials.system_keyring`;
   - widened settings (`select.*`, `llm.<provider>.*`, `llm.quality.*`), the `SetSetting` secret guard and the 422 no-echo hardening;
-  - `gmnspy.select.prompt`, `LLMParser`/`ClaudeParser`/`make_parser`/`payload_from_intent`;
+  - `netstead.select.prompt`, `LLMParser`/`ClaudeParser`/`make_parser`/`payload_from_intent`;
   - session wiring (prompt context, few-shot memory, close-match retry, `parsed_by`);
-  - the `/api/llm` routes, the `gmnspy llm` CLI, the picker with **Make default**, and the Language-models panel with quality controls;
+  - the `/api/llm` routes, the `netstead llm` CLI, the picker with **Make default**, and the Language-models panel with quality controls;
   - contract fixtures, the re-record script, the live smoke marker, and docs.
 - **Deferred:**
   - the P3 assistant (multi-turn, tool results), which reuses this layer;
@@ -97,7 +97,7 @@
 | `routes/core.py` parses the action before dispatch | The 422 branch keeps its shape; this plan only adds `include_input=False` |
 | `Session.__init__` gains `http=` and a `JobRunner` | `llm_transport=` and `keyring=` are added after `http=` |
 | `isolated_env` pins `io.allowed_roots` (`conftest.py` already imports `json`) | Task 0 adds only `from typing import Any` |
-| `datagrove.io.credentials` gains `credential_source` | `system_keyring` goes after it; `__all__` keeps both |
+| `corral.io.credentials` gains `credential_source` | `system_keyring` goes after it; `__all__` keeps both |
 | Header: **Open / Import…**, **Recent**, **Jobs** | The picker sits between `#utterance` and `#go`. `main.js` already subscribes to `job`; this adds `llm` |
 | `api.js` gains `postJSON` | This adds `sendJSON` for PUT/DELETE with the secrets header |
 | `cli/commands/workbench.py` trusts command-line sources | `--model` is added next to `--provider`; the `flags` dict gains `select.model` |
@@ -106,31 +106,31 @@
 
 | Path | Responsibility |
 |---|---|
-| `packages/datagrove/datagrove/io/credentials.py` (modify) | `system_keyring()`: is a real OS keyring backend usable? |
-| `packages/gmnspy/gmnspy/llm/__init__.py` (new) | Public surface of the LLM layer |
-| `packages/gmnspy/gmnspy/llm/types.py`, `errors.py` (new) | `CompletionRequest` (with `context`, `temperature`), `Completion`, `LLMProvider`; the `LLMError` hierarchy |
-| `packages/gmnspy/gmnspy/llm/catalog.py`, `models.toml` (new) | Maintained provider/model catalog (tiny defaults) plus the user overlay |
-| `packages/gmnspy/gmnspy/llm/secrets.py` (new) | `KeySlot`, `SecretStore` (env → keyring), `redact`, `looks_like_secret`, `origin_of` |
-| `packages/gmnspy/gmnspy/llm/_http.py`, `providers/*.py` (new) | One scrubbed HTTP path; anthropic (with prompt caching), openai, gemini and ollama adapters |
-| `packages/gmnspy/gmnspy/llm/structured.py` (new) | `request_tool_call`: forced tool, validation, repair, JSON mode |
-| `packages/gmnspy/gmnspy/llm/registry.py` (new) | `ProviderRegistry` (status, models, test, `is_local`, `grounding_on`, `project_context_on`, `disclosure`) |
-| `packages/gmnspy/gmnspy/llm/context/__init__.py`, `gmns_assistant.md` (new) | Shipped assistant guide; `AGENTS.md`/`CLAUDE.md` discovery |
-| `packages/gmnspy/gmnspy/config.py` (modify) | `SelectSettings` widened; `LLMEndpointSettings`, `OllamaSettings`, `LLMQualitySettings`, `LLMSettings` |
-| `packages/gmnspy/gmnspy/select/prompt.py` (new) | `PromptContext`, `render_prompt`, `vocabulary_from_links`, `close_match_hint` |
-| `packages/gmnspy/gmnspy/select/parse.py`, `select/__init__.py` (modify) | `LLMParser`, `ClaudeParser` alias, `make_parser`, `payload_from_intent` |
-| `packages/gmnspy/gmnspy/cli/commands/select.py`, `workbench.py` (modify) | `--provider` from settings, `--model` |
-| `packages/gmnspy/gmnspy/cli/commands/llm.py`, `cli/app.py` (new/modify) | `gmnspy llm {status,set-key,remove-key,test,models}` |
-| `packages/gmnspy/gmnspy/workbench/actions.py`, `routes/core.py` (modify) | `SetSetting` refuses key-shaped values; 422 doesn't echo input |
-| `packages/gmnspy/gmnspy/workbench/session.py`, `selection.py` (modify) | Registry, parser, prompt context, few-shot memory, match retry, `parsed_by` |
-| `packages/gmnspy/gmnspy/workbench/routes/llm.py`, `server.py` (new/modify) | `/api/llm/*` |
-| `packages/gmnspy/gmnspy/workbench/static/{index.html,app.css,js/api.js,js/llm.js,js/main.js}` (modify/new) | Picker with **Make default**; Language-models panel with quality controls |
-| `packages/gmnspy/pyproject.toml`, `uv.lock` (modify) | `[nl]` = jsonschema + httpx + keyring (drops `anthropic`); wheel includes `llm/*.toml`, `llm/context/*.md` |
+| `packages/corral/corral/io/credentials.py` (modify) | `system_keyring()`: is a real OS keyring backend usable? |
+| `packages/netstead/netstead/llm/__init__.py` (new) | Public surface of the LLM layer |
+| `packages/netstead/netstead/llm/types.py`, `errors.py` (new) | `CompletionRequest` (with `context`, `temperature`), `Completion`, `LLMProvider`; the `LLMError` hierarchy |
+| `packages/netstead/netstead/llm/catalog.py`, `models.toml` (new) | Maintained provider/model catalog (tiny defaults) plus the user overlay |
+| `packages/netstead/netstead/llm/secrets.py` (new) | `KeySlot`, `SecretStore` (env → keyring), `redact`, `looks_like_secret`, `origin_of` |
+| `packages/netstead/netstead/llm/_http.py`, `providers/*.py` (new) | One scrubbed HTTP path; anthropic (with prompt caching), openai, gemini and ollama adapters |
+| `packages/netstead/netstead/llm/structured.py` (new) | `request_tool_call`: forced tool, validation, repair, JSON mode |
+| `packages/netstead/netstead/llm/registry.py` (new) | `ProviderRegistry` (status, models, test, `is_local`, `grounding_on`, `project_context_on`, `disclosure`) |
+| `packages/netstead/netstead/llm/context/__init__.py`, `gmns_assistant.md` (new) | Shipped assistant guide; `AGENTS.md`/`CLAUDE.md` discovery |
+| `packages/netstead/netstead/config.py` (modify) | `SelectSettings` widened; `LLMEndpointSettings`, `OllamaSettings`, `LLMQualitySettings`, `LLMSettings` |
+| `packages/netstead/netstead/select/prompt.py` (new) | `PromptContext`, `render_prompt`, `vocabulary_from_links`, `close_match_hint` |
+| `packages/netstead/netstead/select/parse.py`, `select/__init__.py` (modify) | `LLMParser`, `ClaudeParser` alias, `make_parser`, `payload_from_intent` |
+| `packages/netstead/netstead/cli/commands/select.py`, `workbench.py` (modify) | `--provider` from settings, `--model` |
+| `packages/netstead/netstead/cli/commands/llm.py`, `cli/app.py` (new/modify) | `netstead llm {status,set-key,remove-key,test,models}` |
+| `packages/netstead/netstead/workbench/actions.py`, `routes/core.py` (modify) | `SetSetting` refuses key-shaped values; 422 doesn't echo input |
+| `packages/netstead/netstead/workbench/session.py`, `selection.py` (modify) | Registry, parser, prompt context, few-shot memory, match retry, `parsed_by` |
+| `packages/netstead/netstead/workbench/routes/llm.py`, `server.py` (new/modify) | `/api/llm/*` |
+| `packages/netstead/netstead/workbench/static/{index.html,app.css,js/api.js,js/llm.js,js/main.js}` (modify/new) | Picker with **Make default**; Language-models panel with quality controls |
+| `packages/netstead/pyproject.toml`, `uv.lock` (modify) | `[nl]` = jsonschema + httpx + keyring (drops `anthropic`); wheel includes `llm/*.toml`, `llm/context/*.md` |
 | `pyproject.toml` (root, modify) | `live_llm` pytest marker |
 | `scripts/record_llm_fixtures.py` (new) | Re-record contract fixtures (headers never written) |
-| `packages/gmnspy/tests/conftest.py` (modify) | `FakeKeyring`, `FakeAPI`, `no_network`, autouse no-system-keyring |
-| `packages/gmnspy/tests/fixtures/llm/*_select.json` (new) | Contract fixtures |
-| `packages/gmnspy/tests/test_llm_*.py`, `test_select_prompt.py`, `test_workbench_llm_routes.py`, `test_cli_llm.py` (new) | Tests |
-| `packages/gmnspy/docs/cookbook/workbench.md` (modify) | "Language models" section |
+| `packages/netstead/tests/conftest.py` (modify) | `FakeKeyring`, `FakeAPI`, `no_network`, autouse no-system-keyring |
+| `packages/netstead/tests/fixtures/llm/*_select.json` (new) | Contract fixtures |
+| `packages/netstead/tests/test_llm_*.py`, `test_select_prompt.py`, `test_workbench_llm_routes.py`, `test_cli_llm.py` (new) | Tests |
+| `packages/netstead/docs/cookbook/workbench.md` (modify) | "Language models" section |
 
 ---
 
@@ -138,7 +138,7 @@
 
 **Files:**
 - Modify: `pyproject.toml` (root)
-- Modify: `packages/gmnspy/tests/conftest.py`
+- Modify: `packages/netstead/tests/conftest.py`
 
 - [ ] **Step 1: Cut the branch from the P1a branch**
 
@@ -153,11 +153,11 @@ markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "perf: performance regression bench",
     "integration: cross-package integration",
-    "live_llm: calls real LLM provider APIs; skipped unless GMNSPY_LIVE_LLM=anthropic,openai,gemini,ollama (any subset)",
+    "live_llm: calls real LLM provider APIs; skipped unless NETSTEAD_LIVE_LLM=anthropic,openai,gemini,ollama (any subset)",
 ]
 ```
 
-- [ ] **Step 3: Add the fakes to `packages/gmnspy/tests/conftest.py`.** Since P1a, the file already imports `json`. Add `from typing import Any` after `from pathlib import Path`. The file has `from __future__ import annotations`, so `-> FakeAPI` needs no quotes. Then append:
+- [ ] **Step 3: Add the fakes to `packages/netstead/tests/conftest.py`.** Since P1a, the file already imports `json`. Add `from typing import Any` after `from pathlib import Path`. The file has `from __future__ import annotations`, so `-> FakeAPI` needs no quotes. Then append:
 
 ```python
 class FakeKeyring:
@@ -245,23 +245,23 @@ def no_network(monkeypatch: pytest.MonkeyPatch) -> None:
 
 - [ ] **Step 4: Confirm the suite still collects and passes**
 
-Run: `uv run --all-extras pytest packages/gmnspy/tests/test_workbench_session.py packages/gmnspy/tests/test_config.py -q`
+Run: `uv run --all-extras pytest packages/netstead/tests/test_workbench_session.py packages/netstead/tests/test_config.py -q`
 Expected: `40 passed`, with no marker errors under `--strict-markers`.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add pyproject.toml packages/gmnspy/tests/conftest.py
-git commit -m "test(gmnspy): live_llm marker + FakeKeyring/FakeAPI/no_network fixtures for LLM tests"
+git add pyproject.toml packages/netstead/tests/conftest.py
+git commit -m "test(netstead): live_llm marker + FakeKeyring/FakeAPI/no_network fixtures for LLM tests"
 ```
 
 ---
 
-### Task 1: `datagrove.io.credentials.system_keyring()`
+### Task 1: `corral.io.credentials.system_keyring()`
 
 **Files:**
-- Modify: `packages/datagrove/datagrove/io/credentials.py`
-- Test: `packages/datagrove/tests/io/test_credentials.py` (append)
+- Modify: `packages/corral/corral/io/credentials.py`
+- Test: `packages/corral/tests/io/test_credentials.py` (append)
 
 - [ ] **Step 1: Append the failing tests**
 
@@ -279,21 +279,21 @@ def _fake_keyring_module(priority: float) -> types.ModuleType:
 
 
 def test_system_keyring_none_when_not_installed(monkeypatch: pytest.MonkeyPatch) -> None:
-    from datagrove.io.credentials import system_keyring
+    from corral.io.credentials import system_keyring
 
     monkeypatch.setitem(sys.modules, "keyring", None)
     assert system_keyring() is None
 
 
 def test_system_keyring_none_for_fail_backend(monkeypatch: pytest.MonkeyPatch) -> None:
-    from datagrove.io.credentials import system_keyring
+    from corral.io.credentials import system_keyring
 
     monkeypatch.setitem(sys.modules, "keyring", _fake_keyring_module(0))
     assert system_keyring() is None
 
 
 def test_system_keyring_returns_module_for_real_backend(monkeypatch: pytest.MonkeyPatch) -> None:
-    from datagrove.io.credentials import system_keyring
+    from corral.io.credentials import system_keyring
 
     module = _fake_keyring_module(5)
     monkeypatch.setitem(sys.modules, "keyring", module)
@@ -301,7 +301,7 @@ def test_system_keyring_returns_module_for_real_backend(monkeypatch: pytest.Monk
 
 
 def test_system_keyring_none_when_backend_lookup_breaks(monkeypatch: pytest.MonkeyPatch) -> None:
-    from datagrove.io.credentials import system_keyring
+    from corral.io.credentials import system_keyring
 
     module = types.ModuleType("keyring")
 
@@ -315,7 +315,7 @@ def test_system_keyring_none_when_backend_lookup_breaks(monkeypatch: pytest.Monk
 
 - [ ] **Step 2: Run them to see them fail**
 
-Run: `uv run --all-extras pytest packages/datagrove/tests/io/test_credentials.py -q -k system_keyring`
+Run: `uv run --all-extras pytest packages/corral/tests/io/test_credentials.py -q -k system_keyring`
 Expected: `4 failed`, each with `ImportError: cannot import name 'system_keyring'`.
 
 - [ ] **Step 3: Implement.**
@@ -350,23 +350,23 @@ def system_keyring() -> Any | None:
 
 - [ ] **Step 4: Run the file**
 
-Run: `uv run --all-extras pytest packages/datagrove/tests/io/test_credentials.py -q`
+Run: `uv run --all-extras pytest packages/corral/tests/io/test_credentials.py -q`
 Expected: `23 passed`.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add packages/datagrove/datagrove/io/credentials.py packages/datagrove/tests/io/test_credentials.py
-git commit -m "feat(datagrove): system_keyring() — one answer to 'is a real OS keyring usable?'"
+git add packages/corral/corral/io/credentials.py packages/corral/tests/io/test_credentials.py
+git commit -m "feat(corral): system_keyring() — one answer to 'is a real OS keyring usable?'"
 ```
 
 ---
 
-### Task 2: `gmnspy.llm` types and errors
+### Task 2: `netstead.llm` types and errors
 
 **Files:**
-- Create: `packages/gmnspy/gmnspy/llm/__init__.py`, `types.py`, `errors.py`
-- Test: `packages/gmnspy/tests/test_llm_types.py`
+- Create: `packages/netstead/netstead/llm/__init__.py`, `types.py`, `errors.py`
+- Test: `packages/netstead/tests/test_llm_types.py`
 
 `CompletionRequest` carries two parts of the system prompt:
 - `context`: the stable, cacheable part (guide, project notes, vocabulary);
@@ -374,16 +374,16 @@ git commit -m "feat(datagrove): system_keyring() — one answer to 'is a real OS
 
 It also has an optional `temperature`. Adapters without prompt caching send `full_system()`.
 
-- [ ] **Step 1: Write the failing tests** in `packages/gmnspy/tests/test_llm_types.py`
+- [ ] **Step 1: Write the failing tests** in `packages/netstead/tests/test_llm_types.py`
 
 ```python
-"""Tests for gmnspy.llm.types and gmnspy.llm.errors."""
+"""Tests for netstead.llm.types and netstead.llm.errors."""
 
 import dataclasses
 
 import pytest
-from gmnspy.llm.errors import InvalidKey, LLMError, MissingKey, RateLimited
-from gmnspy.llm.types import Completion, CompletionRequest, LLMProvider, Message, Tool, ToolCall
+from netstead.llm.errors import InvalidKey, LLMError, MissingKey, RateLimited
+from netstead.llm.types import Completion, CompletionRequest, LLMProvider, Message, Tool, ToolCall
 
 
 def test_request_is_frozen_with_neutral_defaults():
@@ -422,15 +422,15 @@ def test_errors_carry_provider_and_message():
 
 - [ ] **Step 2: Run them to see them fail**
 
-Run: `uv run --all-extras pytest packages/gmnspy/tests/test_llm_types.py -q`
-Expected: a collection error, `ModuleNotFoundError: No module named 'gmnspy.llm'`.
+Run: `uv run --all-extras pytest packages/netstead/tests/test_llm_types.py -q`
+Expected: a collection error, `ModuleNotFoundError: No module named 'netstead.llm'`.
 
-- [ ] **Step 3: Create `packages/gmnspy/gmnspy/llm/types.py`**
+- [ ] **Step 3: Create `packages/netstead/netstead/llm/types.py`**
 
 ```python
 """Provider-neutral request/response types for tool-calling LLMs.
 
-Every adapter in :mod:`gmnspy.llm.providers` maps a :class:`CompletionRequest` onto its
+Every adapter in :mod:`netstead.llm.providers` maps a :class:`CompletionRequest` onto its
 provider's wire format and maps the reply back to a :class:`Completion`. Nothing here
 knows about any one provider.
 """
@@ -514,7 +514,7 @@ class LLMProvider(Protocol):
     label: str
 
     def complete(self, request: CompletionRequest) -> Completion:
-        """Run one completion; raise :class:`~gmnspy.llm.errors.LLMError` on any provider failure."""
+        """Run one completion; raise :class:`~netstead.llm.errors.LLMError` on any provider failure."""
         ...
 
     def list_models(self) -> list[str]:
@@ -522,14 +522,14 @@ class LLMProvider(Protocol):
         ...
 ```
 
-- [ ] **Step 4: Create `packages/gmnspy/gmnspy/llm/errors.py`**
+- [ ] **Step 4: Create `packages/netstead/netstead/llm/errors.py`**
 
 ```python
 """User-facing, secret-free LLM provider errors.
 
 Every message is written for the person at the keyboard and is safe to show in the
 browser, record in history, and log: adapters build them from status codes and
-*scrubbed* provider detail (:func:`gmnspy.llm.secrets.redact`), never from request headers.
+*scrubbed* provider detail (:func:`netstead.llm.secrets.redact`), never from request headers.
 """
 
 from __future__ import annotations
@@ -598,10 +598,10 @@ class ToolsUnsupported(LLMError):
     """The model cannot do tool calling; the caller may retry the same model in JSON mode."""
 ```
 
-- [ ] **Step 5: Create `packages/gmnspy/gmnspy/llm/__init__.py`.** This is the first version; Task 11 completes it.
+- [ ] **Step 5: Create `packages/netstead/netstead/llm/__init__.py`.** This is the first version; Task 11 completes it.
 
 ```python
-"""Provider-neutral LLM layer for gmnspy's natural-language features (Task 11 completes this module)."""
+"""Provider-neutral LLM layer for netstead's natural-language features (Task 11 completes this module)."""
 
 from .errors import (
     BadRequest,
@@ -639,14 +639,14 @@ __all__ = [
 
 - [ ] **Step 6: Run the tests**
 
-Run: `uv run --all-extras pytest packages/gmnspy/tests/test_llm_types.py -q`
+Run: `uv run --all-extras pytest packages/netstead/tests/test_llm_types.py -q`
 Expected: `4 passed`.
 
 - [ ] **Step 7: Commit**
 
 ```bash
-git add packages/gmnspy/gmnspy/llm packages/gmnspy/tests/test_llm_types.py
-git commit -m "feat(gmnspy.llm): provider-neutral request/response types (cacheable context, temperature) and errors"
+git add packages/netstead/netstead/llm packages/netstead/tests/test_llm_types.py
+git commit -m "feat(netstead.llm): provider-neutral request/response types (cacheable context, temperature) and errors"
 ```
 
 ---
@@ -654,24 +654,24 @@ git commit -m "feat(gmnspy.llm): provider-neutral request/response types (cachea
 ### Task 3: Model catalog (`models.toml`, tiny defaults) and loader
 
 **Files:**
-- Create: `packages/gmnspy/gmnspy/llm/models.toml`, `packages/gmnspy/gmnspy/llm/catalog.py`
-- Modify: `packages/gmnspy/pyproject.toml` (wheel include)
-- Test: `packages/gmnspy/tests/test_llm_catalog.py`
+- Create: `packages/netstead/netstead/llm/models.toml`, `packages/netstead/netstead/llm/catalog.py`
+- Modify: `packages/netstead/pyproject.toml` (wheel include)
+- Test: `packages/netstead/tests/test_llm_catalog.py`
 
 - [ ] **Step 1: Write the failing tests**
 
 ```python
-"""Tests for gmnspy.llm.catalog — the maintained provider/model catalog."""
+"""Tests for netstead.llm.catalog — the maintained provider/model catalog."""
 
 import pytest
-from gmnspy.llm.catalog import CATALOG_OVERLAY, load_catalog
+from netstead.llm.catalog import CATALOG_OVERLAY, load_catalog
 
 
 def test_packaged_catalog_has_the_four_providers_in_order():
     cat = load_catalog()
     assert cat.names() == ["anthropic", "openai", "gemini", "ollama"]
     assert cat["ollama"].kind == "local" and cat["anthropic"].kind == "remote"
-    assert cat["anthropic"].key_env == ("GMNSPY_ANTHROPIC_API_KEY", "ANTHROPIC_API_KEY")
+    assert cat["anthropic"].key_env == ("NETSTEAD_ANTHROPIC_API_KEY", "ANTHROPIC_API_KEY")
 
 
 def test_anthropic_models_are_the_current_ids():
@@ -704,7 +704,7 @@ def test_user_overlay_adds_and_relabels_but_cannot_move_keys(tmp_path):
     openai = cat["openai"]
     assert openai.default_model == "my-model" and openai.model("my-model").label == "Mine"
     assert openai.base_url == "https://api.openai.com/v1" and openai.key_env == (
-        "GMNSPY_OPENAI_API_KEY",
+        "NETSTEAD_OPENAI_API_KEY",
         "OPENAI_API_KEY",
     )
     assert "mystery" not in cat.names()
@@ -720,10 +720,10 @@ def test_unknown_provider_and_bad_entries_raise(tmp_path):
 
 - [ ] **Step 2: Run them to see them fail**
 
-Run: `uv run --all-extras pytest packages/gmnspy/tests/test_llm_catalog.py -q`
-Expected: a collection error, `ModuleNotFoundError: No module named 'gmnspy.llm.catalog'`.
+Run: `uv run --all-extras pytest packages/netstead/tests/test_llm_catalog.py -q`
+Expected: a collection error, `ModuleNotFoundError: No module named 'netstead.llm.catalog'`.
 
-- [ ] **Step 3: Create `packages/gmnspy/gmnspy/llm/models.toml`.** Each `default_model` is the provider's small, fast tier (decision 1). The OpenAI, Gemini and Ollama ids are marked VERIFY.
+- [ ] **Step 3: Create `packages/netstead/netstead/llm/models.toml`.** Each `default_model` is the provider's small, fast tier (decision 1). The OpenAI, Gemini and Ollama ids are marked VERIFY.
 
 ```toml
 # Maintained catalog of the LLM providers and models the Workbench offers for its
@@ -742,14 +742,14 @@ Expected: a collection error, `ModuleNotFoundError: No module named 'gmnspy.llm.
 # Per model: id (sent to the API), label, tier (fast | balanced | best), tools (tool calling).
 #
 # VERIFY: OpenAI, Gemini and Ollama model ids are editable starting points, not
-# checked against the provider docs. `gmnspy llm test <provider>` lists every catalog
+# checked against the provider docs. `netstead llm test <provider>` lists every catalog
 # id the live endpoint does not serve; fix this file before each release.
 
 [anthropic]
 label = "Anthropic"
 kind = "remote"
 base_url = "https://api.anthropic.com"
-key_env = ["GMNSPY_ANTHROPIC_API_KEY", "ANTHROPIC_API_KEY"]
+key_env = ["NETSTEAD_ANTHROPIC_API_KEY", "ANTHROPIC_API_KEY"]
 default_model = "claude-haiku-4-5-20251001"
 
 [[anthropic.models]]
@@ -774,7 +774,7 @@ tools = true
 label = "OpenAI"
 kind = "remote"
 base_url = "https://api.openai.com/v1"
-key_env = ["GMNSPY_OPENAI_API_KEY", "OPENAI_API_KEY"]
+key_env = ["NETSTEAD_OPENAI_API_KEY", "OPENAI_API_KEY"]
 default_model = "gpt-4.1-mini"
 
 # VERIFY against https://platform.openai.com/docs/models
@@ -802,7 +802,7 @@ tools = true
 label = "Gemini"
 kind = "remote"
 base_url = "https://generativelanguage.googleapis.com/v1beta"
-key_env = ["GMNSPY_GEMINI_API_KEY", "GEMINI_API_KEY"]
+key_env = ["NETSTEAD_GEMINI_API_KEY", "GEMINI_API_KEY"]
 default_model = "gemini-2.5-flash-lite"
 
 # VERIFY against https://ai.google.dev/gemini-api/docs/models
@@ -849,7 +849,7 @@ tier = "balanced"
 tools = true
 ```
 
-- [ ] **Step 4: Create `packages/gmnspy/gmnspy/llm/catalog.py`**
+- [ ] **Step 4: Create `packages/netstead/netstead/llm/catalog.py`**
 
 ```python
 """The maintained LLM provider/model catalog (``models.toml``), plus an optional user overlay.
@@ -857,7 +857,7 @@ tools = true
 The overlay (``<user config dir>/llm_models.toml``, same shape) may add or relabel models
 and change a provider's ``label``/``default_model``. It cannot change ``base_url``,
 ``key_env`` or ``kind``: those decide where keys are sent, so they stay in packaged data.
-A provider without an adapter in :mod:`gmnspy.llm.providers` is ignored.
+A provider without an adapter in :mod:`netstead.llm.providers` is ignored.
 """
 
 from __future__ import annotations
@@ -931,7 +931,7 @@ class Catalog:
 
 def load_catalog(user_dir: str | Path | None = None) -> Catalog:
     """Load the packaged catalog, overlaid with ``<user_dir>/llm_models.toml`` when that file exists."""
-    raw = tomllib.loads(resources.files("gmnspy.llm").joinpath("models.toml").read_text(encoding="utf-8"))
+    raw = tomllib.loads(resources.files("netstead.llm").joinpath("models.toml").read_text(encoding="utf-8"))
     if user_dir is not None and (overlay := Path(user_dir) / CATALOG_OVERLAY).is_file():
         raw = _apply_overlay(raw, tomllib.loads(overlay.read_text(encoding="utf-8")))
     return Catalog({name: _provider(name, body) for name, body in raw.items() if name in _KNOWN})
@@ -979,23 +979,23 @@ def _provider(name: str, body: dict[str, Any]) -> ProviderInfo:
         raise ValueError(f"LLM catalog: provider {name!r} has a missing or bad field: {exc}") from None
 ```
 
-- [ ] **Step 5: Ship the data file.** In `packages/gmnspy/pyproject.toml`, under `[tool.hatch.build.targets.wheel].include`, add after the workbench static entries:
+- [ ] **Step 5: Ship the data file.** In `packages/netstead/pyproject.toml`, under `[tool.hatch.build.targets.wheel].include`, add after the workbench static entries:
 
 ```toml
-    # Maintained LLM provider/model catalog (gmnspy.llm).
-    "gmnspy/llm/*.toml",
+    # Maintained LLM provider/model catalog (netstead.llm).
+    "netstead/llm/*.toml",
 ```
 
 - [ ] **Step 6: Run the tests**
 
-Run: `uv run --all-extras pytest packages/gmnspy/tests/test_llm_catalog.py -q`
+Run: `uv run --all-extras pytest packages/netstead/tests/test_llm_catalog.py -q`
 Expected: `5 passed`.
 
 - [ ] **Step 7: Commit**
 
 ```bash
-git add packages/gmnspy/gmnspy/llm/models.toml packages/gmnspy/gmnspy/llm/catalog.py packages/gmnspy/pyproject.toml packages/gmnspy/tests/test_llm_catalog.py
-git commit -m "feat(gmnspy.llm): maintained provider/model catalog with tiny defaults and a key-safe user overlay"
+git add packages/netstead/netstead/llm/models.toml packages/netstead/netstead/llm/catalog.py packages/netstead/pyproject.toml packages/netstead/tests/test_llm_catalog.py
+git commit -m "feat(netstead.llm): maintained provider/model catalog with tiny defaults and a key-safe user overlay"
 ```
 
 ---
@@ -1003,13 +1003,13 @@ git commit -m "feat(gmnspy.llm): maintained provider/model catalog with tiny def
 ### Task 4: `SecretStore`: env vars, then the OS keyring; origin-bound key slots
 
 **Files:**
-- Create: `packages/gmnspy/gmnspy/llm/secrets.py`
-- Modify: `packages/gmnspy/tests/conftest.py` (autouse: no system keyring)
-- Test: `packages/gmnspy/tests/test_llm_secrets.py`
+- Create: `packages/netstead/netstead/llm/secrets.py`
+- Modify: `packages/netstead/tests/conftest.py` (autouse: no system keyring)
+- Test: `packages/netstead/tests/test_llm_secrets.py`
 
 There is no plaintext fallback (decision 3). On a machine without a usable keyring, `set` raises a message naming the env vars to use, and so does `MissingKey`.
 
-- [ ] **Step 1: Add the autouse guard to `packages/gmnspy/tests/conftest.py`** (append)
+- [ ] **Step 1: Add the autouse guard to `packages/netstead/tests/conftest.py`** (append)
 
 ```python
 @pytest.fixture(autouse=True)
@@ -1018,17 +1018,17 @@ def _no_system_keyring(monkeypatch: pytest.MonkeyPatch) -> None:
 
     Tests that need a keyring pass ``fake_keyring`` explicitly.
     """
-    monkeypatch.setattr("gmnspy.llm.secrets.system_keyring", lambda: None)
+    monkeypatch.setattr("netstead.llm.secrets.system_keyring", lambda: None)
 ```
 
-- [ ] **Step 2: Write the failing tests** in `packages/gmnspy/tests/test_llm_secrets.py`
+- [ ] **Step 2: Write the failing tests** in `packages/netstead/tests/test_llm_secrets.py`
 
 ```python
-"""Tests for gmnspy.llm.secrets — write-only API-key storage (env vars, then the OS keyring)."""
+"""Tests for netstead.llm.secrets — write-only API-key storage (env vars, then the OS keyring)."""
 
 import pytest
-from gmnspy.llm.errors import MissingKey
-from gmnspy.llm.secrets import (
+from netstead.llm.errors import MissingKey
+from netstead.llm.secrets import (
     KEYRING_SERVICE,
     KeySlot,
     SecretStore,
@@ -1038,7 +1038,7 @@ from gmnspy.llm.secrets import (
     redact,
 )
 
-ENV_NAMES = {"openai": ("GMNSPY_OPENAI_API_KEY", "OPENAI_API_KEY")}
+ENV_NAMES = {"openai": ("NETSTEAD_OPENAI_API_KEY", "OPENAI_API_KEY")}
 OPENAI = KeySlot("openai")
 
 
@@ -1046,9 +1046,9 @@ def _store(keyring=None, environ=None):
     return SecretStore(environ=environ or {}, env_names=ENV_NAMES, keyring=keyring)
 
 
-def test_env_beats_keyring_and_gmnspy_name_comes_first(fake_keyring):
+def test_env_beats_keyring_and_netstead_name_comes_first(fake_keyring):
     fake_keyring.set_password(KEYRING_SERVICE, "openai", "from-ring")
-    env = {"OPENAI_API_KEY": "standard", "GMNSPY_OPENAI_API_KEY": "ours"}
+    env = {"OPENAI_API_KEY": "standard", "NETSTEAD_OPENAI_API_KEY": "ours"}
     assert _store(fake_keyring, env).lookup(OPENAI) == ("ours", "env")
     assert _store(fake_keyring, {"OPENAI_API_KEY": "standard"}).lookup(OPENAI) == ("standard", "env")
     assert _store(fake_keyring).lookup(OPENAI) == ("from-ring", "keyring")
@@ -1068,13 +1068,13 @@ def test_missing_key_message_offers_the_keyring_and_the_env_vars(fake_keyring):
         _store(fake_keyring).get(OPENAI, "OpenAI")
     assert str(info.value) == (
         "OpenAI: no API key is configured. Add one in Settings → Language models, "
-        "or set GMNSPY_OPENAI_API_KEY or OPENAI_API_KEY."
+        "or set NETSTEAD_OPENAI_API_KEY or OPENAI_API_KEY."
     )
 
 
 def test_without_a_keyring_the_only_way_is_an_env_var():
     store = _store(keyring=None)
-    with pytest.raises(MissingKey, match="no OS keyring, so set GMNSPY_OPENAI_API_KEY or OPENAI_API_KEY"):
+    with pytest.raises(MissingKey, match="no OS keyring, so set NETSTEAD_OPENAI_API_KEY or OPENAI_API_KEY"):
         store.get(OPENAI, "OpenAI")
     with pytest.raises(SecretStoreError, match=r"no OS keyring.*then restart it"):
         store.set(OPENAI, "sk-test-key")
@@ -1136,10 +1136,10 @@ def test_repr_never_shows_keys(fake_keyring):
 
 - [ ] **Step 3: Run them to see them fail**
 
-Run: `uv run --all-extras pytest packages/gmnspy/tests/test_llm_secrets.py -q`
-Expected: a collection error, `ModuleNotFoundError: No module named 'gmnspy.llm.secrets'`. Until Step 4 exists, every other gmnspy test module also errors in the autouse fixture.
+Run: `uv run --all-extras pytest packages/netstead/tests/test_llm_secrets.py -q`
+Expected: a collection error, `ModuleNotFoundError: No module named 'netstead.llm.secrets'`. Until Step 4 exists, every other netstead test module also errors in the autouse fixture.
 
-- [ ] **Step 4: Create `packages/gmnspy/gmnspy/llm/secrets.py`**
+- [ ] **Step 4: Create `packages/netstead/netstead/llm/secrets.py`**
 
 ```python
 """Write-only API-key storage for LLM providers: environment variables, then the OS keyring.
@@ -1165,7 +1165,7 @@ from dataclasses import dataclass
 from typing import Any, Literal, Protocol
 from urllib.parse import urlsplit
 
-from datagrove.io.credentials import system_keyring
+from corral.io.credentials import system_keyring
 
 from .errors import MissingKey
 
@@ -1180,8 +1180,8 @@ __all__ = [
     "redact",
 ]
 
-#: Keyring service name for every gmnspy LLM key (one entry per :attr:`KeySlot.name`).
-KEYRING_SERVICE = "gmnspy-llm"
+#: Keyring service name for every netstead LLM key (one entry per :attr:`KeySlot.name`).
+KEYRING_SERVICE = "netstead-llm"
 Source = Literal["env", "keyring"]
 
 #: Key-shaped text: Anthropic ``sk-ant-…``, OpenAI ``sk-…``, Google ``AIza…``, 20+ chars after the prefix.
@@ -1293,14 +1293,14 @@ class SecretStore:
         if (ring := self.keyring) is not None:
             try:
                 stored = ring.get_password(KEYRING_SERVICE, slot.name)
-            except Exception:  # boundary: a locked or broken backend means "no key here", as in datagrove's cascade
+            except Exception:  # boundary: a locked or broken backend means "no key here", as in corral's cascade
                 stored = None
             if stored:
                 return stored, "keyring"
         return None
 
     def get(self, slot: KeySlot, label: str) -> str:
-        """The key for ``slot``; raises :class:`~gmnspy.llm.errors.MissingKey` saying how to add one."""
+        """The key for ``slot``; raises :class:`~netstead.llm.errors.MissingKey` saying how to add one."""
         found = self.lookup(slot)
         if found is not None:
             return found[0]
@@ -1322,7 +1322,7 @@ class SecretStore:
                 else "Add one in Settings → Language models."
             )
         return (
-            f"This machine has no OS keyring, so set {env} in the environment that starts gmnspy, then restart it."
+            f"This machine has no OS keyring, so set {env} in the environment that starts netstead, then restart it."
             if env
             else "This machine has no OS keyring, so keys can't be stored here."
         )
@@ -1362,14 +1362,14 @@ class SecretStore:
 
 - [ ] **Step 5: Run the tests, plus one unrelated module to prove the autouse fixture is harmless**
 
-Run: `uv run --all-extras pytest packages/gmnspy/tests/test_llm_secrets.py packages/gmnspy/tests/test_config.py -q`
+Run: `uv run --all-extras pytest packages/netstead/tests/test_llm_secrets.py packages/netstead/tests/test_config.py -q`
 Expected: `27 passed` (9 + 18).
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add packages/gmnspy/gmnspy/llm/secrets.py packages/gmnspy/tests/test_llm_secrets.py packages/gmnspy/tests/conftest.py
-git commit -m "feat(gmnspy.llm): write-only SecretStore (env -> OS keyring, no plaintext fallback), origin-bound slots"
+git add packages/netstead/netstead/llm/secrets.py packages/netstead/tests/test_llm_secrets.py packages/netstead/tests/conftest.py
+git commit -m "feat(netstead.llm): write-only SecretStore (env -> OS keyring, no plaintext fallback), origin-bound slots"
 ```
 
 ---
@@ -1377,19 +1377,19 @@ git commit -m "feat(gmnspy.llm): write-only SecretStore (env -> OS keyring, no p
 ### Task 5: The one HTTP path (`_http.request_json`), the adapter base, and the Anthropic adapter
 
 **Files:**
-- Create: `packages/gmnspy/gmnspy/llm/_http.py`, `providers/__init__.py`, `providers/_base.py`, `providers/anthropic.py`
-- Test: `packages/gmnspy/tests/test_llm_anthropic.py`
+- Create: `packages/netstead/netstead/llm/_http.py`, `providers/__init__.py`, `providers/_base.py`, `providers/anthropic.py`
+- Test: `packages/netstead/tests/test_llm_anthropic.py`
 
 - [ ] **Step 1: Write the failing tests**
 
 ```python
-"""Tests for the Anthropic adapter and the shared HTTP call path (gmnspy.llm._http)."""
+"""Tests for the Anthropic adapter and the shared HTTP call path (netstead.llm._http)."""
 
 from dataclasses import replace
 
 import httpx
 import pytest
-from gmnspy.llm.errors import (
+from netstead.llm.errors import (
     BadRequest,
     BadResponse,
     InvalidKey,
@@ -1398,8 +1398,8 @@ from gmnspy.llm.errors import (
     ProviderUnavailable,
     RateLimited,
 )
-from gmnspy.llm.providers.anthropic import API_VERSION, AnthropicProvider
-from gmnspy.llm.types import CompletionRequest, Message, Tool
+from netstead.llm.providers.anthropic import API_VERSION, AnthropicProvider
+from netstead.llm.types import CompletionRequest, Message, Tool
 
 pytestmark = pytest.mark.usefixtures("no_network")
 
@@ -1515,17 +1515,17 @@ def test_context_is_a_cached_system_block_and_temperature_is_sent(fake_api):
 
 - [ ] **Step 2: Run them to see them fail**
 
-Run: `uv run --all-extras pytest packages/gmnspy/tests/test_llm_anthropic.py -q`
-Expected: a collection error, `ModuleNotFoundError: No module named 'gmnspy.llm.providers'`.
+Run: `uv run --all-extras pytest packages/netstead/tests/test_llm_anthropic.py -q`
+Expected: a collection error, `ModuleNotFoundError: No module named 'netstead.llm.providers'`.
 
-- [ ] **Step 3: Create `packages/gmnspy/gmnspy/llm/_http.py`**
+- [ ] **Step 3: Create `packages/netstead/netstead/llm/_http.py`**
 
 ```python
 """The one HTTP call path every adapter uses: JSON in, JSON out, errors typed and scrubbed.
 
-``httpx`` (the ``[nl]`` extra) is imported lazily, so ``gmnspy.llm`` imports without it.
+``httpx`` (the ``[nl]`` extra) is imported lazily, so ``netstead.llm`` imports without it.
 Request headers carry the key, so they never appear in any error. Provider error text
-goes through :func:`~gmnspy.llm.secrets.redact` and is truncated. Exceptions are raised
+goes through :func:`~netstead.llm.secrets.redact` and is truncated. Exceptions are raised
 ``from None`` so httpx request objects (which hold the headers) aren't chained into tracebacks.
 """
 
@@ -1566,7 +1566,7 @@ def request_json(
     transport: Any = None,
     secret: str = "",
 ) -> Any:
-    """Send one JSON request and return the decoded reply, or raise a typed :class:`~gmnspy.llm.errors.LLMError`.
+    """Send one JSON request and return the decoded reply, or raise a typed :class:`~netstead.llm.errors.LLMError`.
 
     Args:
         method: HTTP method.
@@ -1587,7 +1587,7 @@ def request_json(
         import httpx
     except ImportError:
         raise ProviderUnavailable(
-            provider, f"{label}: natural-language providers need the [nl] extra: pip install 'gmnspy[nl]'"
+            provider, f"{label}: natural-language providers need the [nl] extra: pip install 'netstead[nl]'"
         ) from None
     try:
         with httpx.Client(timeout=timeout_s, transport=transport) as client:
@@ -1660,7 +1660,7 @@ def _retry_after(value: str | None) -> float | None:
         return None  # an HTTP-date: not worth parsing for a hint
 ```
 
-- [ ] **Step 4: Create `packages/gmnspy/gmnspy/llm/providers/_base.py`**
+- [ ] **Step 4: Create `packages/netstead/netstead/llm/providers/_base.py`**
 
 ```python
 """Shared plumbing for the HTTP adapters: key custody, ``repr`` hygiene, and the one call path."""
@@ -1727,7 +1727,7 @@ class HTTPProvider:
         return BadResponse(self.name, f"{self.label} returned an unexpected reply ({type(exc).__name__}: {exc}).")
 ```
 
-- [ ] **Step 5: Create `packages/gmnspy/gmnspy/llm/providers/anthropic.py`.** When `context` is set, it goes out as the first system block with `cache_control: {"type": "ephemeral"}` (Anthropic prompt caching).
+- [ ] **Step 5: Create `packages/netstead/netstead/llm/providers/anthropic.py`.** When `context` is set, it goes out as the first system block with `cache_control: {"type": "ephemeral"}` (Anthropic prompt caching).
 
 ```python
 """Anthropic Messages API adapter (tool use, prompt caching), hand-rolled over httpx."""
@@ -1756,7 +1756,7 @@ class AnthropicProvider(HTTPProvider):
         return {"x-api-key": self._key, "anthropic-version": API_VERSION}
 
     def complete(self, request: CompletionRequest) -> Completion:
-        """Run one Messages call; tool-use blocks become :class:`~gmnspy.llm.types.ToolCall`."""
+        """Run one Messages call; tool-use blocks become :class:`~netstead.llm.types.ToolCall`."""
         body: dict[str, Any] = {
             "model": request.model,
             "max_tokens": request.max_tokens,
@@ -1804,10 +1804,10 @@ class AnthropicProvider(HTTPProvider):
             raise self._bad_shape(exc) from None
 ```
 
-- [ ] **Step 6: Create `packages/gmnspy/gmnspy/llm/providers/__init__.py`.** Tasks 6–8 add one entry each.
+- [ ] **Step 6: Create `packages/netstead/netstead/llm/providers/__init__.py`.** Tasks 6–8 add one entry each.
 
 ```python
-"""Hand-rolled ``httpx`` adapters, one per provider, each implementing :class:`~gmnspy.llm.types.LLMProvider`."""
+"""Hand-rolled ``httpx`` adapters, one per provider, each implementing :class:`~netstead.llm.types.LLMProvider`."""
 
 from ._base import HTTPProvider
 from .anthropic import AnthropicProvider
@@ -1822,14 +1822,14 @@ __all__ = ["ADAPTERS", "AnthropicProvider", "HTTPProvider"]
 
 - [ ] **Step 7: Run the tests**
 
-Run: `uv run --all-extras pytest packages/gmnspy/tests/test_llm_anthropic.py -q`
+Run: `uv run --all-extras pytest packages/netstead/tests/test_llm_anthropic.py -q`
 Expected: `13 passed`.
 
 - [ ] **Step 8: Commit**
 
 ```bash
-git add packages/gmnspy/gmnspy/llm/_http.py packages/gmnspy/gmnspy/llm/providers packages/gmnspy/tests/test_llm_anthropic.py
-git commit -m "feat(gmnspy.llm): one scrubbed HTTP call path + Anthropic Messages adapter (tool use, prompt caching)"
+git add packages/netstead/netstead/llm/_http.py packages/netstead/netstead/llm/providers packages/netstead/tests/test_llm_anthropic.py
+git commit -m "feat(netstead.llm): one scrubbed HTTP call path + Anthropic Messages adapter (tool use, prompt caching)"
 ```
 
 ---
@@ -1837,9 +1837,9 @@ git commit -m "feat(gmnspy.llm): one scrubbed HTTP call path + Anthropic Message
 ### Task 6: OpenAI (and OpenAI-compatible) Chat Completions adapter
 
 **Files:**
-- Create: `packages/gmnspy/gmnspy/llm/providers/openai.py`
-- Modify: `packages/gmnspy/gmnspy/llm/providers/__init__.py`
-- Test: `packages/gmnspy/tests/test_llm_openai.py`
+- Create: `packages/netstead/netstead/llm/providers/openai.py`
+- Modify: `packages/netstead/netstead/llm/providers/__init__.py`
+- Test: `packages/netstead/tests/test_llm_openai.py`
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -1849,9 +1849,9 @@ git commit -m "feat(gmnspy.llm): one scrubbed HTTP call path + Anthropic Message
 from dataclasses import replace
 
 import pytest
-from gmnspy.llm.errors import InvalidKey
-from gmnspy.llm.providers.openai import OpenAIProvider
-from gmnspy.llm.types import CompletionRequest, Message, Tool
+from netstead.llm.errors import InvalidKey
+from netstead.llm.providers.openai import OpenAIProvider
+from netstead.llm.types import CompletionRequest, Message, Tool
 
 pytestmark = pytest.mark.usefixtures("no_network")
 
@@ -1940,10 +1940,10 @@ def test_context_leads_the_system_turn_and_temperature_is_sent(fake_api):
 
 - [ ] **Step 2: Run them to see them fail**
 
-Run: `uv run --all-extras pytest packages/gmnspy/tests/test_llm_openai.py -q`
-Expected: a collection error, `ModuleNotFoundError: No module named 'gmnspy.llm.providers.openai'`.
+Run: `uv run --all-extras pytest packages/netstead/tests/test_llm_openai.py -q`
+Expected: a collection error, `ModuleNotFoundError: No module named 'netstead.llm.providers.openai'`.
 
-- [ ] **Step 3: Create `packages/gmnspy/gmnspy/llm/providers/openai.py`**
+- [ ] **Step 3: Create `packages/netstead/netstead/llm/providers/openai.py`**
 
 ```python
 """OpenAI Chat Completions adapter; any OpenAI-compatible endpoint works through ``base_url``.
@@ -2018,7 +2018,7 @@ class OpenAIProvider(HTTPProvider):
         return {"authorization": f"Bearer {self._key}"}
 
     def complete(self, request: CompletionRequest) -> Completion:
-        """Run one chat completion; function calls become :class:`~gmnspy.llm.types.ToolCall`."""
+        """Run one chat completion; function calls become :class:`~netstead.llm.types.ToolCall`."""
         body: dict[str, Any] = {"model": request.model, "messages": chat_messages(request)}
         if request.tools:
             body["tools"] = function_tools(request)
@@ -2055,7 +2055,7 @@ class OpenAIProvider(HTTPProvider):
 - [ ] **Step 4: Register it.** `providers/__init__.py` becomes:
 
 ```python
-"""Hand-rolled ``httpx`` adapters, one per provider, each implementing :class:`~gmnspy.llm.types.LLMProvider`."""
+"""Hand-rolled ``httpx`` adapters, one per provider, each implementing :class:`~netstead.llm.types.LLMProvider`."""
 
 from ._base import HTTPProvider
 from .anthropic import AnthropicProvider
@@ -2072,14 +2072,14 @@ __all__ = ["ADAPTERS", "AnthropicProvider", "HTTPProvider", "OpenAIProvider"]
 
 - [ ] **Step 5: Run the tests**
 
-Run: `uv run --all-extras pytest packages/gmnspy/tests/test_llm_openai.py -q`
+Run: `uv run --all-extras pytest packages/netstead/tests/test_llm_openai.py -q`
 Expected: `6 passed`.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add packages/gmnspy/gmnspy/llm/providers packages/gmnspy/tests/test_llm_openai.py
-git commit -m "feat(gmnspy.llm): OpenAI Chat Completions adapter (also OpenAI-compatible endpoints)"
+git add packages/netstead/netstead/llm/providers packages/netstead/tests/test_llm_openai.py
+git commit -m "feat(netstead.llm): OpenAI Chat Completions adapter (also OpenAI-compatible endpoints)"
 ```
 
 ---
@@ -2087,9 +2087,9 @@ git commit -m "feat(gmnspy.llm): OpenAI Chat Completions adapter (also OpenAI-co
 ### Task 7: Gemini `generateContent` adapter
 
 **Files:**
-- Create: `packages/gmnspy/gmnspy/llm/providers/gemini.py`
-- Modify: `packages/gmnspy/gmnspy/llm/providers/__init__.py`
-- Test: `packages/gmnspy/tests/test_llm_gemini.py`
+- Create: `packages/netstead/netstead/llm/providers/gemini.py`
+- Modify: `packages/netstead/netstead/llm/providers/__init__.py`
+- Test: `packages/netstead/tests/test_llm_gemini.py`
 
 > **Verify at implementation time:** check the current Gemini API reference for `FunctionDeclaration.parametersJsonSchema`, which takes full JSON Schema. If it isn't available, use `parameters`, together with a sanitiser that turns the free-form `conditions` object into `{"type": "object", "properties": {}}`. Then update `test_request_shape_and_parsing` and re-record the contract fixture (Task 18).- [ ] **Step 1: Write the failing tests**
 
@@ -2099,9 +2099,9 @@ git commit -m "feat(gmnspy.llm): OpenAI Chat Completions adapter (also OpenAI-co
 from dataclasses import replace
 
 import pytest
-from gmnspy.llm.errors import BadResponse
-from gmnspy.llm.providers.gemini import GeminiProvider
-from gmnspy.llm.types import CompletionRequest, Message, Tool
+from netstead.llm.errors import BadResponse
+from netstead.llm.providers.gemini import GeminiProvider
+from netstead.llm.types import CompletionRequest, Message, Tool
 
 pytestmark = pytest.mark.usefixtures("no_network")
 
@@ -2199,10 +2199,10 @@ def test_context_joins_the_system_instruction_and_temperature_is_sent(fake_api):
 
 - [ ] **Step 2: Run them to see them fail**
 
-Run: `uv run --all-extras pytest packages/gmnspy/tests/test_llm_gemini.py -q`
-Expected: a collection error, `ModuleNotFoundError: No module named 'gmnspy.llm.providers.gemini'`.
+Run: `uv run --all-extras pytest packages/netstead/tests/test_llm_gemini.py -q`
+Expected: a collection error, `ModuleNotFoundError: No module named 'netstead.llm.providers.gemini'`.
 
-- [ ] **Step 3: Create `packages/gmnspy/gmnspy/llm/providers/gemini.py`**
+- [ ] **Step 3: Create `packages/netstead/netstead/llm/providers/gemini.py`**
 
 ```python
 """Gemini ``generateContent`` adapter (function calling), hand-rolled over httpx.
@@ -2234,7 +2234,7 @@ class GeminiProvider(HTTPProvider):
         return {"x-goog-api-key": self._key}
 
     def complete(self, request: CompletionRequest) -> Completion:
-        """Run one generateContent call; ``functionCall`` parts become :class:`~gmnspy.llm.types.ToolCall`."""
+        """Run one generateContent call; ``functionCall`` parts become :class:`~netstead.llm.types.ToolCall`."""
         body: dict[str, Any] = {
             "contents": [
                 {"role": "model" if m.role == "assistant" else "user", "parts": [{"text": m.content}]}
@@ -2299,7 +2299,7 @@ class GeminiProvider(HTTPProvider):
 - [ ] **Step 4: Register it.** `providers/__init__.py` becomes:
 
 ```python
-"""Hand-rolled ``httpx`` adapters, one per provider, each implementing :class:`~gmnspy.llm.types.LLMProvider`."""
+"""Hand-rolled ``httpx`` adapters, one per provider, each implementing :class:`~netstead.llm.types.LLMProvider`."""
 
 from ._base import HTTPProvider
 from .anthropic import AnthropicProvider
@@ -2318,14 +2318,14 @@ __all__ = ["ADAPTERS", "AnthropicProvider", "GeminiProvider", "HTTPProvider", "O
 
 - [ ] **Step 5: Run the tests**
 
-Run: `uv run --all-extras pytest packages/gmnspy/tests/test_llm_gemini.py -q`
+Run: `uv run --all-extras pytest packages/netstead/tests/test_llm_gemini.py -q`
 Expected: `6 passed`.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add packages/gmnspy/gmnspy/llm/providers packages/gmnspy/tests/test_llm_gemini.py
-git commit -m "feat(gmnspy.llm): Gemini generateContent adapter (key in header, never the URL)"
+git add packages/netstead/netstead/llm/providers packages/netstead/tests/test_llm_gemini.py
+git commit -m "feat(netstead.llm): Gemini generateContent adapter (key in header, never the URL)"
 ```
 
 ---
@@ -2333,9 +2333,9 @@ git commit -m "feat(gmnspy.llm): Gemini generateContent adapter (key in header, 
 ### Task 8: Ollama `/api/chat` adapter
 
 **Files:**
-- Create: `packages/gmnspy/gmnspy/llm/providers/ollama.py`
-- Modify: `packages/gmnspy/gmnspy/llm/providers/__init__.py`
-- Test: `packages/gmnspy/tests/test_llm_ollama.py`
+- Create: `packages/netstead/netstead/llm/providers/ollama.py`
+- Modify: `packages/netstead/netstead/llm/providers/__init__.py`
+- Test: `packages/netstead/tests/test_llm_ollama.py`
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -2346,9 +2346,9 @@ from dataclasses import replace
 
 import httpx
 import pytest
-from gmnspy.llm.errors import ModelNotFound, ProviderUnavailable, ToolsUnsupported
-from gmnspy.llm.providers.ollama import OllamaProvider
-from gmnspy.llm.types import CompletionRequest, Message, Tool
+from netstead.llm.errors import ModelNotFound, ProviderUnavailable, ToolsUnsupported
+from netstead.llm.providers.ollama import OllamaProvider
+from netstead.llm.types import CompletionRequest, Message, Tool
 
 pytestmark = pytest.mark.usefixtures("no_network")
 
@@ -2447,17 +2447,17 @@ def test_context_joins_the_system_turn_and_temperature_goes_in_options(fake_api)
 
 - [ ] **Step 2: Run them to see them fail**
 
-Run: `uv run --all-extras pytest packages/gmnspy/tests/test_llm_ollama.py -q`
-Expected: a collection error, `ModuleNotFoundError: No module named 'gmnspy.llm.providers.ollama'`.
+Run: `uv run --all-extras pytest packages/netstead/tests/test_llm_ollama.py -q`
+Expected: a collection error, `ModuleNotFoundError: No module named 'netstead.llm.providers.ollama'`.
 
-- [ ] **Step 3: Create `packages/gmnspy/gmnspy/llm/providers/ollama.py`**
+- [ ] **Step 3: Create `packages/netstead/netstead/llm/providers/ollama.py`**
 
 ```python
 """Ollama ``/api/chat`` adapter: local models (e.g. Qwen), no key.
 
 A model without tool support answers HTTP 400 "... does not support tools", which
-:mod:`gmnspy.llm._http` maps to :class:`~gmnspy.llm.errors.ToolsUnsupported`. Then
-:mod:`gmnspy.llm.structured` retries the same model in JSON mode, where ``json_schema``
+:mod:`netstead.llm._http` maps to :class:`~netstead.llm.errors.ToolsUnsupported`. Then
+:mod:`netstead.llm.structured` retries the same model in JSON mode, where ``json_schema``
 becomes Ollama's native ``format`` constraint.
 """
 
@@ -2480,7 +2480,7 @@ class OllamaProvider(HTTPProvider):
     DEFAULT_BASE_URL = "http://localhost:11434"
 
     def complete(self, request: CompletionRequest) -> Completion:
-        """Run one chat turn; ``message.tool_calls`` become :class:`~gmnspy.llm.types.ToolCall`."""
+        """Run one chat turn; ``message.tool_calls`` become :class:`~netstead.llm.types.ToolCall`."""
         body: dict[str, Any] = {
             "model": request.model,
             "messages": chat_messages(request),
@@ -2517,10 +2517,10 @@ class OllamaProvider(HTTPProvider):
             raise self._bad_shape(exc) from None
 ```
 
-- [ ] **Step 4: Finish the adapter map.** `packages/gmnspy/gmnspy/llm/providers/__init__.py` now reads:
+- [ ] **Step 4: Finish the adapter map.** `packages/netstead/netstead/llm/providers/__init__.py` now reads:
 
 ```python
-"""Hand-rolled ``httpx`` adapters, one per provider, each implementing :class:`~gmnspy.llm.types.LLMProvider`."""
+"""Hand-rolled ``httpx`` adapters, one per provider, each implementing :class:`~netstead.llm.types.LLMProvider`."""
 
 from ._base import HTTPProvider
 from .anthropic import AnthropicProvider
@@ -2541,14 +2541,14 @@ __all__ = ["ADAPTERS", "AnthropicProvider", "GeminiProvider", "HTTPProvider", "O
 
 - [ ] **Step 5: Run the tests**
 
-Run: `uv run --all-extras pytest packages/gmnspy/tests/test_llm_anthropic.py packages/gmnspy/tests/test_llm_openai.py packages/gmnspy/tests/test_llm_gemini.py packages/gmnspy/tests/test_llm_ollama.py -q`
+Run: `uv run --all-extras pytest packages/netstead/tests/test_llm_anthropic.py packages/netstead/tests/test_llm_openai.py packages/netstead/tests/test_llm_gemini.py packages/netstead/tests/test_llm_ollama.py -q`
 Expected: `32 passed` (13 + 6 + 6 + 7).
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add packages/gmnspy/gmnspy/llm/providers packages/gmnspy/tests/test_llm_ollama.py
-git commit -m "feat(gmnspy.llm): Ollama /api/chat adapter (local, no key; native JSON format)"
+git add packages/netstead/netstead/llm/providers packages/netstead/tests/test_llm_ollama.py
+git commit -m "feat(netstead.llm): Ollama /api/chat adapter (local, no key; native JSON format)"
 ```
 
 ---
@@ -2556,20 +2556,20 @@ git commit -m "feat(gmnspy.llm): Ollama /api/chat adapter (local, no key; native
 ### Task 9: Structured output: forced tool, validation, repair loop, JSON-mode fallback
 
 **Files:**
-- Create: `packages/gmnspy/gmnspy/llm/structured.py`
-- Test: `packages/gmnspy/tests/test_llm_structured.py`
+- Create: `packages/netstead/netstead/llm/structured.py`
+- Test: `packages/netstead/tests/test_llm_structured.py`
 
 `context` and `temperature` reach every call. In JSON mode the JSON instructions go in the per-call `system`, so the cacheable `context` prefix is identical across repairs.
 
 - [ ] **Step 1: Write the failing tests**
 
 ````python
-"""Tests for gmnspy.llm.structured — one validated tool call, repair loop, JSON-mode fallback."""
+"""Tests for netstead.llm.structured — one validated tool call, repair loop, JSON-mode fallback."""
 
 import pytest
-from gmnspy.llm.errors import InvalidKey, ToolsUnsupported
-from gmnspy.llm.structured import StructuredOutputError, request_tool_call
-from gmnspy.llm.types import Completion, Tool, ToolCall
+from netstead.llm.errors import InvalidKey, ToolsUnsupported
+from netstead.llm.structured import StructuredOutputError, request_tool_call
+from netstead.llm.types import Completion, Tool, ToolCall
 
 TOOL = Tool("emit", "Emit a count.", {"type": "object", "properties": {"n": {"type": "integer"}}, "required": ["n"]})
 
@@ -2675,10 +2675,10 @@ def test_context_and_temperature_reach_every_call_and_json_mode_keeps_the_contex
 
 - [ ] **Step 2: Run them to see them fail**
 
-Run: `uv run --all-extras pytest packages/gmnspy/tests/test_llm_structured.py -q`
-Expected: a collection error, `ModuleNotFoundError: No module named 'gmnspy.llm.structured'`.
+Run: `uv run --all-extras pytest packages/netstead/tests/test_llm_structured.py -q`
+Expected: a collection error, `ModuleNotFoundError: No module named 'netstead.llm.structured'`.
 
-- [ ] **Step 3: Create `packages/gmnspy/gmnspy/llm/structured.py`**
+- [ ] **Step 3: Create `packages/netstead/netstead/llm/structured.py`**
 
 ```python
 """Get one validated tool call out of any provider, with a bounded repair loop.
@@ -2686,7 +2686,7 @@ Expected: a collection error, `ModuleNotFoundError: No module named 'gmnspy.llm.
 PRD §15(e): when the model's output fails validation, re-prompt with the error instead of
 surfacing a raw failure. Models without tool calling get the same tool as a "reply with
 JSON only" instruction (JSON mode) on the *same* provider and model, never another provider.
-Provider failures (:class:`~gmnspy.llm.errors.LLMError`: keys, rate limits, timeouts) are
+Provider failures (:class:`~netstead.llm.errors.LLMError`: keys, rate limits, timeouts) are
 never retried here.
 """
 
@@ -2743,7 +2743,7 @@ def request_tool_call(
     """Ask ``provider`` to call ``tool`` for ``user``; validate, and repair until valid or out of budget.
 
     Args:
-        provider: Any :class:`~gmnspy.llm.types.LLMProvider`.
+        provider: Any :class:`~netstead.llm.types.LLMProvider`.
         model: Model id.
         tool: The tool the model must call. Its ``input_schema`` is enforced with jsonschema.
         user: The user's text.
@@ -2837,7 +2837,7 @@ def _drop_nulls(value: Any) -> Any:
 
 
 def _check_schema(arguments: dict[str, Any], schema: dict[str, Any]) -> None:
-    from jsonschema import Draft202012Validator  # the [nl] extra; lazy so gmnspy.llm imports without it
+    from jsonschema import Draft202012Validator  # the [nl] extra; lazy so netstead.llm imports without it
     from jsonschema.exceptions import best_match
 
     error = best_match(Draft202012Validator(schema).iter_errors(arguments))
@@ -2855,14 +2855,14 @@ def _echo(completion: Completion) -> str:
 
 - [ ] **Step 4: Run the tests**
 
-Run: `uv run --all-extras pytest packages/gmnspy/tests/test_llm_structured.py -q`
+Run: `uv run --all-extras pytest packages/netstead/tests/test_llm_structured.py -q`
 Expected: `9 passed`.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add packages/gmnspy/gmnspy/llm/structured.py packages/gmnspy/tests/test_llm_structured.py
-git commit -m "feat(gmnspy.llm): request_tool_call — forced tool, schema check, repair loop, JSON-mode fallback"
+git add packages/netstead/netstead/llm/structured.py packages/netstead/tests/test_llm_structured.py
+git commit -m "feat(netstead.llm): request_tool_call — forced tool, schema check, repair loop, JSON-mode fallback"
 ```
 
 ---
@@ -2870,14 +2870,14 @@ git commit -m "feat(gmnspy.llm): request_tool_call — forced tool, schema check
 ### Task 10: Settings: widen `select.provider`, add `llm.*` endpoints and `llm.quality`, refuse key-shaped values
 
 **Files:**
-- Modify: `packages/gmnspy/gmnspy/config.py`
-- Modify: `packages/gmnspy/gmnspy/workbench/actions.py` (the `SetSetting` guard)
-- Modify: `packages/gmnspy/gmnspy/workbench/routes/core.py` (422 without input values)
-- Test: `packages/gmnspy/tests/test_config.py`, `test_workbench_actions.py`, `test_workbench_server.py`
+- Modify: `packages/netstead/netstead/config.py`
+- Modify: `packages/netstead/netstead/workbench/actions.py` (the `SetSetting` guard)
+- Modify: `packages/netstead/netstead/workbench/routes/core.py` (422 without input values)
+- Test: `packages/netstead/tests/test_config.py`, `test_workbench_actions.py`, `test_workbench_server.py`
 
 - [ ] **Step 1: Update and add the failing tests.**
 
-In `packages/gmnspy/tests/test_config.py`, `test_precedence_user_project_env_session`'s env still says `"claude"`, and its expected value becomes `"anthropic"`:
+In `packages/netstead/tests/test_config.py`, `test_precedence_user_project_env_session`'s env still says `"claude"`, and its expected value becomes `"anthropic"`:
 
 ```python
     assert (s.viz.basemap, s.app.host, s.select.provider, s.app.port) == ("esri", "0.0.0.0", "anthropic", 9004)
@@ -2887,11 +2887,11 @@ Replace `test_save_setting_project_scope_keeps_other_keys` with:
 
 ```python
 def test_save_setting_project_scope_keeps_other_keys(tmp_path, isolated_env):
-    (tmp_path / "gmnspy.toml").write_text('[viz]\nbasemap = "esri"\n')
+    (tmp_path / "netstead.toml").write_text('[viz]\nbasemap = "esri"\n')
     save_setting("select.provider", "claude", scope="project", project_dir=tmp_path, environ=isolated_env)
     s = load_settings(project_dir=tmp_path, environ=isolated_env).settings
     assert (s.viz.basemap, s.select.provider) == ("esri", "anthropic")
-    assert 'provider = "anthropic"' in (tmp_path / "gmnspy.toml").read_text()  # the alias is stored under its new name
+    assert 'provider = "anthropic"' in (tmp_path / "netstead.toml").read_text()  # the alias is stored under its new name
 ```
 
 Append, after P1a's `test_negative_approval_threshold_rejected`:
@@ -2910,8 +2910,8 @@ def test_llm_section_defaults_env_and_base_url_validation(tmp_path, isolated_env
     assert (s.llm.openai.base_url, s.llm.openai.timeout_s) == (None, 60.0)
     env = {
         **isolated_env,
-        "GMNSPY_LLM__OLLAMA__BASE_URL": "http://gpu-box:11434/",
-        "GMNSPY_LLM__OPENAI__TIMEOUT_S": "30",
+        "NETSTEAD_LLM__OLLAMA__BASE_URL": "http://gpu-box:11434/",
+        "NETSTEAD_LLM__OPENAI__TIMEOUT_S": "30",
     }
     s = load_settings(project_dir=tmp_path, environ=env).settings
     assert (s.llm.ollama.base_url, s.llm.openai.timeout_s) == ("http://gpu-box:11434", 30.0)
@@ -2931,7 +2931,7 @@ def test_llm_quality_defaults_and_bounds(tmp_path, isolated_env):
         load_settings(project_dir=tmp_path, environ=isolated_env, overrides={"llm.quality.grounding": "always"})
 ```
 
-Append to `packages/gmnspy/tests/test_workbench_actions.py`:
+Append to `packages/netstead/tests/test_workbench_actions.py`:
 
 ```python
 def test_set_setting_refuses_key_shaped_values():
@@ -2947,7 +2947,7 @@ def test_set_setting_refuses_key_shaped_values():
     assert SetSetting(key="select.model", value="claude-sonnet-5").value == "claude-sonnet-5"
 ```
 
-Append to `packages/gmnspy/tests/test_workbench_server.py`:
+Append to `packages/netstead/tests/test_workbench_server.py`:
 
 ```python
 def test_invalid_action_422_never_echoes_values(client):
@@ -2958,20 +2958,20 @@ def test_invalid_action_422_never_echoes_values(client):
 
 - [ ] **Step 2: Run them to see them fail**
 
-Run: `uv run --all-extras pytest packages/gmnspy/tests/test_config.py packages/gmnspy/tests/test_workbench_actions.py packages/gmnspy/tests/test_workbench_server.py -q`
+Run: `uv run --all-extras pytest packages/netstead/tests/test_config.py packages/netstead/tests/test_workbench_actions.py packages/netstead/tests/test_workbench_server.py -q`
 Expected: 7 failures:
 - the alias tests fail with `Input should be 'stub' or 'claude'`;
 - the two `llm` tests fail with `Extra inputs are not permitted`;
 - the `SetSetting` test fails with `DID NOT RAISE`;
 - the 422 test fails because the key is echoed in `input`.
 
-- [ ] **Step 3: Edit `packages/gmnspy/gmnspy/config.py`.**
+- [ ] **Step 3: Edit `packages/netstead/netstead/config.py`.**
 
 In the module docstring, replace the last paragraph with:
 
 ```python
 Secrets never live here: credentials stay in env/keyring/netrc via
-:mod:`datagrove.io.credentials`, and LLM API keys in :mod:`gmnspy.llm.secrets`.
+:mod:`corral.io.credentials`, and LLM API keys in :mod:`netstead.llm.secrets`.
 ``credentials.keyring_hosts`` only names hosts; ``llm.*`` only holds endpoints.
 ```
 
@@ -3002,7 +3002,7 @@ __all__ = [
 ]
 ```
 
-After `PROJECT_FILE = "gmnspy.toml"`, add:
+After `PROJECT_FILE = "netstead.toml"`, add:
 
 ```python
 #: Old ``select.provider`` names, still accepted and stored under the new name, so existing files keep working.
@@ -3015,7 +3015,7 @@ Replace `class SelectSettings` with the following. This also adds the LLM endpoi
 class SelectSettings(_Section):
     """Natural-language selection: which provider parses utterances, and with which model.
 
-    ``model=None`` means the provider's catalog default (:mod:`gmnspy.llm.catalog`).
+    ``model=None`` means the provider's catalog default (:mod:`netstead.llm.catalog`).
     """
 
     provider: Literal["stub", "anthropic", "openai", "gemini", "ollama"] = "stub"
@@ -3073,7 +3073,7 @@ class LLMQualitySettings(_Section):
 
 
 class LLMSettings(_Section):
-    """Language-model endpoints and quality knobs. API keys never live in settings (see :mod:`gmnspy.llm.secrets`)."""
+    """Language-model endpoints and quality knobs. API keys never live in settings (see :mod:`netstead.llm.secrets`)."""
 
     anthropic: LLMEndpointSettings = Field(default_factory=LLMEndpointSettings)
     openai: LLMEndpointSettings = Field(default_factory=LLMEndpointSettings)
@@ -3088,14 +3088,14 @@ In `class Settings`, add this field directly after `select`:
     llm: LLMSettings = Field(default_factory=LLMSettings)
 ```
 
-- [ ] **Step 4: Guard `SetSetting` in `packages/gmnspy/gmnspy/workbench/actions.py`.** Add `from gmnspy.llm.secrets import looks_like_secret` below the pydantic import, as its own first-party import group. Then replace the `SetSetting` class with the following (P1a's `BuildNetwork` follows it unchanged):
+- [ ] **Step 4: Guard `SetSetting` in `packages/netstead/netstead/workbench/actions.py`.** Add `from netstead.llm.secrets import looks_like_secret` below the pydantic import, as its own first-party import group. Then replace the `SetSetting` class with the following (P1a's `BuildNetwork` follows it unchanged):
 
 ```python
 class SetSetting(_Action):
     """Change a setting (dotted key) for this session, or persist it to the user/project file.
 
     Refuses API-key-shaped values *at validation*, before anything is recorded: keys are set
-    through the write-only ``/api/llm/keys`` route (or ``gmnspy llm set-key``), never as settings.
+    through the write-only ``/api/llm/keys`` route (or ``netstead llm set-key``), never as settings.
     """
 
     type: Literal["set_setting"] = "set_setting"
@@ -3113,7 +3113,7 @@ class SetSetting(_Action):
         return self
 ```
 
-- [ ] **Step 5: Stop 422 responses echoing input.** In `packages/gmnspy/gmnspy/workbench/routes/core.py`, inside `actions()`'s `except ValidationError` branch (P1a now parses before dispatching), change the `detail` line to:
+- [ ] **Step 5: Stop 422 responses echoing input.** In `packages/netstead/netstead/workbench/routes/core.py`, inside `actions()`'s `except ValidationError` branch (P1a now parses before dispatching), change the `detail` line to:
 
 ```python
             detail = exc.errors(include_url=False, include_context=False, include_input=False)
@@ -3121,14 +3121,14 @@ class SetSetting(_Action):
 
 - [ ] **Step 6: Run the affected suites**
 
-Run: `uv run --all-extras pytest packages/gmnspy/tests/test_config.py packages/gmnspy/tests/test_workbench_actions.py packages/gmnspy/tests/test_workbench_server.py packages/gmnspy/tests/test_cli_workbench.py packages/gmnspy/tests/test_workbench_session.py -q`
-Expected: `96 passed` (21 + 17 + 23 + 13 + 22). The existing `--provider gpt` / `value="gpt"` rejections still fail validation, as before. Then run the whole gmnspy suite once (`uv run --all-extras pytest packages/gmnspy/tests -q`). Every test passes; the only skip is P1a's opt-in calibration test.
+Run: `uv run --all-extras pytest packages/netstead/tests/test_config.py packages/netstead/tests/test_workbench_actions.py packages/netstead/tests/test_workbench_server.py packages/netstead/tests/test_cli_workbench.py packages/netstead/tests/test_workbench_session.py -q`
+Expected: `96 passed` (21 + 17 + 23 + 13 + 22). The existing `--provider gpt` / `value="gpt"` rejections still fail validation, as before. Then run the whole netstead suite once (`uv run --all-extras pytest packages/netstead/tests -q`). Every test passes; the only skip is P1a's opt-in calibration test.
 
 - [ ] **Step 7: Commit**
 
 ```bash
-git add packages/gmnspy/gmnspy/config.py packages/gmnspy/gmnspy/workbench/actions.py packages/gmnspy/gmnspy/workbench/routes/core.py packages/gmnspy/tests/test_config.py packages/gmnspy/tests/test_workbench_actions.py packages/gmnspy/tests/test_workbench_server.py
-git commit -m "feat(gmnspy): select.provider gains anthropic/openai/gemini/ollama (claude alias); llm.* endpoints + llm.quality; key-shaped settings refused"
+git add packages/netstead/netstead/config.py packages/netstead/netstead/workbench/actions.py packages/netstead/netstead/workbench/routes/core.py packages/netstead/tests/test_config.py packages/netstead/tests/test_workbench_actions.py packages/netstead/tests/test_workbench_server.py
+git commit -m "feat(netstead): select.provider gains anthropic/openai/gemini/ollama (claude alias); llm.* endpoints + llm.quality; key-shaped settings refused"
 ```
 
 ---
@@ -3136,9 +3136,9 @@ git commit -m "feat(gmnspy): select.provider gains anthropic/openai/gemini/ollam
 ### Task 11: `ProviderRegistry`: adapters from settings + keys, status, the privacy note, connection tests
 
 **Files:**
-- Create: `packages/gmnspy/gmnspy/llm/registry.py`
-- Modify: `packages/gmnspy/gmnspy/llm/__init__.py` (final public surface)
-- Test: `packages/gmnspy/tests/test_llm_registry.py`
+- Create: `packages/netstead/netstead/llm/registry.py`
+- Modify: `packages/netstead/netstead/llm/__init__.py` (final public surface)
+- Test: `packages/netstead/tests/test_llm_registry.py`
 
 `ProviderRegistry` is the one place that decides what each provider receives:
 - `is_local` (the effective `base_url` is loopback);
@@ -3150,13 +3150,13 @@ Status rows carry that list as `sends`, and the env vars to set as `key_env`.
 - [ ] **Step 1: Write the failing tests**
 
 ```python
-"""Tests for gmnspy.llm.registry — adapters from settings + keys, status, models, connection tests."""
+"""Tests for netstead.llm.registry — adapters from settings + keys, status, models, connection tests."""
 
 import pytest
-from gmnspy.config import load_settings
-from gmnspy.llm.errors import MissingKey
-from gmnspy.llm.registry import build_registry, is_local_url
-from gmnspy.llm.secrets import KEYRING_SERVICE
+from netstead.config import load_settings
+from netstead.llm.errors import MissingKey
+from netstead.llm.registry import build_registry, is_local_url
+from netstead.llm.secrets import KEYRING_SERVICE
 
 pytestmark = pytest.mark.usefixtures("no_network")
 
@@ -3254,7 +3254,7 @@ def test_connection_test_failures_are_reported_not_raised(make, fake_keyring, fa
         "ok": False,
         "error_type": "MissingKey",
         "message": "OpenAI: no API key is configured. Add one in Settings → Language models, "
-        "or set GMNSPY_OPENAI_API_KEY or OPENAI_API_KEY.",
+        "or set NETSTEAD_OPENAI_API_KEY or OPENAI_API_KEY.",
     }
     fake_keyring.set_password(KEYRING_SERVICE, "anthropic", "k")
     fake_api.add("GET", "/v1/models", status=401, body={"error": {"message": "invalid x-api-key"}})
@@ -3275,7 +3275,7 @@ def test_auto_quality_settings_follow_the_endpoint_and_the_privacy_note_follows_
     assert reg.disclosure("anthropic") == [
         "your utterance",
         "the selection tool's schema (GMNS field names such as lanes)",
-        "the GMNS assistant guide that ships with gmnspy",
+        "the GMNS assistant guide that ships with netstead",
     ]
     opted_in = make(
         overrides={"llm.quality.grounding": "on", "llm.quality.project_context": "on", "llm.quality.few_shot": True}
@@ -3291,15 +3291,15 @@ def test_auto_quality_settings_follow_the_endpoint_and_the_privacy_note_follows_
 
 - [ ] **Step 2: Run them to see them fail**
 
-Run: `uv run --all-extras pytest packages/gmnspy/tests/test_llm_registry.py -q`
-Expected: a collection error, `ModuleNotFoundError: No module named 'gmnspy.llm.registry'`.
+Run: `uv run --all-extras pytest packages/netstead/tests/test_llm_registry.py -q`
+Expected: a collection error, `ModuleNotFoundError: No module named 'netstead.llm.registry'`.
 
-- [ ] **Step 3: Create `packages/gmnspy/gmnspy/llm/registry.py`**
+- [ ] **Step 3: Create `packages/netstead/netstead/llm/registry.py`**
 
 ```python
 """ProviderRegistry: adapters built from settings + stored keys, and what is usable right now.
 
-The Workbench routes, the session's parser and the ``gmnspy llm`` CLI all go through this.
+The Workbench routes, the session's parser and the ``netstead llm`` CLI all go through this.
 It hands out key *status* (configured / source), never key values. The only code that reads
 a key is :meth:`ProviderRegistry.provider`, which hands it straight to an adapter.
 """
@@ -3312,7 +3312,7 @@ from collections.abc import Mapping
 from typing import Any, Literal
 from urllib.parse import urlsplit
 
-from gmnspy.config import LLMSettings, Settings, load_settings, user_config_path
+from netstead.config import LLMSettings, Settings, load_settings, user_config_path
 
 from .catalog import Catalog, ProviderInfo, load_catalog
 from .errors import LLMError
@@ -3373,7 +3373,7 @@ class ProviderRegistry:
         quality = self.settings.quality
         items = ["your utterance", "the selection tool's schema (GMNS field names such as lanes)"]
         if quality.assistant_context:
-            items.append("the GMNS assistant guide that ships with gmnspy")
+            items.append("the GMNS assistant guide that ships with netstead")
         if self.grounding_on(name):
             items.append(f"up to {quality.grounding_max_names} street names and route numbers from the active network")
         if self.project_context_on(name):
@@ -3385,7 +3385,7 @@ class ProviderRegistry:
         return items
 
     def provider(self, name: str, *, timeout_s: float | None = None) -> LLMProvider:
-        """An adapter for ``name`` holding its key; raises :class:`~gmnspy.llm.errors.MissingKey` if there is none."""
+        """An adapter for ``name`` holding its key; raises :class:`~netstead.llm.errors.MissingKey` if there is none."""
         info = self.catalog[name]
         key = "" if info.kind == "local" else self.secrets.get(self.slot(name), info.label)
         return ADAPTERS[name](
@@ -3499,18 +3499,18 @@ def default_registry() -> ProviderRegistry:
     return build_registry(load_settings().settings)
 ```
 
-- [ ] **Step 4: Complete `packages/gmnspy/gmnspy/llm/__init__.py`**
+- [ ] **Step 4: Complete `packages/netstead/netstead/llm/__init__.py`**
 
 ```python
-"""Provider-neutral LLM layer for gmnspy's natural-language features.
+"""Provider-neutral LLM layer for netstead's natural-language features.
 
-* :mod:`~gmnspy.llm.types`: :class:`CompletionRequest` / :class:`Completion` and the
+* :mod:`~netstead.llm.types`: :class:`CompletionRequest` / :class:`Completion` and the
   :class:`LLMProvider` protocol every adapter implements.
-* :mod:`~gmnspy.llm.providers`: hand-rolled ``httpx`` adapters (anthropic, openai, gemini, ollama).
-* :mod:`~gmnspy.llm.structured`: one validated tool call, with a repair loop and JSON mode.
-* :mod:`~gmnspy.llm.catalog`: the maintained provider/model catalog (``models.toml``).
-* :mod:`~gmnspy.llm.secrets`: write-only API-key storage (env → keyring → 0600 file).
-* :mod:`~gmnspy.llm.registry`: :class:`ProviderRegistry`, the entry point.
+* :mod:`~netstead.llm.providers`: hand-rolled ``httpx`` adapters (anthropic, openai, gemini, ollama).
+* :mod:`~netstead.llm.structured`: one validated tool call, with a repair loop and JSON mode.
+* :mod:`~netstead.llm.catalog`: the maintained provider/model catalog (``models.toml``).
+* :mod:`~netstead.llm.secrets`: write-only API-key storage (env → keyring → 0600 file).
+* :mod:`~netstead.llm.registry`: :class:`ProviderRegistry`, the entry point.
 
 ``httpx``, ``jsonschema`` and ``keyring`` (the ``[nl]`` extra) are imported lazily, so
 importing this package never requires them.
@@ -3572,24 +3572,24 @@ __all__ = [
 
 - [ ] **Step 5: Run every LLM test so far**
 
-Run: `uv run --all-extras pytest packages/gmnspy/tests/test_llm_types.py packages/gmnspy/tests/test_llm_catalog.py packages/gmnspy/tests/test_llm_secrets.py packages/gmnspy/tests/test_llm_anthropic.py packages/gmnspy/tests/test_llm_openai.py packages/gmnspy/tests/test_llm_gemini.py packages/gmnspy/tests/test_llm_ollama.py packages/gmnspy/tests/test_llm_structured.py packages/gmnspy/tests/test_llm_registry.py -q`
+Run: `uv run --all-extras pytest packages/netstead/tests/test_llm_types.py packages/netstead/tests/test_llm_catalog.py packages/netstead/tests/test_llm_secrets.py packages/netstead/tests/test_llm_anthropic.py packages/netstead/tests/test_llm_openai.py packages/netstead/tests/test_llm_gemini.py packages/netstead/tests/test_llm_ollama.py packages/netstead/tests/test_llm_structured.py packages/netstead/tests/test_llm_registry.py -q`
 Expected: `70 passed` (4 + 5 + 9 + 13 + 6 + 6 + 7 + 9 + 11). Also run `uv run lint-imports`; all contracts should be kept.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add packages/gmnspy/gmnspy/llm/registry.py packages/gmnspy/gmnspy/llm/__init__.py packages/gmnspy/tests/test_llm_registry.py
-git commit -m "feat(gmnspy.llm): ProviderRegistry — adapters from settings + keys, status, privacy disclosure, connection tests"
+git add packages/netstead/netstead/llm/registry.py packages/netstead/netstead/llm/__init__.py packages/netstead/tests/test_llm_registry.py
+git commit -m "feat(netstead.llm): ProviderRegistry — adapters from settings + keys, status, privacy disclosure, connection tests"
 ```
 
 ---
 
-### Task 12: The shipped assistant guide and project notes (`gmnspy.llm.context`)
+### Task 12: The shipped assistant guide and project notes (`netstead.llm.context`)
 
 **Files:**
-- Create: `packages/gmnspy/gmnspy/llm/context/__init__.py`, `packages/gmnspy/gmnspy/llm/context/gmns_assistant.md`
-- Modify: `packages/gmnspy/pyproject.toml` (wheel include)
-- Test: `packages/gmnspy/tests/test_llm_context.py`
+- Create: `packages/netstead/netstead/llm/context/__init__.py`, `packages/netstead/netstead/llm/context/gmns_assistant.md`
+- Modify: `packages/netstead/pyproject.toml` (wheel include)
+- Test: `packages/netstead/tests/test_llm_context.py`
 
 Layer (a) is `gmns_assistant.md`. It is maintained like `models.toml`, and the same text goes to every provider. A drift test checks that it names every field of the selection tool and that its worked examples are valid tool input.
 
@@ -3602,12 +3602,12 @@ URL sources are never searched. Whether layer (b) is *sent* is decided per provi
 - [ ] **Step 1: Write the failing tests**
 
 ```python
-"""Tests for gmnspy.llm.context — the shipped assistant guide and project notes."""
+"""Tests for netstead.llm.context — the shipped assistant guide and project notes."""
 
 import json
 
-from gmnspy.llm.context import assistant_context, find_project_context, read_capped
-from gmnspy.select.parse import INTENT_TOOL
+from netstead.llm.context import assistant_context, find_project_context, read_capped
+from netstead.select.parse import INTENT_TOOL
 
 
 def test_guide_covers_every_tool_field_and_its_examples_are_valid_tool_input():
@@ -3656,17 +3656,17 @@ def test_read_capped_names_the_file_and_caps(tmp_path):
 
 - [ ] **Step 2: Run them to see them fail**
 
-Run: `uv run --all-extras pytest packages/gmnspy/tests/test_llm_context.py -q`
-Expected: a collection error, `ModuleNotFoundError: No module named 'gmnspy.llm.context'`.
+Run: `uv run --all-extras pytest packages/netstead/tests/test_llm_context.py -q`
+Expected: a collection error, `ModuleNotFoundError: No module named 'netstead.llm.context'`.
 
-- [ ] **Step 3: Create `packages/gmnspy/gmnspy/llm/context/gmns_assistant.md`**
+- [ ] **Step 3: Create `packages/netstead/netstead/llm/context/gmns_assistant.md`**
 
 ```markdown
 # GMNS assistant guide
 
-This guide is sent to the language model, together with the user's request, by gmnspy's
+This guide is sent to the language model, together with the user's request, by netstead's
 natural-language features. It is the same for every provider. Maintainers: keep it short, factual
-and provider-neutral. It is versioned with gmnspy (`gmnspy/llm/context/gmns_assistant.md`).
+and provider-neutral. It is versioned with netstead (`netstead/llm/context/gmns_assistant.md`).
 
 ## Your job
 
@@ -3683,7 +3683,7 @@ Specification). Useful link fields:
 |---|---|
 | `link_id` | primary key; only use when the user gives ids explicitly |
 | `name` | street or path name, e.g. "Airport Boulevard" |
-| `ref` | route number, e.g. "I 40", "US 1", "NC 54" (an OpenStreetMap-derived field gmnspy keeps) |
+| `ref` | route number, e.g. "I 40", "US 1", "NC 54" (an OpenStreetMap-derived field netstead keeps) |
 | `from_node_id`, `to_node_id` | the link's end nodes; travel goes from → to on a directed link |
 | `directed` | whether travel is only from → to |
 | `facility_type` | road class, e.g. motorway, trunk, primary, secondary, residential |
@@ -3747,14 +3747,14 @@ The Workbench will offer more actions as tools over time (style, filter, navigat
 approval). Each arrives as its own JSON-schema tool. Only call tools you are given.
 ```
 
-- [ ] **Step 4: Create `packages/gmnspy/gmnspy/llm/context/__init__.py`**
+- [ ] **Step 4: Create `packages/netstead/netstead/llm/context/__init__.py`**
 
 ```python
 """System context for the natural-language features: the shipped guide and a project's notes.
 
 Two layers, each with its own toggle and size cap in ``llm.quality``:
 
-* :func:`assistant_context` — ``gmns_assistant.md``, maintained and shipped with gmnspy: the GMNS
+* :func:`assistant_context` — ``gmns_assistant.md``, maintained and shipped with netstead: the GMNS
   data model, how to fill the selection tool, and worked examples. Identical for every provider.
 * :func:`find_project_context` + :func:`read_capped` — an optional ``AGENTS.md`` (or ``CLAUDE.md``)
   next to the active network or in the project directory, holding local knowledge such as
@@ -3798,7 +3798,7 @@ def assistant_context(max_chars: int) -> str:
         >>> assistant_context(100_000).startswith("# GMNS assistant guide")
         True
     """
-    text = resources.files("gmnspy.llm.context").joinpath(ASSISTANT_CONTEXT_FILE).read_text(encoding="utf-8")
+    text = resources.files("netstead.llm.context").joinpath(ASSISTANT_CONTEXT_FILE).read_text(encoding="utf-8")
     return _cap(text, max_chars)
 
 
@@ -3826,23 +3826,23 @@ def read_capped(path: Path, max_chars: int) -> str:
     return _cap(f"Project notes from {path.name}:\n\n{path.read_text(encoding='utf-8', errors='replace')}", max_chars)
 ```
 
-- [ ] **Step 5: Ship the guide.** In `packages/gmnspy/pyproject.toml`'s wheel `include`, after the `gmnspy/llm/*.toml` line, add:
+- [ ] **Step 5: Ship the guide.** In `packages/netstead/pyproject.toml`'s wheel `include`, after the `netstead/llm/*.toml` line, add:
 
 ```toml
-    # Shipped assistant context sent with NL prompts (gmnspy.llm.context).
-    "gmnspy/llm/context/*.md",
+    # Shipped assistant context sent with NL prompts (netstead.llm.context).
+    "netstead/llm/context/*.md",
 ```
 
 - [ ] **Step 6: Run the tests and the module's doctests**
 
-Run: `uv run --all-extras pytest packages/gmnspy/tests/test_llm_context.py --doctest-modules packages/gmnspy/gmnspy/llm/context -q`
+Run: `uv run --all-extras pytest packages/netstead/tests/test_llm_context.py --doctest-modules packages/netstead/netstead/llm/context -q`
 Expected: `6 passed` (5 tests + 1 doctest).
 
 - [ ] **Step 7: Commit**
 
 ```bash
-git add packages/gmnspy/gmnspy/llm/context packages/gmnspy/pyproject.toml packages/gmnspy/tests/test_llm_context.py
-git commit -m "feat(gmnspy.llm): shipped GMNS assistant guide + AGENTS.md/CLAUDE.md project-note discovery"
+git add packages/netstead/netstead/llm/context packages/netstead/pyproject.toml packages/netstead/tests/test_llm_context.py
+git commit -m "feat(netstead.llm): shipped GMNS assistant guide + AGENTS.md/CLAUDE.md project-note discovery"
 ```
 
 ---
@@ -3850,11 +3850,11 @@ git commit -m "feat(gmnspy.llm): shipped GMNS assistant guide + AGENTS.md/CLAUDE
 ### Task 13: Prompt assembly, `LLMParser`, `ClaudeParser` alias, `make_parser`; CLI flags; the `[nl]` extra
 
 **Files:**
-- Create: `packages/gmnspy/gmnspy/select/prompt.py`
-- Modify: `packages/gmnspy/gmnspy/select/parse.py` (full replacement below), `select/__init__.py`
-- Modify: `packages/gmnspy/gmnspy/cli/commands/select.py`, `cli/commands/workbench.py`, `cli/commands/viz.py`
-- Modify: `packages/gmnspy/pyproject.toml`, `uv.lock`
-- Test: `packages/gmnspy/tests/test_select_prompt.py` (new), `test_select_parse.py`, `test_select_cli.py`, `test_cli_workbench.py`
+- Create: `packages/netstead/netstead/select/prompt.py`
+- Modify: `packages/netstead/netstead/select/parse.py` (full replacement below), `select/__init__.py`
+- Modify: `packages/netstead/netstead/cli/commands/select.py`, `cli/commands/workbench.py`, `cli/commands/viz.py`
+- Modify: `packages/netstead/pyproject.toml`, `uv.lock`
+- Test: `packages/netstead/tests/test_select_prompt.py` (new), `test_select_parse.py`, `test_select_cli.py`, `test_cli_workbench.py`
 
 `render_prompt` splits the prompt into two parts:
 - the **stable** part: the system prompt, the guide, the project notes and the vocabulary. It changes only when the network or the settings do, so it is the cacheable `context`;
@@ -3864,15 +3864,15 @@ git commit -m "feat(gmnspy.llm): shipped GMNS assistant guide + AGENTS.md/CLAUDE
 
 - [ ] **Step 1: Write the failing tests.**
 
-Create `packages/gmnspy/tests/test_select_prompt.py`:
+Create `packages/netstead/tests/test_select_prompt.py`:
 
 ```python
-"""Tests for gmnspy.select.prompt — grounding vocabulary, examples, close-match hints."""
+"""Tests for netstead.select.prompt — grounding vocabulary, examples, close-match hints."""
 
 import pandas as pd
-from gmnspy.select.intent import Facility, SelectionIntent
-from gmnspy.select.parse import intent_from_payload, payload_from_intent
-from gmnspy.select.prompt import PromptContext, close_match_hint, render_prompt, vocabulary_from_links
+from netstead.select.intent import Facility, SelectionIntent
+from netstead.select.parse import intent_from_payload, payload_from_intent
+from netstead.select.prompt import PromptContext, close_match_hint, render_prompt, vocabulary_from_links
 
 
 def test_render_prompt_keeps_stable_parts_first_and_per_call_parts_apart():
@@ -3912,20 +3912,20 @@ def test_payload_round_trips_through_the_intent():
     assert payload_from_intent(intent_from_payload(payload, "x")) == payload
 ```
 
-In `packages/gmnspy/tests/test_select_parse.py`, replace everything above the first `test_stub_*` test with:
+In `packages/netstead/tests/test_select_parse.py`, replace everything above the first `test_stub_*` test with:
 
 ```python
-"""Tests for gmnspy.select.parse — utterance -> SelectionIntent."""
+"""Tests for netstead.select.parse — utterance -> SelectionIntent."""
 
 import pytest
-from gmnspy.config import load_settings
-from gmnspy.llm import build_registry
-from gmnspy.llm.providers.anthropic import AnthropicProvider
-from gmnspy.llm.secrets import KEYRING_SERVICE
-from gmnspy.select.errors import IntentError
-from gmnspy.select.intent import SelectionIntent
-from gmnspy.select.parse import SELECTION_TOOL, SYSTEM_PROMPT, ClaudeParser, LLMParser, StubParser, make_parser
-from gmnspy.select.prompt import PromptContext
+from netstead.config import load_settings
+from netstead.llm import build_registry
+from netstead.llm.providers.anthropic import AnthropicProvider
+from netstead.llm.secrets import KEYRING_SERVICE
+from netstead.select.errors import IntentError
+from netstead.select.intent import SelectionIntent
+from netstead.select.parse import SELECTION_TOOL, SYSTEM_PROMPT, ClaudeParser, LLMParser, StubParser, make_parser
+from netstead.select.prompt import PromptContext
 
 pytestmark = pytest.mark.usefixtures("no_network")
 
@@ -4011,26 +4011,26 @@ def test_prompt_context_is_a_cached_prefix_and_examples_are_per_call(fake_api):
     assert per_call["text"].startswith("Earlier requests") and '{"facility": {"ref": "I 40"}}' in per_call["text"]
 ```
 
-Append to `packages/gmnspy/tests/test_select_cli.py`:
+Append to `packages/netstead/tests/test_select_cli.py`:
 
 ```python
 def test_cli_unknown_provider_exits_2(tmp_path, monkeypatch):
-    monkeypatch.setenv("GMNSPY_CONFIG_DIR", str(tmp_path / "user"))
+    monkeypatch.setenv("NETSTEAD_CONFIG_DIR", str(tmp_path / "user"))
     monkeypatch.chdir(tmp_path)
     res = _run(["select", "Main Street", "dummy", "--provider", "gpt"])
     assert res.exit_code == 2 and "invalid settings" in res.output
 
 
 def test_cli_missing_key_exits_1_with_how_to(tmp_path, monkeypatch):
-    monkeypatch.setenv("GMNSPY_CONFIG_DIR", str(tmp_path / "user"))
+    monkeypatch.setenv("NETSTEAD_CONFIG_DIR", str(tmp_path / "user"))
     monkeypatch.chdir(tmp_path)
-    for name in ("GMNSPY_OPENAI_API_KEY", "OPENAI_API_KEY"):
+    for name in ("NETSTEAD_OPENAI_API_KEY", "OPENAI_API_KEY"):
         monkeypatch.delenv(name, raising=False)
     res = _run(["select", "Main Street", "dummy", "--provider", "openai"])
     assert res.exit_code == 1 and "OpenAI: no API key is configured" in res.output
 ```
 
-Append to `packages/gmnspy/tests/test_cli_workbench.py`:
+Append to `packages/netstead/tests/test_cli_workbench.py`:
 
 ```python
 def test_app_provider_alias_and_model_flag(served):
@@ -4042,20 +4042,20 @@ def test_app_provider_alias_and_model_flag(served):
 
 - [ ] **Step 2: Run them to see them fail**
 
-Run: `uv run --all-extras pytest packages/gmnspy/tests/test_select_prompt.py packages/gmnspy/tests/test_select_parse.py packages/gmnspy/tests/test_select_cli.py packages/gmnspy/tests/test_cli_workbench.py -q`
+Run: `uv run --all-extras pytest packages/netstead/tests/test_select_prompt.py packages/netstead/tests/test_select_parse.py packages/netstead/tests/test_select_cli.py packages/netstead/tests/test_cli_workbench.py -q`
 Expected:
-- the two select test files fail to collect (`No module named 'gmnspy.select.prompt'`);
+- the two select test files fail to collect (`No module named 'netstead.select.prompt'`);
 - the new CLI tests fail (the old `select` command calls `StubParser`);
 - `--model` fails with `No such option: --model`.
 
-- [ ] **Step 3: Create `packages/gmnspy/gmnspy/select/prompt.py`**
+- [ ] **Step 3: Create `packages/netstead/netstead/select/prompt.py`**
 
 ```python
 """What the selection parser tells the model besides the utterance.
 
 :class:`PromptContext` carries the optional parts, each switched by ``llm.quality``:
 
-* the shipped GMNS assistant guide and the project's notes (:mod:`gmnspy.llm.context`);
+* the shipped GMNS assistant guide and the project's notes (:mod:`netstead.llm.context`);
 * grounding vocabulary: the active network's most common street names and route numbers;
 * few-shot examples: this session's earlier selections that resolved;
 * a one-off hint, e.g. the closest real names after a facility didn't match (:func:`close_match_hint`).
@@ -4125,7 +4125,7 @@ def close_match_hint(intent: SelectionIntent, vocabulary: tuple[str, ...], max_c
     Empty when every name is known, nothing is close, or there is no vocabulary (grounding off).
 
     Examples:
-        >>> from gmnspy.select.intent import Facility
+        >>> from netstead.select.intent import Facility
         >>> intent = SelectionIntent(facility=Facility(name="Airport Blvd"))
         >>> print(close_match_hint(intent, ("Airport Boulevard", "Page Road"), 3))
         The active network has no roadway called 'Airport Blvd'. Closest names: Airport Boulevard.
@@ -4151,7 +4151,7 @@ def close_match_hint(intent: SelectionIntent, vocabulary: tuple[str, ...], max_c
     return "\n".join([*lines, "If the user meant one of these, use its exact spelling."])
 ```
 
-- [ ] **Step 4: Replace `packages/gmnspy/gmnspy/select/parse.py` entirely**
+- [ ] **Step 4: Replace `packages/netstead/netstead/select/parse.py` entirely**
 
 ```python
 """Parse a natural-language utterance into a SelectionIntent.
@@ -4161,11 +4161,11 @@ Provider-agnostic seam:
 * :class:`StubParser`: deterministic and offline. It parses the constrained grammar
   ``<facility> [direction] between <A> and <B>``, and is used in tests and when no
   provider is configured.
-* :class:`LLMParser`: any :class:`~gmnspy.llm.types.LLMProvider` (Anthropic, OpenAI,
+* :class:`LLMParser`: any :class:`~netstead.llm.types.LLMProvider` (Anthropic, OpenAI,
   Gemini, Ollama) with the one provider-neutral selection tool (:data:`INTENT_TOOL`).
   The model returns a structured intent, never ids. Invalid output is repaired once,
-  then reported as an :class:`~gmnspy.select.errors.IntentError`. Provider failures
-  (keys, rate limits, timeouts) raise :class:`~gmnspy.llm.errors.LLMError`.
+  then reported as an :class:`~netstead.select.errors.IntentError`. Provider failures
+  (keys, rate limits, timeouts) raise :class:`~netstead.llm.errors.LLMError`.
 * :class:`ClaudeParser`: the back-compat name for an :class:`LLMParser` over Anthropic.
 * :func:`make_parser`: the parser that ``select.provider`` / ``select.model`` describe.
 """
@@ -4175,16 +4175,16 @@ from __future__ import annotations
 import re
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
-from gmnspy.llm.structured import StructuredOutputError, request_tool_call
-from gmnspy.llm.types import LLMProvider, Tool
+from netstead.llm.structured import StructuredOutputError, request_tool_call
+from netstead.llm.types import LLMProvider, Tool
 
 from .errors import IntentError
 from .intent import Facility, SelectionIntent
 from .prompt import PromptContext, render_prompt
 
 if TYPE_CHECKING:
-    from gmnspy.config import SelectSettings
-    from gmnspy.llm.registry import ProviderRegistry
+    from netstead.config import SelectSettings
+    from netstead.llm.registry import ProviderRegistry
 
 __all__ = [
     "INTENT_TOOL",
@@ -4274,7 +4274,7 @@ class StubParser:
 
 
 #: Provider-neutral tool schema constraining the model to emit a SelectionIntent.
-#: Mirrors a ProjectCard roadway facility selection (see gmnspy.select.intent).
+#: Mirrors a ProjectCard roadway facility selection (see netstead.select.intent).
 INTENT_TOOL: dict[str, Any] = {
     "name": "emit_selection_intent",
     "description": (
@@ -4317,7 +4317,7 @@ INTENT_TOOL: dict[str, Any] = {
     },
 }
 
-#: :data:`INTENT_TOOL` as a :class:`~gmnspy.llm.types.Tool`: byte-identical for every provider.
+#: :data:`INTENT_TOOL` as a :class:`~netstead.llm.types.Tool`: byte-identical for every provider.
 SELECTION_TOOL = Tool(INTENT_TOOL["name"], INTENT_TOOL["description"], INTENT_TOOL["input_schema"])
 
 #: The system prompt every provider gets; the tool schema carries the detail.
@@ -4374,7 +4374,7 @@ def payload_from_intent(intent: SelectionIntent) -> dict[str, Any]:
 
 
 class LLMParser:
-    """Parse with any :class:`~gmnspy.llm.types.LLMProvider` through the shared selection tool."""
+    """Parse with any :class:`~netstead.llm.types.LLMProvider` through the shared selection tool."""
 
     def __init__(
         self,
@@ -4398,10 +4398,10 @@ class LLMParser:
         return {"provider": self.provider.name, "model": self.model, "mode": self.last_mode}
 
     def parse(self, utterance: str, *, context: PromptContext | None = None) -> SelectionIntent:
-        """Parse via a forced tool call (or JSON mode); provider failures raise :class:`~gmnspy.llm.errors.LLMError`.
+        """Parse via a forced tool call (or JSON mode); provider failures raise :class:`~netstead.llm.errors.LLMError`.
 
         ``context`` adds the optional guide, project notes, vocabulary, examples and hint
-        (see :mod:`gmnspy.select.prompt`); without it the model gets only the system prompt.
+        (see :mod:`netstead.select.prompt`); without it the model gets only the system prompt.
         """
         stable, per_call = render_prompt(context or PromptContext(), SYSTEM_PROMPT)
         try:
@@ -4429,7 +4429,7 @@ class ClaudeParser(LLMParser):
     def __init__(self, *, model: str = "claude-haiku-4-5-20251001", provider: LLMProvider | None = None) -> None:
         """Use ``provider`` if given, else the Anthropic adapter from the current settings and keys."""
         if provider is None:
-            from gmnspy.llm.registry import default_registry
+            from netstead.llm.registry import default_registry
 
             provider = default_registry().provider("anthropic")
         super().__init__(provider, model)
@@ -4439,7 +4439,7 @@ def make_parser(select: SelectSettings, registry: ProviderRegistry) -> Parser:
     """The parser that ``select.provider`` / ``select.model`` describe (``model=None`` means the catalog default).
 
     The repair budget and temperature come from ``llm.quality``. Raises
-    :class:`~gmnspy.llm.errors.MissingKey` when a remote provider has no key.
+    :class:`~netstead.llm.errors.MissingKey` when a remote provider has no key.
     """
     if select.provider == "stub":
         return StubParser()
@@ -4450,7 +4450,7 @@ def make_parser(select: SelectSettings, registry: ProviderRegistry) -> Parser:
     )
 ```
 
-- [ ] **Step 5: Export the new names.** In `packages/gmnspy/gmnspy/select/__init__.py`, change the parse import to `from .parse import ClaudeParser, LLMParser, Parser, StubParser, make_parser`, and replace `__all__` with:
+- [ ] **Step 5: Export the new names.** In `packages/netstead/netstead/select/__init__.py`, change the parse import to `from .parse import ClaudeParser, LLMParser, Parser, StubParser, make_parser`, and replace `__all__` with:
 
 ```python
 __all__ = [
@@ -4472,7 +4472,7 @@ __all__ = [
 ]
 ```
 
-- [ ] **Step 6: `gmnspy select` takes `--provider`/`--model` from settings.** In `packages/gmnspy/gmnspy/cli/commands/select.py`:
+- [ ] **Step 6: `netstead select` takes `--provider`/`--model` from settings.** In `packages/netstead/netstead/cli/commands/select.py`:
 - add `from typing import Any` after `import json`;
 - replace `from ...select.parse import ClaudeParser, StubParser` with `from ...select.parse import make_parser`;
 - add these two lines directly above `from ...select.emit import to_fragment`:
@@ -4521,7 +4521,7 @@ Then replace the two lines `parser = ClaudeParser() if provider == "claude" else
 
 In `select_serve(...)` and in `cli/commands/viz.py`, change the `--provider` help text to `"NL parser: stub | anthropic | openai | gemini | ollama (default: settings)."`.
 
-- [ ] **Step 7: `gmnspy app --model`.** In `packages/gmnspy/gmnspy/cli/commands/workbench.py` (P1a version):
+- [ ] **Step 7: `netstead app --model`.** In `packages/netstead/netstead/cli/commands/workbench.py` (P1a version):
 - add `model: str | None = None,` to `run_workbench`'s keyword arguments, after `provider`;
 - replace the `flags = {...}` line with:
 
@@ -4546,11 +4546,11 @@ In `select_serve(...)` and in `cli/commands/viz.py`, change the `--provider` hel
 
 - pass `model=model` to `run_workbench`.
 
-- [ ] **Step 8: Swap the `[nl]` extra and relock.** In `packages/gmnspy/pyproject.toml`, replace the `nl = [...]` block with:
+- [ ] **Step 8: Swap the `[nl]` extra and relock.** In `packages/netstead/pyproject.toml`, replace the `nl = [...]` block with:
 
 ```toml
 nl = [
-    # Natural-language features (gmnspy.select, gmnspy.llm). httpx drives the
+    # Natural-language features (netstead.select, netstead.llm). httpx drives the
     # hand-rolled provider adapters (Anthropic, OpenAI and compatible, Gemini,
     # Ollama; no vendor SDKs); jsonschema validates tool-call output and the
     # emitted selection fragment; keyring stores API keys in the OS keychain.
@@ -4562,18 +4562,18 @@ nl = [
 ```
 
 Run: `uv lock`
-Expected: the lock resolves. `git diff --stat uv.lock` shows `keyring` (and its `jaraco.*` dependencies) added for gmnspy. If nothing else requires `anthropic`, it disappears from the lock.
+Expected: the lock resolves. `git diff --stat uv.lock` shows `keyring` (and its `jaraco.*` dependencies) added for netstead. If nothing else requires `anthropic`, it disappears from the lock.
 
 - [ ] **Step 9: Run the tests and the new doctests**
 
-Run: `uv run --all-extras pytest packages/gmnspy/tests/test_select_parse.py packages/gmnspy/tests/test_select_prompt.py packages/gmnspy/tests/test_select_cli.py packages/gmnspy/tests/test_cli_workbench.py packages/gmnspy/tests/test_select_webapp.py packages/gmnspy/tests/test_viz_server.py --doctest-modules packages/gmnspy/gmnspy/select/prompt.py packages/gmnspy/gmnspy/select/parse.py -q`
+Run: `uv run --all-extras pytest packages/netstead/tests/test_select_parse.py packages/netstead/tests/test_select_prompt.py packages/netstead/tests/test_select_cli.py packages/netstead/tests/test_cli_workbench.py packages/netstead/tests/test_select_webapp.py packages/netstead/tests/test_viz_server.py --doctest-modules packages/netstead/netstead/select/prompt.py packages/netstead/netstead/select/parse.py -q`
 Expected: `62 passed`. The deprecated `select/webapp.py` and `viz/server.py` still build `ClaudeParser()` only when `provider == "claude"`, which their tests never use.
 
 - [ ] **Step 10: Commit**
 
 ```bash
-git add packages/gmnspy/gmnspy/select packages/gmnspy/gmnspy/cli/commands packages/gmnspy/pyproject.toml uv.lock packages/gmnspy/tests/test_select_prompt.py packages/gmnspy/tests/test_select_parse.py packages/gmnspy/tests/test_select_cli.py packages/gmnspy/tests/test_cli_workbench.py
-git commit -m "feat(gmnspy.select): prompt context (guide, notes, vocabulary, examples, hints) + LLMParser over any provider; --model; [nl] drops the anthropic SDK"
+git add packages/netstead/netstead/select packages/netstead/netstead/cli/commands packages/netstead/pyproject.toml uv.lock packages/netstead/tests/test_select_prompt.py packages/netstead/tests/test_select_parse.py packages/netstead/tests/test_select_cli.py packages/netstead/tests/test_cli_workbench.py
+git commit -m "feat(netstead.select): prompt context (guide, notes, vocabulary, examples, hints) + LLMParser over any provider; --model; [nl] drops the anthropic SDK"
 ```
 
 ---
@@ -4581,8 +4581,8 @@ git commit -m "feat(gmnspy.select): prompt context (guide, notes, vocabulary, ex
 ### Task 14: Session wiring: registry, parser, prompt context, few-shot memory, close-match retry, `parsed_by`
 
 **Files:**
-- Modify: `packages/gmnspy/gmnspy/workbench/session.py`, `packages/gmnspy/gmnspy/workbench/selection.py`
-- Test: `packages/gmnspy/tests/test_workbench_session.py` (append)
+- Modify: `packages/netstead/netstead/workbench/session.py`, `packages/netstead/netstead/workbench/selection.py`
+- Test: `packages/netstead/tests/test_workbench_session.py` (append)
 
 For an `LLMParser`, the session builds a `PromptContext` from `llm.quality`, using the registry's per-provider decisions:
 - the guide if `assistant_context`;
@@ -4745,12 +4745,12 @@ def test_no_match_retries_once_with_the_closest_real_names(llm_session, fake_api
 
 - [ ] **Step 2: Run them to see them fail**
 
-Run: `uv run --all-extras pytest packages/gmnspy/tests/test_workbench_session.py -q`
+Run: `uv run --all-extras pytest packages/netstead/tests/test_workbench_session.py -q`
 Expected: 10 failures or errors:
 - `TypeError: Session.__init__() got an unexpected keyword argument 'keyring'` for the `llm_session` tests;
 - `KeyError: 'parsed_by'` for the stub test.
 
-- [ ] **Step 3: Edit `packages/gmnspy/gmnspy/workbench/selection.py`.** `selection_payload` and `unparsed_payload` take a `parsed_by` keyword and return it as the last key:
+- [ ] **Step 3: Edit `packages/netstead/netstead/workbench/selection.py`.** `selection_payload` and `unparsed_payload` take a `parsed_by` keyword and return it as the last key:
 
 ```python
 def selection_payload(
@@ -4766,7 +4766,7 @@ def unparsed_payload(
     """A ``not_found`` selection for an utterance the parser could not read."""
 ```
 
-- [ ] **Step 4: Edit `packages/gmnspy/gmnspy/workbench/session.py`** (the P1a version).
+- [ ] **Step 4: Edit `packages/netstead/netstead/workbench/session.py`** (the P1a version).
 
 The stdlib imports gain `from collections import deque`, and `dataclasses` imports `replace`:
 
@@ -4776,17 +4776,17 @@ from collections.abc import Mapping
 from dataclasses import asdict, dataclass, replace
 ```
 
-Replace `from gmnspy.select.parse import ClaudeParser, StubParser`, and add the LLM imports, so the first-party block reads:
+Replace `from netstead.select.parse import ClaudeParser, StubParser`, and add the LLM imports, so the first-party block reads:
 
 ```python
-from gmnspy import Network
-from gmnspy.config import LoadedSettings, Settings, SettingsError, get_value, load_settings, save_setting
-from gmnspy.llm import LLMError, ProviderRegistry, build_registry
-from gmnspy.llm.context import assistant_context, find_project_context, read_capped
-from gmnspy.select.intent import SelectionIntent
-from gmnspy.select.parse import LLMParser, make_parser, payload_from_intent
-from gmnspy.select.prompt import PromptContext, close_match_hint, vocabulary_from_links
-from gmnspy.select.resolve import resolve_frames
+from netstead import Network
+from netstead.config import LoadedSettings, Settings, SettingsError, get_value, load_settings, save_setting
+from netstead.llm import LLMError, ProviderRegistry, build_registry
+from netstead.llm.context import assistant_context, find_project_context, read_capped
+from netstead.select.intent import SelectionIntent
+from netstead.select.parse import LLMParser, make_parser, payload_from_intent
+from netstead.select.prompt import PromptContext, close_match_hint, vocabulary_from_links
+from netstead.select.resolve import resolve_frames
 ```
 
 In `__init__`, add two keyword arguments after P1a's `http`, extend the docstring, and build the registry and the example memory right after `self.loaded`:
@@ -4797,7 +4797,7 @@ In `__init__`, add two keyword arguments after P1a's `http`, extend the docstrin
         llm_transport: Any = None,
         keyring: Any = "auto",
     ) -> None:
-        """Load settings (raises :class:`~gmnspy.config.SettingsError` on bad config) and start empty.
+        """Load settings (raises :class:`~netstead.config.SettingsError` on bad config) and start empty.
 
         ``http`` is the HTTP session for Overpass/Nominatim (anything with ``get``/``post`` like
         :mod:`requests`); ``None`` means ``requests`` itself. Tests inject a fake. ``llm_transport``
@@ -4821,7 +4821,7 @@ Replace `parser()`. The replacement also adds `reset_llm()` and `_build_llm()` n
     def parser(self) -> Any:
         """The NL parser for ``select.provider``/``select.model`` (built lazily; an injected parser wins).
 
-        Raises :class:`~gmnspy.llm.errors.MissingKey` when the chosen provider has no key.
+        Raises :class:`~netstead.llm.errors.MissingKey` when the chosen provider has no key.
         """
         if self._parser is None:
             self._parser = make_parser(self.settings.select, self.llm)
@@ -4889,7 +4889,7 @@ Replace `_do_select`. The replacement also adds `_select_utterance` and `_prompt
         return intent, result, parsed_by
 
     def _prompt_context(self, handle: NetworkHandle, provider: str) -> PromptContext:
-        """The optional prompt parts ``llm.quality`` turns on for ``provider`` (see :mod:`gmnspy.select.prompt`)."""
+        """The optional prompt parts ``llm.quality`` turns on for ``provider`` (see :mod:`netstead.select.prompt`)."""
         quality = self.settings.llm.quality
         assistant = assistant_context(quality.assistant_context_max_chars) if quality.assistant_context else ""
         project = ""
@@ -4939,13 +4939,13 @@ def _parse(parser: Any, utterance: str, context: PromptContext | None) -> Select
 
 - [ ] **Step 5: Run the session suites**
 
-Run: `uv run --all-extras pytest packages/gmnspy/tests/test_workbench_session.py packages/gmnspy/tests/test_workbench_session_jobs.py packages/gmnspy/tests/test_workbench_server.py -q`
+Run: `uv run --all-extras pytest packages/netstead/tests/test_workbench_session.py packages/netstead/tests/test_workbench_session_jobs.py packages/netstead/tests/test_workbench_server.py -q`
 Expected: `72 passed` (32 + 17 + 23).
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add packages/gmnspy/gmnspy/workbench/session.py packages/gmnspy/gmnspy/workbench/selection.py packages/gmnspy/tests/test_workbench_session.py
+git add packages/netstead/netstead/workbench/session.py packages/netstead/netstead/workbench/selection.py packages/netstead/tests/test_workbench_session.py
 git commit -m "feat(workbench): LLM parser with prompt context (guide, notes, vocabulary, few-shot), close-match retry, parsed_by"
 ```
 
@@ -4954,9 +4954,9 @@ git commit -m "feat(workbench): LLM parser with prompt context (guide, notes, vo
 ### Task 15: `/api/llm` routes: status (with the privacy note), write-only keys, models, connection test, canary
 
 **Files:**
-- Create: `packages/gmnspy/gmnspy/workbench/routes/llm.py`
-- Modify: `packages/gmnspy/gmnspy/workbench/server.py`
-- Test: `packages/gmnspy/tests/test_workbench_llm_routes.py`
+- Create: `packages/netstead/netstead/workbench/routes/llm.py`
+- Modify: `packages/netstead/netstead/workbench/server.py`
+- Test: `packages/netstead/tests/test_workbench_llm_routes.py`
 
 Since P1a, `open_network` is a job and `POST /api/actions` answers 202 for it. The canary test therefore opens its network with `session.dispatch(OpenNetwork(...))`, which waits for the job.
 
@@ -4971,12 +4971,12 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
-from gmnspy.llm.secrets import KEYRING_SERVICE
-from gmnspy.workbench import OpenNetwork, Session, build_app
+from netstead.llm.secrets import KEYRING_SERVICE
+from netstead.workbench import OpenNetwork, Session, build_app
 
 pytestmark = pytest.mark.usefixtures("no_network")
 
-SECRETS = {"X-GMNSpy-Secrets": "1"}
+SECRETS = {"X-Netstead-Secrets": "1"}
 KEY = "sk-ant-api03-ROUTEKEYabcdefghijklmnop"
 UTTERANCE = "I-40 EB between South Miami Boulevard and Airport Boulevard"
 ROW_KEYS = {
@@ -5081,7 +5081,7 @@ def test_exposed_bind_refuses_key_writes(tmp_path, isolated_env, fake_keyring, f
     )
     client = TestClient(build_app(exposed))
     r = client.put("/api/llm/keys/anthropic", json={"key": KEY}, headers=SECRETS)
-    assert r.status_code == 403 and "gmnspy llm set-key" in r.text and fake_keyring.store == {}
+    assert r.status_code == 403 and "netstead llm set-key" in r.text and fake_keyring.store == {}
     assert client.get("/api/llm/providers").json()["key_writes"] is False
 
 
@@ -5143,7 +5143,7 @@ def test_canary_key_never_leaves_the_secret_store(
         call("GET", url)
     with client.stream("GET", "/api/events", params={"max_events": 1}) as r:
         seen.append(r.read().decode())
-    files = [p.read_text(errors="replace") for p in Path(isolated_env["GMNSPY_CONFIG_DIR"]).rglob("*") if p.is_file()]
+    files = [p.read_text(errors="replace") for p in Path(isolated_env["NETSTEAD_CONFIG_DIR"]).rglob("*") if p.is_file()]
     haystack = "\n".join([*seen, *published, caplog.text, *files])
     assert "CANARY" not in haystack
     sent = [r for r in fake_api.requests if r.headers.get("x-api-key") == canary]
@@ -5154,9 +5154,9 @@ def test_without_a_keyring_the_ui_is_told_which_env_var_to_set(tmp_path, isolate
     session = Session(project_dir=tmp_path, environ=isolated_env, keyring=None, llm_transport=fake_api.transport())
     client = TestClient(build_app(session))
     data = client.get("/api/llm/providers").json()
-    assert data["keyring"] is False and data["providers"][1]["key_env"] == ["GMNSPY_OPENAI_API_KEY", "OPENAI_API_KEY"]
+    assert data["keyring"] is False and data["providers"][1]["key_env"] == ["NETSTEAD_OPENAI_API_KEY", "OPENAI_API_KEY"]
     r = client.put("/api/llm/keys/openai", json={"key": KEY}, headers=SECRETS)
-    assert r.status_code == 400 and "set GMNSPY_OPENAI_API_KEY or OPENAI_API_KEY" in r.json()["detail"]
+    assert r.status_code == 400 and "set NETSTEAD_OPENAI_API_KEY or OPENAI_API_KEY" in r.json()["detail"]
 
 
 def test_status_rows_carry_the_privacy_note(client, fake_api):
@@ -5168,10 +5168,10 @@ def test_status_rows_carry_the_privacy_note(client, fake_api):
 
 - [ ] **Step 2: Run them to see them fail**
 
-Run: `uv run --all-extras pytest packages/gmnspy/tests/test_workbench_llm_routes.py -q`
+Run: `uv run --all-extras pytest packages/netstead/tests/test_workbench_llm_routes.py -q`
 Expected: `15 failed`. Every `/api/llm/...` request is a 404 until the router exists.
 
-- [ ] **Step 3: Create `packages/gmnspy/gmnspy/workbench/routes/llm.py`**
+- [ ] **Step 3: Create `packages/netstead/netstead/workbench/routes/llm.py`**
 
 ```python
 """Language-model routes: provider status, write-only key management, model lists, connection tests.
@@ -5181,7 +5181,7 @@ A key write leaves only a status-only ``llm`` SSE event and a log line naming th
 and the store, never the key. No route returns a key; status is ``{provider, configured, source}``.
 
 On top of the server's Host/Origin guard, key writes and connection tests need a loopback
-bind and an ``X-GMNSpy-Secrets: 1`` header. A cross-origin page cannot send that custom
+bind and an ``X-Netstead-Secrets: 1`` header. A cross-origin page cannot send that custom
 header without a CORS preflight, and this server never approves one.
 """
 
@@ -5193,7 +5193,7 @@ from typing import Any
 from fastapi import APIRouter, Body, Depends, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, ValidationError
 
-from gmnspy.llm import LLMError, SecretStoreError
+from netstead.llm import LLMError, SecretStoreError
 
 from ..session import Session
 
@@ -5202,7 +5202,7 @@ __all__ = ["SECRETS_HEADER", "llm_router"]
 logger = logging.getLogger(__name__)
 
 #: Header every key write and connection test must carry (forces a CORS preflight on any cross-origin page).
-SECRETS_HEADER = "X-GMNSpy-Secrets"
+SECRETS_HEADER = "X-Netstead-Secrets"
 
 
 class _KeyBody(BaseModel):
@@ -5227,7 +5227,7 @@ def llm_router(session: Session, *, allow_key_writes: bool) -> APIRouter:
             raise HTTPException(
                 403,
                 "API keys can only be managed when the Workbench is bound to this machine (127.0.0.1); "
-                "use `gmnspy llm set-key` in a terminal.",
+                "use `netstead llm set-key` in a terminal.",
             )
         if request.headers.get(SECRETS_HEADER) != "1":
             raise HTTPException(403, f"missing {SECRETS_HEADER} header")
@@ -5301,7 +5301,7 @@ def llm_router(session: Session, *, allow_key_writes: bool) -> APIRouter:
     return router
 ```
 
-- [ ] **Step 4: Mount it.** In `packages/gmnspy/gmnspy/workbench/server.py`, add `from .routes.llm import llm_router` after P1a's `from .routes.io import io_router`. After `app.include_router(network_router(session))`, add:
+- [ ] **Step 4: Mount it.** In `packages/netstead/netstead/workbench/server.py`, add `from .routes.llm import llm_router` after P1a's `from .routes.io import io_router`. After `app.include_router(network_router(session))`, add:
 
 ```python
     # Key writes are refused on an exposed bind: there is no auth beyond the loopback guard (design T10).
@@ -5310,47 +5310,47 @@ def llm_router(session: Session, *, allow_key_writes: bool) -> APIRouter:
 
 - [ ] **Step 5: Run the route tests, then the whole workbench suite**
 
-Run: `uv run --all-extras pytest packages/gmnspy/tests/test_workbench_llm_routes.py -q`
+Run: `uv run --all-extras pytest packages/netstead/tests/test_workbench_llm_routes.py -q`
 Expected: `15 passed`.
 
-Run: `uv run --all-extras pytest packages/gmnspy/tests -q -k workbench`
+Run: `uv run --all-extras pytest packages/netstead/tests -q -k workbench`
 Expected: all pass.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add packages/gmnspy/gmnspy/workbench/routes/llm.py packages/gmnspy/gmnspy/workbench/server.py packages/gmnspy/tests/test_workbench_llm_routes.py
+git add packages/netstead/netstead/workbench/routes/llm.py packages/netstead/netstead/workbench/server.py packages/netstead/tests/test_workbench_llm_routes.py
 git commit -m "feat(workbench): /api/llm — provider status + privacy note, write-only key routes (loopback + header guard), tests; canary test"
 ```
 
 ---
 
-### Task 16: `gmnspy llm` CLI: status, set-key (hidden prompt), remove-key, test, models
+### Task 16: `netstead llm` CLI: status, set-key (hidden prompt), remove-key, test, models
 
 **Files:**
-- Create: `packages/gmnspy/gmnspy/cli/commands/llm.py`
-- Modify: `packages/gmnspy/gmnspy/cli/app.py`
-- Test: `packages/gmnspy/tests/test_cli_llm.py`
+- Create: `packages/netstead/netstead/cli/commands/llm.py`
+- Modify: `packages/netstead/netstead/cli/app.py`
+- Test: `packages/netstead/tests/test_cli_llm.py`
 
 - [ ] **Step 1: Write the failing tests**
 
 ```python
-"""Tests for `gmnspy llm`: key status, set, remove, test and models from the terminal."""
+"""Tests for `netstead llm`: key status, set, remove, test and models from the terminal."""
 
 import json
 
 import httpx
 import pytest
-from gmnspy.cli.app import app
-from gmnspy.llm.secrets import KEYRING_SERVICE
+from netstead.cli.app import app
+from netstead.llm.secrets import KEYRING_SERVICE
 from typer.testing import CliRunner
 
 pytestmark = pytest.mark.usefixtures("no_network")
 
 KEY = "sk-test-cli-abcdefghijklmnopqrstuvwxyz"
 KEY_ENV = (
-    "GMNSPY_ANTHROPIC_API_KEY", "ANTHROPIC_API_KEY", "GMNSPY_OPENAI_API_KEY",
-    "OPENAI_API_KEY", "GMNSPY_GEMINI_API_KEY", "GEMINI_API_KEY",
+    "NETSTEAD_ANTHROPIC_API_KEY", "ANTHROPIC_API_KEY", "NETSTEAD_OPENAI_API_KEY",
+    "OPENAI_API_KEY", "NETSTEAD_GEMINI_API_KEY", "GEMINI_API_KEY",
 )  # fmt: skip
 runner = CliRunner()
 
@@ -5358,16 +5358,16 @@ runner = CliRunner()
 @pytest.fixture
 def ring(tmp_path, monkeypatch, fake_keyring, fake_api):
     """Isolated config dir and env, the fake keyring as the 'system' one, and the fake API as the network."""
-    import gmnspy.llm
+    import netstead.llm
 
-    monkeypatch.setenv("GMNSPY_CONFIG_DIR", str(tmp_path / "user"))
+    monkeypatch.setenv("NETSTEAD_CONFIG_DIR", str(tmp_path / "user"))
     monkeypatch.chdir(tmp_path)
     for name in KEY_ENV:
         monkeypatch.delenv(name, raising=False)
-    monkeypatch.setattr("gmnspy.llm.secrets.system_keyring", lambda: fake_keyring)
-    real = gmnspy.llm.build_registry
+    monkeypatch.setattr("netstead.llm.secrets.system_keyring", lambda: fake_keyring)
+    real = netstead.llm.build_registry
     monkeypatch.setattr(
-        gmnspy.llm, "build_registry", lambda settings, **kw: real(settings, transport=fake_api.transport(), **kw)
+        netstead.llm, "build_registry", lambda settings, **kw: real(settings, transport=fake_api.transport(), **kw)
     )
     return fake_keyring
 
@@ -5434,21 +5434,21 @@ def test_status_text_shows_source_not_key(ring, fake_api):
 
 
 def test_set_key_without_a_keyring_names_the_env_vars(ring, monkeypatch):
-    monkeypatch.setattr("gmnspy.llm.secrets.system_keyring", lambda: None)
+    monkeypatch.setattr("netstead.llm.secrets.system_keyring", lambda: None)
     result = _llm("set-key", "gemini", input=KEY + "\n")
-    assert result.exit_code == 1 and "set GMNSPY_GEMINI_API_KEY or GEMINI_API_KEY" in result.output
+    assert result.exit_code == 1 and "set NETSTEAD_GEMINI_API_KEY or GEMINI_API_KEY" in result.output
     assert "key storage: none (no OS keyring)" in _llm("status").output
 ```
 
 - [ ] **Step 2: Run them to see them fail**
 
-Run: `uv run --all-extras pytest packages/gmnspy/tests/test_cli_llm.py -q`
+Run: `uv run --all-extras pytest packages/netstead/tests/test_cli_llm.py -q`
 Expected: `9 failed`, each with `No such command 'llm'`.
 
-- [ ] **Step 3: Create `packages/gmnspy/gmnspy/cli/commands/llm.py`**
+- [ ] **Step 3: Create `packages/netstead/netstead/cli/commands/llm.py`**
 
 ```python
-"""``gmnspy llm``: language-model providers for the natural-language features.
+"""``netstead llm``: language-model providers for the natural-language features.
 
 Status, setting and removing API keys, connection tests and model lists, from the
 terminal. Keys are read from a hidden prompt (or stdin with ``--stdin``), never from a
@@ -5469,8 +5469,8 @@ __all__ = ["register"]
 
 
 def _registry() -> Any:
-    from gmnspy.config import SettingsError, load_settings
-    from gmnspy.llm import build_registry
+    from netstead.config import SettingsError, load_settings
+    from netstead.llm import build_registry
 
     try:
         settings = load_settings().settings
@@ -5529,7 +5529,7 @@ def register(app: typer.Typer) -> None:
         stdin: bool = typer.Option(False, "--stdin", help="Read the key from stdin instead of a hidden prompt."),
     ) -> None:
         """Store an API key for PROVIDER's endpoint: prompted and hidden, never an argument."""
-        from gmnspy.llm import SecretStoreError
+        from netstead.llm import SecretStoreError
 
         registry = _registry()
         info = _remote(registry, provider)
@@ -5544,7 +5544,7 @@ def register(app: typer.Typer) -> None:
     @llm_app.command(name="remove-key")
     def remove_key(provider: str = typer.Argument(..., help="anthropic | openai | gemini")) -> None:
         """Delete PROVIDER's key from the OS keyring. Env vars are yours to unset."""
-        from gmnspy.llm import SecretStoreError
+        from netstead.llm import SecretStoreError
 
         registry = _registry()
         info = _remote(registry, provider)
@@ -5579,7 +5579,7 @@ def register(app: typer.Typer) -> None:
     @llm_app.command(name="models")
     def models(provider: str = typer.Argument(..., help="anthropic | openai | gemini | ollama")) -> None:
         """List the models offered for PROVIDER: the catalog, or the installed models for Ollama."""
-        from gmnspy.llm import LLMError
+        from netstead.llm import LLMError
 
         registry = _registry()
         _known(registry, provider)
@@ -5592,18 +5592,18 @@ def register(app: typer.Typer) -> None:
             typer.echo(f"{row['id']:<32} {row['label']:<24} {row['tier'] or '-':<9} tools={row['tools']}")
 ```
 
-- [ ] **Step 4: Register it.** In `packages/gmnspy/gmnspy/cli/app.py`, add `llm` to the `from .commands import (...)` list after `info`, and add `llm.register(gmnspy_app)` directly after `select.register(gmnspy_app)`.
+- [ ] **Step 4: Register it.** In `packages/netstead/netstead/cli/app.py`, add `llm` to the `from .commands import (...)` list after `info`, and add `llm.register(netstead_app)` directly after `select.register(netstead_app)`.
 
 - [ ] **Step 5: Run the tests, plus the CLI contract tests and import linter**
 
-Run: `uv run --all-extras pytest packages/gmnspy/tests/test_cli_llm.py packages/gmnspy/tests/test_documented_cli_contract.py packages/gmnspy/tests/test_cli.py -q && uv run lint-imports`
-Expected: `46 passed` (`test_cli_llm.py`: 9), and import-linter reports every contract kept. `gmnspy.cli` → `gmnspy.llm` is allowed.
+Run: `uv run --all-extras pytest packages/netstead/tests/test_cli_llm.py packages/netstead/tests/test_documented_cli_contract.py packages/netstead/tests/test_cli.py -q && uv run lint-imports`
+Expected: `46 passed` (`test_cli_llm.py`: 9), and import-linter reports every contract kept. `netstead.cli` → `netstead.llm` is allowed.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add packages/gmnspy/gmnspy/cli/commands/llm.py packages/gmnspy/gmnspy/cli/app.py packages/gmnspy/tests/test_cli_llm.py
-git commit -m "feat(cli): gmnspy llm {status,set-key,remove-key,test,models} — hidden-prompt key entry, never argv"
+git add packages/netstead/netstead/cli/commands/llm.py packages/netstead/netstead/cli/app.py packages/netstead/tests/test_cli_llm.py
+git commit -m "feat(cli): netstead llm {status,set-key,remove-key,test,models} — hidden-prompt key entry, never argv"
 ```
 
 ---
@@ -5611,9 +5611,9 @@ git commit -m "feat(cli): gmnspy llm {status,set-key,remove-key,test,models} —
 ### Task 17: Front end: provider/model picker (session scope + **Make default**) and the Language-models panel
 
 **Files:**
-- Create: `packages/gmnspy/gmnspy/workbench/static/js/llm.js`
-- Modify: `packages/gmnspy/gmnspy/workbench/static/index.html`, `app.css`, `js/api.js`, `js/main.js` (all P1a versions)
-- Test: `packages/gmnspy/tests/test_workbench_static.py` (append)
+- Create: `packages/netstead/netstead/workbench/static/js/llm.js`
+- Modify: `packages/netstead/netstead/workbench/static/index.html`, `app.css`, `js/api.js`, `js/main.js` (all P1a versions)
+- Test: `packages/netstead/tests/test_workbench_static.py` (append)
 
 Behaviour:
 - The picker changes `select.provider`/`select.model` for this session (`scope:"session"`).
@@ -5640,13 +5640,13 @@ def test_header_has_the_llm_picker_and_panel():
 
 - [ ] **Step 2: Run them to see them fail**
 
-Run: `uv run --all-extras pytest packages/gmnspy/tests/test_workbench_static.py -q`
+Run: `uv run --all-extras pytest packages/netstead/tests/test_workbench_static.py -q`
 Expected: 2 failures: `FileNotFoundError` for `llm.js`, and the missing `nl-provider` marker.
 
-- [ ] **Step 3: Add `sendJSON` to `packages/gmnspy/gmnspy/workbench/static/js/api.js`.** Append at the end of the file:
+- [ ] **Step 3: Add `sendJSON` to `packages/netstead/netstead/workbench/static/js/api.js`.** Append at the end of the file:
 
 ```js
-// PUT/DELETE/POST for non-action routes (e.g. /api/llm). Extra headers carry X-GMNSpy-Secrets.
+// PUT/DELETE/POST for non-action routes (e.g. /api/llm). Extra headers carry X-Netstead-Secrets.
 export async function sendJSON(method, path, body, headers = {}) {
   const init = { method, headers: { ...headers } };
   if (body !== undefined) {
@@ -5657,7 +5657,7 @@ export async function sendJSON(method, path, body, headers = {}) {
 }
 ```
 
-- [ ] **Step 4: Create `packages/gmnspy/gmnspy/workbench/static/js/llm.js`**
+- [ ] **Step 4: Create `packages/netstead/netstead/workbench/static/js/llm.js`**
 
 ```js
 // Language models: the header provider/model picker and the "Language models" panel.
@@ -5667,7 +5667,7 @@ export async function sendJSON(method, path, body, headers = {}) {
 import { dispatch, getJSON, sendJSON } from "./api.js";
 import { $, esc, toast } from "./dom.js";
 
-const SECRETS = { "X-GMNSpy-Secrets": "1" };
+const SECRETS = { "X-Netstead-Secrets": "1" };
 const STUB = { provider: "stub", label: "Offline (pattern)", usable: true, local: true, sends: [] };
 // llm.quality settings shown in the panel: [key, label, kind, options or bounds]
 const QUALITY = [
@@ -5814,12 +5814,12 @@ async function makeDefault() {
 
 function storageNote() {
   if (!llm.key_writes) {
-    return "Key changes are disabled because the Workbench is exposed to the network; use `gmnspy llm set-key` in a terminal.";
+    return "Key changes are disabled because the Workbench is exposed to the network; use `netstead llm set-key` in a terminal.";
   }
   return llm.keyring
     ? "Keys are stored in your OS keychain (keyring), or read from environment variables."
     : "This machine has no OS keychain, so keys can't be stored here: set each provider's environment variable " +
-        "(shown below) in the shell that starts `gmnspy app`, then restart it.";
+        "(shown below) in the shell that starts `netstead app`, then restart it.";
 }
 
 function statusText(p) {
@@ -6009,7 +6009,7 @@ export function wireLLM() {
 }
 ```
 
-- [ ] **Step 5: Edit `packages/gmnspy/gmnspy/workbench/static/index.html`.** Insert this directly after the `<input id="utterance" … />` line, so it sits before `#go`, `#count` and P1a's `#jobs-btn`:
+- [ ] **Step 5: Edit `packages/netstead/netstead/workbench/static/index.html`.** Insert this directly after the `<input id="utterance" … />` line, so it sits before `#go`, `#count` and P1a's `#jobs-btn`:
 
 ```html
     <span id="nl-picker">
@@ -6042,7 +6042,7 @@ Insert this directly before P1a's `<div class="panel" id="jobs-panel">`:
 </div>
 ```
 
-- [ ] **Step 6: Append the styles to `packages/gmnspy/gmnspy/workbench/static/app.css`**
+- [ ] **Step 6: Append the styles to `packages/netstead/netstead/workbench/static/app.css`**
 
 ```css
   /* ---- language models: header picker + panel ---- */
@@ -6069,7 +6069,7 @@ Insert this directly before P1a's `<div class="panel" id="jobs-panel">`:
   #llm-quality .row select { flex:none; }
 ```
 
-- [ ] **Step 7: Wire it in `packages/gmnspy/gmnspy/workbench/static/js/main.js`** (P1a version).
+- [ ] **Step 7: Wire it in `packages/netstead/netstead/workbench/static/js/main.js`** (P1a version).
 - Add `import { onHistoryEntry, onLLMEvent, refreshLLM, wireLLM } from "./llm.js";` after the `./jobs.js` import.
 - In `boot()`, append `wireLLM();` to the wiring line, which then ends `… wireMapButtons(); wireJobs(); wireWizard(); wireLLM();`.
 - After `restoreViewMode();`, add `refreshLLM().catch(e => toast(e.message));`.
@@ -6087,13 +6087,13 @@ Insert this directly before P1a's `<div class="panel" id="jobs-panel">`:
 
 - [ ] **Step 8: Run the static tests**
 
-Run: `uv run --all-extras pytest packages/gmnspy/tests/test_workbench_static.py -q`
+Run: `uv run --all-extras pytest packages/netstead/tests/test_workbench_static.py -q`
 Expected: `25 passed`. That is P1a's 22, plus `llm.js` in the per-module served check, plus the two new tests. The element-id test proves every `$("…")` in `llm.js` exists in `index.html`, and `node --check` parses `llm.js`.
 
 - [ ] **Step 9: Commit**
 
 ```bash
-git add packages/gmnspy/gmnspy/workbench/static packages/gmnspy/tests/test_workbench_static.py
+git add packages/netstead/netstead/workbench/static packages/netstead/tests/test_workbench_static.py
 git commit -m "feat(workbench-ui): session-scoped provider/model picker + Make default; Language models panel (keys, quality & context, privacy note)"
 ```
 
@@ -6102,8 +6102,8 @@ git commit -m "feat(workbench-ui): session-scoped provider/model picker + Make d
 ### Task 18: Recorded contract fixtures, the re-record script, and the opt-in live smoke test
 
 **Files:**
-- Create: `packages/gmnspy/tests/fixtures/llm/{anthropic,openai,gemini,ollama}_select.json`
-- Create: `packages/gmnspy/tests/test_llm_contract.py`, `packages/gmnspy/tests/test_llm_live.py`
+- Create: `packages/netstead/tests/fixtures/llm/{anthropic,openai,gemini,ollama}_select.json`
+- Create: `packages/netstead/tests/test_llm_contract.py`, `packages/netstead/tests/test_llm_live.py`
 - Create: `scripts/record_llm_fixtures.py`
 
 The fixtures start hand-authored from each API reference. `scripts/record_llm_fixtures.py` replaces each one with a real exchange once you have keys. It writes only the response JSON and the request's top-level body keys, never headers.
@@ -6112,7 +6112,7 @@ The contract test uses a bare `LLMParser`: no prompt context and provider-defaul
 
 - [ ] **Step 1: Create the fixtures.**
 
-`packages/gmnspy/tests/fixtures/llm/anthropic_select.json`:
+`packages/netstead/tests/fixtures/llm/anthropic_select.json`:
 
 ```json
 {
@@ -6147,7 +6147,7 @@ The contract test uses a bare `LLMParser`: no prompt context and provider-defaul
 }
 ```
 
-`packages/gmnspy/tests/fixtures/llm/openai_select.json`:
+`packages/netstead/tests/fixtures/llm/openai_select.json`:
 
 ```json
 {
@@ -6188,7 +6188,7 @@ The contract test uses a bare `LLMParser`: no prompt context and provider-defaul
 }
 ```
 
-`packages/gmnspy/tests/fixtures/llm/gemini_select.json`:
+`packages/netstead/tests/fixtures/llm/gemini_select.json`:
 
 ```json
 {
@@ -6227,7 +6227,7 @@ The contract test uses a bare `LLMParser`: no prompt context and provider-defaul
 }
 ```
 
-`packages/gmnspy/tests/fixtures/llm/ollama_select.json`:
+`packages/netstead/tests/fixtures/llm/ollama_select.json`:
 
 ```json
 {
@@ -6266,7 +6266,7 @@ The contract test uses a bare `LLMParser`: no prompt context and provider-defaul
 }
 ```
 
-- [ ] **Step 2: Create `packages/gmnspy/tests/test_llm_contract.py`**
+- [ ] **Step 2: Create `packages/netstead/tests/test_llm_contract.py`**
 
 ```python
 """Contract tests: recorded provider replies, through the real adapters and LLMParser.
@@ -6279,8 +6279,8 @@ import json
 from pathlib import Path
 
 import pytest
-from gmnspy.llm.providers import ADAPTERS
-from gmnspy.select.parse import LLMParser
+from netstead.llm.providers import ADAPTERS
+from netstead.select.parse import LLMParser
 
 pytestmark = pytest.mark.usefixtures("no_network")
 
@@ -6304,36 +6304,36 @@ def test_recorded_reply_parses_to_the_expected_intent(path, fake_api):
     assert sorted(fake_api.body()) == fixture["request_keys"]
 ```
 
-- [ ] **Step 3: Create `packages/gmnspy/tests/test_llm_live.py`**
+- [ ] **Step 3: Create `packages/netstead/tests/test_llm_live.py`**
 
 ```python
 """Opt-in live smoke test: one real selection per provider, with your own keys / local Ollama.
 
-    GMNSPY_LIVE_LLM=anthropic,ollama uv run --all-extras pytest packages/gmnspy/tests/test_llm_live.py -m live_llm
+    NETSTEAD_LIVE_LLM=anthropic,ollama uv run --all-extras pytest packages/netstead/tests/test_llm_live.py -m live_llm
 
 Keys come from the env or the OS keyring (this test deliberately uses the real keyring). Override a
-model with GMNSPY_LIVE_<PROVIDER>_MODEL. CI never sets GMNSPY_LIVE_LLM, so these are always skipped there.
+model with NETSTEAD_LIVE_<PROVIDER>_MODEL. CI never sets NETSTEAD_LIVE_LLM, so these are always skipped there.
 """
 
 import os
 
 import pytest
-from datagrove.io.credentials import system_keyring
-from gmnspy.config import load_settings
-from gmnspy.llm import build_registry
-from gmnspy.select.parse import LLMParser
+from corral.io.credentials import system_keyring
+from netstead.config import load_settings
+from netstead.llm import build_registry
+from netstead.select.parse import LLMParser
 
 pytestmark = pytest.mark.live_llm
 
-LIVE = {name.strip() for name in os.environ.get("GMNSPY_LIVE_LLM", "").split(",") if name.strip()}
+LIVE = {name.strip() for name in os.environ.get("NETSTEAD_LIVE_LLM", "").split(",") if name.strip()}
 
 
 @pytest.mark.parametrize("provider", ["anthropic", "openai", "gemini", "ollama"])
 def test_live_selection_round_trip(provider):
     if provider not in LIVE:
-        pytest.skip(f"set GMNSPY_LIVE_LLM={provider} to run")
+        pytest.skip(f"set NETSTEAD_LIVE_LLM={provider} to run")
     registry = build_registry(load_settings().settings, keyring=system_keyring())
-    model = os.environ.get(f"GMNSPY_LIVE_{provider.upper()}_MODEL") or registry.catalog[provider].default_model
+    model = os.environ.get(f"NETSTEAD_LIVE_{provider.upper()}_MODEL") or registry.catalog[provider].default_model
     parser = LLMParser(registry.provider(provider), model)
     intent = parser.parse("I-40 EB between South Miami Boulevard and Airport Boulevard")
     assert intent.facility is not None and intent.facility.direction == "EB"
@@ -6360,12 +6360,12 @@ import sys
 from pathlib import Path
 
 import httpx
-from datagrove.io.credentials import system_keyring
-from gmnspy.config import load_settings
-from gmnspy.llm import build_registry
-from gmnspy.select.parse import LLMParser
+from corral.io.credentials import system_keyring
+from netstead.config import load_settings
+from netstead.llm import build_registry
+from netstead.select.parse import LLMParser
 
-FIXTURES = Path(__file__).resolve().parents[1] / "packages" / "gmnspy" / "tests" / "fixtures" / "llm"
+FIXTURES = Path(__file__).resolve().parents[1] / "packages" / "netstead" / "tests" / "fixtures" / "llm"
 
 
 class _Recording(httpx.BaseTransport):
@@ -6409,14 +6409,14 @@ if __name__ == "__main__":
 
 - [ ] **Step 5: Run the contract and live tests**
 
-Run: `uv run --all-extras pytest packages/gmnspy/tests/test_llm_contract.py packages/gmnspy/tests/test_llm_live.py -q -rs`
-Expected: `5 passed, 4 skipped`. The skip reasons read `set GMNSPY_LIVE_LLM=<provider> to run`.
+Run: `uv run --all-extras pytest packages/netstead/tests/test_llm_contract.py packages/netstead/tests/test_llm_live.py -q -rs`
+Expected: `5 passed, 4 skipped`. The skip reasons read `set NETSTEAD_LIVE_LLM=<provider> to run`.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add packages/gmnspy/tests/fixtures/llm packages/gmnspy/tests/test_llm_contract.py packages/gmnspy/tests/test_llm_live.py scripts/record_llm_fixtures.py
-git commit -m "test(gmnspy.llm): recorded-fixture contract tests per provider, re-record script, opt-in live_llm smoke"
+git add packages/netstead/tests/fixtures/llm packages/netstead/tests/test_llm_contract.py packages/netstead/tests/test_llm_live.py scripts/record_llm_fixtures.py
+git commit -m "test(netstead.llm): recorded-fixture contract tests per provider, re-record script, opt-in live_llm smoke"
 ```
 
 ---
@@ -6424,10 +6424,10 @@ git commit -m "test(gmnspy.llm): recorded-fixture contract tests per provider, r
 ### Task 19: Docs, full suite, catalog verification, end-to-end browser check
 
 **Files:**
-- Modify: `packages/gmnspy/docs/cookbook/workbench.md` (P1a version)
-- Modify (only if verification finds drift): `packages/gmnspy/gmnspy/llm/models.toml`
+- Modify: `packages/netstead/docs/cookbook/workbench.md` (P1a version)
+- Modify (only if verification finds drift): `packages/netstead/netstead/llm/models.toml`
 
-- [ ] **Step 1: Update `packages/gmnspy/docs/cookbook/workbench.md`.**
+- [ ] **Step 1: Update `packages/netstead/docs/cookbook/workbench.md`.**
 - In the Quick start, change `--provider claude` to `--provider anthropic`.
 - In the Settings TOML example, change `provider = "claude"` to `provider = "anthropic"`.
 - Add this section directly before `## Every action is replayable`:
@@ -6448,9 +6448,9 @@ which is enough for one selection at a time; pick a larger one from the picker i
 
 - **Keys are write-only.**
   - They are stored in your OS keychain (macOS Keychain, Windows Credential Manager, or Secret
-    Service on Linux), or read from `GMNSPY_<PROVIDER>_API_KEY` or the provider's own variable
+    Service on Linux), or read from `NETSTEAD_<PROVIDER>_API_KEY` or the provider's own variable
     (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`).
-  - Without a keychain, set the environment variable in the shell that starts `gmnspy app`; the panel
+  - Without a keychain, set the environment variable in the shell that starts `netstead app`; the panel
     tells you which one.
   - Keys are never written to `config.toml`, shown in the browser, recorded in the session history, or
     logged.
@@ -6469,7 +6469,7 @@ a model on this machine (Ollama) and off for a remote provider.
 
 | Setting | Default | What it does |
 |---|---|---|
-| `assistant_context` | `true` | Sends the GMNS assistant guide that ships with gmnspy (data model, examples) |
+| `assistant_context` | `true` | Sends the GMNS assistant guide that ships with netstead (data model, examples) |
 | `project_context` | `"auto"` | Sends an `AGENTS.md` (or `CLAUDE.md`) found next to the network or in the project folder: your aliases and code meanings |
 | `grounding` | `"auto"` | Sends the network's most common street names and route numbers, so the model spells them as the network does |
 | `grounding_max_names` | `200` | Cap on those names |
@@ -6479,7 +6479,7 @@ a model on this machine (Ollama) and off for a remote provider.
 | `temperature` | `0.0` | Sampling temperature; unset it for models that only accept their default |
 
 ```toml
-# ~/.config/gmnspy/config.toml: endpoints, choices and quality only, never keys
+# ~/.config/netstead/config.toml: endpoints, choices and quality only, never keys
 [select]
 provider = "anthropic"
 model = "claude-haiku-4-5-20251001"
@@ -6503,41 +6503,41 @@ A project's `AGENTS.md` might read:
 From a terminal (also the way to manage keys when the Workbench is bound to a non-local address):
 
 ```bash
-uv run gmnspy llm status
-uv run gmnspy llm set-key anthropic
-uv run gmnspy llm test anthropic
-uv run gmnspy llm models ollama
-uv run gmnspy select "I-40 EB between South Miami Boulevard and Airport Boulevard" ./my-network --provider ollama --model qwen3:4b
+uv run netstead llm status
+uv run netstead llm set-key anthropic
+uv run netstead llm test anthropic
+uv run netstead llm models ollama
+uv run netstead select "I-40 EB between South Miami Boulevard and Airport Boulevard" ./my-network --provider ollama --model qwen3:4b
 ```
 ````
 
 - [ ] **Step 2: Run the documented-contract tests, then the full suite and lint**
 
-Run: `uv run --all-extras pytest packages/gmnspy/tests/test_documented_cli_contract.py packages/gmnspy/tests/test_documented_api_contract.py packages/gmnspy/tests/test_documented_python_contract.py -q`
-Expected: `185 passed`. The `--provider`, `--model` and `gmnspy llm …` invocations all resolve.
+Run: `uv run --all-extras pytest packages/netstead/tests/test_documented_cli_contract.py packages/netstead/tests/test_documented_api_contract.py packages/netstead/tests/test_documented_python_contract.py -q`
+Expected: `185 passed`. The `--provider`, `--model` and `netstead llm …` invocations all resolve.
 
-Run: `uv run --all-extras pytest packages/datagrove/tests --doctest-modules packages/datagrove/datagrove -q && uv run --all-extras pytest packages/gmnspy/tests --doctest-modules packages/gmnspy/gmnspy -q && uv run ruff check packages scripts && uv run ruff format --check packages scripts && uv run lint-imports && uv run python scripts/lint_no_sql.py && uv run pyright packages/gmnspy/gmnspy/llm packages/gmnspy/gmnspy/select/prompt.py`
+Run: `uv run --all-extras pytest packages/corral/tests --doctest-modules packages/corral/corral -q && uv run --all-extras pytest packages/netstead/tests --doctest-modules packages/netstead/netstead -q && uv run ruff check packages scripts && uv run ruff format --check packages scripts && uv run lint-imports && uv run python scripts/lint_no_sql.py && uv run pyright packages/netstead/netstead/llm packages/netstead/netstead/select/prompt.py`
 Expected:
-- datagrove: `848 passed, 5 skipped`;
-- gmnspy: `1267 passed, 5 skipped` (4 `live_llm` + P1a's opt-in calibration);
+- corral: `848 passed, 5 skipped`;
+- netstead: `1267 passed, 5 skipped` (4 `live_llm` + P1a's opt-in calibration);
 - lint is clean, import-linter keeps 2 contracts, and pyright reports 0 errors in the new modules.
 
 - [ ] **Step 3: Verify the catalog against the live providers.** This needs the user's keys; the user runs it, or is asked first.
-- Run `uv run gmnspy llm test openai`, `uv run gmnspy llm test gemini` and `uv run gmnspy llm test anthropic`, each with a configured key.
+- Run `uv run netstead llm test openai`, `uv run netstead llm test gemini` and `uv run netstead llm test anthropic`, each with a configured key.
 - Expected: `… connected (N models available).` Any `catalog ids not served here: …` line names ids to fix in `models.toml`.
 - Drop each `# VERIFY` comment that has now been checked.
 - With Ollama running, run `ollama list` and confirm a Qwen tag matches the Ollama `default_model` (`qwen3:4b`), or change it.
 - Re-record the fixtures with `uv run --all-extras python scripts/record_llm_fixtures.py`, then re-run Task 18 Step 5.
 - If Gemini rejects `parametersJsonSchema`, apply the Task 7 fallback first.
 
-- [ ] **Step 4: Check it end to end in the browser pane.** Add this configuration to the uncommitted `.claude/launch.json` from P0. It uses a scratch config dir, so the real `~/.config/gmnspy` is never touched:
+- [ ] **Step 4: Check it end to end in the browser pane.** Add this configuration to the uncommitted `.claude/launch.json` from P0. It uses a scratch config dir, so the real `~/.config/netstead` is never touched:
 
 ```json
 {
   "name": "workbench-llm",
   "runtimeExecutable": "env",
-  "runtimeArgs": ["GMNSPY_CONFIG_DIR=/tmp/gmnspy-llm-e2e", "uv", "run", "--all-extras", "gmnspy", "app",
-                  "packages/gmnspy/gmnspy/fixtures/rdu_i40/parquet", "--port", "8851"],
+  "runtimeArgs": ["NETSTEAD_CONFIG_DIR=/tmp/netstead-llm-e2e", "uv", "run", "--all-extras", "netstead", "app",
+                  "packages/netstead/netstead/fixtures/rdu_i40/parquet", "--port", "8851"],
   "port": 8851
 }
 ```
@@ -6552,22 +6552,22 @@ Start it with `preview_start` (`name: "workbench-llm"`), then check each item. U
    - Hover the picker. The note lists the utterance, the tool schema and the GMNS guide, and *not* street names or project notes.
    - Click **Test**. It reports the 401 message in red, and the dot turns amber.
    - Run `I-40 EB between South Miami Boulevard and Airport Boulevard`. A red toast shows the 401 message and the history entry is marked failed.
-   - Click **Make default**, then `cat /tmp/gmnspy-llm-e2e/config.toml`. It shows `[select] provider = "anthropic"` and the model, and no key.
+   - Click **Make default**, then `cat /tmp/netstead-llm-e2e/config.toml`. It shows `[select] provider = "anthropic"` and the model, and no key.
    - **Remove** the key and confirm.
 4. **Quality toggles.** In **Quality & context**, set *Send street names…* to `on`. The privacy note now lists "up to 200 street names and route numbers from the active network". Set it back to `auto`.
-5. **Ollama flow** (only if `ollama list` shows a Qwen model). Choose **Ollama (local)** and the Qwen model, write an `AGENTS.md` containing `- "the airport road" is Airport Boulevard.` in the folder you launched `gmnspy app` from (the project dir; Ollama is local, so `project_context=auto` sends it), and run `I-40 EB between South Miami Boulevard and the airport road`. The selection resolves, and `curl -s localhost:8851/api/state` shows `"parsed_by": {"provider": "ollama", …}`. Delete the `AGENTS.md`.
+5. **Ollama flow** (only if `ollama list` shows a Qwen model). Choose **Ollama (local)** and the Qwen model, write an `AGENTS.md` containing `- "the airport road" is Airport Boulevard.` in the folder you launched `netstead app` from (the project dir; Ollama is local, so `project_context=auto` sends it), and run `I-40 EB between South Miami Boulevard and the airport road`. The selection resolves, and `curl -s localhost:8851/api/state` shows `"parsed_by": {"provider": "ollama", …}`. Delete the `AGENTS.md`.
 6. **No-leak checks from a terminal:**
    - `curl -s localhost:8851/api/llm/providers | grep -c dummy-e2e` prints `0`.
-   - `curl -s -o /dev/null -w '%{http_code}' -XPUT localhost:8851/api/llm/keys/openai -H 'content-type: application/json' -d '{"key":"sk-test-e2e-0000000000"}'` prints `403` (no `X-GMNSpy-Secrets` header).
-   - `grep -rc dummy-e2e /tmp/gmnspy-llm-e2e` finds nothing.
+   - `curl -s -o /dev/null -w '%{http_code}' -XPUT localhost:8851/api/llm/keys/openai -H 'content-type: application/json' -d '{"key":"sk-test-e2e-0000000000"}'` prints `403` (no `X-Netstead-Secrets` header).
+   - `grep -rc dummy-e2e /tmp/netstead-llm-e2e` finds nothing.
 
-Stop the preview with `preview_stop`, then delete `/tmp/gmnspy-llm-e2e`. Record any defects as new failing tests or fixes before continuing.
+Stop the preview with `preview_stop`, then delete `/tmp/netstead-llm-e2e`. Record any defects as new failing tests or fixes before continuing.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add packages/gmnspy/docs/cookbook/workbench.md packages/gmnspy/gmnspy/llm/models.toml packages/gmnspy/tests/fixtures/llm
-git commit -m "docs(gmnspy): Language models in the Workbench (providers, keys, quality & context, privacy, CLI); verified catalog"
+git add packages/netstead/docs/cookbook/workbench.md packages/netstead/netstead/llm/models.toml packages/netstead/tests/fixtures/llm
+git commit -m "docs(netstead): Language models in the Workbench (providers, keys, quality & context, privacy, CLI); verified catalog"
 ```
 
 ---
@@ -6606,9 +6606,9 @@ git commit -m "docs(gmnspy): Language models in the Workbench (providers, keys, 
 - **Validation:**
   - Every code block above was produced from a scratch tree. That tree is the P1a plan applied to `feat/workbench-p0` HEAD, plus this plan.
   - Each task's files were applied in order onto a fresh copy of the P1a state, and the task's own command was run. Each Expected count above is that run's output.
-  - The full gmnspy suite was also run after Tasks 10, 13 and 16 (1101, 1129 and 1163 passed, plus P1a's 1 opt-in skip).
+  - The full netstead suite was also run after Tasks 10, 13 and 16 (1101, 1129 and 1163 passed, plus P1a's 1 opt-in skip).
   - Final tree:
-    - `1267 passed, 5 skipped` (gmnspy, with doctests) and `848 passed, 5 skipped` (datagrove);
+    - `1267 passed, 5 skipped` (netstead, with doctests) and `848 passed, 5 skipped` (corral);
     - ruff check and format clean;
     - import-linter 2/2 kept;
     - pyright 0 new errors (the remaining pyright errors in `select/emit.py`, `select/webapp.py` and P1a's `session.py` job path predate this plan);

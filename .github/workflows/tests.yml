@@ -21,24 +21,24 @@ jobs:
           uv run ruff format --check .
       - name: Import-linter (architectural boundaries)
         run: uv run lint-imports
-      - name: No raw SQL outside datagrove.engines.ibis_engine
+      - name: No raw SQL outside corral.engines.ibis_engine
         run: uv run python scripts/lint_no_sql.py
 
   wheel-smoke:
-    # Build the gmnspy wheel and verify the bundled Leavenworth fixture
+    # Build the netstead wheel and verify the bundled Leavenworth fixture
     # binaries (parquet/duckdb/csv/zip + datapackage.json) are actually
     # present inside the wheel. Guards I3 — packaging regression that
     # would silently drop the fixtures from the wheel.
     #
     # Notes:
     # * We inspect wheel members directly rather than `pip install` the
-    #   wheel, because `datagrove` is workspace-local and not on PyPI yet
-    #   (an install would fail dependency resolution). Once datagrove is
+    #   wheel, because `corral` is workspace-local and not on PyPI yet
+    #   (an install would fail dependency resolution). Once corral is
     #   published, swap this for a fresh-venv install + import check.
     # * Local equivalent:
     #     rm -rf /tmp/wheel-test
-    #     uv build --package gmnspy --out-dir /tmp/wheel-test
-    #     uv run python -m zipfile -l /tmp/wheel-test/gmnspy-*.whl \
+    #     uv build --package netstead --out-dir /tmp/wheel-test
+    #     uv run python -m zipfile -l /tmp/wheel-test/netstead-*.whl \
     #         | grep -E 'fixtures.*(parquet|duckdb|\.zip|datapackage)'
     needs: lint
     runs-on: ubuntu-latest
@@ -47,19 +47,19 @@ jobs:
       - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
-      - name: Build gmnspy wheel
+      - name: Build netstead wheel
         run: |
           rm -rf /tmp/wheel-test
-          uv build --package gmnspy --out-dir /tmp/wheel-test
+          uv build --package netstead --out-dir /tmp/wheel-test
       - name: Verify fixture binaries packaged in wheel
         run: |
           uv run python - <<'PY'
           import sys, zipfile
           from pathlib import Path
-          wheels = list(Path("/tmp/wheel-test").glob("gmnspy-*.whl"))
+          wheels = list(Path("/tmp/wheel-test").glob("netstead-*.whl"))
           assert len(wheels) == 1, wheels
           names = zipfile.ZipFile(wheels[0]).namelist()
-          fx = "gmnspy/fixtures/leavenworth"
+          fx = "netstead/fixtures/leavenworth"
           required_files = [
               f"{fx}/datapackage.json",
               f"{fx}/leavenworth.duckdb",
@@ -121,19 +121,19 @@ jobs:
       # also enforces a per-package coverage gate (so a regression in one
       # package can't be masked by the other) and writes the XML for
       # codecov. Gates sit about one point below the measured coverage.
-      - name: Test datagrove
+      - name: Test corral
         run: >-
-          uv run pytest -m "" -n auto packages/datagrove/tests
-          --doctest-modules packages/datagrove/datagrove
-          ${{ matrix.coverage && '--cov=datagrove --cov-fail-under=86 --cov-report=term --cov-report=xml:coverage-datagrove.xml' || '' }}
-      - name: Test gmnspy
+          uv run pytest -m "" -n auto packages/corral/tests
+          --doctest-modules packages/corral/corral
+          ${{ matrix.coverage && '--cov=corral --cov-fail-under=86 --cov-report=term --cov-report=xml:coverage-corral.xml' || '' }}
+      - name: Test netstead
         run: >-
-          uv run pytest -m "" -n auto packages/gmnspy/tests
-          --doctest-modules packages/gmnspy/gmnspy
-          ${{ matrix.coverage && '--cov=gmnspy --cov-fail-under=84 --cov-report=term --cov-report=xml:coverage-gmnspy.xml' || '' }}
+          uv run pytest -m "" -n auto packages/netstead/tests
+          --doctest-modules packages/netstead/netstead
+          ${{ matrix.coverage && '--cov=netstead --cov-fail-under=84 --cov-report=term --cov-report=xml:coverage-netstead.xml' || '' }}
       - name: Upload coverage
         if: matrix.coverage
         uses: codecov/codecov-action@v5
         with:
-          files: coverage-datagrove.xml,coverage-gmnspy.xml
+          files: coverage-corral.xml,coverage-netstead.xml
           fail_ci_if_error: false

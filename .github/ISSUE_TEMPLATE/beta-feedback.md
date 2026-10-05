@@ -14,7 +14,7 @@ assignees: ''
 <!-- One or two sentences. Examples:
      - "Load a 200 MB GMNS parquet network and run validation"
      - "Convert our CSV-format network to DuckDB"
-     - "Run `gmnspy mcp serve` from Claude Desktop and call describe_network"
+     - "Run `netstead mcp serve` from Claude Desktop and call describe_network"
      - "Self-host the HTTP server behind our nginx proxy"
 -->
 
@@ -31,27 +31,27 @@ assignees: ''
 
 ```bash
 # Example:
-uv run gmnspy validate /path/to/network
+uv run netstead validate /path/to/network
 ```
 
 ## Environment
 
-Run `gmnspy doctor --json` and paste the output:
+Run `netstead doctor --json` and paste the output:
 
 ```json
 ```
 
 If `doctor` won't run, please tell us:
 
-- Package versions: `pip show datagrove gmnspy | grep -E 'Name|Version'`
+- Package versions: `pip show corral netstead | grep -E 'Name|Version'`
 - Python version: `python --version`
 - OS / arch (macOS 14 / Linux x86_64 / etc.)
-- Install method (`uv add gmnspy`, `pip install`, Docker image, …)
+- Install method (`uv add netstead`, `pip install`, Docker image, …)
 
 ## What would have made this easier?
 
 <!-- Optional. The shape of feedback we love most:
-     - "I expected `gmnspy <command>` to do X but it does Y"
+     - "I expected `netstead <command>` to do X but it does Y"
      - "The error message didn't tell me which file/column was bad"
      - "I had to read the source to figure out how to <thing>"
      - "Docs say X works but it doesn't" (paste the doc link if you can)
