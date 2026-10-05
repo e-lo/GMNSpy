@@ -217,6 +217,11 @@
   .tag { font-size:10.5px; padding:1px 6px; border-radius:999px; background:rgba(45,210,230,.15); color:var(--hl); }
   .st.ok { color:var(--from); }
   .st.fail { color:var(--to); }
+  .ollama-help { color:var(--muted); font-size:12px; line-height:1.45; }
+  .ollama-help p { margin:0 0 6px; }
+  .ollama-help ul { margin:0 0 6px; padding-left:18px; }
+  .ollama-help code { color:var(--ink); }
+  .ollama-help a { color:var(--hl); }
   #llm-quality .row input[type=number] { width:90px; flex:none; }
   #llm-quality .row select { flex:none; max-width:230px; }
   /* The header is crowded: it wraps to a second row rather than overflow or squeeze the utterance box. */

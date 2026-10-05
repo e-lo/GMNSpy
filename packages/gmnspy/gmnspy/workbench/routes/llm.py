@@ -1,12 +1,19 @@
-"""Language-model routes: provider status, write-only key management, model lists, connection tests.
+"""Language-model routes: provider status, write-only key management, model lists, connection tests, Ollama pulls.
 
 None of these are Actions: a key cannot be recorded or replayed without recording the key.
 A key write leaves only a status-only ``llm`` SSE event and a log line naming the provider
 and the store, never the key. No route returns a key; status is ``{provider, configured, source}``.
 
-On top of the server's Host/Origin guard, key writes and connection tests need a loopback
-bind and an ``X-GMNSpy-Secrets: 1`` header. A cross-origin page cannot send that custom
+On top of the server's Host/Origin guard, key writes, connection tests and Ollama pulls need a
+loopback bind and an ``X-GMNSpy-Secrets: 1`` header. A cross-origin page cannot send that custom
 header without a CORS preflight, and this server never approves one.
+
+An Ollama pull (``POST /api/llm/ollama/pull``) is a background job (``job`` events, Cancel in the
+Jobs panel) but not an Action either: it changes neither a network nor a setting, so replaying a
+session must not re-download gigabytes, and a model on disk outlives any one session's history
+(the same reasoning as key writes). It is refused unless ``llm.ollama.base_url`` is on this machine:
+the browser may only make *this* machine download, and only a plain library name
+(:func:`~gmnspy.llm.providers.ollama.valid_model_name`), never a URL or another registry host.
 
 Request bodies are typed ``Any`` and validated here, by hand: FastAPI's default 422 body
 echoes the submitted input, which for a key route would be the key.
@@ -15,13 +22,19 @@ echoes the submitted input, which for a key route would be the key.
 from __future__ import annotations
 
 import logging
+import time
 from typing import Any
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Request
+from fastapi.encoders import jsonable_encoder
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, ValidationError
 
 from gmnspy.llm import LLMError, ProviderRegistry, SecretStoreError
+from gmnspy.llm.providers.ollama import MODEL_NAME_MAX, PullTracker, valid_model_name
 
+from ..errors import ActionError
+from ..jobs import Job, JobContext
 from ..session import Session
 
 __all__ = ["SECRETS_HEADER", "llm_router"]
@@ -45,6 +58,17 @@ class _TestBody(BaseModel):
     model: str | None = None
 
 
+class _PullBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    model: str = Field(min_length=1, max_length=MODEL_NAME_MAX)
+
+
+#: A pull streams many progress lines a second; publish a ``job`` event at most this often
+#: (or when the stage changes / progress moves a whole percent). Every line is still a cancel checkpoint.
+_PULL_EVENT_EVERY_S = 0.5
+
+
 def llm_router(session: Session, *, allow_key_writes: bool) -> APIRouter:
     """Build the ``/api/llm`` router; ``allow_key_writes`` is False when the server is exposed beyond loopback."""
     router = APIRouter(prefix="/api/llm")
@@ -55,6 +79,16 @@ def llm_router(session: Session, *, allow_key_writes: bool) -> APIRouter:
                 403,
                 "API keys can only be managed when the Workbench is bound to this machine (127.0.0.1); "
                 "use `gmnspy llm set-key` in a terminal.",
+            )
+        if request.headers.get(SECRETS_HEADER) != "1":
+            raise HTTPException(403, f"missing {SECRETS_HEADER} header")
+
+    def pull_guard(request: Request) -> None:
+        if not allow_key_writes:
+            raise HTTPException(
+                403,
+                "Models can only be pulled from the browser when the Workbench is bound to this machine "
+                "(127.0.0.1); use `gmnspy llm pull` in a terminal.",
             )
         if request.headers.get(SECRETS_HEADER) != "1":
             raise HTTPException(403, f"missing {SECRETS_HEADER} header")
@@ -75,6 +109,7 @@ def llm_router(session: Session, *, allow_key_writes: bool) -> APIRouter:
             "keyring": reg.secrets.keyring_available,
             "selected": {"provider": select.provider, "model": select.model},
             "key_writes": allow_key_writes,
+            "ollama_pull": {"allowed": allow_key_writes and reg.is_local("ollama"), "choices": reg.pull_choices()},
         }
 
     def changed(provider: str, verb: str, where: str) -> dict[str, Any]:
@@ -139,4 +174,65 @@ def llm_router(session: Session, *, allow_key_writes: bool) -> APIRouter:
             raise HTTPException(422, 'send {"provider": "...", "model": "..." | null}') from None
         return reg.test(known(reg, parsed.provider), parsed.model)
 
+    @router.post("/ollama/pull", dependencies=[Depends(pull_guard)])
+    def ollama_pull(body: Any = Body(None)) -> JSONResponse:  # noqa: B008  (FastAPI Body default)
+        """Pull a model into the local Ollama as a background job; answers 202 with the job."""
+        try:
+            model = _PullBody.model_validate(body).model
+        except ValidationError:
+            raise HTTPException(422, f'send {{"model": "..."}}; at most {MODEL_NAME_MAX} characters') from None
+        if not valid_model_name(model):
+            raise HTTPException(422, "not an Ollama model name: use name[:tag] or namespace/name[:tag], e.g. qwen3:4b")
+        reg = session.llm
+        if not reg.is_local("ollama"):
+            raise HTTPException(
+                400,
+                f"Ollama is configured at {reg.base_url('ollama')}, which is not this machine; the Workbench only "
+                "pulls into a local Ollama. Run `ollama pull` on that server instead.",
+            )
+        running = any(
+            j["kind"] == "ollama_pull" and j["status"] == "running" and j["label"] == _pull_label(model)
+            for j in session.jobs.snapshots()
+        )
+        if running:
+            raise HTTPException(409, f"{model} is already being pulled; see Jobs")
+        job = session.jobs.submit(
+            "ollama_pull", _pull_label(model), lambda ctx: _run_pull(reg, model, ctx), on_finish=pulled
+        )
+        return JSONResponse({"job": jsonable_encoder(session.jobs.snapshot(job))}, status_code=202)
+
+    def pulled(job: Job) -> None:
+        # The registry's pull already dropped its probe cache; publish fresh status so the picker
+        # and the panel show the new model (or the reason it isn't there) without a reload.
+        logger.info("ollama pull %s: %s", job.label, job.status)
+        try:
+            session.events.publish({"type": "llm", **snapshot()})
+        except Exception:  # boundary: a failed status refresh must not fail the finished job
+            logger.exception("llm status refresh after %s failed", job.id)
+
     return router
+
+
+def _pull_label(model: str) -> str:
+    return f"Pull {model} (Ollama)"
+
+
+def _run_pull(reg: ProviderRegistry, model: str, ctx: JobContext) -> dict[str, Any]:
+    """Job body: stream the pull, publishing throttled progress; every line is a cancel checkpoint."""
+    tracker = PullTracker()
+    stream = reg.pull(model)
+    last: tuple[str, float | None, float] = ("", None, 0.0)
+    try:
+        for event in stream:
+            ctx.check()
+            fraction = tracker.update(event)
+            stage, now = tracker.stage, time.monotonic()
+            moved = fraction is not None and (last[1] is None or fraction - last[1] >= 0.01)
+            if stage != last[0] or moved or now - last[2] >= _PULL_EVENT_EVERY_S:
+                ctx.stage(stage, progress=fraction)
+                last = (stage, fraction, now)
+    except LLMError as exc:
+        raise ActionError(str(exc)) from None
+    finally:
+        stream.close()  # on cancel: closes the HTTP stream (Ollama stops) and drops the probe cache
+    return {"model": model, "bytes": tracker.total}

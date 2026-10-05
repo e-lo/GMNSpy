@@ -4,8 +4,12 @@
 // P1b's Settings workspace can mount #llm-panel as a section; until then it floats from "Models…".
 import { dispatch, getJSON, sendJSON } from "./api.js";
 import { $, esc, toast } from "./dom.js";
+import { openJobsPanel } from "./jobs.js";
 
 const SECRETS = { "X-GMNSpy-Secrets": "1" };
+// The published setup guide (docs/cookbook/local-llm-ollama.md) and Ollama's own download page.
+const OLLAMA_GUIDE = "https://e-lo.github.io/GMNSpy/gmnspy/cookbook/local-llm-ollama/";
+const OLLAMA_DOWNLOAD = "https://ollama.com/download";
 const STUB = { provider: "stub", label: "Offline (pattern)", usable: true, local: true, sends: [] };
 const TRI = [["auto", "auto (on for local models only)"], ["on", "on"], ["off", "off"]];
 // llm.quality settings shown in the panel: [key, label, kind, options or bounds]. Bounds mirror config.py.
@@ -30,6 +34,7 @@ let savedDefault = null; // the non-session pair: seen before any session overri
 let baseSources = null;  // where that pair came from ({provider, model}: "user" | "project" | "env" | "default")
 let refreshSeq = 0;      // drop out-of-order refresh responses
 let modelsSeq = 0;
+const pulling = new Set(); // Ollama models this tab asked to pull, until the next status snapshot
 
 const providerRow = name => (name === "stub" ? STUB : llm ? llm.providers.find(p => p.provider === name) : null);
 const panelOpen = () => $("llm-panel").classList.contains("open");
@@ -78,6 +83,7 @@ async function renderAll() {
 // Status-only snapshot (SSE `llm` event, or a key route's reply). It supersedes any refresh in flight.
 export function onLLMEvent(ev) {
   const { type, ...snapshot } = ev;
+  pulling.clear(); // a pull publishes fresh status when it ends; any snapshot re-enables the button
   refreshSeq++;
   llm = snapshot;
   renderAll().catch(report);
@@ -272,11 +278,98 @@ function actionsHTML(p) {
 function rowHTML(p) {
   // A remote-kind provider pointed at a loopback base_url runs here too: say so (Ollama's label already does).
   const tag = p.local && p.kind !== "local" ? ' <span class="tag">local</span>' : "";
+  const help = p.kind === "local" ? ollamaHelpHTML(p) : "";
   return (
     `<tr data-provider="${esc(p.provider)}" title="${esc(privacyNote(p))}"><td><span class="dot ${dotClass(p)}"></span>${esc(p.label)}${tag}</td>` +
     `<td class="st">${esc(statusText(p))}</td><td class="acts">${actionsHTML(p)}</td></tr>` +
-    '<tr class="keyrow" hidden><td colspan="3"></td></tr>'
+    '<tr class="keyrow" hidden><td colspan="3"></td></tr>' +
+    (help ? `<tr class="helprow"><td colspan="3"><div class="ollama-help">${help}</div></td></tr>` : "")
   );
+}
+
+// ------------------------------------------------------------------ Ollama: setup help and Pull
+
+const gb = size => (size ? `about ${size} GB` : "several GB");
+
+function pullChoices(p) {
+  const choices = (llm.ollama_pull && llm.ollama_pull.choices) || [];
+  return choices.length ? choices : [{ id: p.default_model, label: p.default_model, size_gb: null }];
+}
+
+// The Pull control: a catalog model select (default first) and a button naming the chosen model.
+function pullHTML(p, hidden) {
+  if (!llm.ollama_pull || !llm.ollama_pull.allowed) {
+    return `<p>Pull a model from a terminal: <code>gmnspy llm pull ${esc(p.default_model)}</code> (or <code>ollama pull ${esc(p.default_model)}</code>).</p>`;
+  }
+  const choices = pullChoices(p);
+  const first = choices.find(c => c.id === p.default_model) || choices[0];
+  const options = choices.map(
+    c => `<option value="${esc(c.id)}"${c === first ? " selected" : ""}>${esc(c.id)} · ${esc(gb(c.size_gb))}</option>`,
+  );
+  const busy = pulling.has(first.id) ? " disabled" : "";
+  return (
+    `<div class="row pullrow"${hidden ? " hidden" : ""}><select class="pull-model" aria-label="Model to pull">${options.join("")}</select>` +
+    `<button class="mini" data-act="pull"${busy}>Pull ${esc(first.id)}</button></div>`
+  );
+}
+
+function ollamaHelpHTML(p) {
+  if (!p.configured) {
+    // Not answering: not installed, or not started.
+    return (
+      `<p>Ollama isn't answering at <code>${esc(p.base_url)}</code>. To run models on this machine:</p><ul>` +
+      `<li><b>macOS / Windows:</b> install the app from <a href="${OLLAMA_DOWNLOAD}" target="_blank" rel="noopener">ollama.com/download</a>, then open it (it runs the server in the background).</li>` +
+      "<li><b>Linux:</b> <code>curl -fsSL https://ollama.com/install.sh | sh</code> (read the script first), " +
+      "then <code>ollama serve</code> if it isn't already running as a service.</li></ul>" +
+      '<div class="row"><button class="mini" data-act="recheck">Check again</button>' +
+      `<a href="${OLLAMA_GUIDE}" target="_blank" rel="noopener">Setup guide</a></div>`
+    );
+  }
+  if (!p.local) return "<p>This Ollama runs on another machine: pull models there with <code>ollama pull</code>.</p>";
+  if (!p.models) return `<p>Ollama is running but has no models yet. Pull one to use it here (one-time download).</p>${pullHTML(p, false)}`;
+  const another = llm.ollama_pull && llm.ollama_pull.allowed
+    ? '<button class="mini ghost" data-act="pull-show">Pull another model</button>' : "";
+  return `${another}${pullHTML(p, true)}`;
+}
+
+// "Check again" re-probes now (the status list may reuse a probe from a few seconds ago).
+async function recheckOllama() {
+  try {
+    if (llm.key_writes) await sendJSON("POST", "/api/llm/test", { provider: "ollama", model: null }, SECRETS);
+    await refreshLLM();
+  } catch (e) {
+    report(e);
+  }
+}
+
+async function pullModel(help) {
+  const model = help.querySelector(".pull-model").value;
+  const choice = pullChoices(providerRow("ollama")).find(c => c.id === model);
+  const size = gb(choice && choice.size_gb);
+  if (!confirm(`Download ${model} (${size}) into Ollama on this machine? Progress shows under Jobs.`)) return;
+  const button = help.querySelector('button[data-act="pull"]');
+  button.disabled = true;
+  pulling.add(model);
+  try {
+    await sendJSON("POST", "/api/llm/ollama/pull", { model }, SECRETS);
+    openJobsPanel();
+  } catch (e) {
+    pulling.delete(model);
+    button.disabled = false;
+    report(e);
+  }
+}
+
+function onHelpClick(button) {
+  const help = button.closest(".ollama-help");
+  const act = button.dataset.act;
+  if (act === "recheck") return recheckOllama();
+  if (act === "pull") return pullModel(help);
+  if (act === "pull-show") {
+    help.querySelector(".pullrow").hidden = false;
+    button.hidden = true;
+  }
+  return null;
 }
 
 function qualityInput(id, key, kind, opts, v) {
@@ -461,8 +554,18 @@ export function wireLLM() {
   $("llm-providers").onclick = e => {
     const button = e.target.closest("button[data-act]");
     if (!button) return;
+    if (button.closest(".ollama-help")) {
+      onHelpClick(button);
+      return;
+    }
     const tr = button.closest("tr");
     ({ set: openKeyForm, remove: removeKey, test: testProvider })[button.dataset.act](tr);
+  };
+  $("llm-providers").onchange = e => {
+    if (!e.target.classList.contains("pull-model")) return;
+    const button = e.target.parentElement.querySelector('button[data-act="pull"]');
+    button.textContent = `Pull ${e.target.value}`;
+    button.disabled = pulling.has(e.target.value);
   };
   $("llm-quality").onchange = e => {
     if (e.target.dataset.q) onQualityChange(e.target);
