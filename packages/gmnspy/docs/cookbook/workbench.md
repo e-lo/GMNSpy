@@ -158,6 +158,9 @@ The utterance box can be read by:
 - a local model through [Ollama](https://ollama.com), for example Qwen;
 - Anthropic, OpenAI or Gemini, with your own API key.
 
+To set up a local model (install Ollama, pull `qwen3:4b`, troubleshoot), see
+[Run language models locally with Ollama](local-llm-ollama.md).
+
 `select.provider` accepts `anthropic`, `openai`, `gemini`, `ollama` or `stub`. `claude` is still
 accepted as an alias for `anthropic` (existing config files keep working).
 
@@ -165,8 +168,8 @@ Pick a provider and model with the picker next to the utterance box. The choice 
 `SetSetting(scope="session")` — it applies to this session only; **Make default** saves the same
 pair with `scope="user"`, and warns first if a project setting or a `GMNSPY_SELECT__*` /
 `GMNSPY_SELECT__MODEL` environment variable would still override it. **Models…** opens the
-Language models panel: set, replace, remove and test keys, point at another Ollama server, tune
-quality and context, and browse the model catalog.
+Language models panel: set, replace, remove and test keys, point at another Ollama server, pull an
+Ollama model, tune quality and context, and browse the model catalog.
 
 The defaults are each provider's small, fast model — enough for one selection at a time — and are
 maintained in `gmnspy/llm/models.toml`:
@@ -287,6 +290,7 @@ uv run gmnspy llm status
 uv run gmnspy llm set-key anthropic
 uv run gmnspy llm test anthropic
 uv run gmnspy llm models ollama
+uv run gmnspy llm pull qwen3:4b
 uv run gmnspy select "I-40 EB between South Miami Boulevard and Airport Boulevard" ./my-network --provider ollama --model qwen3:4b
 ```
 

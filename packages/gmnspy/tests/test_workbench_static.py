@@ -94,3 +94,21 @@ def test_header_has_the_llm_picker_and_panel():
     assert html.index('id="utterance"') < html.index('id="nl-picker"') < html.index('id="go"')
     main = (JS_DIR / "main.js").read_text()
     assert 'from "./llm.js"' in main and "llm:" in main  # wired, and subscribed to the `llm` SSE event
+
+
+def test_ollama_setup_links_point_at_the_published_guide():
+    from pathlib import Path
+
+    from gmnspy.llm.providers.ollama import SETUP_DOCS_URL
+
+    pkg = Path(__file__).resolve().parents[1]
+    site_url = next(
+        line.split(":", 1)[1].strip()
+        for line in (pkg / "mkdocs.yml").read_text().splitlines()
+        if line.startswith("site_url:")
+    )
+    assert f"{site_url.rstrip('/')}/cookbook/local-llm-ollama/" == SETUP_DOCS_URL
+    assert (pkg / "docs" / "cookbook" / "local-llm-ollama.md").is_file()
+    src = (JS_DIR / "llm.js").read_text()
+    assert f'const OLLAMA_GUIDE = "{SETUP_DOCS_URL}"' in src
+    assert '"/api/llm/ollama/pull", { model }, SECRETS' in src  # the pull carries the write-guard header
