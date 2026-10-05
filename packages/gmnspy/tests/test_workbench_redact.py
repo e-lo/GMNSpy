@@ -3,7 +3,6 @@
 import json
 import re
 import shutil
-import subprocess
 
 import pytest
 from gmnspy import Network
@@ -70,7 +69,7 @@ def test_summary_source_is_scrubbed(session, rdu_source):
 
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="node not installed")
-def test_recent_list_drops_query_strings_from_urls_only(tmp_path):
+def test_recent_list_drops_query_strings_from_urls_only(tmp_path, run_node):
     header = (STATIC_DIR / "js" / "header.js").read_text()
     fn = re.search(r"function withoutSecrets\(source\) \{.*?\n\}", header, re.S)
     assert fn, "header.js must define withoutSecrets(source)"
@@ -82,5 +81,6 @@ def test_recent_list_drops_query_strings_from_urls_only(tmp_path):
     }
     script = tmp_path / "check.mjs"
     script.write_text(f"{fn.group(0)}\nconsole.log(JSON.stringify({json.dumps(list(cases))}.map(withoutSecrets)));\n")
-    out = subprocess.run(["node", str(script)], capture_output=True, text=True, check=True).stdout
-    assert json.loads(out) == list(cases.values())
+    proc = run_node([str(script)])
+    assert proc.returncode == 0, proc.stderr
+    assert json.loads(proc.stdout) == list(cases.values())

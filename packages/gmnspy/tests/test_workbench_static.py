@@ -2,7 +2,6 @@
 
 import re
 import shutil
-import subprocess
 
 import pytest
 from fastapi.testclient import TestClient
@@ -49,13 +48,40 @@ def test_every_element_id_used_by_js_exists_in_index():
             assert used in ids, f"{path.name} uses #{used} which index.html lacks"
 
 
+#: Parses every module in one `node` process instead of spawning `node --check` once per
+#: file. `--check` only ever validates its *first* positional argument, so checking N files
+#: still meant N separate process starts; under `pytest -n auto` those extra Node startups
+#: measurably raised the odds of hitting a rare, unrelated Node/V8 crash under host memory
+#: pressure (SIGSEGV with empty stderr, reproduced here and in test_workbench_redact.py's
+#: single `node` call -- see the commit that added this comment for the investigation).
+#: `vm.SourceTextModule` parses (but does not execute or link) an ES module, which is exactly
+#: what a syntax check needs.
+_CHECK_ALL_MODULES_JS = """
+import { readFileSync } from "node:fs";
+import vm from "node:vm";
+
+const failures = [];
+for (const file of process.argv.slice(2)) {
+    try {
+        new vm.SourceTextModule(readFileSync(file, "utf8"), { identifier: file });
+    } catch (error) {
+        failures.push(`${file}: ${error.message}`);
+    }
+}
+if (failures.length) {
+    console.error(failures.join("\\n"));
+    process.exit(1);
+}
+"""
+
+
 @pytest.mark.skipif(shutil.which("node") is None, reason="node not installed")
-def test_js_syntax(tmp_path):
-    for path in JS_DIR.glob("*.js"):
-        target = tmp_path / (path.stem + ".mjs")
-        target.write_text(path.read_text())
-        proc = subprocess.run(["node", "--check", str(target)], capture_output=True, text=True)
-        assert proc.returncode == 0, f"{path.name}: {proc.stderr}"
+def test_js_syntax(tmp_path, run_node):
+    driver = tmp_path / "check_all_modules.mjs"
+    driver.write_text(_CHECK_ALL_MODULES_JS)
+    paths = sorted(JS_DIR.glob("*.js"))
+    proc = run_node(["--no-warnings", "--experimental-vm-modules", str(driver), *(str(p) for p in paths)])
+    assert proc.returncode == 0, proc.stderr
 
 
 def test_header_has_open_import_recent_and_jobs_not_the_path_box():

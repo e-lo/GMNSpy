@@ -17,6 +17,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import shutil
+import subprocess
 from importlib import resources
 from pathlib import Path
 from typing import Any
@@ -175,3 +177,22 @@ def _no_system_keyring(monkeypatch: pytest.MonkeyPatch) -> None:
     Tests that need a keyring pass ``fake_keyring`` explicitly.
     """
     monkeypatch.setattr("gmnspy.llm.secrets.system_keyring", lambda: None)
+
+
+@pytest.fixture
+def run_node():
+    """Run ``node`` with captured text output, launched via ``posix_spawn`` rather than fork.
+
+    A pytest-xdist worker is heavily multithreaded (DuckDB, etc.). On macOS, forking such a
+    process occasionally crashes the child before it execs (exit -11, no output), which showed
+    up as ~1-in-4 flaky full parallel runs. An absolute executable path with
+    ``close_fds=False`` lets :mod:`subprocess` use ``posix_spawn``, which never forks the
+    worker.
+    """
+
+    def run(args: list[str]) -> subprocess.CompletedProcess[str]:
+        node = shutil.which("node")
+        assert node, "node not installed"
+        return subprocess.run([node, *args], stdin=subprocess.DEVNULL, capture_output=True, text=True, close_fds=False)
+
+    return run
