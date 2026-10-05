@@ -149,8 +149,9 @@ def test_auto_quality_settings_follow_the_endpoint_and_the_privacy_note_follows_
     )
     assert opted_in.disclosure("anthropic")[3:] == [
         "up to 200 street names and route numbers from the active network",
-        "your project notes (AGENTS.md or CLAUDE.md, up to 4000 characters)",
-        "up to 3 earlier selections from this session (utterance and result)",
+        "your project notes (GMNSPY.md, or the ## gmnspy section of AGENTS.md/CLAUDE.md, up to 4000 characters)",
+        "up to 3 earlier selections on this network from this session "
+        "(utterance and result, which may include street names from the network)",
     ]
     local_url = make(overrides={"llm.openai.base_url": "http://localhost:1234/v1"})
     assert local_url.grounding_on("openai")  # an OpenAI-compatible server on this machine counts as local

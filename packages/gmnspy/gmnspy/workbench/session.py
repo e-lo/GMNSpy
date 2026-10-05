@@ -40,7 +40,7 @@ from datagrove.engines.ibis_engine import IbisEngine
 
 from gmnspy import Network
 from gmnspy.config import LoadedSettings, Settings, SettingsError, get_value, load_settings, save_setting
-from gmnspy.llm import LLMError, ProviderRegistry, build_registry
+from gmnspy.llm import LLMError, MissingKey, ProviderRegistry, build_registry
 from gmnspy.llm.context import assistant_context, find_project_context, read_capped
 from gmnspy.select.intent import SelectionIntent
 from gmnspy.select.parse import LLMParser, make_parser, payload_from_intent
@@ -145,9 +145,13 @@ class Session:
         self._llm_transport = llm_transport
         self._keyring = keyring
         self.llm: ProviderRegistry = self._build_llm()
-        #: Resolved ``(utterance, tool arguments)`` pairs: few-shot examples when ``llm.quality.few_shot``
-        #: is on. Session-only by design: never persisted, so one project's requests never reach another.
-        self._examples: deque[tuple[str, dict[str, Any]]] = deque(maxlen=_MAX_EXAMPLES)
+        #: Resolved ``(net_id, utterance, tool arguments)``: few-shot examples (same network only) when
+        #: ``llm.quality.few_shot`` is on. Session-only by design: never persisted, so one project's
+        #: requests never reach another.
+        self._examples: deque[tuple[str, str, dict[str, Any]]] = deque(maxlen=_MAX_EXAMPLES)
+        #: ``(registry, monotonic time, MissingKey)``: a recent "no key" for the current registry, so a
+        #: missing key doesn't re-read the OS keyring on every Select (see :data:`_MISSING_KEY_TTL_S`).
+        self._parser_failure: tuple[ProviderRegistry, float, MissingKey] | None = None
         self.registry = NetworkRegistry()
         self.events = EventBus()
         self.active: str | None = None
@@ -172,12 +176,30 @@ class Session:
         """The NL parser for ``select.provider``/``select.model`` (built once and cached; an injected parser wins).
 
         The cache is dropped by :meth:`reset_llm`, which every ``select.*``/``llm.*`` setting change
-        calls. Raises :class:`~gmnspy.llm.errors.MissingKey` when the chosen provider has no key.
+        (and every key write) calls. Raises :class:`~gmnspy.llm.errors.MissingKey` when the chosen
+        provider has no key; that answer is reused for :data:`_MISSING_KEY_TTL_S` seconds.
+
+        Building reads the API key, which may block on the OS keyring (an unlock prompt), so it
+        happens *outside* the session lock; the lock only guards the snapshot and the store.
         """
         with self._lock:
-            if self._parser is None:
-                self._parser = make_parser(self.settings.select, self.llm)
-            return self._parser
+            if self._parser is not None:
+                return self._parser
+            registry, select = self.llm, self.settings.select
+            failure = self._parser_failure
+            if failure is not None and failure[0] is registry and time.monotonic() - failure[1] < _MISSING_KEY_TTL_S:
+                raise failure[2]
+        try:
+            built = make_parser(select, registry)
+        except MissingKey as exc:
+            with self._lock:
+                if self.llm is registry:
+                    self._parser_failure = (registry, time.monotonic(), exc)
+            raise
+        with self._lock:
+            if self._parser is None and self.llm is registry:
+                self._parser = built  # nobody reset or built one meanwhile: cache ours
+            return self._parser if self._parser is not None else built
 
     def reset_llm(self) -> None:
         """Rebuild the provider registry and drop the cached parser (after a setting, key or endpoint change).
@@ -186,6 +208,7 @@ class Session:
         """
         with self._lock:
             self.llm = self._build_llm()
+            self._parser_failure = None
             if self._injected_parser is None:
                 self._parser = None
 
@@ -445,6 +468,8 @@ class Session:
     def _do_close_network(self, action: CloseNetwork) -> None:
         self._handle(action.net_id)
         self.registry.remove(action.net_id)
+        # Its few-shot examples go too: a later network may reuse the id.
+        self._examples = deque((e for e in self._examples if e[0] != action.net_id), maxlen=_MAX_EXAMPLES)
         if self.selection and self.selection["net_id"] == action.net_id:
             self.selection = None
         if self.active == action.net_id:
@@ -464,19 +489,21 @@ class Session:
         if action.component != "roadway" or action.utterance is None:
             return None
         with self._lock:
+            self._handle(action.net_id)  # fail fast (no network open) before touching the keyring
+        try:
+            parser = self.parser()  # takes the lock itself, but never while reading the keyring
+        except LLMError as exc:  # e.g. no key for the chosen provider: the user must act
+            raise ActionError(str(exc)) from None
+        with self._lock:
             handle = self._handle(action.net_id)
-            try:
-                parser = self.parser()
-            except LLMError as exc:  # e.g. no key for the chosen provider: the user must act
-                raise ActionError(str(exc)) from None
-            registry, settings, examples = self.llm, self.settings, tuple(self._examples)
-            version = handle.version
+            registry, settings, version = self.llm, self.settings, handle.version
+            examples = tuple((u, p) for net_id, u, p in self._examples if net_id == handle.id)
         try:
             intent, result, parsed_by = self._select_utterance(
                 handle, action.utterance, parser, registry, settings, examples
             )
         except _Unparsed as exc:  # carries the parser's own message
-            return _ParsedSelect(handle, version, None, None, _parser_info(parser), exc)
+            return _ParsedSelect(handle, version, None, None, {**_parser_info(parser), "mode": None}, exc)
         return _ParsedSelect(handle, version, intent, result, parsed_by)
 
     def _do_select(self, action: Select, prepared: _ParsedSelect | None = None) -> dict[str, Any]:
@@ -492,13 +519,18 @@ class Session:
             prepared = self._prepare_select(action)
             assert prepared is not None  # a roadway utterance always prepares
         handle = prepared.handle
-        if self._handle(handle.id) is not handle or handle.version != prepared.version:
-            raise ActionError(f"network {handle.id!r} changed while the request was being parsed; try again")
+        # Re-resolve the target the way the action names it: with ``net_id=None`` that is the active
+        # network *now*. If it is another network (or this one was closed or edited) meanwhile, a
+        # replay of this action would select on a different network, so refuse rather than diverge.
+        if self._handle(action.net_id) is not handle or handle.version != prepared.version:
+            raise ActionError(
+                f"the target network changed while the request was being parsed (was {handle.id!r}); try again"
+            )
         if prepared.error is not None:
             self.selection = unparsed_payload(handle, action.utterance, prepared.error, parsed_by=prepared.parsed_by)
             return self.selection
         if prepared.result.status == "resolved":
-            self._examples.append((action.utterance, payload_from_intent(prepared.intent)))
+            self._examples.append((handle.id, action.utterance, payload_from_intent(prepared.intent)))
         self.selection = selection_payload(
             handle, prepared.result, utterance=action.utterance, parsed_by=prepared.parsed_by
         )
@@ -519,28 +551,30 @@ class Session:
         thread-safe cache.
         """
         if not isinstance(parser, LLMParser):
-            intent = _parse(parser, utterance, None)
-            return intent, resolve_frames(intent, handle.links_df(), handle.nodes_df()), _parser_info(parser)
+            intent, mode = _parse(parser, utterance, None)
+            parsed_by = {**_parser_info(parser), "mode": mode}
+            return intent, resolve_frames(intent, handle.links_df(), handle.nodes_df()), parsed_by
         provider = parser.provider.name
         context = self._prompt_context(handle, provider, registry, settings, examples)
-        intent = _parse(parser, utterance, context)
+        intent, mode = _parse(parser, utterance, context)
         result = resolve_frames(intent, handle.links_df(), handle.nodes_df())
-        parsed_by = _parser_info(parser)
+        parsed_by = {**_parser_info(parser), "mode": mode}
         quality = settings.llm.quality
         # ``match_retry`` is auto/on/off: always resolve it through the registry, never by truthiness.
-        if result.status == "not_found" and registry.match_retry_on(provider):
+        # Checked on the *current* registry, so turning it off while the first call ran still counts.
+        if result.status == "not_found" and self.llm.match_retry_on(provider):
             # With grounding off the vocabulary is built here but NOT sent: only the few close names
             # in the hint leave the machine, which is what makes the retry a narrow opt-in.
             vocabulary = context.vocabulary or _vocabulary(handle, quality.grounding_max_names)
             hint = close_match_hint(intent, vocabulary, quality.match_candidates)
             if hint:
                 try:
-                    retry = _parse(parser, utterance, replace(context, hint=hint))
+                    retry, mode = _parse(parser, utterance, replace(context, hint=hint))
                 except _Unparsed:
                     retry = None  # keep the first, honest "not found"
                 if retry is not None:
                     intent, result = retry, resolve_frames(retry, handle.links_df(), handle.nodes_df())
-                    parsed_by = {**(_parser_info(parser) or {}), "match_retry": True}
+                    parsed_by = {**_parser_info(parser), "mode": mode, "match_retry": True}
         return intent, result, parsed_by
 
     def _prompt_context(
@@ -620,6 +654,9 @@ _ERROR_TYPES: dict[str, type[ActionError]] = {
 
 #: How many resolved selections the few-shot memory keeps (``llm.quality.few_shot_max`` picks from these).
 _MAX_EXAMPLES = 50
+#: How long a "no API key" answer is reused before the key store (env, OS keyring) is asked again.
+#: Any key write or ``select.*``/``llm.*`` change resets it at once (:meth:`Session.reset_llm`).
+_MISSING_KEY_TTL_S = 5.0
 
 
 @dataclass(frozen=True)
@@ -639,12 +676,10 @@ def _vocabulary(handle: NetworkHandle, limit: int) -> tuple[str, ...]:
     return handle.cached(f"vocabulary:{limit}", lambda: vocabulary_from_links(handle.links_df(), limit))
 
 
-def _parser_info(parser: Any) -> dict[str, Any] | None:
+def _parser_info(parser: Any) -> dict[str, Any]:
     """``parser.describe()`` when it has one: provider/model/mode, never secrets."""
-    if parser is None:
-        return None
     if hasattr(parser, "describe"):
-        return parser.describe()
+        return dict(parser.describe())
     return {"provider": type(parser).__name__, "model": None, "mode": None}
 
 
@@ -652,13 +687,16 @@ class _Unparsed(Exception):
     """The parser could not read the utterance (not a provider failure): a normal "could not parse" selection."""
 
 
-def _parse(parser: Any, utterance: str, context: PromptContext | None) -> SelectionIntent:
-    """Run ``parser``: provider failures become :class:`ActionError`, anything else :class:`_Unparsed`.
+def _parse(parser: Any, utterance: str, context: PromptContext | None) -> tuple[SelectionIntent, str | None]:
+    """Run ``parser`` and return ``(intent, mode)``: the mode this call used (an LLM parser's tools/JSON).
 
-    No fallback to another provider: a key, quota or connection problem is the user's to fix.
+    Provider failures become :class:`ActionError`, anything else :class:`_Unparsed`. No fallback
+    to another provider: a key, quota or connection problem is the user's to fix.
     """
     try:
-        return parser.parse(utterance, context=context) if context is not None else parser.parse(utterance)
+        if isinstance(parser, LLMParser):
+            return parser.parse_detailed(utterance, context=context)
+        return parser.parse(utterance), _parser_info(parser)["mode"]
     except LLMError as exc:  # missing/invalid key, rate limit, timeout: the user must act, so it's an error
         raise ActionError(str(exc)) from None
     except Exception as exc:  # any other parse failure is a normal "could not parse" selection

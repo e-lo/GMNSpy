@@ -61,7 +61,8 @@ def test_claude_parser_is_llm_parser_over_anthropic(fake_api):
     payload = {"facility": {"ref": "I 40", "direction": "EB"}, "from_anchor": "A Street", "to_anchor": "B Street"}
     fake_api.add("POST", "/v1/messages", body=_anthropic_reply(payload))
     parser = ClaudeParser(provider=AnthropicProvider(api_key="k", transport=fake_api.transport()))
-    intent = parser.parse(UTTER)
+    intent, mode = parser.parse_detailed(UTTER)
+    assert mode == "tools"
     assert isinstance(parser, LLMParser) and parser.model == "claude-haiku-4-5-20251001"
     assert (intent.facility.ref, intent.facility.direction, intent.from_anchor, intent.utterance) == (
         "I 40",
@@ -72,7 +73,7 @@ def test_claude_parser_is_llm_parser_over_anthropic(fake_api):
     body = fake_api.body()
     assert body["tools"][0]["input_schema"] == SELECTION_TOOL.input_schema
     assert body["tool_choice"] == {"type": "tool", "name": "emit_selection_intent"}
-    assert parser.describe() == {"provider": "anthropic", "model": "claude-haiku-4-5-20251001", "mode": "tools"}
+    assert parser.describe() == {"provider": "anthropic", "model": "claude-haiku-4-5-20251001", "mode": None}
 
 
 def test_llm_parser_repairs_an_intent_error_then_succeeds(fake_api):

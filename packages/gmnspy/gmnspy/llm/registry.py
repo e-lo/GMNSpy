@@ -92,7 +92,7 @@ class ProviderRegistry:
         return self.settings.grounding_on(name)
 
     def project_context_on(self, name: str) -> bool:
-        """Whether the project's ``AGENTS.md``/``CLAUDE.md`` is sent to ``name``."""
+        """Whether the project's notes (``GMNSPY.md`` or a ``## gmnspy`` section) are sent to ``name``."""
         return self.settings.project_context_on(name)
 
     def match_retry_on(self, name: str) -> bool:
@@ -109,10 +109,14 @@ class ProviderRegistry:
             items.append(f"up to {quality.grounding_max_names} street names and route numbers from the active network")
         if self.project_context_on(name):
             items.append(
-                f"your project notes (AGENTS.md or CLAUDE.md, up to {quality.project_context_max_chars} characters)"
+                "your project notes (GMNSPY.md, or the ## gmnspy section of AGENTS.md/CLAUDE.md, "
+                f"up to {quality.project_context_max_chars} characters)"
             )
         if quality.few_shot:
-            items.append(f"up to {quality.few_shot_max} earlier selections from this session (utterance and result)")
+            items.append(
+                f"up to {quality.few_shot_max} earlier selections on this network from this session "
+                "(utterance and result, which may include street names from the network)"
+            )
         return items
 
     def _probe(self, name: str) -> list[str]:
