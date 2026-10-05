@@ -28,7 +28,9 @@ export function initMap(style, hooks) {
   map.addControl(overlay);
   new ResizeObserver(() => map.resize()).observe($("map"));
   map.on("zoomend", () => { const s = store.get(); if (s.server && s.server.style.show_direction) render(); });
-  map.on("load", hooks.onReady);
+  // Ready once the style is parsed, not on "load": that waits for every basemap tile of the opening
+  // (continental) view, so the network would be drawn and fitted seconds late, or never offline.
+  map.once("style.load", hooks.onReady);
   wireBoxSelect();
 }
 
@@ -150,24 +152,25 @@ function getTooltip({ layer, index }) {
     `<br><span style="color:#8a93a3">${ft ? esc(ft) : ""}</span>`, style: TOOLTIP_STYLE };
 }
 
-function fit(bounds, padding, retried) {
+function fit(bounds, padding, retried, duration = 500) {
   if (bounds.isEmpty()) return;
   const el = map.getContainer(), w = el.clientWidth, h = el.clientHeight;
   if (!retried && (w <= padding * 2 || h <= padding * 2)) {
     map.resize();
-    requestAnimationFrame(() => fit(bounds, padding, true));
+    requestAnimationFrame(() => fit(bounds, padding, true, duration));
     return;
   }
   const p = Math.min(padding, Math.floor(Math.min(w, h) / 4));
-  map.fitBounds(bounds, { padding: p, maxZoom: 15, duration: 500 });
+  map.fitBounds(bounds, { padding: p, maxZoom: 15, duration });
 }
 
-export function fitNetwork() {
+// `animate: false` jumps (a network just opened: no flight from the continental opening view).
+export function fitNetwork({ animate = true } = {}) {
   const net = store.get().net;
   if (!map || !net) return;
   const b = new maplibregl.LngLatBounds();
   for (let i = 0; i < net.nodePositions.length; i += 2) b.extend([net.nodePositions[i], net.nodePositions[i + 1]]);
-  fit(b, 60);
+  fit(b, 60, false, animate ? 500 : 0);
 }
 
 export function fitLinks(ids) {

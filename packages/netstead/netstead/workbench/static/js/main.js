@@ -34,7 +34,7 @@ async function loadActiveNetwork() {
     if (netKeyFor(store.get().server).key !== key) return; // superseded while fetching
     const switched = !netKey || !netKey.startsWith(`${h.id}@`);
     store.set({ netKey: key, net: decodeNetwork(buf), attrs, properties: props.properties, prop: null, marker: null });
-    if (switched) fitNetwork();
+    if (switched) fitNetwork({ animate: false });
   } finally {
     inFlight.delete(key);
   }
