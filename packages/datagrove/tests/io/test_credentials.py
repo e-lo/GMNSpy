@@ -305,3 +305,50 @@ def test_credential_source_names_the_first_layer(
     monkeypatch.setattr(creds_mod, "_lookup_keyring", lambda host: keyring_value)
     monkeypatch.setattr(creds_mod, "_lookup_netrc", lambda host: netrc_value)
     assert creds_mod.credential_source("data.example.com") == expected
+
+
+# ---------------------------------------------------------------------------
+# system_keyring(): is a real OS keyring backend usable?
+# ---------------------------------------------------------------------------
+
+
+def _fake_keyring_module(priority: float) -> types.ModuleType:
+    module = types.ModuleType("keyring")
+    backend = types.SimpleNamespace(priority=priority)
+    module.get_keyring = lambda: backend  # type: ignore[attr-defined]
+    return module
+
+
+def test_system_keyring_none_when_not_installed(monkeypatch: pytest.MonkeyPatch) -> None:
+    from datagrove.io.credentials import system_keyring
+
+    monkeypatch.setitem(sys.modules, "keyring", None)
+    assert system_keyring() is None
+
+
+def test_system_keyring_none_for_fail_backend(monkeypatch: pytest.MonkeyPatch) -> None:
+    from datagrove.io.credentials import system_keyring
+
+    monkeypatch.setitem(sys.modules, "keyring", _fake_keyring_module(0))
+    assert system_keyring() is None
+
+
+def test_system_keyring_returns_module_for_real_backend(monkeypatch: pytest.MonkeyPatch) -> None:
+    from datagrove.io.credentials import system_keyring
+
+    module = _fake_keyring_module(5)
+    monkeypatch.setitem(sys.modules, "keyring", module)
+    assert system_keyring() is module
+
+
+def test_system_keyring_none_when_backend_lookup_breaks(monkeypatch: pytest.MonkeyPatch) -> None:
+    from datagrove.io.credentials import system_keyring
+
+    module = types.ModuleType("keyring")
+
+    def boom() -> Any:
+        raise RuntimeError("secret service not running")
+
+    module.get_keyring = boom  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "keyring", module)
+    assert system_keyring() is None

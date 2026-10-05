@@ -28,9 +28,9 @@ from __future__ import annotations
 import logging
 import netrc
 import os
-from typing import Final
+from typing import Any, Final
 
-__all__ = ["credential_source", "resolve_credentials"]
+__all__ = ["credential_source", "resolve_credentials", "system_keyring"]
 
 _logger: Final = logging.getLogger(__name__)
 
@@ -127,6 +127,30 @@ def credential_source(host: str) -> str:
     if _lookup_netrc(host):
         return "netrc"
     return "none"
+
+
+def system_keyring() -> Any | None:
+    """Return the ``keyring`` module when a real OS keyring backend is active, else ``None``.
+
+    ``None`` when the optional ``keyring`` package is missing (or disabled with
+    ``sys.modules['keyring'] = None``), or when its active backend is the
+    fail/null backend (priority <= 0: headless CI, containers, WSL without a
+    secret service). Callers use this one answer to decide whether secrets can
+    be stored in a keyring at all.
+    """
+    try:
+        import keyring  # type: ignore[import-not-found]
+    except ImportError:
+        return None
+    if keyring is None:  # type: ignore[unreachable]
+        return None
+    try:
+        backend = keyring.get_keyring()
+    except Exception:  # boundary: a broken backend configuration means "no usable keyring", never a crash
+        return None
+    if getattr(backend, "priority", 0) <= 0:
+        return None
+    return keyring
 
 
 # ---------------------------------------------------------------------------
