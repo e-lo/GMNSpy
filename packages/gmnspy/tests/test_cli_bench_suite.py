@@ -18,22 +18,28 @@ pytestmark = pytest.mark.slow
 runner = CliRunner()
 
 
-def test_bench_suite_json_viz_only_small():
+@pytest.fixture(scope="module")
+def viz_pack_suite_doc():
+    """Run the viz_pack suite once (JSON); markdown rendering is checked from these same results."""
     # viz_pack only keeps it fast and avoids the [nl] extra dependency.
     result = runner.invoke(app, ["bench-suite", "--sizes", "S", "--operations", "viz_pack", "--repeats", "1"])
     assert result.exit_code == 0, result.stderr
-    doc = json.loads(result.stdout)
+    return json.loads(result.stdout)
+
+
+def test_bench_suite_json_viz_only_small(viz_pack_suite_doc):
+    doc = viz_pack_suite_doc
     assert doc["schema_version"] == "1"
     assert any(r["operation"] == "viz_pack" for r in doc["results"])
 
 
-def test_bench_suite_markdown_format():
-    result = runner.invoke(
-        app, ["bench-suite", "--sizes", "S", "--operations", "viz_pack", "--repeats", "1", "--format", "md"]
-    )
-    assert result.exit_code == 0, result.stderr
-    assert "## viz_pack" in result.stdout
-    assert "## Caveats" in result.stdout
+def test_bench_suite_markdown_format(viz_pack_suite_doc):
+    """Markdown rendering of the same results the JSON test already produced (no second suite run)."""
+    from gmnspy.bench import report
+
+    rendered = report.render_markdown(viz_pack_suite_doc)
+    assert "## viz_pack" in rendered
+    assert "## Caveats" in rendered
 
 
 def test_bench_suite_rejects_unknown_format():
