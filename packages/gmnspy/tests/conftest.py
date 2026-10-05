@@ -108,7 +108,8 @@ class FakeAPI:
     """Canned JSON per ``(METHOD, path)`` behind an ``httpx.MockTransport``; every request is kept.
 
     ``add`` queues responses for a route; once one is left it repeats. ``raises`` makes the
-    transport raise that exception instead (e.g. ``httpx.ConnectError("refused")``).
+    transport raise that exception instead (e.g. ``httpx.ConnectError("refused")``). A ``bytes``
+    body is sent as-is (e.g. Ollama's newline-delimited JSON pull progress).
     """
 
     def __init__(self) -> None:
@@ -139,6 +140,8 @@ class FakeAPI:
             status, body, headers, raises = queue.pop(0) if len(queue) > 1 else queue[0]
             if raises is not None:
                 raise raises
+            if isinstance(body, bytes):
+                return httpx.Response(status, content=body, headers=headers)
             return httpx.Response(status, json=body, headers=headers)
 
         return httpx.MockTransport(handler)

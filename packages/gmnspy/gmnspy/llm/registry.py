@@ -10,12 +10,13 @@ from __future__ import annotations
 import os
 import threading
 import time
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
 from typing import TYPE_CHECKING, Any, Literal
 
 from .catalog import Catalog, ProviderInfo, load_catalog
 from .errors import LLMError
-from .providers import ADAPTERS
+from .providers import ADAPTERS, OllamaProvider
+from .providers.ollama import PULL_CHUNK_TIMEOUT_S, PullProgress
 from .secrets import KeyringLike, KeySlot, SecretStore, origin_of
 from .types import LLMProvider
 
@@ -236,6 +237,23 @@ class ProviderRegistry:
                 message=f"{info.label}: connected, but model {model!r} is not available here.",
             )
         return result
+
+    def pull_choices(self) -> list[dict[str, Any]]:
+        """The catalog's Ollama models, with their approximate download size, for a Pull picker."""
+        info = self.catalog["ollama"]
+        return [{**m.to_dict(), "size_gb": m.size_gb} for m in info.models]
+
+    def pull(self, model: str, *, chunk_timeout_s: float = PULL_CHUNK_TIMEOUT_S) -> Iterator[PullProgress]:
+        """Stream an Ollama pull of ``model`` (see :meth:`OllamaProvider.pull`).
+
+        However it ends (success, error, or the caller closing the generator to cancel), the
+        Ollama probe cache is dropped, so the next :meth:`status`/:meth:`models` sees the new model.
+        """
+        provider = OllamaProvider(base_url=self.base_url("ollama"), transport=self._transport)
+        try:
+            yield from provider.pull(model, chunk_timeout_s=chunk_timeout_s)
+        finally:
+            self.invalidate_probe_cache("ollama")
 
 
 def _describe(info: ProviderInfo, model_id: str) -> dict[str, Any]:

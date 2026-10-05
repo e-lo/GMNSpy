@@ -35,6 +35,8 @@ class ModelInfo:
     label: str
     tier: Tier | None = None
     tools: bool = True
+    #: Approximate download size in GB (Ollama models only, for the pull confirmation); ``None`` = unknown.
+    size_gb: float | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """JSON-safe copy for the API."""
@@ -144,6 +146,7 @@ def _provider(name: str, body: dict[str, Any]) -> ProviderInfo:
                     label=str(m.get("label", m["id"])),
                     tier=m.get("tier") if m.get("tier") in _TIERS else None,
                     tools=bool(m.get("tools", True)),
+                    size_gb=float(m["size_gb"]) if m.get("size_gb") is not None else None,
                 )
                 for m in body.get("models", [])
             ),

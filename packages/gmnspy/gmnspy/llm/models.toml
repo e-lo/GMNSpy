@@ -11,7 +11,8 @@
 #   key_env        env vars checked, in order, before the OS keyring (official endpoint only)
 #   default_model  used when select.model is unset. Defaults are each provider's small, fast tier:
 #                  one forced tool call per utterance doesn't need a large model (design: "Tiny models").
-# Per model: id (sent to the API), label, tier (fast | balanced | best), tools (tool calling).
+# Per model: id (sent to the API), label, tier (fast | balanced | best), tools (tool calling),
+#   size_gb (optional, Ollama only: approximate download size shown before a pull).
 #
 # OpenAI, Gemini and Ollama model ids were checked against official vendor docs on 2026-10-05 (see
 # the per-model comments below for sources and caveats — this landscape moves fast, so re-verify
@@ -116,17 +117,21 @@ key_env = []
 default_model = "qwen3:4b"
 
 # Ollama's installed models are discovered at run time (GET /api/tags). These entries
-# only label known tags and power the "ollama pull <id>" hint.
+# only label known tags, power the "ollama pull <id>" hint, and are the Workbench's Pull choices.
+# size_gb: the library's listed download size, shown before a pull (approximate; tags get re-uploaded).
 # Verified 2026-10-05 against https://ollama.com/library/qwen3: both tags are listed (qwen3:4b, 2.5GB,
 # 256K context; qwen3:8b, 5.2GB, 40K context, tagged "latest"). The library lists tags from 0.6b to 235b.
+# The qwen3 library page carries the "tools" and "thinking" capability badges.
 [[ollama.models]]
 id = "qwen3:4b"
 label = "Qwen 3 4B"
 tier = "fast"
 tools = true
+size_gb = 2.5
 
 [[ollama.models]]
 id = "qwen3:8b"
 label = "Qwen 3 8B"
 tier = "balanced"
 tools = true
+size_gb = 5.2
