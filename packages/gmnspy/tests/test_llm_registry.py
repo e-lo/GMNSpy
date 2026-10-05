@@ -87,6 +87,13 @@ def test_provider_uses_endpoint_settings(make, fake_keyring):
     assert reg.provider("ollama").base_url == "http://localhost:11434"
 
 
+def test_ollama_provider_gets_the_catalog_thinking_models(make):
+    """The registry resolves the catalog's thinking-capable model ids and threads them into the
+    Ollama adapter, so it knows which models to send "think": false for."""
+    provider = make().provider("ollama")
+    assert provider._thinking_models == frozenset({"qwen3:4b", "qwen3:8b"})
+
+
 def test_models_catalog_and_discovered(make, fake_api):
     fake_api.add("GET", "/api/tags", body={"models": [{"name": "qwen3:8b"}, {"name": "phi4:14b"}]})
     reg = make()

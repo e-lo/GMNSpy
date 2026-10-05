@@ -122,14 +122,30 @@ class OllamaProvider(HTTPProvider):
     label = "Ollama"
     DEFAULT_BASE_URL = "http://localhost:11434"
 
+    def __init__(self, *, thinking_models: frozenset[str] = frozenset(), **kwargs: Any) -> None:
+        """Like :class:`HTTPProvider`, plus the catalog's thinking-capable model ids (see :mod:`gmnspy.llm.registry`).
+
+        A model in ``thinking_models`` gets ``"think": false`` sent, so its hidden reasoning can't
+        exhaust ``num_predict``. A model not in the set (unknown to the catalog, or non-thinking)
+        gets no ``think`` key at all: Ollama errors with "does not support thinking" if sent one.
+        """
+        super().__init__(**kwargs)
+        self._thinking_models = thinking_models
+
     def complete(self, request: CompletionRequest) -> Completion:
-        """Run one chat turn; ``message.tool_calls`` become :class:`~gmnspy.llm.types.ToolCall`."""
+        """Run one chat turn; ``message.tool_calls`` become :class:`~gmnspy.llm.types.ToolCall`.
+
+        Only ``message.content`` and ``message.tool_calls`` are read; any ``message.thinking`` the
+        model emits is ignored (never mixed into ``text``, so JSON-mode parsing never sees it).
+        """
         body: dict[str, Any] = {
             "model": request.model,
             "messages": chat_messages(request),
             "stream": False,
             "options": {"num_predict": request.max_tokens},
         }
+        if request.model in self._thinking_models:
+            body["think"] = False
         if request.tools:
             body["tools"] = function_tools(request)
         if request.json_schema is not None:

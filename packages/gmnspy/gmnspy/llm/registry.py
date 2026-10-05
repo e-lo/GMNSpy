@@ -156,12 +156,18 @@ class ProviderRegistry:
         """An adapter for ``name`` holding its key; raises :class:`~gmnspy.llm.errors.MissingKey` if there is none."""
         info = self.catalog[name]
         key = "" if info.kind == "local" else self.secrets.get(self.slot(name), info.label)
-        return ADAPTERS[name](
+        kwargs: dict[str, Any] = dict(
             api_key=key,
             base_url=self.base_url(name),
             timeout_s=timeout_s or getattr(self.settings, name).timeout_s,
             transport=self._transport,
         )
+        if name == "ollama":
+            # Catalog-driven, like make_parser's tools lookup: the adapter never imports the
+            # catalog itself, so the set of thinking-capable model ids is resolved here and
+            # threaded in, to decide whether "think": false is sent (see OllamaProvider.complete).
+            kwargs["thinking_models"] = frozenset(m.id for m in info.models if m.thinking)
+        return ADAPTERS[name](**kwargs)
 
     def status(self) -> list[dict[str, Any]]:
         """One row per provider: configured / source / usable / error / models. Never a key value."""

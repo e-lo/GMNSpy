@@ -10,10 +10,17 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from ..errors import BadResponse
 from ..types import Completion, CompletionRequest, ToolCall
 from ._base import HTTPProvider
 
 __all__ = ["OpenAIProvider", "chat_messages", "function_tools", "parse_function_calls"]
+
+#: A reasoning model's token cap includes its hidden reasoning tokens, so the default 1024-token
+#: budget (:class:`~gmnspy.llm.types.CompletionRequest`) often leaves nothing for the visible
+#: reply: HTTP 200, empty content, ``finish_reason="length"``. Raised to this floor for those
+#: models only; a caller asking for more already gets what it asked for (see ``complete``).
+_REASONING_MIN_MAX_TOKENS = 8192
 
 #: Reasoning-tier model id prefixes that reject ``max_tokens`` (use ``max_completion_tokens`` instead)
 #: and reject a non-default ``temperature``. All confirmed as reasoning models on their respective
@@ -52,6 +59,26 @@ def _is_reasoning(model: str) -> bool:
 def _max_tokens_key(model: str) -> str:
     """Which body key caps output length for ``model``: reasoning-tier models use the newer name."""
     return "max_completion_tokens" if _is_reasoning(model) else "max_tokens"
+
+
+def _max_tokens_value(model: str, requested: int) -> int:
+    """``requested``, raised to ``_REASONING_MIN_MAX_TOKENS`` for a reasoning-tier model."""
+    return max(requested, _REASONING_MIN_MAX_TOKENS) if _is_reasoning(model) else requested
+
+
+def _reasoning_effort(model: str, *, tools: bool) -> str | None:
+    """The ``reasoning_effort`` to send for ``model``, or ``None`` to leave the provider's own default.
+
+    A reasoning-tier model defaults to effort "medium", which spends part of the output budget on
+    hidden reasoning before any visible reply; "low" is a documented value for the o-series/gpt-5/
+    gpt-6 families that leaves more of the budget for the reply. gpt-6-luna is the one documented
+    exception: Chat Completions' function calling only works there at effort "none" (see
+    ``_FORCE_NONE_REASONING_EFFORT_PREFIXES``), so a forced tool call gets "none" instead of "low";
+    without tools nothing requires a specific value for it, so its own default stands.
+    """
+    if model.startswith(_FORCE_NONE_REASONING_EFFORT_PREFIXES):
+        return "none" if tools else None
+    return "low" if _is_reasoning(model) else None
 
 
 def chat_messages(request: CompletionRequest) -> list[dict[str, str]]:
@@ -97,11 +124,13 @@ class OpenAIProvider(HTTPProvider):
     """``POST {base_url}/chat/completions`` with function tools and a forced ``tool_choice``.
 
     Sends the output-length cap under ``max_tokens``, or ``max_completion_tokens`` for
-    reasoning-tier model ids (``o1``/``o3``/``o4``/``gpt-5``/``gpt-6``), which reject ``max_tokens``.
-    Those same models also reject a non-default ``temperature``, so it's omitted for them. When
-    tools are offered, models in ``_FORCE_NONE_REASONING_EFFORT_PREFIXES`` (currently gpt-6-luna
-    only -- see that constant for the per-model doc citations) get ``reasoning_effort="none"``,
-    since their docs say Chat Completions' function calling only works at that effort.
+    reasoning-tier model ids (``o1``/``o3``/``o4``/``gpt-5``/``gpt-6``), which reject ``max_tokens``;
+    for those models the cap is also raised to ``_REASONING_MIN_MAX_TOKENS`` so hidden reasoning
+    tokens can't crowd out the whole reply. Those same models also reject a non-default
+    ``temperature``, so it's omitted for them, and get ``reasoning_effort="low"`` to leave more of
+    that budget for the reply -- except gpt-6-luna, whose docs require ``"none"`` instead, and only
+    when a tool is offered (see ``_reasoning_effort``). An empty reply with ``finish_reason="length"``
+    raises a clear error naming the output-budget cause, instead of looking like a malformed reply.
     """
 
     name = "openai"
@@ -115,17 +144,14 @@ class OpenAIProvider(HTTPProvider):
         """Run one chat completion; function calls become :class:`~gmnspy.llm.types.ToolCall`."""
         body: dict[str, Any] = {"model": request.model, "messages": chat_messages(request)}
         if request.max_tokens:
-            body[_max_tokens_key(request.model)] = request.max_tokens
+            body[_max_tokens_key(request.model)] = _max_tokens_value(request.model, request.max_tokens)
         if request.tools:
             body["tools"] = function_tools(request)
             if request.force_tool:
                 body["tool_choice"] = {"type": "function", "function": {"name": request.force_tool}}
-            # JSON mode (no tools, below) leaves reasoning_effort unset -- the model's own default
-            # (e.g. gpt-6-luna's "medium") applies, since nothing in the docs ties plain JSON
-            # completions to a particular effort. Only offering/forcing a tool needs "none", and
-            # only for the models _FORCE_NONE_REASONING_EFFORT_PREFIXES documents it for.
-            if request.model.startswith(_FORCE_NONE_REASONING_EFFORT_PREFIXES):
-                body["reasoning_effort"] = "none"
+        effort = _reasoning_effort(request.model, tools=bool(request.tools))
+        if effort is not None:
+            body["reasoning_effort"] = effort
         if request.temperature is not None and not _is_reasoning(request.model):
             body["temperature"] = request.temperature
         data = self._call("POST", "/chat/completions", body)
@@ -137,6 +163,12 @@ class OpenAIProvider(HTTPProvider):
         except (KeyError, IndexError, TypeError, AttributeError) as exc:
             raise self._bad_shape(exc) from None
         text = "\n".join(part for part in (message.get("content") or "", leftover) if part)
+        if not text and not calls and choice.get("finish_reason") == "length":
+            raise BadResponse(
+                self.name,
+                f"{self.label}: {request.model} ran out of output tokens before it could reply "
+                "(finish_reason=length with no content); raise max_tokens and try again.",
+            )
         return Completion(
             tool_calls=calls,
             text=text,

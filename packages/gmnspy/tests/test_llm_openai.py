@@ -3,7 +3,7 @@
 from dataclasses import replace
 
 import pytest
-from gmnspy.llm.errors import BadRequest, InvalidKey, ToolsUnsupported
+from gmnspy.llm.errors import BadRequest, BadResponse, InvalidKey, ToolsUnsupported
 from gmnspy.llm.providers.openai import OpenAIProvider
 from gmnspy.llm.types import CompletionRequest, Message, Tool
 
@@ -64,7 +64,15 @@ def test_reasoning_tier_model_uses_max_completion_tokens(fake_api):
     fake_api.add("POST", "/v1/chat/completions", body=_reply("{}"))
     _provider(fake_api).complete(replace(REQUEST, model="o3-mini"))
     body = fake_api.body()
-    assert body["max_completion_tokens"] == 1024 and "max_tokens" not in body
+    # Raised from the request's 1024 to the reasoning floor: that cap includes hidden reasoning
+    # tokens, so 1024 often leaves nothing for the visible reply.
+    assert body["max_completion_tokens"] == 8192 and "max_tokens" not in body
+
+
+def test_reasoning_tier_model_keeps_a_larger_requested_budget(fake_api):
+    fake_api.add("POST", "/v1/chat/completions", body=_reply("{}"))
+    _provider(fake_api).complete(replace(REQUEST, model="o3-mini", max_tokens=20000))
+    assert fake_api.body()["max_completion_tokens"] == 20000
 
 
 def test_reasoning_tier_model_omits_temperature(fake_api):
@@ -78,15 +86,56 @@ def test_gpt6_luna_forced_tool_sends_none_reasoning_effort_and_no_temperature(fa
     _provider(fake_api).complete(replace(REQUEST, model="gpt-6-luna", temperature=0.2))
     body = fake_api.body()
     assert body["reasoning_effort"] == "none"
-    assert body["max_completion_tokens"] == 1024 and "max_tokens" not in body
+    assert body["max_completion_tokens"] == 8192 and "max_tokens" not in body
     assert "temperature" not in body
 
 
-def test_gpt5_forced_tool_omits_reasoning_effort(fake_api):
-    """gpt-5's docs list no "none" reasoning_effort value, so it's never sent for this model."""
+def test_gpt6_luna_without_tools_sends_no_reasoning_effort(fake_api):
+    """Luna's behaviour away from tool calling is unchanged: no tools means nothing forces a
+    specific effort, so none is sent and its own default ("medium") applies."""
+    fake_api.add("POST", "/v1/chat/completions", body=_reply("{}"))
+    _provider(fake_api).complete(replace(REQUEST, model="gpt-6-luna", tools=()))
+    assert "reasoning_effort" not in fake_api.body()
+
+
+def test_other_reasoning_models_get_low_reasoning_effort(fake_api):
+    """gpt-6.1-sol and gpt-6-astra (and the rest of the reasoning tier, other than gpt-6-luna) get
+    reasoning_effort="low" so hidden reasoning doesn't crowd out the visible reply, with or
+    without tools -- gpt-6.1-sol in particular is only ever called without tools (JSON mode)."""
+    fake_api.add("POST", "/v1/chat/completions", body=_reply("{}"))
+    _provider(fake_api).complete(replace(REQUEST, model="gpt-6.1-sol", tools=()))
+    assert fake_api.body()["reasoning_effort"] == "low"
+
+    fake_api.add("POST", "/v1/chat/completions", body=_reply('{"x": 3}'))
+    _provider(fake_api).complete(replace(REQUEST, model="gpt-6-astra"))
+    assert fake_api.body()["reasoning_effort"] == "low"
+
+
+def test_gpt5_forced_tool_gets_low_reasoning_effort(fake_api):
+    """gpt-5's docs list no "none" reasoning_effort value, so "none" is never sent for this model;
+    it still gets "low", like the rest of the reasoning tier other than gpt-6-luna."""
     fake_api.add("POST", "/v1/chat/completions", body=_reply('{"x": 3}'))
     _provider(fake_api).complete(replace(REQUEST, model="gpt-5"))
-    assert "reasoning_effort" not in fake_api.body()
+    assert fake_api.body()["reasoning_effort"] == "low"
+
+
+def test_empty_content_with_finish_reason_length_raises_a_clear_error(fake_api):
+    message = {"role": "assistant", "content": None}
+    reply = {"choices": [{"index": 0, "finish_reason": "length", "message": message}], "usage": {}}
+    fake_api.add("POST", "/v1/chat/completions", body=reply)
+    with pytest.raises(BadResponse, match="ran out of output tokens"):
+        _provider(fake_api).complete(replace(REQUEST, model="gpt-6-astra", tools=()))
+
+
+def test_finish_reason_length_with_tool_call_present_does_not_raise(fake_api):
+    """finish_reason="length" alongside an actual tool call is a normal reply, not the empty-budget
+    failure: only an empty reply (no content, no tool calls) with that finish_reason raises."""
+    call = {"id": "c1", "type": "function", "function": {"name": "emit", "arguments": '{"x": 3}'}}
+    message = {"role": "assistant", "content": None, "tool_calls": [call]}
+    reply = {"choices": [{"index": 0, "finish_reason": "length", "message": message}], "usage": {}}
+    fake_api.add("POST", "/v1/chat/completions", body=reply)
+    done = _provider(fake_api).complete(replace(REQUEST, model="gpt-6-astra"))
+    assert done.tool_calls[0].arguments == {"x": 3}
 
 
 def test_compatible_endpoint_model_still_sends_temperature_and_max_tokens(fake_api):

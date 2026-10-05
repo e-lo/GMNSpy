@@ -26,6 +26,14 @@ def test_gpt_6_1_sol_has_no_tool_calling_but_gpt_6_luna_does():
     assert openai.model("gpt-6-luna").tools is True
 
 
+def test_qwen3_models_are_marked_thinking_and_others_default_to_false():
+    ollama = load_catalog()["ollama"]
+    assert ollama.model("qwen3:4b").thinking is True
+    assert ollama.model("qwen3:8b").thinking is True
+    anthropic = load_catalog()["anthropic"]
+    assert anthropic.model("claude-haiku-4-5-20251001").thinking is False
+
+
 def test_every_default_model_is_listed_and_every_model_has_a_label():
     for info in load_catalog().providers.values():
         assert info.model(info.default_model) is not None, info.name

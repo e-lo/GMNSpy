@@ -28,8 +28,8 @@ REPLY = {
 }
 
 
-def _provider(fake_api):
-    return OllamaProvider(transport=fake_api.transport())
+def _provider(fake_api, **kw):
+    return OllamaProvider(transport=fake_api.transport(), **kw)
 
 
 def test_request_shape_no_auth_and_parsing(fake_api):
@@ -93,6 +93,35 @@ def test_list_models_then_server_down(fake_api):
     assert provider.list_models() == ["qwen3:8b", "llama3.2:3b"]
     with pytest.raises(ProviderUnavailable, match="could not reach Ollama at http://localhost:11434"):
         provider.list_models()
+
+
+def test_thinking_model_sends_think_false(fake_api):
+    fake_api.add("POST", "/api/chat", body=REPLY)
+    _provider(fake_api, thinking_models=frozenset({"qwen3:8b"})).complete(REQUEST)
+    assert fake_api.body()["think"] is False
+
+
+def test_unknown_model_sends_no_think_key(fake_api):
+    """A model not in thinking_models (the default: none) gets no "think" key at all -- Ollama
+    errors with "does not support thinking" if sent one for a non-thinking model."""
+    fake_api.add("POST", "/api/chat", body=REPLY)
+    _provider(fake_api).complete(REQUEST)
+    assert "think" not in fake_api.body()
+    fake_api.add("POST", "/api/chat", body=REPLY)
+    _provider(fake_api, thinking_models=frozenset({"qwen3:4b"})).complete(REQUEST)  # REQUEST.model is qwen3:8b
+    assert "think" not in fake_api.body()
+
+
+def test_thinking_field_in_reply_is_ignored(fake_api):
+    """Defence in depth: only content and tool_calls count, even if the model emits "thinking"."""
+    reply = {
+        "message": {"role": "assistant", "content": "the answer", "thinking": "let me ponder this at length..."},
+        "done": True,
+    }
+    fake_api.add("POST", "/api/chat", body=reply)
+    done = _provider(fake_api, thinking_models=frozenset({"qwen3:8b"})).complete(REQUEST)
+    assert done.text == "the answer"
+    assert "ponder" not in done.text
 
 
 def test_context_joins_the_system_turn_and_temperature_goes_in_options(fake_api):

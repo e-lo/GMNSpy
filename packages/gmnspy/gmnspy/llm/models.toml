@@ -12,7 +12,9 @@
 #   default_model  used when select.model is unset. Defaults are each provider's small, fast tier:
 #                  one forced tool call per utterance doesn't need a large model (design: "Tiny models").
 # Per model: id (sent to the API), label, tier (fast | balanced | best), tools (tool calling),
-#   size_gb (optional, Ollama only: approximate download size shown before a pull).
+#   thinking (optional, Ollama only: the model emits hidden reasoning output, so the adapter sends
+#   "think": false to keep it from exhausting the output budget), size_gb (optional, Ollama only:
+#   approximate download size shown before a pull).
 #
 # OpenAI, Gemini and Ollama model ids were checked against official vendor docs on 2026-10-05 (see
 # the per-model comments below for sources and caveats — this landscape moves fast, so re-verify
@@ -131,6 +133,7 @@ id = "qwen3:4b"
 label = "Qwen 3 4B"
 tier = "fast"
 tools = true
+thinking = true
 size_gb = 2.5
 
 [[ollama.models]]
@@ -138,4 +141,5 @@ id = "qwen3:8b"
 label = "Qwen 3 8B"
 tier = "balanced"
 tools = true
+thinking = true
 size_gb = 5.2
