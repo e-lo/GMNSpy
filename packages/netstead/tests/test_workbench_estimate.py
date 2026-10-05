@@ -116,8 +116,10 @@ def test_fit_s_per_link():
 def test_calibrate_osm_live(tmp_path):  # pragma: no cover - live network, run by hand
     """Time real OSM builds for a few bboxes and print a fitted ``s_per_link`` for data/build_cost.toml.
 
-    Run from the repo root:
-    ``NETSTEAD_CALIBRATE=1 uv run --all-extras pytest packages/netstead/tests/test_workbench_estimate.py -k calibrate -s``
+    Run from the repo root::
+
+        NETSTEAD_CALIBRATE=1 uv run --all-extras pytest \
+            packages/netstead/tests/test_workbench_estimate.py -k calibrate -s
     """
     from netstead.osm import build_network_from_osm
 
