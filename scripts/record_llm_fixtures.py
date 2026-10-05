@@ -1,6 +1,6 @@
 """Re-record the LLM contract fixtures from the live provider APIs.
 
-    uv run --all-extras python scripts/record_llm_fixtures.py anthropic [openai gemini ollama]
+    GMNSPY_RECORD_LLM_FIXTURES=1 uv run --all-extras python scripts/record_llm_fixtures.py anthropic [openai gemini ollama]
 
 Uses your configured keys -- environment variables, then the OS keyring, both through
 :class:`~gmnspy.llm.secrets.SecretStore` (never a plaintext file) -- and each fixture's model and
@@ -10,12 +10,18 @@ key reaches disk even if a provider ever echoed part of one back. Request and re
 are never written to the fixture at all: they are the one place the key definitely travels, so
 this script never even looks at them beyond handing them to ``httpx`` for the live call.
 
+Running this hits every live provider API named on the command line and overwrites its committed
+fixture, so it refuses to run at all unless ``GMNSPY_RECORD_LLM_FIXTURES=1`` is set -- that is the
+only guard against an accidental invocation (a stray "run this" in an editor, a copy-pasted
+command) spending real tokens and quota and silently rewriting the contract fixtures.
+
 Review the diff (and re-check "expected") before committing.
 """
 
 from __future__ import annotations
 
 import json
+import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -28,6 +34,8 @@ from gmnspy.llm.secrets import redact
 from gmnspy.select.parse import LLMParser
 
 FIXTURES = Path(__file__).resolve().parents[1] / "packages" / "gmnspy" / "tests" / "fixtures" / "llm"
+#: Set this to run at all: see the module docstring for why.
+OPT_IN_ENV_VAR = "GMNSPY_RECORD_LLM_FIXTURES"
 
 
 class _Recording(httpx.BaseTransport):
@@ -100,6 +108,25 @@ def record(provider: str) -> Path:
     return path
 
 
-if __name__ == "__main__":
-    for name in sys.argv[1:] or ["anthropic", "openai", "gemini", "ollama"]:
+def main(argv: list[str], *, environ: dict[str, str] | None = None) -> None:
+    """Record ``argv`` (or every provider) after checking the opt-in; raises :class:`SystemExit` without it.
+
+    Args:
+        argv: Provider names to record (``sys.argv[1:]``); empty means every provider.
+        environ: Environment to check :data:`OPT_IN_ENV_VAR` against. Defaults to ``os.environ``;
+            tests pass a plain ``dict`` so they never depend on, or mutate, the real environment.
+    """
+    env = os.environ if environ is None else environ
+    if env.get(OPT_IN_ENV_VAR) != "1":
+        raise SystemExit(
+            f"refusing to run: this hits every live provider API named below and overwrites its "
+            f"committed fixture. Set {OPT_IN_ENV_VAR}=1 to confirm, e.g.:\n"
+            f"  {OPT_IN_ENV_VAR}=1 uv run --all-extras python scripts/record_llm_fixtures.py "
+            f"{' '.join(argv) or 'anthropic openai gemini ollama'}"
+        )
+    for name in argv or ["anthropic", "openai", "gemini", "ollama"]:
         print(f"recorded {record(name)}")
+
+
+if __name__ == "__main__":
+    main(sys.argv[1:])

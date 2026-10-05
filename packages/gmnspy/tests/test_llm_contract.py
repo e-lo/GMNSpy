@@ -8,6 +8,10 @@ committing.
 
 The contract test uses a bare :class:`~gmnspy.select.parse.LLMParser`: no prompt context and
 provider-default temperature, so ``request_keys`` describe the minimal request each adapter sends.
+It compares only the request's top-level body keys, not their values or nesting, by design: the
+fixtures are hand-authored and not a byte-for-byte capture of a real provider response, so
+asserting any more than "these top-level keys are present" would make the test fail on harmless
+provider wording changes instead of the shape changes it exists to catch.
 """
 
 import json

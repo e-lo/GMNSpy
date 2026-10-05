@@ -61,6 +61,26 @@ def test_scrub_recorded_preserves_shape_and_non_string_values(record_script: Mod
     assert record_script.scrub_recorded(recording, "sk-test") == recording
 
 
+def test_main_refuses_to_run_without_the_opt_in_env_var(
+    record_script: ModuleType, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``main()`` raises ``SystemExit`` and never records anything unless the opt-in var is ``"1"``."""
+    calls: list[str] = []
+    monkeypatch.setattr(record_script, "record", lambda provider: calls.append(provider) or Path("unused"))
+
+    with pytest.raises(SystemExit, match=record_script.OPT_IN_ENV_VAR):
+        record_script.main(["anthropic"], environ={})
+    assert calls == []
+
+    with pytest.raises(SystemExit):
+        record_script.main(["anthropic"], environ={record_script.OPT_IN_ENV_VAR: "0"})
+    assert calls == []
+
+    with pytest.raises(SystemExit):
+        record_script.main(["anthropic"], environ={record_script.OPT_IN_ENV_VAR: "true"})  # only "1" counts
+    assert calls == []
+
+
 def test_recording_transport_drops_response_headers(record_script: ModuleType) -> None:
     """``_Recording.handle_request`` rebuilds the response with only ``content-type``.
 
