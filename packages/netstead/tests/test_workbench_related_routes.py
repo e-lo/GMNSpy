@@ -96,3 +96,18 @@ def test_locate_follows_the_page_order(client):
 def test_post_routes_keep_the_origin_guard(client):
     r = client.post(f"{BASE}/related", json={"sources": {"link": [1]}}, headers={"Origin": "https://evil.example"})
     assert r.status_code == 403
+
+
+def test_every_navigable_fk_targets_a_located_table(client):
+    """A navigable FK cell must be able to land on its row: the target's key is its located primary key."""
+    for name in [t["name"] for t in client.get(f"{BASE}/tables").json()["tables"]]:
+        for fk in client.get(f"{BASE}/table/{name}/schema").json()["foreign_keys"]:
+            target = client.get(f"{BASE}/table/{fk['ref_table']}/schema").json()
+            assert fk["navigable"] is (fk["ref_column"] == target["primary_key"])
+
+
+def test_jump_from_a_link_to_its_from_node_lands_on_that_row(client, link1):
+    node = int(link1.from_node_id)
+    j = client.post(f"{BASE}/table/node/locate", json={"id": node}).json()
+    page = client.post(f"{BASE}/table/node/rows", json={"offset": (j["index"] // 100) * 100, "limit": 100}).json()
+    assert node in [r[page["columns"].index("node_id")] for r in page["rows"]]

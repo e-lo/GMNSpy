@@ -188,3 +188,8 @@ def test_table_bar_has_a_scope_menu_not_the_old_checkbox():
     assert 'id="tbl-scope"' in html and 'id="tbl-hint"' in html and 'id="tbl-tosel"' not in html
     for scope in ("all", "selection", "highlighted", "related"):
         assert f'<option value="{scope}"' in html
+
+
+def test_fk_cells_link_to_their_target():
+    table = (JS_DIR / "table.js").read_text()
+    assert 'class="fk"' in table and "jumpTo(" in table and "stopPropagation" in table  # an FK click is not a row click
