@@ -18,6 +18,14 @@ def test_anthropic_models_are_the_current_ids():
     assert anthropic.default_model == "claude-haiku-4-5-20251001"
 
 
+def test_gpt_6_1_sol_has_no_tool_calling_but_gpt_6_luna_does():
+    """gpt-6.1-sol's docs say Chat Completions is supported without tool calling, so the catalog
+    marks it tools=false; make_parser reads this to start those models in JSON mode directly."""
+    openai = load_catalog()["openai"]
+    assert openai.model("gpt-6.1-sol").tools is False
+    assert openai.model("gpt-6-luna").tools is True
+
+
 def test_every_default_model_is_listed_and_every_model_has_a_label():
     for info in load_catalog().providers.values():
         assert info.model(info.default_model) is not None, info.name

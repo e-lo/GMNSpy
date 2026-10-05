@@ -291,13 +291,26 @@ class ClaudeParser(LLMParser):
 def make_parser(select: SelectSettings, registry: ProviderRegistry) -> Parser:
     """The parser that ``select.provider`` / ``select.model`` describe (``model=None`` means the catalog default).
 
+    When the catalog knows ``model`` and lists ``tools = false`` (e.g. a model whose docs say
+    tool/function calling isn't available), the parser starts in JSON mode instead of attempting
+    a forced tool call first. A model the catalog doesn't know (custom endpoint, or an
+    Ollama-discovered tag) keeps today's behaviour: try tools, then fall back to JSON mode on
+    :class:`~gmnspy.llm.errors.ToolsUnsupported`.
+
     The repair budget and temperature come from ``llm.quality``. Raises
     :class:`~gmnspy.llm.errors.MissingKey` when a remote provider has no key.
     """
     if select.provider == "stub":
         return StubParser()
     quality = registry.settings.quality
-    model = select.model or registry.catalog[select.provider].default_model
+    catalog_provider = registry.catalog[select.provider]
+    model = select.model or catalog_provider.default_model
+    known = catalog_provider.model(model)
+    json_mode = known is not None and not known.tools
     return LLMParser(
-        registry.provider(select.provider), model, max_repairs=quality.max_repairs, temperature=quality.temperature
+        registry.provider(select.provider),
+        model,
+        json_mode=json_mode,
+        max_repairs=quality.max_repairs,
+        temperature=quality.temperature,
     )

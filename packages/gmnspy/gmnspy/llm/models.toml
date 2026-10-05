@@ -62,12 +62,16 @@ label = "GPT-6 Luna"
 tier = "fast"
 tools = true
 
-# Verified 2026-10-05, same source. GPT-6.1 Sol: "balances intelligence and cost".
+# Verified 2026-10-05, same source. GPT-6.1 Sol: "balances intelligence and cost". Checked
+# 2026-10-05 against https://developers.openai.com/api/docs/models/gpt-6.1-sol: "Chat Completions
+# is supported without tool calling." and its reasoning.effort values don't include "none" (so the
+# gpt-6-luna "force none to get tool calling" trick doesn't apply either) -- tool/function calling
+# isn't available for this model on Chat Completions at all. Go straight to JSON mode.
 [[openai.models]]
 id = "gpt-6.1-sol"
 label = "GPT-6.1 Sol"
 tier = "balanced"
-tools = true
+tools = false
 
 # Verified 2026-10-05, same source. GPT-6 Astra: flagship, most capable model.
 [[openai.models]]

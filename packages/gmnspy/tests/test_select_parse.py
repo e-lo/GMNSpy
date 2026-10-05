@@ -104,6 +104,58 @@ def test_make_parser_stub_default_model_and_explicit_model(tmp_path, isolated_en
     assert parser_for({"select.provider": "openai", "select.model": "gpt-4.1"}).model == "gpt-4.1"
 
 
+def test_make_parser_sends_no_tools_for_a_catalog_model_without_tool_calling(
+    tmp_path, isolated_env, fake_keyring, fake_api
+):
+    """gpt-6.1-sol is catalogued with tools=false, so make_parser must start it in JSON mode:
+    no tools/tool_choice in the request body, JSON-mode instructions in the system prompt, and
+    the reply parsed as a bare JSON object rather than a tool call."""
+    overrides = {"select.provider": "openai", "select.model": "gpt-6.1-sol"}
+    settings = load_settings(project_dir=tmp_path, environ=isolated_env, overrides=overrides).settings
+    registry = build_registry(settings, environ=isolated_env, keyring=fake_keyring, transport=fake_api.transport())
+    fake_keyring.set_password(KEYRING_SERVICE, "openai", "sk-test")
+    parser = make_parser(settings.select, registry)
+    assert isinstance(parser, LLMParser) and parser.model == "gpt-6.1-sol"
+
+    payload = {"facility": {"ref": "I 40", "direction": "EB"}, "from_anchor": "A Street", "to_anchor": "B Street"}
+    reply = {
+        "choices": [{"index": 0, "finish_reason": "stop", "message": {"role": "assistant", "content": str(payload)}}]
+    }
+    import json as _json
+
+    reply["choices"][0]["message"]["content"] = _json.dumps(payload)
+    fake_api.add("POST", "/v1/chat/completions", body=reply)
+
+    intent, mode = parser.parse_detailed(UTTER)
+    assert mode == "json"
+    assert intent.facility.ref == "I 40" and intent.from_anchor == "A Street"
+    body = fake_api.body()
+    assert "tools" not in body and "tool_choice" not in body
+    assert "Reply with ONLY one JSON object" in body["messages"][0]["content"]
+
+
+def test_make_parser_still_uses_tools_for_a_catalog_model_with_tool_calling(
+    tmp_path, isolated_env, fake_keyring, fake_api
+):
+    overrides = {"select.provider": "openai", "select.model": "gpt-6-luna"}
+    settings = load_settings(project_dir=tmp_path, environ=isolated_env, overrides=overrides).settings
+    registry = build_registry(settings, environ=isolated_env, keyring=fake_keyring, transport=fake_api.transport())
+    fake_keyring.set_password(KEYRING_SERVICE, "openai", "sk-test")
+    parser = make_parser(settings.select, registry)
+
+    payload = {"facility": {"ref": "I 40", "direction": "EB"}, "from_anchor": "A Street", "to_anchor": "B Street"}
+    call = {"id": "c1", "type": "function", "function": {"name": "emit_selection_intent", "arguments": payload}}
+    reply = {
+        "choices": [{"index": 0, "finish_reason": "tool_calls", "message": {"role": "assistant", "tool_calls": [call]}}]
+    }
+    fake_api.add("POST", "/v1/chat/completions", body=reply)
+
+    _intent, mode = parser.parse_detailed(UTTER)
+    assert mode == "tools"
+    body = fake_api.body()
+    assert body["tool_choice"] == {"type": "function", "function": {"name": "emit_selection_intent"}}
+
+
 def test_quality_settings_reach_the_request(tmp_path, isolated_env, fake_keyring, fake_api):
     overrides = {"select.provider": "anthropic", "llm.quality.max_repairs": 0, "llm.quality.temperature": 0.3}
     settings = load_settings(project_dir=tmp_path, environ=isolated_env, overrides=overrides).settings

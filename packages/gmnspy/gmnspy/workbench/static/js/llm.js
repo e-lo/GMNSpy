@@ -162,7 +162,7 @@ async function renderModels(provider, model) {
   }
   if (seq !== modelsSeq) return;
   const chosen = model || p.default_model;
-  const label = m => (m.tier ? `${m.label} · ${m.tier}` : m.label);
+  const label = m => [m.label, m.tier, m.tools === false ? "JSON mode" : null].filter(Boolean).join(" · ");
   const opts = models.map(m => `<option value="${esc(m.id)}"${m.id === chosen ? " selected" : ""}>${esc(label(m))}</option>`);
   if (chosen && !models.some(m => m.id === chosen)) {
     opts.unshift(`<option value="${esc(chosen)}" selected>${esc(chosen)}${p.local ? " (not installed)" : ""}</option>`);

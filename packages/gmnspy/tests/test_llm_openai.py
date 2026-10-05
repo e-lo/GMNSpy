@@ -3,7 +3,7 @@
 from dataclasses import replace
 
 import pytest
-from gmnspy.llm.errors import InvalidKey
+from gmnspy.llm.errors import BadRequest, InvalidKey, ToolsUnsupported
 from gmnspy.llm.providers.openai import OpenAIProvider
 from gmnspy.llm.types import CompletionRequest, Message, Tool
 
@@ -126,6 +126,23 @@ def test_invalid_key_message_omits_provider_detail(fake_api):
         _provider(fake_api).complete(REQUEST)
     assert "Incorrect" not in str(info.value)
     assert str(info.value).startswith("OpenAI rejected the API key (HTTP 401)")
+
+
+def test_model_without_tools_raises_tools_unsupported(fake_api):
+    """gpt-6.1-sol's docs say Chat Completions is supported without tool calling; a 400 phrased
+    that way should map to ToolsUnsupported so the structured-output repair loop falls back to
+    JSON mode on the same provider and model, the same way it already does for Ollama."""
+    body = {"error": {"message": "This model does not support function calling."}}
+    fake_api.add("POST", "/v1/chat/completions", status=400, body=body)
+    with pytest.raises(ToolsUnsupported, match="does not support tool calling"):
+        _provider(fake_api).complete(replace(REQUEST, model="gpt-6.1-sol"))
+
+
+def test_unrelated_400_is_not_tools_unsupported(fake_api):
+    body = {"error": {"message": "Invalid value for 'temperature': must be between 0 and 2."}}
+    fake_api.add("POST", "/v1/chat/completions", status=400, body=body)
+    with pytest.raises(BadRequest):
+        _provider(fake_api).complete(REQUEST)
 
 
 def test_context_leads_the_system_turn_and_temperature_is_sent(fake_api):

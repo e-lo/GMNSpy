@@ -109,9 +109,26 @@ def _status_error(response: Any, *, provider: str, label: str, secret: str) -> L
         return RateLimited(provider, f"{label} rate limit or quota reached (HTTP 429); {hint}.", retry)
     if code >= 500:
         return ProviderUnavailable(provider, f"{label} is unavailable (HTTP {code}){suffix}")
-    if "does not support tools" in detail:
+    if _mentions_unsupported_tools(detail):
         return ToolsUnsupported(provider, f"{label}: this model does not support tool calling{suffix}")
     return BadRequest(provider, f"{label} rejected the request (HTTP {code}){suffix}")
+
+
+#: Clear, conservative phrasings (lower-cased) of "this model can't do tool/function calling" seen
+#: from local (Ollama: "does not support tools") and hosted (OpenAI-shaped: "does not support
+#: function calling") APIs. Matched as a substring of the lower-cased error detail; kept narrow so
+#: an unrelated 400 (a malformed schema, a bad parameter) is never miscast as ToolsUnsupported.
+_UNSUPPORTED_TOOLS_PHRASES = (
+    "does not support tools",
+    "does not support function calling",
+    "does not support tool calls",
+    "does not support tool_choice",
+)
+
+
+def _mentions_unsupported_tools(detail: str) -> bool:
+    lowered = detail.lower()
+    return any(phrase in lowered for phrase in _UNSUPPORTED_TOOLS_PHRASES)
 
 
 def _detail(response: Any, secret: str) -> str:
