@@ -13,11 +13,16 @@ Only single-column keys between two *different* tables are followed: self-refere
 
 from __future__ import annotations
 
+import functools
+import operator
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
-from netstead.viz.tables import columns_of, primary_key
+import pandas as pd
+
+from netstead.viz.styling import json_scalar
+from netstead.viz.tables import columns_of, primary_key, rowcount_of
 
 __all__ = [
     "MAX_MAP_IDS",
@@ -26,9 +31,14 @@ __all__ = [
     "Match",
     "Relation",
     "RelationGraph",
+    "count",
     "foreign_keys",
+    "ids_of",
     "primary_keys",
+    "relate",
     "relation_graph",
+    "restrict",
+    "row_vias",
 ]
 
 #: Highlighted ids accepted per request (and the cap on a hop-2 frontier).
@@ -129,3 +139,102 @@ def relation_graph(spec: Any, tables: Mapping[str, Any]) -> RelationGraph:
     """The :class:`RelationGraph` over ``tables`` (pandas frames or lazy corral tables)."""
     columns = {name: columns_of(src) for name, src in tables.items()}
     return RelationGraph(tables=tables, fks=tuple(foreign_keys(spec, columns)), pks=primary_keys(spec, columns))
+
+
+def restrict(src: Any, matches: Sequence[Match]) -> Any:
+    """``src`` limited to rows any of ``matches`` selects; no matches selects nothing.
+
+    ``src`` is a pandas frame (masked in memory) or a lazy corral table (an ibis ``IN`` predicate
+    pushed to DuckDB; no SQL text).
+    """
+    if isinstance(src, pd.DataFrame):
+        mask = pd.Series(False, index=src.index)
+        for m in matches:
+            mask |= src[m.column].isin(m.values)
+        return src[mask]
+    if not matches:
+        return src.limit(0)
+
+    def predicate(expr: Any) -> Any:
+        return expr.filter(functools.reduce(operator.or_, [expr[m.column].isin(list(m.values)) for m in matches]))
+
+    return src.filter(predicate)
+
+
+def count(src: Any, matches: Sequence[Match]) -> int:
+    """How many rows of ``src`` the matches select (one DuckDB ``COUNT`` for a lazy table)."""
+    return rowcount_of(restrict(src, matches))
+
+
+def ids_of(src: Any, matches: Sequence[Match], pk: str, *, limit: int) -> tuple[list[Any], bool]:
+    """The first ``limit`` primary keys (in key order) of the matched rows, and whether there are more."""
+    sub = restrict(src, matches)
+    if isinstance(sub, pd.DataFrame):
+        keys = sub[pk].dropna().sort_values().head(limit + 1).tolist()
+    else:
+        keys = sub.select(pk).order_by(pk).limit(limit + 1).to_pandas()[pk].dropna().tolist()
+    return [json_scalar(k) for k in keys[:limit]], len(keys) > limit
+
+
+def _distinct(src: Any, column: str, pk: str, ids: Sequence[Any]) -> tuple[Any, ...]:
+    """Distinct non-null ``column`` values of the rows whose ``pk`` is in ``ids`` (bounded by ``ids``)."""
+    sub = restrict(src, [Match(pk, tuple(ids), "")])
+    frame = sub if isinstance(sub, pd.DataFrame) else sub.select(column).to_pandas()
+    return tuple(json_scalar(v) for v in pd.unique(frame[column].dropna()))
+
+
+def _hop(
+    graph: RelationGraph, frontier: Mapping[str, tuple[Any, ...]], reached: set[str], hop: int
+) -> dict[str, Relation]:
+    """Every table one key away from ``frontier`` that is not yet ``reached``."""
+    found: dict[str, Relation] = {}
+    for fk in graph.fks:
+        ref_pk, own_pk = graph.pks.get(fk.ref_table), graph.pks.get(fk.table)
+        if fk.ref_table in frontier and fk.table not in reached and ref_pk:  # inbound: fk.table points at the frontier
+            ids = frontier[fk.ref_table]
+            values = (
+                ids if fk.ref_column == ref_pk else _distinct(graph.tables[fk.ref_table], fk.ref_column, ref_pk, ids)
+            )
+            found.setdefault(fk.table, Relation(fk.table, hop)).matches.append(Match(fk.column, values, fk.label))
+        if fk.table in frontier and fk.ref_table not in reached and own_pk:  # outbound: the frontier points at it
+            values = _distinct(graph.tables[fk.table], fk.column, own_pk, frontier[fk.table])
+            found.setdefault(fk.ref_table, Relation(fk.ref_table, hop)).matches.append(
+                Match(fk.ref_column, values, fk.label)
+            )
+    return {name: r for name, r in found.items() if any(m.values for m in r.matches)}
+
+
+def relate(graph: RelationGraph, sources: Mapping[str, Sequence[Any]], *, hops: int = 1) -> dict[str, Relation]:
+    """Tables related to ``sources`` (``{table: ids}``) within ``hops`` keys, each at the hop it is first reached.
+
+    A table is never revisited, sources included, so hop 2 reaches *new* tables (link → lane →
+    lane_tod), never back to the source table.
+    """
+    frontier = {t: tuple(ids) for t, ids in sources.items() if t in graph.tables and ids}
+    reached: set[str] = set(frontier)
+    out: dict[str, Relation] = {}
+    partial = False
+    for hop in range(1, hops + 1):
+        found = _hop(graph, frontier, reached, hop)
+        for relation in found.values():
+            relation.partial = partial
+        out.update(found)
+        reached |= set(found)
+        if hop == hops or not found:
+            break
+        frontier = {}
+        for name, relation in found.items():
+            pk = graph.pks.get(name)
+            if pk:
+                ids, more = ids_of(graph.tables[name], relation.matches, pk, limit=MAX_SOURCE_IDS)
+                frontier[name], partial = tuple(ids), partial or more
+    return out
+
+
+def row_vias(page: pd.DataFrame, relation: Relation | None) -> list[str | None]:
+    """Per row of ``page``: the first relation label that selects it, else ``None`` (pure pandas)."""
+    out: list[str | None] = [None] * len(page)
+    for m in relation.matches if relation else []:
+        hits = page[m.column].isin(m.values).tolist() if m.column in page.columns else [False] * len(page)
+        out = [prev or (m.via if hit else None) for prev, hit in zip(out, hits, strict=True)]
+    return out
