@@ -16,7 +16,9 @@ def register(app: typer.Typer) -> None:
     def viz(
         # str, not Path: a Path argument collapses "https://host/x" to "https:/host/x".
         source: str = typer.Argument(..., help="Path/URL to a GMNS network."),
-        provider: str = typer.Option(None, "--provider", help="NL parser: stub | claude."),
+        provider: str = typer.Option(
+            None, "--provider", help="NL parser: stub | anthropic | openai | gemini | ollama (default: settings)."
+        ),
         engine: str = typer.Option(
             None, "--engine", help="Ignored: DuckDB is the only engine (kept for compatibility)."
         ),

@@ -66,3 +66,19 @@ def test_cli_not_found_exits_nonzero(patched_net):
         ["select", "I-40 EB between Nowhere Street and Airport Boulevard", "dummy", "--provider", "stub", "--json"]
     )
     assert res.exit_code != 0
+
+
+def test_cli_unknown_provider_exits_2(tmp_path, monkeypatch):
+    monkeypatch.setenv("GMNSPY_CONFIG_DIR", str(tmp_path / "user"))
+    monkeypatch.chdir(tmp_path)
+    res = _run(["select", "Main Street", "dummy", "--provider", "gpt"])
+    assert res.exit_code == 2 and "invalid settings" in res.output
+
+
+def test_cli_missing_key_exits_1_with_how_to(tmp_path, monkeypatch):
+    monkeypatch.setenv("GMNSPY_CONFIG_DIR", str(tmp_path / "user"))
+    monkeypatch.chdir(tmp_path)
+    for name in ("GMNSPY_OPENAI_API_KEY", "OPENAI_API_KEY"):
+        monkeypatch.delenv(name, raising=False)
+    res = _run(["select", "Main Street", "dummy", "--provider", "openai"])
+    assert res.exit_code == 1 and "OpenAI: no API key is configured" in res.output

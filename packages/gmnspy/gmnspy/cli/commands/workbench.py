@@ -18,6 +18,7 @@ def run_workbench(
     sources: Sequence[str],
     *,
     provider: str | None = None,
+    model: str | None = None,
     basemap: str | None = None,
     host: str | None = None,
     port: int | None = None,
@@ -29,7 +30,13 @@ def run_workbench(
     from gmnspy.workbench.errors import PathNotAllowed
     from gmnspy.workbench.paths import allowed_roots, is_allowed, local_locator, split_source
 
-    flags = {"select.provider": provider, "viz.basemap": basemap, "app.host": host, "app.port": port}
+    flags = {
+        "select.provider": provider,
+        "select.model": model,
+        "viz.basemap": basemap,
+        "app.host": host,
+        "app.port": port,
+    }
     overrides = {k: v for k, v in flags.items() if v is not None}
     to_open: list[str] = []
     trusted: list[str] = []  # local paths named on the command line (candidates for io.allowed_roots)
@@ -83,10 +90,13 @@ def register(app: typer.Typer) -> None:
     @app.command(name="app")
     def app_cmd(
         sources: list[str] = typer.Argument(None, help="GMNS network paths/URLs to open."),
-        provider: str = typer.Option(None, "--provider", help="NL parser: stub | claude (default: settings)."),
+        provider: str = typer.Option(
+            None, "--provider", help="NL parser: stub | anthropic | openai | gemini | ollama (default: settings)."
+        ),
+        model: str = typer.Option(None, "--model", help="NL model id (default: settings, else the catalog default)."),
         basemap: str = typer.Option(None, "--basemap", help="Basemap: positron | esri (default: settings)."),
         host: str = typer.Option(None, "--host", help="Bind host (default: settings, 127.0.0.1)."),
         port: int = typer.Option(None, "--port", help="Bind port (default: settings, 8850)."),
     ) -> None:
         """Serve the GMNSpy Workbench: open, inspect, and select on GMNS networks in the browser."""
-        run_workbench(sources or [], provider=provider, basemap=basemap, host=host, port=port)
+        run_workbench(sources or [], provider=provider, model=model, basemap=basemap, host=host, port=port)

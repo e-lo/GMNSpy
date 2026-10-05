@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from .emit import to_fragment, to_projectcard, validate_fragment
 from .intent import DIRECTIONS, Facility, SelectionIntent
-from .parse import ClaudeParser, Parser, StubParser
+from .parse import ClaudeParser, LLMParser, Parser, StubParser, make_parser
 from .resolve import resolve, resolve_frames
 from .result import AnchorMatch, SelectionResult
 
@@ -18,10 +18,12 @@ __all__ = [
     "AnchorMatch",
     "ClaudeParser",
     "Facility",
+    "LLMParser",
     "Parser",
     "SelectionIntent",
     "SelectionResult",
     "StubParser",
+    "make_parser",
     "resolve",
     "resolve_frames",
     "to_fragment",

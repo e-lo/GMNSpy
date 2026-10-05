@@ -77,11 +77,14 @@ mcp = [
     "mcp>=1.0",
 ]
 nl = [
-    # Natural-language selection (gmnspy.select): jsonschema validates the
-    # emitted selection fragment; anthropic powers the ClaudeParser (the
-    # StubParser + resolver need neither). Requires [graph] for path search.
+    # Natural-language features (gmnspy.select, gmnspy.llm). httpx drives the
+    # hand-rolled provider adapters (Anthropic, OpenAI and compatible, Gemini,
+    # Ollama; no vendor SDKs); jsonschema validates tool-call output and the
+    # emitted selection fragment; keyring stores API keys in the OS keychain.
+    # The StubParser + resolver need none of these. Requires [graph] for path search.
     "jsonschema>=4.0",
-    "anthropic>=0.40",
+    "httpx>=0.27",
+    "keyring>=24",
 ]
 bench = [
     # Benchmark harness (gmnspy.bench): wall/CPU time + Python-heap peak come

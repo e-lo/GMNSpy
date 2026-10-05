@@ -33,8 +33,9 @@ from datagrove.engines.ibis_engine import IbisEngine
 
 from gmnspy import Network
 from gmnspy.config import LoadedSettings, Settings, SettingsError, get_value, load_settings, save_setting
+from gmnspy.llm import build_registry
 from gmnspy.select.intent import SelectionIntent
-from gmnspy.select.parse import ClaudeParser, StubParser
+from gmnspy.select.parse import make_parser
 from gmnspy.select.resolve import resolve_frames
 from gmnspy.viz.styling import styleable_columns
 
@@ -151,12 +152,8 @@ class Session:
     def parser(self) -> Any:
         """The NL parser chosen by ``select.provider`` (built lazily; an injected parser wins)."""
         if self._parser is None:
-            sel = self.settings.select
-            # Interim until make_parser (NL-providers Task 13): "claude" is now stored as "anthropic".
-            if sel.provider == "anthropic":
-                self._parser = ClaudeParser(model=sel.model) if sel.model else ClaudeParser()
-            else:
-                self._parser = StubParser()
+            registry = build_registry(self.settings, environ=self._environ)
+            self._parser = make_parser(self.settings.select, registry)
         return self._parser
 
     def dispatch(self, action: Action | dict[str, Any]) -> Any:

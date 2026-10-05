@@ -131,3 +131,10 @@ def test_cli_never_trusts_unsupported_schemes(served, monkeypatch, tmp_path):
     result = runner.invoke(app, ["app", "ftp://example.invalid/net"])
     assert result.exit_code == 1 and "unsupported URL scheme" in result.output
     assert "allowing" not in result.output
+
+
+def test_app_provider_alias_and_model_flag(served):
+    result = runner.invoke(app, ["app", "--provider", "claude", "--model", "claude-haiku-4-5-20251001"])
+    assert result.exit_code == 0, result.output
+    select = served[0].settings.select
+    assert (select.provider, select.model) == ("anthropic", "claude-haiku-4-5-20251001")
