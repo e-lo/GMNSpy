@@ -212,7 +212,10 @@ constrained to the same schema. You don't need to do anything.
 
 1. Keep `llm.quality.temperature` at its default, `0`. In our tests `qwen2.5:7b` read every one of
    a set of varied requests correctly at temperature 0, and misread a few street names as route
-   numbers at Ollama's own default temperature.
+   numbers at Ollama's own default temperature. When that happens and the "route number" matches
+   no route in your network, netstead looks it up as a street name instead, and the selection's
+   diagnostics say so (`treated ref 'Capital Blvd' as a street name`). It does the same for a
+   route number read as a street name. A value that does match its own column is used as is.
 2. Give the model another attempt after an invalid reply:
 
     ```toml
