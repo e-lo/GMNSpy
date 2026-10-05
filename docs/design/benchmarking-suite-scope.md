@@ -5,8 +5,8 @@ kind: design
 status: draft
 date: 2026-09-30
 summary: >
-  An advertisable + internal-regression performance suite for gmnspy across the
-  three datagrove engines (pandas / polars / ibis-duckdb), covering network
+  An advertisable + internal-regression performance suite for netstead across the
+  three corral engines (pandas / polars / ibis-duckdb), covering network
   creation, selection queries, and visualization packing.
 ---
 
@@ -14,7 +14,7 @@ summary: >
 
 ## 1. Motivation & goals
 
-gmnspy is engine-agnostic (pandas / polars / ibis-duckdb via datagrove) and
+netstead is engine-agnostic (pandas / polars / ibis-duckdb via corral) and
 markets Parquet/DuckDB as the intended hot path. We need one suite that serves
 **two audiences at once**:
 
@@ -28,7 +28,7 @@ markets Parquet/DuckDB as the intended hot path. We need one suite that serves
 
 Design constraints carried from project memory:
 
-- **Avoid over-engineering.** Reuse the existing `gmnspy bench` JSON contract
+- **Avoid over-engineering.** Reuse the existing `netstead bench` JSON contract
   and the already-wired `bench.yml` workflow before adding new machinery.
   Complexity (headless-browser FPS, per-frame accounting) is opt-in tiers, not
   the default path.
@@ -44,15 +44,15 @@ Design constraints carried from project memory:
 
 | Asset | Path | Reuse |
 |---|---|---|
-| `gmnspy bench` CLI | `gmnspy/cli/commands/bench.py` | Per-phase `perf_counter` timing (`load`/`validate`/counts/`is_connected`), `--engine`, `--json`. **Extend**, don't replace — it already defines the JSON shape (`{source, engine, total_seconds, phases:[{phase,seconds}]}`). |
-| Bench cookbook | `gmnspy/docs/cookbook/run-bench.md` | Documents an OSM-build harness (`scripts/bench_osm_build.py`) with a per-engine **build + peak-mem + result-count** table and osmnx/osm2gmns baselines. **The script is referenced but not present in the tree** — the doc's table is the format precedent; the suite should ship the script the doc already describes. |
+| `netstead bench` CLI | `netstead/cli/commands/bench.py` | Per-phase `perf_counter` timing (`load`/`validate`/counts/`is_connected`), `--engine`, `--json`. **Extend**, don't replace — it already defines the JSON shape (`{source, engine, total_seconds, phases:[{phase,seconds}]}`). |
+| Bench cookbook | `netstead/docs/cookbook/run-bench.md` | Documents an OSM-build harness (`scripts/bench_osm_build.py`) with a per-engine **build + peak-mem + result-count** table and osmnx/osm2gmns baselines. **The script is referenced but not present in the tree** — the doc's table is the format precedent; the suite should ship the script the doc already describes. |
 | `bench.yml` workflow | `.github/workflows/bench.yml` | Already future-proofed: discovers `-m perf` / `tests/bench/` / `test_bench_*.py`, downloads the most-recent main baseline, runs pytest-benchmark with `--benchmark-compare-fail=mean:200%`, uploads JSON artifact (90-day retention). **Wire the new tests into this; don't author a second workflow.** |
 | `perf` marker | root `pyproject.toml` `[tool.pytest.ini_options].markers` | `"perf: performance regression bench"` already registered. |
 | `pytest-benchmark>=4` | root `pyproject.toml` `[dependency-groups].dev` | Already a dev dep. |
-| `OperationCost` cost model | `datagrove/operations/cost_model.py` | Coefficients (seconds-per-million-rows per op) are **calibrated by** the bench job (docstring cites "Phase 5 nightly bench, issue #126"). The suite is the calibration source; emit numbers in a shape the coefficients can be re-fit from. |
-| Cross-engine OSM smoke | `gmnspy/tests/test_osm_bench.py` | `@pytest.mark.perf`, parametrized over `["ibis","pandas","polars"]`, builds from a synthetic grid via `convert.build_node_link_tables` + `build.network_from_records`. **The correctness harness the timing suite sits beside** (it explicitly defers timing to `scripts/bench_osm_build.py`). |
-| Engine registry | `datagrove/engines/__init__.py` | `resolve_engine(name)`, `list_engines()`, `get_engine()` — the matrix driver. `list_engines()` gates skips when an extra is absent. |
-| Fixtures | `gmnspy/fixtures/{leavenworth,rdu_i40}` | leavenworth = 339 links (smoke, not a benchmark); rdu_i40 = small real interchange. Both ship csv+parquet(+duckdb). **The S tier**; M/L are not (and should not be) committed. |
+| `OperationCost` cost model | `corral/operations/cost_model.py` | Coefficients (seconds-per-million-rows per op) are **calibrated by** the bench job (docstring cites "Phase 5 nightly bench, issue #126"). The suite is the calibration source; emit numbers in a shape the coefficients can be re-fit from. |
+| Cross-engine OSM smoke | `netstead/tests/test_osm_bench.py` | `@pytest.mark.perf`, parametrized over `["ibis","pandas","polars"]`, builds from a synthetic grid via `convert.build_node_link_tables` + `build.network_from_records`. **The correctness harness the timing suite sits beside** (it explicitly defers timing to `scripts/bench_osm_build.py`). |
+| Engine registry | `corral/engines/__init__.py` | `resolve_engine(name)`, `list_engines()`, `get_engine()` — the matrix driver. `list_engines()` gates skips when an extra is absent. |
+| Fixtures | `netstead/fixtures/{leavenworth,rdu_i40}` | leavenworth = 339 links (smoke, not a benchmark); rdu_i40 = small real interchange. Both ship csv+parquet(+duckdb). **The S tier**; M/L are not (and should not be) committed. |
 
 **Bottom line:** ~70% of the scaffolding exists. The gap is (a) the missing
 `bench_osm_build.py`-style macro runner generalized to all three operation
@@ -84,7 +84,7 @@ agree — carry that invariant here so a "fast" run that dropped rows fails).
 ### 3.2 Selections (NL / structured queries)
 
 A **fixed, versioned set** of representative utterances per fixture, resolved
-via `gmnspy.select` (`resolve_frames`) — the same path `gmnspy select` drives.
+via `netstead.select` (`resolve_frames`) — the same path `netstead select` drives.
 The recent win (resolver vectorization: ~11s → ~0.93s on RDU) is exactly the
 kind of regression this must lock in.
 
@@ -171,7 +171,7 @@ Provisioning + caching strategy:
 - **Never commit M/L raw data.** Only S (leavenworth, rdu_i40) stays in-repo.
 - **OSM bbox extracts:** fetch once via the existing Overpass client, cache the
   raw response to a content-addressed path in a user cache dir
-  (`platformdirs.user_cache_dir("gmnspy")/benchmarks/<hash>.json`) keyed by
+  (`platformdirs.user_cache_dir("netstead")/benchmarks/<hash>.json`) keyed by
   `(bbox, network_type, overpass_query_version)`. Re-runs are offline. Store
   the expected node/link counts + a content hash in `fixtures.toml` so a
   silently-changed OSM extract is detected (Overpass is not reproducible over
@@ -185,7 +185,7 @@ Provisioning + caching strategy:
   cache a pinned snapshot (specific release + bbox) to the same cache dir. The
   `fixtures.toml` slot is defined now; the provisioner grows one `source_kind`.
 - **Format variants:** derive CSV/Parquet/DuckDB variants of a cached network
-  on demand (datagrove already round-trips formats) so the "source format"
+  on demand (corral already round-trips formats) so the "source format"
   dimension of §3.1 doesn't multiply committed bytes.
 
 ## 6. Harness design & tooling choice
@@ -193,7 +193,7 @@ Provisioning + caching strategy:
 ### 6.1 Recommendation: two-layer harness
 
 **Layer A — macro runner (custom), for the advertisable suite.** A small
-runner that extends the `gmnspy bench` JSON contract to sweep
+runner that extends the `netstead bench` JSON contract to sweep
 `engine × size × operation` and emit one merged JSON document. Rationale:
 
 - The headline ops are **seconds-to-minutes, side-effect-heavy, once-per-run**
@@ -206,7 +206,7 @@ runner that extends the `gmnspy bench` JSON contract to sweep
   bending a framework. This is the "avoid over-engineering / lean deps" call.
 - **Cold measurement wants process isolation:** run each cold case in a fresh
   **subprocess** (import cost, engine/duckdb connection init, and OS file cache
-  all reset) — the runner shells `gmnspy bench`-style subcommands and collects
+  all reset) — the runner shells `netstead bench`-style subcommands and collects
   their `--json`. Warm cases run in-process with a repeat loop.
 
 **Layer B — micro-benchmarks (pytest-benchmark), for hot pure functions.**
@@ -239,11 +239,11 @@ benchmarks/                         # workspace root, sibling to packages/
   provision.py                      # fetch/cache/derive fixtures from fixtures.toml
   cases/                            # the versioned selection utterances, per fixture
   results/                          # gitignored; JSON output lands here
-packages/gmnspy/gmnspy/tests/bench/ # Layer B pytest-benchmark micro-tests (-m perf)
+packages/netstead/netstead/tests/bench/ # Layer B pytest-benchmark micro-tests (-m perf)
 scripts/bench_osm_build.py          # keep the doc's OSM-build entry point (thin wrapper on runner.py)
 ```
 
-(Exact home — `benchmarks/` at root vs under `packages/gmnspy/` — is an
+(Exact home — `benchmarks/` at root vs under `packages/netstead/` — is an
 implementation detail; root keeps it out of the shipped wheel, which is
 correct: benchmarks are not a runtime concern.)
 
@@ -253,7 +253,7 @@ One canonical JSON per run; two rendered views derived from it.
 
 ### 7.1 Regression format (canonical JSON)
 
-Superset of the existing `gmnspy bench` shape, adding the matrix keys +
+Superset of the existing `netstead bench` shape, adding the matrix keys +
 memory + environment provenance:
 
 ```json
@@ -263,7 +263,7 @@ memory + environment provenance:
     "machine": "arm64", "cpu": "Apple M1", "cores": 8,
     "python": "3.13.x", "os": "macOS-15",
     "versions": {"duckdb": "1.x", "ibis": "9.x", "polars": "1.x",
-                 "pandas": "2.x", "pyarrow": "16.x", "gmnspy": "1.0.0b2"},
+                 "pandas": "2.x", "pyarrow": "16.x", "netstead": "1.0.0b2"},
     "commit": "…", "timestamp": "…"
   },
   "results": [
@@ -377,7 +377,7 @@ Caveats to print with every published table:
 
 - **Phase 0 — foundations (small).** Add `psutil` to a `bench` extra; add the
   two-pass (time/memory) capture helpers over the primitives in §4; define
-  `benchmarks/fixtures.toml` with S entries only. Extend the `gmnspy bench`
+  `benchmarks/fixtures.toml` with S entries only. Extend the `netstead bench`
   JSON with the `env` block + memory fields.
 - **Phase 1 — network creation (the headline).** Ship `scripts/bench_osm_build.py`
   (the doc already advertises it) generalized into `benchmarks/runner.py`:
@@ -405,7 +405,7 @@ Caveats to print with every published table:
 - M-tier real fixture — a specific NC county bbox vs synthetic grid as the
   *committed default*? (Recommendation: synthetic for the CI gate, real bbox
   cached for advertising.)
-- Whether to expose Layer A as a `gmnspy bench-suite` CLI subcommand vs a
+- Whether to expose Layer A as a `netstead bench-suite` CLI subcommand vs a
   standalone `benchmarks/runner.py` script (CLI is discoverable; script keeps
   bench machinery out of the shipped package — leaning script).
 - DuckDB `memory_limit` setting during L runs — cap it (to force a spill and

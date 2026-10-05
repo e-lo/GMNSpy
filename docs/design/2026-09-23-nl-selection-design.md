@@ -23,7 +23,7 @@ set of GMNS `link_id`s emitted as a selection fragment.
   narrowing is set-based; the tiny post-filter subnet uses a hand-rolled
   BFS/Dijkstra (no networkx/geopandas/osmnx).
 
-## Pipeline (`gmnspy.select`)
+## Pipeline (`netstead.select`)
 
 `parse` (utterance→`SelectionIntent`) → `resolve` (intent+network→`SelectionResult`;
 facility narrow → direction filter → gore/merge anchor resolution → shortest
@@ -47,8 +47,8 @@ ramp-`destination` attribute path (data supports it later).
 ## Known env note
 
 End-to-end via the real `Network.from_source` loader was not verified in the
-build environment: `ibis 12 / duckdb 1.5.5` breaks datagrove's `create_table`,
-and loading a hand-written `datapackage.json` needs gmnspy loader conventions
+build environment: `ibis 12 / duckdb 1.5.5` breaks corral's `create_table`,
+and loading a hand-written `datapackage.json` needs netstead loader conventions
 not fully replicated here. The resolver/emit are verified on the real fixture
 frames and the CLI orchestration via an injected network. Verify the real
-loader path (`gmnspy select … --engine pandas`) in a clean env.
+loader path (`netstead select … --engine pandas`) in a clean env.

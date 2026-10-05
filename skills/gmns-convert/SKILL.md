@@ -1,6 +1,6 @@
 ---
 name: gmns-convert
-description: Convert GMNS (or any datagrove) data between csv, parquet, duckdb, and zip-csv formats. Use when the user has data in one storage format and needs another — e.g. CSVs to parquet for a faster pipeline, or duckdb to CSV for sharing.
+description: Convert GMNS (or any corral) data between csv, parquet, duckdb, and zip-csv formats. Use when the user has data in one storage format and needs another — e.g. CSVs to parquet for a faster pipeline, or duckdb to CSV for sharing.
 ---
 
 # gmns-convert
@@ -18,7 +18,7 @@ columns survive any format; native geo types are not normalized.)
 ## Workflow
 
 1. **Confirm the source is valid first.** A bad source produces a bad
-   destination. Run `datagrove info <src>` (or `gmnspy info <src>` for
+   destination. Run `corral info <src>` (or `netstead info <src>` for
    GMNS) to be sure the schema reads cleanly.
 2. **Pick the destination format:**
    - **CSV folder** — human-readable, diff-friendly, slow on big tables
@@ -29,10 +29,10 @@ columns survive any format; native geo types are not normalized.)
 3. **Run the convert command.** Once PR #84 lands, the canonical command
    is:
    ```bash
-   datagrove convert <src> <dest> --format=parquet
+   corral convert <src> <dest> --format=parquet
    ```
    Until then, do it programmatically with the Package API (see example).
-4. **Validate the destination.** `datagrove validate <dest>` after every
+4. **Validate the destination.** `corral validate <dest>` after every
    conversion. A schema-preserving round-trip should produce 0 new issues.
 
 ## Format choice cheat-sheet
@@ -51,22 +51,22 @@ Using the bundled Leavenworth fixture:
 
 ```bash
 # Once PR #84 is merged:
-datagrove convert \
-    packages/gmnspy/gmnspy/fixtures/leavenworth/csv \
+corral convert \
+    packages/netstead/netstead/fixtures/leavenworth/csv \
     ./leavenworth_parquet \
     --format=parquet
 
-datagrove validate ./leavenworth_parquet --json | jq '.summary'
+corral validate ./leavenworth_parquet --json | jq '.summary'
 # {"errors": 0, "warnings": 0, "tables": 9}
 ```
 
 Programmatic equivalent (works today):
 
 ```python
-from datagrove import Package
+from corral import Package
 
 src = Package.from_source(
-    "packages/gmnspy/gmnspy/fixtures/leavenworth/csv"
+    "packages/netstead/netstead/fixtures/leavenworth/csv"
 )
 src.write("./leavenworth_parquet", format="parquet")
 
@@ -78,7 +78,7 @@ assert dst.validate().ok
 ## Example: CSV → DuckDB for ad-hoc SQL
 
 ```python
-from datagrove import Package
+from corral import Package
 
 pkg = Package.from_source("./my_network")
 pkg.write("./my_network.duckdb", format="duckdb")
@@ -95,14 +95,14 @@ duckdb ./my_network.duckdb \
 ## Example: zip a package for sharing
 
 ```python
-from datagrove import Package
+from corral import Package
 
 Package.from_source("./my_network").write(
     "./my_network.zip", format="zip-csv"
 )
 ```
 
-The recipient runs `datagrove validate my_network.zip` directly against
+The recipient runs `corral validate my_network.zip` directly against
 the zip — no unpack step needed.
 
 ## Pitfalls
@@ -119,7 +119,7 @@ the zip — no unpack step needed.
 
 ## See also
 
-- `datagrove-validate` — validate before and after conversion
+- `corral-validate` — validate before and after conversion
 - `gmns-validate` — GMNS-specific checks on the converted output
-- PR #84 — adds the first-class `datagrove convert` CLI command
-- `packages/datagrove/datagrove/io/` — read/write backends per format
+- PR #84 — adds the first-class `corral convert` CLI command
+- `packages/corral/corral/io/` — read/write backends per format

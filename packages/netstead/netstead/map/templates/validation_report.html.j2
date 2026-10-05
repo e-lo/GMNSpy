@@ -1,0 +1,173 @@
+{#- netstead.map validation report — composes a NetworkMap fragment with the
+findings-table chrome (severity chips, filter bar, table, unlocated sidebar).
+
+This is the page :func:`netstead.map.render_validation_html` produces. It is
+ONE example of how to host a NetworkMap on a page; the map fragment itself
+is reusable in any host (notebook IFrame, custom dashboard, blog post).
+
+Inputs:
+  - title              : <title> + <h1>
+  - meta_subtitle      : optional one-liner under H1 (e.g. spec_version)
+  - counts             : list of (severity, n) for the chips at the top
+  - head_assets        : NetworkMap.head_assets() inlined
+  - body_fragment      : NetworkMap.body_fragment() — the embeddable map
+  - issues             : list of issue dicts for the findings table
+  - filter_options     : {"severity": [...], "table": [...]}
+  - located_count      : number of issues resolved to a coord
+  - unlocated          : list of issue dicts with no coord
+-#}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ title }}</title>
+  {{ head_assets | safe }}
+</head>
+<body>
+  <header class="gv-header">
+    <h1>{{ title }}</h1>
+    {% if meta_subtitle %}<p class="gv-meta">{{ meta_subtitle }}</p>{% endif %}
+    {% if counts %}
+    <p class="gv-counts">
+      {% for label, n in counts %}<span class="gv-chip severity-{{ label }}">{{ label }}: {{ n }}</span>{% endfor %}
+      {% if issues %}<span class="gv-chip gv-chip-muted">{{ located_count }} on map · {{ unlocated|length }} unlocated</span>{% endif %}
+    </p>
+    {% endif %}
+  </header>
+
+  {{ body_fragment | safe }}
+
+  {% if unlocated %}
+  <details class="gv-unlocated" open>
+    <summary>Unlocated findings ({{ unlocated|length }})</summary>
+    <ul>
+      {% for issue in unlocated %}
+      <li data-unlocated-issue-id="{{ issue.issue_id }}">
+        <span class="gv-sev severity-{{ issue.severity }}">{{ issue.severity|upper }}</span>
+        <code class="gv-code">{{ issue.code }}</code> — {{ issue.message }}
+      </li>
+      {% endfor %}
+    </ul>
+  </details>
+  {% endif %}
+
+  {% if issues %}
+  <section class="gv-table-section">
+    <h2>Findings ({{ issues|length }})</h2>
+    <div class="gv-filters">
+      <label>Severity
+        <select id="gv-filter-severity">
+          <option value="">all</option>
+          {% for s in filter_options.severity %}<option value="{{ s }}">{{ s }}</option>{% endfor %}
+        </select>
+      </label>
+      <label>Table
+        <select id="gv-filter-table">
+          <option value="">all</option>
+          {% for t in filter_options.table %}<option value="{{ t }}">{{ t }}</option>{% endfor %}
+        </select>
+      </label>
+      <label>Search
+        <input id="gv-filter-search" type="search" placeholder="message or code…">
+      </label>
+    </div>
+    <div class="gv-table-wrap">
+      <table class="gv-issues">
+        <thead>
+          <tr>
+            <th>Severity</th>
+            <th>Code</th>
+            <th>Location</th>
+            <th>Message</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for issue in issues %}
+          <tr data-issue-id="{{ issue.issue_id }}"
+              data-severity="{{ issue.severity }}"
+              data-table="{{ issue.table or '' }}"
+              {%- if issue.row_props %} data-row-props='{{ issue.row_props | tojson }}'{% endif %}
+              {%- if issue.column %} data-column="{{ issue.column }}"{% endif %}>
+            <td><span class="gv-sev severity-{{ issue.severity }}">{{ issue.severity|upper }}</span></td>
+            <td><code class="gv-code">{{ issue.code }}</code></td>
+            <td>
+              {%- if issue.table -%}
+                {{ issue.table }}{% if issue.column %}:{{ issue.column }}{% endif %}{% if issue.row is not none %} [{{ issue.row }}]{% endif %}
+              {%- endif -%}
+            </td>
+            <td>
+              {{ issue.message }}
+              {% if issue.fix_hint %}<div class="gv-fixhint">&rarr; {{ issue.fix_hint }}</div>{% endif %}
+            </td>
+            <td class="gv-cell-actions">
+              {% if issue.row_props and issue.column %}<button type="button" class="gv-action gv-action-fix" data-row-fix-locally="{{ issue.issue_id }}">Fix locally</button>{% endif %}
+              {% if issue.edit_url %}<a class="gv-action gv-osm-link" href="{{ issue.edit_url }}" target="_blank" rel="noopener noreferrer">Fix upstream (OSM) &rarr;</a>{% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+  <script>
+    // Findings-table chrome — lives in the report page, not the map component.
+    (function () {
+      "use strict";
+      const sevFilter = document.getElementById("gv-filter-severity");
+      const tableFilter = document.getElementById("gv-filter-table");
+      const searchFilter = document.getElementById("gv-filter-search");
+      const applyFilters = () => {
+        const sev = sevFilter ? sevFilter.value : "";
+        const tbl = tableFilter ? tableFilter.value : "";
+        const q = searchFilter ? searchFilter.value.toLowerCase().trim() : "";
+        document.querySelectorAll("tr[data-issue-id]").forEach((row) => {
+          const rSev = row.getAttribute("data-severity") || "";
+          const rTbl = row.getAttribute("data-table") || "";
+          const text = row.textContent.toLowerCase();
+          const ok = (!sev || rSev === sev) && (!tbl || rTbl === tbl) && (!q || text.indexOf(q) !== -1);
+          row.style.display = ok ? "" : "none";
+        });
+      };
+      [sevFilter, tableFilter, searchFilter].forEach((el) => el && el.addEventListener("input", applyFilters));
+      document.querySelectorAll("[data-unlocated-issue-id]").forEach((el) => {
+        el.addEventListener("click", () => {
+          const id = el.getAttribute("data-unlocated-issue-id");
+          if (!id) return;
+          const row = document.querySelector('tr[data-issue-id="' + id.replace(/(["\\])/g, "\\$1") + '"]');
+          if (!row) return;
+          document.querySelectorAll("tr.is-highlighted").forEach((r) => r.classList.remove("is-highlighted"));
+          row.classList.add("is-highlighted");
+          row.scrollIntoView({ behavior: "smooth", block: "center" });
+        });
+      });
+
+      // "Fix locally" from a table row → expand the row with the inline
+      // mini-editor. Reuses window.netsteadEditor.open() defined in
+      // map_component.js so the flow is identical to the marker-popup
+      // path (same PK extraction, same coercion, same edit-log target).
+      document.querySelectorAll("[data-row-fix-locally]").forEach((btn) => {
+        btn.addEventListener("click", (ev) => {
+          ev.preventDefault();
+          const row = btn.closest("tr");
+          if (!row || !window.netsteadEditor) return;
+          let rowProps;
+          try { rowProps = JSON.parse(row.getAttribute("data-row-props") || "null"); }
+          catch { rowProps = null; }
+          if (!rowProps) return;
+          window.netsteadEditor.openInRow(row, {
+            issue_id: row.getAttribute("data-issue-id"),
+            table: row.getAttribute("data-table"),
+            column: row.getAttribute("data-column"),
+            row_props: rowProps,
+            code: row.querySelector("code.gv-code")?.textContent || "",
+            message: row.querySelector("td:nth-child(4)")?.firstChild?.textContent?.trim() || "",
+          });
+        });
+      });
+    })();
+  </script>
+  {% endif %}
+</body>
+</html>

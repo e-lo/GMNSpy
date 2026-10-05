@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>netstead · network selection</title>
+<link href="https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet" />
+<script src="https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<style>
+  :root { --bg:#0f1115; --panel:#171a21; --edge:#2a2f3a; --ink:#e6e8ec; --muted:#9aa3b2;
+          --accent:#ff8c3b; --from:#35c46a; --to:#e0524d; --net:#7d8798; }
+  * { box-sizing:border-box; }
+  html,body { margin:0; height:100%; font:14px/1.45 ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+              color:var(--ink); background:var(--bg); }
+  #app { display:grid; grid-template-columns:1fr 340px; grid-template-rows:auto 1fr; height:100%; }
+  header { grid-column:1 / -1; display:flex; gap:10px; align-items:center; padding:12px 16px;
+           background:var(--panel); border-bottom:1px solid var(--edge); }
+  header h1 { font-size:14px; font-weight:600; margin:0 12px 0 0; color:var(--muted); letter-spacing:.02em; }
+  #utterance { flex:1; padding:9px 12px; border:1px solid var(--edge); border-radius:8px;
+               background:#0c0e12; color:var(--ink); font-size:14px; }
+  #utterance::placeholder { color:#5b6474; }
+  button { padding:9px 16px; border:0; border-radius:8px; background:var(--accent); color:#11151a;
+           font-weight:600; cursor:pointer; }
+  button:disabled { opacity:.5; cursor:default; }
+  #map { width:100%; height:100%; }
+  #side { background:var(--panel); border-left:1px solid var(--edge); padding:16px; overflow:auto; }
+  .status { display:inline-block; padding:3px 10px; border-radius:999px; font-size:12px; font-weight:600; }
+  .status.resolved { background:rgba(53,196,106,.15); color:var(--from); }
+  .status.ambiguous { background:rgba(255,140,59,.15); color:var(--accent); }
+  .status.not_found { background:rgba(224,82,77,.15); color:var(--to); }
+  .label { color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:.06em; margin:16px 0 6px; }
+  pre { background:#0c0e12; border:1px solid var(--edge); border-radius:8px; padding:10px;
+        font-size:12px; white-space:pre-wrap; word-break:break-word; margin:0; }
+  .diag { color:var(--muted); font-size:12.5px; margin:4px 0; }
+  .dot { display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:6px; vertical-align:middle; }
+  .empty { color:var(--muted); }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <h1>netstead · select</h1>
+    <input id="utterance" placeholder='e.g. "I-40 EB between South Miami Boulevard and Airport Boulevard"' />
+    <button id="go">Select</button>
+  </header>
+  <div id="map"></div>
+  <aside id="side">
+    <div id="status-wrap"><span class="empty">Type an utterance and press Select.</span></div>
+    <div class="label">Anchors</div>
+    <div id="anchors"><span class="empty">—</span></div>
+    <div class="label">Fragment</div>
+    <pre id="fragment">—</pre>
+    <div class="label">Diagnostics</div>
+    <div id="diag"><span class="empty">—</span></div>
+  </aside>
+</div>
+<script>
+const map = new maplibregl.Map({
+  container: "map",
+  style: {
+    version: 8,
+    sources: { osm: { type: "raster", tiles: ["https://a.tile.openstreetmap.org/{z}/{x}/{y}.png"],
+                      tileSize: 256, attribution: "© OpenStreetMap contributors" } },
+    layers: [{ id: "osm", type: "raster", source: "osm" }],
+  },
+  center: [-78.8, 35.88], zoom: 11,
+});
+map.addControl(new maplibregl.NavigationControl(), "top-left");
+
+const EMPTY = { type: "FeatureCollection", features: [] };
+
+map.on("load", async () => {
+  const fc = await (await fetch("/api/network.geojson")).json();
+  map.addSource("network", { type: "geojson", data: fc });
+  map.addLayer({ id: "network", type: "line", source: "network",
+    paint: { "line-color": "#7d8798", "line-width": 1.1, "line-opacity": 0.6 } });
+
+  map.addSource("selection", { type: "geojson", data: EMPTY });
+  map.addLayer({ id: "selection-halo", type: "line", source: "selection",
+    paint: { "line-color": "#ff8c3b", "line-width": 8, "line-opacity": 0.25, "line-blur": 2 } });
+  map.addLayer({ id: "selection", type: "line", source: "selection",
+    paint: { "line-color": "#ff8c3b", "line-width": 3.5 } });
+
+  map.addSource("anchors", { type: "geojson", data: EMPTY });
+  map.addLayer({ id: "anchors", type: "circle", source: "anchors",
+    paint: { "circle-radius": 7, "circle-color": ["get", "color"],
+             "circle-stroke-width": 2, "circle-stroke-color": "#11151a" } });
+
+  // click any link to inspect its attributes
+  const popup = new maplibregl.Popup({ closeButton: true });
+  map.on("click", "network", (e) => {
+    const p = e.features[0].properties;
+    popup.setLngLat(e.lngLat).setHTML(
+      `<b>link ${p.link_id}</b><br>${p.name || "<i>unnamed</i>"}` +
+      `${p.ref ? " · " + p.ref : ""}<br><span style="color:#666">${p.facility_type || ""}</span>`
+    ).addTo(map);
+  });
+  map.on("mouseenter", "network", () => map.getCanvas().style.cursor = "pointer");
+  map.on("mouseleave", "network", () => map.getCanvas().style.cursor = "");
+});
+
+function fitTo(fc) {
+  const b = new maplibregl.LngLatBounds();
+  for (const f of fc.features) for (const c of f.geometry.coordinates) b.extend(c);
+  if (!b.isEmpty()) map.fitBounds(b, { padding: 60, maxZoom: 15, duration: 600 });
+}
+
+async function run() {
+  const q = document.getElementById("utterance").value.trim();
+  if (!q) return;
+  const btn = document.getElementById("go"); btn.disabled = true;
+  try {
+    const r = await fetch("/api/select?utterance=" + encodeURIComponent(q));
+    const j = await r.json();
+    map.getSource("selection").setData(j.selected || EMPTY);
+    map.getSource("anchors").setData({
+      type: "FeatureCollection",
+      features: (j.anchors || []).map(a => ({
+        type: "Feature", geometry: { type: "Point", coordinates: [a.lon, a.lat] },
+        properties: { color: a.role === "from" ? "#35c46a" : "#e0524d" },
+      })),
+    });
+    if ((j.selected || EMPTY).features.length) fitTo(j.selected);
+
+    document.getElementById("status-wrap").innerHTML =
+      `<span class="status ${j.status}">${j.status.replace("_", " ")}</span>`;
+    document.getElementById("anchors").innerHTML = (j.anchors || []).length
+      ? j.anchors.map(a => `<div><span class="dot" style="background:${a.role==="from"?"#35c46a":"#e0524d"}"></span>` +
+          `<b>${a.role}</b> · node ${a.node_id} · ${a.kind} <span class="diag">(${a.detail})</span></div>`).join("")
+      : '<span class="empty">none resolved</span>';
+    document.getElementById("fragment").textContent =
+      j.fragment ? JSON.stringify(j.fragment, null, 2) : "—";
+    document.getElementById("diag").innerHTML = (j.diagnostics || []).length
+      ? j.diagnostics.map(d => `<div class="diag">• ${d}</div>`).join("") : '<span class="empty">—</span>';
+  } catch (err) {
+    document.getElementById("status-wrap").innerHTML =
+      `<span class="status not_found">error</span> <span class="diag">${err}</span>`;
+  } finally { btn.disabled = false; }
+}
+document.getElementById("go").addEventListener("click", run);
+document.getElementById("utterance").addEventListener("keydown", (e) => { if (e.key === "Enter") run(); });
+</script>
+</body>
+</html>

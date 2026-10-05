@@ -1,0 +1,91 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "dbcorral"
+version = "1.0.0b2"
+description = "Generic Frictionless-aligned tabular-data-package engine. Code-agnostic schemas, lazy ibis/duckdb pipelines, foreign-key + sync-state validation, geographic scoping, and edit/rollback primitives."
+readme = "README.md"
+license = "Apache-2.0"
+# NB: this file is a copy of the workspace-root LICENSE so that the
+# published wheel actually contains it. Hatchling silently skips
+# license-files entries that go outside the package directory
+# (`../../LICENSE` produced wheels with no License-File: metadata and
+# no licenses/ directory). The dev workflow keeps the workspace
+# LICENSE authoritative; the per-package copies are duplicated for
+# wheel-build only.
+license-files = ["LICENSE"]
+requires-python = ">=3.11"
+authors = [{ name = "Elizabeth Sall" }]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Intended Audience :: Science/Research",
+    "Intended Audience :: Developers",
+    "Topic :: Scientific/Engineering",
+]
+dependencies = [
+    "pydantic>=2.6",
+    # ibis 10+ wrapped-memtable create_table fix is in ibis_engine.py; see from_records.
+    "ibis-framework[duckdb]>=10",
+    "duckdb>=1.1",
+    "pyarrow>=17",
+    "fsspec>=2024.3",
+    "rich>=13",
+    "jinja2>=3.1",
+    "typer>=0.12",
+]
+# Note: we model the Frictionless Data Package *format* (an open spec)
+# with our own Pydantic types — we do NOT depend on the `frictionless`
+# library. We have engines doing the actual data work and our own
+# validators; pulling in frictionless would add ~20 transitive deps
+# (jsonschema, validators, marko, etc.) for no functionality we use.
+
+[project.optional-dependencies]
+polars = ["polars>=1.0"]
+pandas = ["pandas>=2.2"]
+s3 = ["s3fs>=2024.3"]
+gcs = ["gcsfs>=2024.3"]
+azure = ["adlfs>=2024.3"]
+keyring = ["keyring>=24"]
+mcp = ["mcp>=1.0"]
+
+[project.urls]
+Homepage = "https://e-lo.github.io/netstead"
+Source = "https://github.com/e-lo/netstead"
+Issues = "https://github.com/e-lo/netstead/issues"
+
+[project.scripts]
+corral = "corral.cli.app:app"
+
+[tool.hatch.build.targets.wheel]
+# Explicit include — we list every non-Python data file the package
+# ships (bundled HTML-renderer template assets + the sample fixture
+# CSV/Parquet/DuckDB/datapackage.json) so that a future gitignore tweak
+# can't silently drop them from the wheel. Hatchling defaults pick up
+# .py files but not resource siblings; without this, render_html() and
+# the bundled sample fixture would both import-error on installed
+# wheels.
+packages = ["corral"]
+include = [
+    "corral/**/*.py",
+    # HTML-report renderer templates.
+    "corral/reports/templates/report.html.j2",
+    "corral/reports/templates/report.css",
+    "corral/reports/templates/report.js",
+    # Bundled sample fixture (see corral/fixtures/sample/README.md
+    # for provenance + why it lives here separately from
+    # netstead.fixtures.leavenworth).
+    "corral/fixtures/**/*.csv",
+    "corral/fixtures/**/*.parquet",
+    "corral/fixtures/**/*.duckdb",
+    "corral/fixtures/**/datapackage.json",
+    "corral/fixtures/**/README.md",
+]
+
+[tool.hatch.build.targets.sdist]
+include = ["corral", "README.md"]

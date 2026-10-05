@@ -2,14 +2,14 @@
 
 Status: design only (no code). Author: design pass, 2026-09-30.
 
-Adds an **Overture Maps** transportation source to gmnspy alongside the existing
+Adds an **Overture Maps** transportation source to netstead alongside the existing
 OpenStreetMap (Overpass) source, exposing a `build_network_from_overture(...)`
 entry point whose signature mirrors `build_network_from_osm(...)` as closely as
 the data model allows, so users can swap sources with minimal friction.
 
 Mirrors the existing OSM pipeline shape:
-`gmnspy/osm/{build,query,convert,tags}.py` + maintained YAML under
-`gmnspy/osm/mappings/`.
+`netstead/osm/{build,query,convert,tags}.py` + maintained YAML under
+`netstead/osm/mappings/`.
 
 ---
 
@@ -64,7 +64,7 @@ connector ids, so node identity and connectivity are authoritative, not heuristi
 ## 2. Recommended data-access method
 
 **Recommendation: DuckDB reading GeoParquet directly from S3 with bbox pushdown,
-as the default; keep it engine-consistent with gmnspy's duckdb/parquet-first
+as the default; keep it engine-consistent with netstead's duckdb/parquet-first
 ethos and hand-roll the thin query wrapper (no heavy new dep).**
 
 Overture GeoParquet carries a top-level **`bbox` struct** (`bbox.xmin/xmax/ymin/ymax`)
@@ -103,15 +103,15 @@ Why this over the alternatives:
 
 | Option | Verdict |
 |---|---|
-| **DuckDB + `read_parquet` over S3 (bbox pushdown)** | ✅ **Chosen default.** DuckDB is already gmnspy's default engine; no new heavy dep (duckdb + its spatial/httpfs extensions). Full control over the exact columns/predicate. Bbox pushdown = only pay for the area. Same engine that later validates/stores the network. |
+| **DuckDB + `read_parquet` over S3 (bbox pushdown)** | ✅ **Chosen default.** DuckDB is already netstead's default engine; no new heavy dep (duckdb + its spatial/httpfs extensions). Full control over the exact columns/predicate. Bbox pushdown = only pay for the area. Same engine that later validates/stores the network. |
 | `overturemaps-py` CLI/lib | Nice for one-off downloads and a good **reference implementation** for release discovery, but it's an extra dep (MIT — permissive, fine) that mostly shells out to pyarrow/DuckDB anyway. Optional convenience path, not the core. |
 | Sedona / Wherobots | Spark cluster overhead; wrong scale for a lean single-node library. ❌ |
 | Azure mirror | Same data on Azure (`abfss://…`); support later as an `endpoint`/`s3_region`-style knob. Default to the AWS `us-west-2` bucket. |
 
-**bbox convention alignment.** gmnspy's OSM code already standardizes on
+**bbox convention alignment.** netstead's OSM code already standardizes on
 `(west, south, east, north)` EPSG:4326 bboxes and reuses `resolve_area()` for
 place-string geocoding (Nominatim) and point+buffer. The Overture query module
-should **reuse `gmnspy.osm.query.resolve_area()`** (or a shared `geo`/`area`
+should **reuse `netstead.osm.query.resolve_area()`** (or a shared `geo`/`area`
 helper lifted out of it) so a place string / point / bbox resolves identically for
 both sources. This is the biggest single lever for "swap sources with minimal
 friction."
@@ -134,7 +134,7 @@ def build_network_from_overture(
     network_type: str = "drive",          # drive/walk/bike/all — same vocab as OSM
     extra_tags: list[str] | None = None,  # extra Overture segment columns → link columns
     spec_version: str = DEFAULT_SPEC,     # "0.97"
-    engine: Any = None,                   # datagrove engine; default ibis/duckdb
+    engine: Any = None,                   # corral engine; default ibis/duckdb
     # --- Overture-specific (sensible defaults; power users only) ---
     overture_release: str = OVERTURE_RELEASE,   # pinned release, e.g. "2026-09-23.1"
     s3_region: str = "us-west-2",
@@ -166,18 +166,18 @@ Design notes on the mirror:
   and is source-agnostic — reuse it verbatim. Overture's `build` produces the
   same `(node_records, link_records)` contract and calls the shared assembler.
 
-CLI: add `gmnspy build --source overture ...` alongside the existing OSM build
-command (see `gmnspy/cli/commands/build.py`), gated on the same area/network-type
+CLI: add `netstead build --source overture ...` alongside the existing OSM build
+command (see `netstead/cli/commands/build.py`), gated on the same area/network-type
 options.
 
 ---
 
-## 4. Module layout (`gmnspy/overture/…`)
+## 4. Module layout (`netstead/overture/…`)
 
-Mirrors `gmnspy/osm/` one-for-one so the two sources read the same:
+Mirrors `netstead/osm/` one-for-one so the two sources read the same:
 
 ```
-gmnspy/overture/
+netstead/overture/
   __init__.py        # lazy exports + [overture] extra guard (duckdb, pyyaml)
   build.py           # build_network_from_overture(); reuses osm.build.network_from_records
   query.py           # area resolve (reuse osm.query.resolve_area) + DuckDB S3 read → (segments, connectors)
@@ -203,14 +203,14 @@ Responsibilities, matched to the OSM modules:
   explicit units ("60 km/h" / "45 mph"), so `parse_speed` is *simpler* than OSM's
   (no km/h-default guessing).
 - **`build.py`** = orchestration, delegating assembly to the **existing**
-  `gmnspy.osm.build.network_from_records` (rename/relocate that to a neutral
-  `gmnspy._build_common` or `gmnspy.network` helper in a small refactor, since it
+  `netstead.osm.build.network_from_records` (rename/relocate that to a neutral
+  `netstead._build_common` or `netstead.network` helper in a small refactor, since it
   is already source-agnostic — it only touches engine + GMNS spec). This avoids
   duplicating the Network-assembly + config-table logic.
 
 Packaging: add an **`[overture]` extra** (`duckdb`, `pyyaml`; `duckdb` may already
-be a core dep via datagrove — if so the extra is nearly empty) with the same lazy
-`__getattr__` import-guard pattern `gmnspy/osm/__init__.py` uses, so the heavy
+be a core dep via corral — if so the extra is nearly empty) with the same lazy
+`__getattr__` import-guard pattern `netstead/osm/__init__.py` uses, so the heavy
 read path only imports when actually called.
 
 ---
@@ -289,7 +289,7 @@ guess" stance as OSM's `parse_int`. Full lane fidelity → GMNS `lane` /
 
 Overture's `between:[start,end]` sub-ranges are the same concept as GMNS's own
 **`segment`** resource (a sub-range of a link with overriding attributes) and
-`segment_lane`. gmnspy already vendors `segment.schema.json` /
+`segment_lane`. netstead already vendors `segment.schema.json` /
 `segment_lane.schema.json` and exposes `.segments` on `Network`. The natural,
 faithful mapping is:
 
@@ -322,10 +322,10 @@ OSM converter's fail-fast check that every referenced node exists.
 
 ## 6. Dependencies + license notes
 
-| Component | License | Concern for Apache-2.0 gmnspy |
+| Component | License | Concern for Apache-2.0 netstead |
 |---|---|---|
-| **Overture transportation DATA** | **ODbL** + "© OpenStreetMap contributors" (includes TomTom) | ⚠️ **Share-alike DATA license, not code.** Same status as the existing OSM/Overpass path (also ODbL). Does **not** affect gmnspy's Apache-2.0 code license. Must **attribute** in derived products and propagate ODbL on redistributed *data*. Add an attribution string to the generated `config`/provenance, mirroring the ODbL note already in `osm/query.py`'s docstring. |
-| `duckdb` (+ `spatial`, `httpfs` extensions) | MIT | ✅ Permissive. Likely already present via datagrove's duckdb engine. |
+| **Overture transportation DATA** | **ODbL** + "© OpenStreetMap contributors" (includes TomTom) | ⚠️ **Share-alike DATA license, not code.** Same status as the existing OSM/Overpass path (also ODbL). Does **not** affect netstead's Apache-2.0 code license. Must **attribute** in derived products and propagate ODbL on redistributed *data*. Add an attribution string to the generated `config`/provenance, mirroring the ODbL note already in `osm/query.py`'s docstring. |
+| `duckdb` (+ `spatial`, `httpfs` extensions) | MIT | ✅ Permissive. Likely already present via corral's duckdb engine. |
 | `pyyaml` | MIT | ✅ Already used by the OSM mapping loader. |
 | `overturemaps-py` (optional convenience) | MIT | ✅ Permissive if adopted; recommend **not** taking it as a core dep (lean-deps ethos) — hand-roll the thin DuckDB read instead. |
 | `geoarrow`/`geopandas`/`shapely` | Apache-2.0 / BSD | ✅ Permissive **if** needed, but avoid: DuckDB `ST_AsText`/`ST_X`/`ST_Y` gives WKT + coords without a geometry-library dep, keeping the pipeline pandas/geopandas-free like the OSM one. |
@@ -397,7 +397,7 @@ Sources:
    first run; document and allow a pre-provisioned connection (`con=`).
 7. **Perf on large bboxes**: even with pushdown, a metro-scale pull is sizeable.
    Reuse/borrow the OSM path's "too big → narrow the area" guidance.
-8. **`network_from_records` relocation**: it currently lives in `gmnspy.osm.build`.
+8. **`network_from_records` relocation**: it currently lives in `netstead.osm.build`.
    Moving it to a neutral home is a small refactor touching the OSM import path —
    coordinate so the OSM source keeps working (re-export for back-compat).
 
@@ -408,10 +408,10 @@ Sources:
 **Phase 0 — spike (validate the read).** Prove the DuckDB-over-S3 bbox read for
 `theme=transportation` segment+connector on a small bbox (e.g. the existing
 `rdu_i40` / `leavenworth` fixture areas). Confirm columns, bbox pushdown, and
-anonymous S3 access. No gmnspy wiring yet. *De-risks §2, §8.5–8.6.*
+anonymous S3 access. No netstead wiring yet. *De-risks §2, §8.5–8.6.*
 
 **Phase 1 — MVP parity with OSM (drive network).**
-- `gmnspy/overture/{query,convert,attrs,build}.py` + two YAML mappings.
+- `netstead/overture/{query,convert,attrs,build}.py` + two YAML mappings.
 - Reuse `resolve_area()` and `network_from_records()`.
 - Map: `name`, `facility_type` (class), `free_speed` (scalar), `lanes`
   (best-effort), directed-link expansion from `access_restrictions.heading`.
@@ -422,7 +422,7 @@ anonymous S3 access. No gmnspy wiring yet. *De-risks §2, §8.5–8.6.*
   imports; ODbL attribution stamped into output.
 - Tests: pure `convert`/`attrs` on fixtures (no network); one integration test
   behind a network/opt-in marker.
-- CLI: `gmnspy build --source overture`.
+- CLI: `netstead build --source overture`.
 
 **Phase 2 — richness beyond OSM.**
 - Scoped attributes → GMNS `segment` / `segment_lane` tables (speed zones, lane
@@ -442,7 +442,7 @@ anonymous S3 access. No gmnspy wiring yet. *De-risks §2, §8.5–8.6.*
 ## 10. Open questions for the maintainer
 
 - **`network_from_records` home**: OK to relocate the source-agnostic assembler out
-  of `gmnspy.osm.build` into a shared module (with back-compat re-export)?
+  of `netstead.osm.build` into a shared module (with back-compat re-export)?
 - **Default release policy**: pin-and-bump-manually (recommended, reproducible) vs
   auto-latest (fresher, non-deterministic)?
 - **node_id policy**: minted ints + provenance (recommended, matches OSM) vs

@@ -17,7 +17,7 @@ Status: **IMPLEMENTED** (2026-10-01, branch `refactor/duckdb-one-engine`) · Dep
 > `editing/apply.py` (they're unreachable but harmless); removing the vestigial `--engine`
 > flags entirely (kept, help text corrected); the `ibis>=9,<10` pin.
 
-Goal: collapse datagrove's three-engine compute abstraction to **one compute engine (ibis-on-DuckDB)**,
+Goal: collapse corral's three-engine compute abstraction to **one compute engine (ibis-on-DuckDB)**,
 with **pandas / polars / pyarrow as input/output formats only**. Keep the ibis expression API. This is
 overwhelmingly *subtraction*; the ibis expression code (validation, FK, spatial, filter, editing) is
 untouched.
@@ -27,7 +27,7 @@ untouched.
 - TDD throughout; every phase ends green and is independently committable.
 - Only one phase (Phase 2) changes runtime behavior; it's reversible.
 - Non-goals (explicitly out of scope): Option C / dropping ibis; renaming `IbisEngine` (optional alias
-  only); rewriting gmnspy's independent `graph/source.py`; removing `Table.engine`/`Package.engine`
+  only); rewriting netstead's independent `graph/source.py`; removing `Table.engine`/`Package.engine`
   (kept as a single-engine singleton to avoid gratuitous churn — see Phase 5 note).
 
 ## End state
@@ -38,7 +38,7 @@ untouched.
   replacement scan or memtable; output via `to_pandas` / `to_polars` / `to_arrow`.
 - Tests: cross-engine parametrization and `test_cross_engine_dtype_parity.py` removed; replaced by a
   single compute path + explicit **format round-trip** tests.
-- Docs reposition datagrove as "a DuckDB/Parquet data-package engine with first-class pandas/polars/Arrow
+- Docs reposition corral as "a DuckDB/Parquet data-package engine with first-class pandas/polars/Arrow
   interchange."
 
 ---
@@ -46,7 +46,7 @@ untouched.
 ## Phase 0 — Safety net: pin the format-interop contract (no deletion, no behavior change)
 Purpose: lock the behavior we must preserve *before* deleting anything.
 
-1. New test file `packages/datagrove/tests/dataset/test_format_interop.py`:
+1. New test file `packages/corral/tests/dataset/test_format_interop.py`:
    - **Input**: build a `Package`/`Table` (or `Network`) from a pandas DataFrame, a polars DataFrame, and
      a pyarrow Table; assert identical row counts/values regardless of input format.
    - **Output**: from one duckdb-loaded table, assert `to_pandas()` / `to_polars()` / `to_arrow()` all
@@ -85,7 +85,7 @@ Exit: green. No commit needed if purely characterization, else commit.
 2. The engine classes stay on disk this phase (their unit tests still instantiate them directly, so they
    stay green). Only the *default/registry path* changes.
 
-Exit: full datagrove + gmnspy suites green (ibis was already the default, so behavior is unchanged for
+Exit: full corral + netstead suites green (ibis was already the default, so behavior is unchanged for
 the default path; only explicit `--engine pandas/polars` now warns). Commit. **Rollback point.**
 
 ## Phase 3 — Collapse the test matrix to one compute path + format round-trips
@@ -125,21 +125,21 @@ Purpose: remove dead round-trip code (cleanup, not behavior change).
 
 Exit: green. Commit.
 
-## Phase 6 — gmnspy + CLI cleanup
-1. gmnspy CLI: make `--engine` on `build`/`viz`/`clean`/`bench`/`select` (and `cli/_helpers.resolve_engine`,
+## Phase 6 — netstead + CLI cleanup
+1. netstead CLI: make `--engine` on `build`/`viz`/`clean`/`bench`/`select` (and `cli/_helpers.resolve_engine`,
    _helpers.py:29-38/63) deprecated no-ops (warn + ignore) for one release, or remove. `Network.from_source
    (engine=…)` (network.py:166-229) likewise.
 2. `map/edits.py` (413, 464): replace the hard-coded `PandasEngine()` writeback with the single engine
    (compute in duckdb; emit pandas via `to_pandas()` where a frame is actually needed).
-3. `datagrove` CLI `--engine` (cli/app.py:108-173): same deprecation treatment.
+3. `corral` CLI `--engine` (cli/app.py:108-173): same deprecation treatment.
 4. `graph/source.py` `NetworkSource`/`DuckDBSource`: **flag only** — it's independent, already duckdb,
-   with sanctioned raw SQL. Note the dedupe opportunity against datagrove's duckdb path; don't merge in
+   with sanctioned raw SQL. Note the dedupe opportunity against corral's duckdb path; don't merge in
    this change.
 
-Exit: gmnspy + datagrove green. Commit.
+Exit: netstead + corral green. Commit.
 
 ## Phase 7 — Docs, positioning, loose ends
-1. Rewrite "engine-agnostic" language in datagrove's `pyproject` description, READMEs, `docs/architecture.md`
+1. Rewrite "engine-agnostic" language in corral's `pyproject` description, READMEs, `docs/architecture.md`
    (§6.1 ibis-first already aligns) → "DuckDB/Parquet engine with pandas/polars/Arrow interchange."
 2. Update `lint_no_sql.py` doc note (rule itself unchanged — raw SQL still confined to the one engine).
 3. Record done-state in memory (`project-engine-strategy`).
@@ -160,7 +160,7 @@ Exit: gmnspy + datagrove green. Commit.
   test file; ~0 change to ibis expression code.
 
 ## Success criteria
-- One compute engine; `gmnspy`/`datagrove` work with no `--engine` flag.
+- One compute engine; `netstead`/`corral` work with no `--engine` flag.
 - pandas/polars/arrow round-trip in and out, dtype contract preserved (tested).
 - Full suite green with the parity/parametrization machinery gone.
 - Docs/positioning updated; ibis expression API unchanged.

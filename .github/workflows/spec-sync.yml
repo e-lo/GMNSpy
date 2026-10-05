@@ -2,10 +2,10 @@ name: Spec sync
 
 # Daily check for new upstream GMNS spec releases
 # (https://github.com/zephyr-data-specs/GMNS). When a tag exists upstream
-# that we have not yet vendored under packages/gmnspy/gmnspy/spec/, this
+# that we have not yet vendored under packages/netstead/netstead/spec/, this
 # workflow opens a PR vendoring it side-by-side. The reviewer is then
 # responsible for updating SUPPORTED_SPECS / DEFAULT_SPEC in
-# packages/gmnspy/gmnspy/spec/__init__.py. We do NOT auto-merge.
+# packages/netstead/netstead/spec/__init__.py. We do NOT auto-merge.
 
 on:
   schedule:
@@ -23,7 +23,7 @@ jobs:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       UPSTREAM: zephyr-data-specs/GMNS
       BASE_BRANCH: refactor/v1.0
-      SPEC_DIR: packages/gmnspy/gmnspy/spec
+      SPEC_DIR: packages/netstead/netstead/spec
     steps:
       - uses: actions/checkout@v6
         with:
@@ -112,7 +112,7 @@ jobs:
           - Adds \`${SPEC_DIR}/${VERSION}/\` with the upstream \`Specification/\` files plus a \`VERSION\` marker.
 
           ## Reviewer checklist
-          - [ ] Add \`"${VERSION}"\` to \`SUPPORTED_SPECS\` in \`packages/gmnspy/gmnspy/spec/__init__.py\`.
+          - [ ] Add \`"${VERSION}"\` to \`SUPPORTED_SPECS\` in \`packages/netstead/netstead/spec/__init__.py\`.
           - [ ] If 0.95 (\`gmns.spec.json\`) vs 0.96+ (\`datapackage.json\`) convention differs, update \`_DESCRIPTOR_FILENAME\` in the same file.
           - [ ] Consider bumping \`DEFAULT_SPEC\` to \`"${VERSION}"\` if this release is stable.
           - [ ] Spot-check the schema diff against the previous vendored version.

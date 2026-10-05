@@ -1,4 +1,4 @@
-# release-drafter config for the GMNSpy + datagrove monorepo.
+# release-drafter config for the Netstead + corral monorepo.
 #
 # Auto-drafts GitHub release notes from merged PR titles + labels using the
 # conventional-commits style we already write ("feat:", "fix:", "docs:", ...).
@@ -6,13 +6,13 @@
 #
 # v1.0 decision: ONE combined draft for the whole monorepo. release-drafter
 # can filter PRs with `include-paths:`, but it produces a single draft per
-# config file — splitting datagrove vs gmnspy into two distinct drafts would
+# config file — splitting corral vs netstead into two distinct drafts would
 # need two config files + two workflows + `tag-prefix` filtering per side.
 # Defer that until the package release cadences actually diverge. When we do
 # split, the per-package configs would add e.g.:
 #   include-paths:
-#     - packages/datagrove/**
-# and the matching workflow would key off `datagrove-v*` tags.
+#     - packages/corral/**
+# and the matching workflow would key off `corral-v*` tags.
 
 name-template: "$RESOLVED_VERSION"
 tag-template: "$RESOLVED_VERSION"

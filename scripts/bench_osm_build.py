@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Benchmark the gmnspy OSM->GMNS build across engines (and optional baselines).
+"""Benchmark the netstead OSM->GMNS build across engines (and optional baselines).
 
 This is dev tooling, not a CI gate. It measures the *build* path (convert +
 Network assembly), holding fetch constant by either generating a synthetic
@@ -20,7 +20,7 @@ Usage examples::
         --baselines --osm-file bayarea.osm --json
 
 Baseline caveat: osmnx and osm2gmns use different topology rules (simplification,
-directed-link convention) and attribute sets than gmnspy, so node/link counts
+directed-link convention) and attribute sets than netstead, so node/link counts
 and timings are *directional*, not apples-to-apples.
 
 A synthetic grid of side N has N*N nodes and 2*N ways; suggested sizes:
@@ -36,7 +36,7 @@ import sys
 import time
 import tracemalloc
 
-from gmnspy.osm import build, convert
+from netstead.osm import build, convert
 
 
 def synthetic_grid(n: int):
@@ -67,7 +67,7 @@ def _timed(fn):
 
 def bench_engine(node_recs, link_recs, engine_name):
     """Time the records->Network build on one engine."""
-    from datagrove.engines import resolve_engine
+    from corral.engines import resolve_engine
 
     eng = resolve_engine(engine_name)
 
@@ -118,7 +118,7 @@ def baseline_osm2gmns(osm_file):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description="Benchmark gmnspy OSM->GMNS build across engines.")
+    parser = argparse.ArgumentParser(description="Benchmark netstead OSM->GMNS build across engines.")
     parser.add_argument("--grids", default="10,40,120", help="Comma-separated synthetic grid sides (NxN).")
     parser.add_argument("--bbox", default=None, help="Live bbox 'west,south,east,north' (fetched once).")
     parser.add_argument("--engines", default="ibis,pandas,polars", help="Comma-separated engines to sweep.")
@@ -127,7 +127,7 @@ def main(argv=None):
     parser.add_argument("--json", action="store_true", help="Emit JSON instead of a text summary.")
     args = parser.parse_args(argv)
 
-    from datagrove.engines import list_engines
+    from corral.engines import list_engines
 
     engines = [e for e in (e.strip() for e in args.engines.split(",")) if e in list_engines()]
     results = {"datasets": []}
@@ -135,7 +135,7 @@ def main(argv=None):
     cases = []
     if args.bbox:
         west, south, east, north = (float(x) for x in args.bbox.split(","))
-        from gmnspy.osm import query
+        from netstead.osm import query
 
         nodes, ways = query.fetch_network_elements((west, south, east, north), network_type="drive")
         cases.append((f"bbox:{args.bbox}", nodes, ways))

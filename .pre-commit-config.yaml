@@ -1,9 +1,9 @@
-# Pre-commit configuration for the GMNSpy + datagrove monorepo.
+# Pre-commit configuration for the Netstead + corral monorepo.
 #
 # - ruff replaces black + flake8 + isort + pydocstyle (faster, single tool).
-# - import-linter enforces architectural boundaries (datagrove cannot
-#   import gmnspy; optional-extra submodules are not required imports).
-# - The legacy `gmnspy/` and `tests/` trees are excluded; they will be
+# - import-linter enforces architectural boundaries (corral cannot
+#   import netstead; optional-extra submodules are not required imports).
+# - The legacy `netstead/` and `tests/` trees are excluded; they will be
 #   removed in the Phase 0 closeout commit.
 
 default_stages: [pre-commit]

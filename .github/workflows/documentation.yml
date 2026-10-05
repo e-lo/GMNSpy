@@ -43,4 +43,4 @@ jobs:
       uses: mshick/add-pr-comment@v2
       with:
         message: |
-          Preview documentation at: <https://e-lo.github.io/GMNSpy/$DOC_REF_NAME>
+          Preview documentation at: <https://e-lo.github.io/netstead/$DOC_REF_NAME>

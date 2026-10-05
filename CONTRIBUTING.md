@@ -2,7 +2,7 @@
 
 ## Basic Setup
 
-This is a **uv workspace** with two packages — `datagrove` (generic Frictionless engine) and `gmnspy` (GMNS toolkit on top). Install both packages with **all extras**, editable, in a single command from the repo root:
+This is a **uv workspace** with two packages — `corral` (generic Frictionless engine) and `netstead` (GMNS toolkit on top). Install both packages with **all extras**, editable, in a single command from the repo root:
 
 ```bash
 uv sync --all-packages --all-extras
@@ -13,28 +13,28 @@ That's what CI runs. It creates `.venv/` at the workspace root with both package
 Run things via `uv run`:
 
 ```bash
-uv run gmnspy --help
-uv run datagrove --help
+uv run netstead --help
+uv run corral --help
 uv run pytest packages
 ```
 
-> **zsh users:** `[` and `]` are glob characters on zsh (the default shell on macOS). If you want to install **just one** extra ad-hoc, quote the brackets: `uv add 'gmnspy[clean]'` (not `uv add gmnspy[clean]`, which gives `zsh: no matches found`). The workspace-level `uv sync --all-packages --all-extras` doesn't hit this — no brackets in the command.
+> **zsh users:** `[` and `]` are glob characters on zsh (the default shell on macOS). If you want to install **just one** extra ad-hoc, quote the brackets: `uv add 'netstead[clean]'` (not `uv add netstead[clean]`, which gives `zsh: no matches found`). The workspace-level `uv sync --all-packages --all-extras` doesn't hit this — no brackets in the command.
 
 ### One package at a time (rare)
 
 If you want to install only one of the two packages (e.g. to mimic what a downstream user sees):
 
 ```bash
-uv pip install -e 'packages/datagrove[polars,s3]'    # quoted for zsh
-uv pip install -e 'packages/gmnspy[clean,server]'    # transitively gets datagrove
+uv pip install -e 'packages/corral[polars,s3]'    # quoted for zsh
+uv pip install -e 'packages/netstead[clean,server]'    # transitively gets corral
 ```
 
 ### Older / non-uv setup (not recommended)
 
 ```bash
 pip install -r dev-requirements.txt
-pip install -e packages/datagrove
-pip install -e packages/gmnspy
+pip install -e packages/corral
+pip install -e packages/netstead
 ```
 
 ## General Process
@@ -106,7 +106,7 @@ Documentation uses `mkdocs` and can be built by:
 pip install docs/requirements.txt
 ```
 
-2. Building and serving a local copy from the `GMNSpy` folder
+2. Building and serving a local copy from the `Netstead` folder
 
 ```bash
 mkdocs serve
