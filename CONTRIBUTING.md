@@ -98,18 +98,20 @@ Tests are automatically run when commits are pushed to Github using the `.github
 
 ## Documentation
 
-Documentation uses `mkdocs` and can be built by:
+Documentation uses `mkdocs`: one small umbrella site at the repo root plus a site per package.
 
-1. Install documentation requirements
+1. Install the documentation dependency group
 
 ```bash
-pip install docs/requirements.txt
+uv sync --all-packages --all-extras --group docs
 ```
 
-2. Building and serving a local copy from the `Netstead` folder
+2. Serve a site locally (umbrella, or a package's own site)
 
 ```bash
-mkdocs serve
+uv run mkdocs serve                                  # umbrella landing page
+uv run mkdocs serve -f packages/netstead/mkdocs.yml  # netstead docs
+uv run mkdocs serve -f packages/corral/mkdocs.yml    # corral docs
 ```
 
 General settings for documentation can be found in `mkdocs.yml`
