@@ -226,7 +226,18 @@ class LLMSettings(_Section):
 
     def match_retry_on(self, provider: str) -> bool:
         """Whether a miss re-prompts ``provider`` with the closest real names (``auto``: local endpoints only)."""
-        mode = self.quality.match_retry
+        return self._quality_on(self.quality.match_retry, provider)
+
+    def grounding_on(self, provider: str) -> bool:
+        """Whether network vocabulary (street names, route numbers) is sent to ``provider``."""
+        return self._quality_on(self.quality.grounding, provider)
+
+    def project_context_on(self, provider: str) -> bool:
+        """Whether the project's ``AGENTS.md``/``CLAUDE.md`` is sent to ``provider``."""
+        return self._quality_on(self.quality.project_context, provider)
+
+    def _quality_on(self, mode: Literal["auto", "on", "off"], provider: str) -> bool:
+        """Resolve an ``"auto"``/``"on"``/``"off"`` quality setting: ``auto`` is on only for a local endpoint."""
         return mode == "on" or (mode == "auto" and self.is_local(provider))
 
 
