@@ -30,6 +30,7 @@ def test_qwen3_models_are_marked_thinking_and_others_default_to_false():
     ollama = load_catalog()["ollama"]
     assert ollama.model("qwen3:4b").thinking is True
     assert ollama.model("qwen3:8b").thinking is True
+    assert ollama.model("qwen2.5:7b").thinking is False and ollama.model("qwen2.5:7b").tools is True
     anthropic = load_catalog()["anthropic"]
     assert anthropic.model("claude-haiku-4-5-20251001").thinking is False
 
