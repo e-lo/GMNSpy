@@ -163,3 +163,12 @@ def no_network(monkeypatch: pytest.MonkeyPatch) -> None:
         raise AssertionError(f"real network call in a test: {request.method} {request.url}")
 
     monkeypatch.setattr(httpx.HTTPTransport, "handle_request", refuse)
+
+
+@pytest.fixture(autouse=True)
+def _no_system_keyring(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Never let a test reach the developer's real keychain: ``keyring="auto"`` resolves to "none".
+
+    Tests that need a keyring pass ``fake_keyring`` explicitly.
+    """
+    monkeypatch.setattr("gmnspy.llm.secrets.system_keyring", lambda: None)
