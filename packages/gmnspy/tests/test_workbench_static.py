@@ -70,3 +70,26 @@ def test_wizard_modules_exist_and_are_wired_from_main():
     assert {"wizard.js", "filebrowser.js", "areapicker.js", "jobs.js"} <= names
     main = (JS_DIR / "main.js").read_text()
     assert 'from "./wizard.js"' in main and 'from "./jobs.js"' in main
+
+
+def test_llm_module_never_persists_or_stores_key_text():
+    src = (JS_DIR / "llm.js").read_text()
+    for banned in ("localStorage", "sessionStorage", "indexedDB", "document.cookie", "./store.js"):
+        assert banned not in src, f"llm.js must not use {banned}"
+
+
+def test_llm_key_field_is_write_only():
+    src = (JS_DIR / "llm.js").read_text()
+    assert 'type="password"' in src and 'autocomplete="off"' in src
+    assert "X-GMNSpy-Secrets" in src  # key writes and tests carry the secrets header
+
+
+def test_header_has_the_llm_picker_and_panel():
+    html = (STATIC_DIR / "index.html").read_text()
+    for marker in ('id="nl-provider"', 'id="nl-model"', 'id="nl-dot"', 'id="nl-default"', 'id="nl-manage"'):
+        assert marker in html
+    assert 'id="llm-panel"' in html
+    # The picker sits right after the utterance box (P1b may reflow the header; keep this adjacency).
+    assert html.index('id="utterance"') < html.index('id="nl-picker"') < html.index('id="go"')
+    main = (JS_DIR / "main.js").read_text()
+    assert 'from "./llm.js"' in main and "llm:" in main  # wired, and subscribed to the `llm` SSE event

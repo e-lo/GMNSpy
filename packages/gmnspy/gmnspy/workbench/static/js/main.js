@@ -4,6 +4,7 @@ import { $, toast } from "./dom.js";
 import { rememberRecent, renderHeader, renderRecent, wireHeader } from "./header.js";
 import { showEntry, wireHistory } from "./history.js";
 import { loadJobs, onJob, wireJobs } from "./jobs.js";
+import { onHistoryEntry, onLLMEvent, refreshLLM, wireLLM } from "./llm.js";
 import { fitBbox, fitLinks, fitNetwork, initMap, render } from "./map.js";
 import { decodeNetwork } from "./netbuf.js";
 import { populateColorby, renderLegend, syncControls, wirePanels } from "./panels.js";
@@ -84,12 +85,13 @@ function wireStore() {
 }
 
 async function boot() {
-  wireStore(); wirePanels(); wireSide(); wireTable(); wireHeader(); wireHistory(); wireMapButtons(); wireJobs(); wireWizard();
+  wireStore(); wirePanels(); wireSide(); wireTable(); wireHeader(); wireHistory(); wireMapButtons(); wireJobs(); wireWizard(); wireLLM();
   renderRecent();
   const [cfg, server, history] = await Promise.all([getJSON("/api/config"), getJSON("/api/state"), getJSON("/api/history")]);
   store.set({ server, basemap: cfg.style });
   await loadJobs();
   restoreViewMode();
+  refreshLLM().catch(e => toast(e.message));
   if (history.entries.length) showEntry(history.entries[history.entries.length - 1]);
   // Subscribe now, not on map load, so job/history events are never missed. Until the map is ready a
   // `state` event is only stored (header, panels and table render from it; the map draws nothing, as no
@@ -98,9 +100,10 @@ async function boot() {
   let mapReady = false;
   subscribe({
     state: e => { if (mapReady) onState(e.state); else store.set({ server: e.state }); },
-    history: e => { showEntry(e.entry); rememberRecent(e.entry); },
+    history: e => { showEntry(e.entry); rememberRecent(e.entry); onHistoryEntry(e.entry); },
     navigate: e => { if (mapReady) onNavigate(e); },
     job: e => { onJob(e.job); onWizardJob(e.job); },
+    llm: onLLMEvent,
   });
   initMap(cfg.style, {
     onLinkClick,

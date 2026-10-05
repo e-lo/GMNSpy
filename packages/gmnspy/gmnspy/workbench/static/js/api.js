@@ -41,3 +41,13 @@ export function subscribe(handlers) {
   for (const [type, fn] of Object.entries(handlers)) source.addEventListener(type, e => fn(JSON.parse(e.data)));
   return source;
 }
+
+// PUT/DELETE/POST for non-action routes (e.g. /api/llm). Extra headers carry X-GMNSpy-Secrets.
+export async function sendJSON(method, path, body, headers = {}) {
+  const init = { method, headers: { ...headers } };
+  if (body !== undefined) {
+    init.headers["Content-Type"] = "application/json";
+    init.body = JSON.stringify(body);
+  }
+  return readJSON(await fetch(path, init));
+}

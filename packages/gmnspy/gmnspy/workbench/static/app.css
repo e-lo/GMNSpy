@@ -193,3 +193,37 @@
   .fb-row.on { background:rgba(255,140,59,.16); }
   .fb-name { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .fb-kind { font-size:11px; padding:1px 7px; border-radius:999px; background:#20242e; color:var(--hl); }
+
+  /* ---- language models: header picker + panel ---- */
+  #nl-picker { display:flex; align-items:center; gap:6px; flex:none; min-width:0; }
+  #nl-picker .dot { margin-right:0; flex:none; }
+  #nl-picker select { background:#0c0e12; color:var(--ink); border:1px solid var(--edge); border-radius:8px;
+                      padding:7px 6px; max-width:150px; font-size:12.5px; }
+  .dot.ok { background:var(--from); }
+  .dot.ok.local { background:var(--hl); }
+  .dot.warn { background:var(--accent); }
+  .dot.off { background:#3a4150; }
+  #llm-panel { position:fixed; top:60px; right:12px; width:min(580px, calc(100vw - 24px));
+               max-height:calc(100vh - 120px); overflow:auto; z-index:6; }
+  #llm-panel table { width:100%; border-collapse:collapse; margin:4px 0 8px; }
+  #llm-panel th { text-align:left; color:var(--muted); font-weight:600; font-size:11px; padding:4px 6px; }
+  #llm-panel td { padding:5px 6px; border-bottom:1px solid var(--edge); vertical-align:middle; font-size:12.5px; }
+  #llm-panel td.acts { text-align:right; white-space:nowrap; }
+  #llm-panel td.acts button { margin-left:4px; }
+  #llm-panel input { background:#0c0e12; color:var(--ink); border:1px solid var(--edge); border-radius:6px; padding:5px 8px; }
+  .llm-note { color:var(--muted); font-size:12px; margin:0 0 8px; }
+  .tag { font-size:10.5px; padding:1px 6px; border-radius:999px; background:rgba(45,210,230,.15); color:var(--hl); }
+  .st.ok { color:var(--from); }
+  .st.fail { color:var(--to); }
+  #llm-quality .row input[type=number] { width:90px; flex:none; }
+  #llm-quality .row select { flex:none; max-width:230px; }
+  /* The header is crowded: let it wrap to a second row rather than squeeze the utterance box. */
+  @media (max-width: 1280px) {
+    header { flex-wrap:wrap; row-gap:8px; }
+    #utterance { flex:1 1 280px; min-width:0; }
+  }
+  @media (max-width: 640px) {
+    #nl-picker { flex-wrap:wrap; }
+    #nl-picker select { max-width:120px; }
+    #llm-panel { top:auto; bottom:44px; }
+  }

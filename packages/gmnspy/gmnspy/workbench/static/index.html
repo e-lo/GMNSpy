@@ -23,6 +23,13 @@
       <button data-mode="table">Table</button>
     </div>
     <input id="utterance" placeholder='e.g. "I-40 EB between South Miami Boulevard and Airport Boulevard"' aria-label="Selection utterance" />
+    <span id="nl-picker">
+      <span id="nl-dot" class="dot off" aria-hidden="true"></span>
+      <select id="nl-provider" aria-label="Language model provider (this session)"></select>
+      <select id="nl-model" aria-label="Language model (this session)"></select>
+      <button id="nl-default" class="mini ghost" title="Save this provider and model as your default" disabled>Make default</button>
+      <button id="nl-manage" class="mini ghost" aria-label="Manage language models">Models…</button>
+    </span>
     <button id="go">Select</button>
     <span id="count"></span>
     <button id="jobs-btn" class="mini ghost" aria-label="Background jobs">Jobs <span id="jobs-count" class="pcount">0</span></button>
@@ -105,6 +112,22 @@
   <h4>Session as Python</h4>
   <pre id="hist-script"></pre>
   <div class="row"><button class="mini" id="hist-copy-all">Copy all</button></div>
+</div>
+<div class="panel" id="llm-panel" role="dialog" aria-label="Language models">
+  <h4>Language models</h4>
+  <p class="llm-note" id="llm-privacy" aria-live="polite"></p>
+  <p class="llm-note" id="llm-storage"></p>
+  <table id="llm-providers"></table>
+  <h4 style="margin-top:14px">Quality &amp; context</h4>
+  <div id="llm-quality"></div>
+  <h4 style="margin-top:14px">Ollama server</h4>
+  <div class="row"><input id="llm-ollama-url" class="grow" aria-label="Ollama URL" spellcheck="false" placeholder="http://localhost:11434" />
+    <button class="mini" id="llm-ollama-save">Save</button></div>
+  <h4 style="margin-top:14px">Model catalog</h4>
+  <div class="row"><select id="llm-catalog-provider" aria-label="Catalog provider"></select></div>
+  <table id="llm-catalog"></table>
+  <p class="llm-note" id="llm-catalog-hint"></p>
+  <div class="row"><button class="mini ghost" id="llm-close">Close</button></div>
 </div>
 <div class="panel" id="jobs-panel">
   <h4>Jobs</h4>
