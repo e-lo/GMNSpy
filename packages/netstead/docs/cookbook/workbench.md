@@ -21,7 +21,7 @@ uv run netstead app ./my-network
 
 Open <http://127.0.0.1:8850>. Open more networks with **Open / Import…** in the header (see below) or
 the **Recent** list, and switch between them with the network picker. `netstead viz` and `netstead select-serve`
-are aliases of `netstead app`.
+are aliases of `netstead app` (the old standalone apps they used to start are gone).
 
 ```bash
 uv run netstead app ./base ./build --port 8900 --basemap esri --provider anthropic
@@ -149,6 +149,56 @@ basemap = "esri"
 [select]
 provider = "anthropic"
 ```
+
+### The Settings dialog
+
+**Settings…** in the header opens a form built from the same settings model. Each field has a badge showing where
+its current value comes from: `default`, `user`, `project`, `env` or `session`.
+
+- **Save to** chooses the layer a change is written to: **User** (your user file, the default), **This project**
+  (`./netstead.toml`), or **This session only** (nothing is written to disk). Every change is a `SetSetting`
+  action, so it appears in the history and replays from Python.
+- **Reset** removes the value from the layer it comes from. Emptying a field does the same in the **Save to** layer.
+  If the value comes from another layer, the dialog points you to **Reset** instead. A number the browser can't
+  read, such as `1e`, is never saved: the dialog says so and keeps the saved value.
+- A value set by a `NETSTEAD_*` environment variable outranks both files. The form says so when a saved
+  value would not take effect.
+- Keys read only at launch, such as the app server's port, are tagged **applies on next launch**. A session value
+  has no effect on them.
+- `io.allowed_roots` is read-only here. The folders the app may read and write can only be widened in a
+  config file, an environment variable, or on the command line.
+- A basemap change applies at once, without reloading the page.
+- **Language models** is a section of the same dialog. **Models…** in the header opens it too.
+- The dialog is keyboard-friendly: focus starts in it, Tab stays inside it, and Esc closes it and returns focus to
+  where you were.
+
+## Linked map and table
+
+The map and the table are linked both ways. Three sets drive what you see:
+
+- the **selection**, which is recorded: a natural-language select, or **Set as selection**;
+- the **highlights**, links you click or shift-drag a box over in Highlight mode; these are not recorded;
+- the **focus**, the one record you last clicked on the map or in the table. It is not recorded either.
+
+Focus is a view. Clicking never changes the selection.
+
+- **Focus.** Click a link or node on the map: its details show and, when the table shows that table, its row is
+  outlined and scrolled into view (on whichever page it sits). Click a row: it is focused, and the map flies to it.
+- **Show** in the table bar picks the rows:
+  - **All rows**;
+  - **Selection**: the selected links, or the rows of another table that point at them (for example their lanes);
+  - **Highlighted**: the same for the highlighted links. A shift-drag box in Highlight mode switches to it.
+  - **Related**: the records related to the highlighted links. A focused record only tints rows; it does not
+    change this list. So clicking a row here focuses it without changing the list.
+- **Foreign keys.** A key column such as `from_node_id` is a link. Click it to open the `node` table at that row; the
+  map marks the node and flies to it.
+- **Related records.** Rows a foreign key away from what is focused or highlighted are tinted in every table and on
+  the map. Examples are the lanes of a link, a link's end nodes, and the links at a node.
+  - The keys come from the GMNS spec, not a hard-coded list.
+  - The table list shows how many records are related in each table (`N related`; a `+` means the count stopped
+    early). Hover a tinted row to see which key relates it, for example `related via lane.link_id → link`.
+  - **Expand a hop** follows keys one more step: from a node to its links, then to their lanes.
+  - Related records are a read-only view. Nothing is recorded.
 
 ## Language models (natural-language selection)
 

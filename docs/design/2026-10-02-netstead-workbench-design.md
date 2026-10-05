@@ -11,7 +11,7 @@ Netstead has grown several separate web surfaces, and none of them covers the wh
 | Surface | Stack | Strength | Gap |
 |---|---|---|---|
 | `netstead viz` (`netstead/viz/server.py`, `templates/index.html`) | FastAPI, MapLibre + deck.gl, binary buffers | Fast map, colour-by, paged tables, NL select, pick to fragment | Holds one network frozen at startup; one 737-line inline script; map→table link is partial |
-| `select-serve` (`select/webapp.py`) | MapLibre + GeoJSON | — | Superseded prototype |
+| `select-serve` (`select/webapp.py`) | MapLibre + GeoJSON | — | Removed in P1b |
 | `NetworkMap` and the validation report (`netstead/map/*`) | Leaflet + Jinja, offline | Issue markers, "fix locally" editor, edit log | Static; no row→map link; 2000-item cap |
 | corral `ValidationReport.to_html` | Jinja + Vega-Lite | Generic report | No map link |
 
@@ -341,6 +341,8 @@ This also fixes the stale `NETSTEAD_AUTO_APPROVE` vs `CORRAL_AUTO_APPROVE` docst
 | P5 | Compare | `diff_networks` + Compare workspace |
 | P6 | Transit | corral GTFS spec, `TransitFeed` component, transit layers, selection, validation, changes, compare |
 | Later | Apply cards; scenarios | `apply_card`, then `Scenario(base, cards[])` built on the lineage, and diff → cards |
+
+P1b plan: [2026-10-05-workbench-p1b-plan.md](2026-10-05-workbench-p1b-plan.md); decisions on click = focus, POST for id lists, and one-hop relations are recorded there.
 
 Next: the P0 implementation plan (`docs/design/2026-10-02-workbench-p0-plan.md`).
 
