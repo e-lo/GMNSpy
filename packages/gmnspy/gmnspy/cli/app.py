@@ -27,6 +27,7 @@ from .commands import (
     doctor,
     index,
     info,
+    llm,
     mcp,
     quality,
     scope,
@@ -73,6 +74,7 @@ def _build_gmnspy_app() -> typer.Typer:
     index.register(gmnspy_app)
     build.register(gmnspy_app)
     select.register(gmnspy_app)
+    llm.register(gmnspy_app)
     viz.register(gmnspy_app)
     workbench.register(gmnspy_app)
     return gmnspy_app

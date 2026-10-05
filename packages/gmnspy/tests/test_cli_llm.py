@@ -1,0 +1,103 @@
+"""Tests for `gmnspy llm`: key status, set, remove, test and models from the terminal."""
+
+import json
+
+import httpx
+import pytest
+from gmnspy.cli.app import app
+from gmnspy.llm.secrets import KEYRING_SERVICE
+from typer.testing import CliRunner
+
+pytestmark = pytest.mark.usefixtures("no_network")
+
+KEY = "sk-test-cli-abcdefghijklmnopqrstuvwxyz"
+KEY_ENV = (
+    "GMNSPY_ANTHROPIC_API_KEY", "ANTHROPIC_API_KEY", "GMNSPY_OPENAI_API_KEY",
+    "OPENAI_API_KEY", "GMNSPY_GEMINI_API_KEY", "GEMINI_API_KEY",
+)  # fmt: skip
+runner = CliRunner()
+
+
+@pytest.fixture
+def ring(tmp_path, monkeypatch, fake_keyring, fake_api):
+    """Isolated config dir and env, the fake keyring as the 'system' one, and the fake API as the network."""
+    import gmnspy.llm
+
+    monkeypatch.setenv("GMNSPY_CONFIG_DIR", str(tmp_path / "user"))
+    monkeypatch.chdir(tmp_path)
+    for name in KEY_ENV:
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setattr("gmnspy.llm.secrets.system_keyring", lambda: fake_keyring)
+    real = gmnspy.llm.build_registry
+    monkeypatch.setattr(
+        gmnspy.llm, "build_registry", lambda settings, **kw: real(settings, transport=fake_api.transport(), **kw)
+    )
+    return fake_keyring
+
+
+def _llm(*args, input=None):
+    return runner.invoke(app, ["llm", *args], input=input)
+
+
+def test_status_json_lists_providers(ring, fake_api):
+    fake_api.add("GET", "/api/tags", body={"models": [{"name": "qwen3:8b"}]})
+    result = _llm("status", "--json")
+    assert result.exit_code == 0, result.output
+    data = json.loads(result.stdout)
+    assert [r["provider"] for r in data["providers"]] == ["anthropic", "openai", "gemini", "ollama"]
+    assert data["keyring"] is True and data["providers"][-1]["usable"] is True
+
+
+def test_set_key_prompts_hidden_and_never_echoes(ring):
+    result = _llm("set-key", "openai", input=KEY + "\n")
+    assert result.exit_code == 0, result.output
+    assert "stored the OpenAI key in the keyring" in result.output and KEY not in result.output
+    assert ring.store[(KEYRING_SERVICE, "openai")] == KEY
+
+
+def test_set_key_from_stdin(ring):
+    assert _llm("set-key", "anthropic", "--stdin", input=KEY + "\n").exit_code == 0
+    assert ring.store[(KEYRING_SERVICE, "anthropic")] == KEY
+
+
+def test_remove_key(ring):
+    _llm("set-key", "gemini", input=KEY + "\n")
+    result = _llm("remove-key", "gemini")
+    assert result.exit_code == 0 and "removed the Gemini key from: keyring" in result.output and ring.store == {}
+
+
+def test_local_provider_needs_no_key_and_unknown_provider_exits_2(ring):
+    local = _llm("set-key", "ollama", input="x\n")
+    unknown = _llm("test", "mistral")
+    assert (local.exit_code, unknown.exit_code) == (2, 2)
+    assert "needs no API key" in local.output and "unknown provider 'mistral'" in unknown.output
+
+
+def test_test_exit_codes(ring, fake_api):
+    ring.set_password(KEYRING_SERVICE, "anthropic", "k")
+    fake_api.add("GET", "/v1/models", body={"data": [{"id": "claude-sonnet-5"}]})
+    ok = _llm("test", "anthropic")
+    missing = _llm("test", "openai")
+    assert ok.exit_code == 0 and "Anthropic: connected (1 models available)." in ok.output
+    assert "catalog ids not served here" in ok.output
+    assert missing.exit_code == 1 and "OpenAI: no API key is configured" in missing.output
+
+
+def test_models_lists_the_catalog(ring):
+    result = _llm("models", "anthropic")
+    assert result.exit_code == 0 and "claude-haiku-4-5-20251001" in result.output and "fast" in result.output
+
+
+def test_status_text_shows_source_not_key(ring, fake_api):
+    ring.set_password(KEYRING_SERVICE, "openai", KEY)
+    fake_api.add("GET", "/api/tags", raises=httpx.ConnectError("refused"))
+    result = _llm("status")
+    assert result.exit_code == 0 and "key set (keyring)" in result.output and KEY not in result.output
+    assert "could not reach Ollama" in result.output
+
+
+def test_set_key_without_a_keyring_names_the_env_vars(ring, monkeypatch):
+    monkeypatch.setattr("gmnspy.llm.secrets.system_keyring", lambda: None)
+    result = _llm("set-key", "gemini", input=KEY + "\n")
+    assert result.exit_code == 1 and "set GMNSPY_GEMINI_API_KEY or GEMINI_API_KEY" in result.output
+    assert "key storage: none (no OS keyring)" in _llm("status").output
