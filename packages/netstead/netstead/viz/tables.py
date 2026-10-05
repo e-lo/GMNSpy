@@ -16,12 +16,14 @@ from __future__ import annotations
 
 from typing import Any
 
+import numpy as np
 import pandas as pd
 
 __all__ = [
     "GEOM_COLS",
     "MAX_LIMIT",
     "FilterError",
+    "locate_row",
     "page_table",
     "parse_ids",
     "table_list_entry",
@@ -191,6 +193,43 @@ def page_table(
         df = df.sort_values(sort, ascending=(direction != "desc"), kind="stable")
     offset, limit = _clamp(offset, limit)
     return _rows_payload(df.iloc[offset : offset + limit], total, offset, limit)
+
+
+def locate_row(
+    source: Any,
+    key: Any,
+    *,
+    pk: str,
+    sort: str | None = None,
+    direction: str = "asc",
+    filter_spec: list[dict] | None = None,
+    ids: list | None = None,
+) -> int | None:
+    """Index of the row whose ``pk`` is ``key``, in the order :func:`page_table` pages ``source``.
+
+    Only eager frames are located (the map-linked ``link``/``node`` tables); a lazy table, an
+    unknown key column, or a row filtered out answers ``None``. Unlike ``page_table``, an empty
+    ``ids`` list means "no rows".
+
+    Raises:
+        FilterError: unknown filter column/operator, or unknown sort column.
+
+    >>> locate_row(pd.DataFrame({"id": [4, 2, 7]}), 7, pk="id", sort="id", direction="desc")
+    0
+    """
+    if not _is_frame(source) or pk not in source.columns:
+        return None
+    df = source
+    if ids is not None:
+        df = df[df[pk].isin(ids)]
+    if filter_spec:
+        df = _apply_filter(df, filter_spec)
+    if sort:
+        if sort not in df.columns:
+            raise FilterError(f"unknown sort column {sort!r}")
+        df = df.sort_values(sort, ascending=(direction != "desc"), kind="stable")
+    hits = np.flatnonzero((df[pk] == key).to_numpy(dtype=bool, na_value=False))
+    return int(hits[0]) if len(hits) else None
 
 
 def _page_lazy(
