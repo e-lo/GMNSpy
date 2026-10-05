@@ -179,7 +179,7 @@ maintained in `gmnspy/llm/models.toml`:
 | `anthropic` | Haiku 4.5 (`claude-haiku-4-5-20251001`) |
 | `openai` | small/fast tier |
 | `gemini` | small/fast tier |
-| `ollama` | `qwen3:4b` |
+| `ollama` | `qwen3:4b`, or an installed tool-capable model such as `qwen2.5:7b` when `qwen3:4b` isn't installed |
 
 Pick a larger model from the picker if parses go wrong.
 

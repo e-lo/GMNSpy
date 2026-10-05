@@ -88,11 +88,21 @@ uv run gmnspy llm test ollama  # a token-free connection test
 ```
 
 If Ollama is reachable but has no models, `gmnspy llm status` says
-`next step: run: gmnspy llm pull qwen3:4b`.
+`next step: run: gmnspy llm pull qwen3:4b`. Once it has a model, the Ollama line names the model
+selections will use, e.g. `running, 1 model(s); selections use qwen2.5:7b (qwen3:4b is not installed)`,
+and `gmnspy llm test ollama` says the same.
 
 ## Get a model
 
-The default is Qwen 3 4B (`qwen3:4b`). Any one of these does the same thing:
+**Already have a model?** You may not need to download anything. When you haven't chosen a model
+and the default (`qwen3:4b`) isn't installed, gmnspy uses an installed one instead: the first
+model from the table below that you have (in table order), else the first installed model that
+Ollama reports as supporting tools. For example, if you only have `qwen2.5:7b`, the Workbench
+and `gmnspy select --provider ollama` use it as is. A model you chose yourself (`--model`,
+`select.model`, or the picker) is never replaced. If no installed model supports tools, gmnspy
+asks you to pull the default.
+
+Otherwise, pull the default, Qwen 3 4B (`qwen3:4b`). Any one of these does the same thing:
 
 - In a terminal, with Ollama's own command:
 
@@ -116,9 +126,11 @@ The default is Qwen 3 4B (`qwen3:4b`). Any one of these does the same thing:
 |---|---|---|
 | `qwen3:4b` (default) | about 2.5 GB | Most laptops. Enough for one selection at a time. |
 | `qwen3:8b` | about 5.2 GB | When `qwen3:4b` keeps misreading your phrases, and you have the memory to spare. Slower. |
+| `qwen2.5:7b` | about 4.7 GB | If you already have it installed, it works: no need to pull another model. |
 
 Sizes are the download sizes listed on [ollama.com/library/qwen3](https://ollama.com/library/qwen3)
-(checked 2026-10-05). The library page marks Qwen 3 as supporting tools, which gmnspy uses.
+and [ollama.com/library/qwen2.5](https://ollama.com/library/qwen2.5) (checked 2026-10-05). Both
+library pages mark the models as supporting tools, which gmnspy uses.
 Ollama doesn't publish memory requirements per model. As a rough guide, you need at least the
 download size free in memory, plus some overhead, to run a model comfortably. If your machine
 starts swapping, use the smaller model.
@@ -130,7 +142,8 @@ bound to this machine (the default, `127.0.0.1`). Otherwise, pull from a termina
 
 1. Start the Workbench: `uv run gmnspy app ./my-network`.
 2. Choose **Ollama (local)** in the provider picker next to the utterance box, then pick a model.
-   The picker lists the models Ollama has installed.
+   The picker lists the models Ollama has installed, and starts on the model selections will use.
+   If that isn't the default because the default isn't installed, hovering over the model says so.
 3. That choice applies to this session. Click **Make default** to save it to your user config.
 
 Or set it in a config file:
@@ -147,6 +160,9 @@ From a terminal:
 ```bash
 uv run gmnspy select "I-40 EB between South Miami Boulevard and Airport Boulevard" ./my-network --provider ollama --model qwen3:4b
 ```
+
+Without `--model` (and with no `select.model` set), `gmnspy select` uses the model
+`gmnspy llm status` names.
 
 ## Ollama on another machine
 
@@ -194,15 +210,18 @@ constrained to the same schema. You don't need to do anything.
 
 **More misreadings than a hosted model.** Small models make more mistakes. Try, in order:
 
-1. Give the model another attempt after an invalid reply:
+1. Keep `llm.quality.temperature` at its default, `0`. In our tests `qwen2.5:7b` read every one of
+   a set of varied requests correctly at temperature 0, and misread a few street names as route
+   numbers at Ollama's own default temperature.
+2. Give the model another attempt after an invalid reply:
 
     ```toml
     [llm.quality]
     max_repairs = 2
     ```
 
-2. Switch to `qwen3:8b`.
-3. Add a `GMNSPY.md` with your local names ("the Beltline" is I 440). See
+3. Switch to `qwen3:8b`.
+4. Add a `GMNSPY.md` with your local names ("the Beltline" is I 440). See
    [Project notes](workbench.md#project-notes).
 
 ## See also
