@@ -24,6 +24,7 @@ _OVERLAY_KEYS = frozenset({"label", "default_model"})
 _KNOWN = ("anthropic", "openai", "gemini", "ollama")
 
 Tier = Literal["fast", "balanced", "best"]
+_TIERS = frozenset({"fast", "balanced", "best"})
 
 
 @dataclass(frozen=True)
@@ -76,24 +77,50 @@ class Catalog:
 
 
 def load_catalog(user_dir: str | Path | None = None) -> Catalog:
-    """Load the packaged catalog, overlaid with ``<user_dir>/llm_models.toml`` when that file exists."""
+    """Load the packaged catalog, overlaid with ``<user_dir>/llm_models.toml`` when that file exists.
+
+    A malformed overlay (bad TOML, a provider body or model entry of the wrong shape, a model
+    with no ``id``) raises :class:`ValueError` naming the overlay path rather than being skipped:
+    the overlay is the one place a user edits this catalog, so a mistake there should surface
+    where it was made (``gmnspy llm`` / the Settings panel) instead of silently not applying.
+    """
     raw = tomllib.loads(resources.files("gmnspy.llm").joinpath("models.toml").read_text(encoding="utf-8"))
-    if user_dir is not None and (overlay := Path(user_dir) / CATALOG_OVERLAY).is_file():
-        raw = _apply_overlay(raw, tomllib.loads(overlay.read_text(encoding="utf-8")))
+    if user_dir is not None and (overlay_path := Path(user_dir) / CATALOG_OVERLAY).is_file():
+        raw = _apply_overlay(raw, _load_overlay(overlay_path), overlay_path)
     return Catalog({name: _provider(name, body) for name, body in raw.items() if name in _KNOWN})
 
 
-def _apply_overlay(base: dict[str, Any], overlay: dict[str, Any]) -> dict[str, Any]:
+def _load_overlay(path: Path) -> dict[str, Any]:
+    """Parse the overlay TOML file, wrapping a parse error as ``ValueError`` naming ``path``."""
+    try:
+        return tomllib.loads(path.read_text(encoding="utf-8"))
+    except tomllib.TOMLDecodeError as exc:
+        raise ValueError(f"LLM catalog overlay {path}: invalid TOML: {exc}") from None
+
+
+def _apply_overlay(base: dict[str, Any], overlay: dict[str, Any], path: Path) -> dict[str, Any]:
     out = {name: dict(body) for name, body in base.items()}
     for name, body in overlay.items():
         if name not in out:
             continue  # no adapter could serve a provider the packaged catalog doesn't define
+        if not isinstance(body, dict):
+            raise ValueError(
+                f"LLM catalog overlay {path}: provider {name!r} must be a table, not {type(body).__name__}"
+            )
         merged = out[name]
         merged.update({key: value for key, value in body.items() if key in _OVERLAY_KEYS})
         models = {m["id"]: dict(m) for m in merged.get("models", [])}
-        for model in body.get("models", []):
+        overlay_models = body.get("models", [])
+        if not isinstance(overlay_models, list):
+            raise ValueError(
+                f"LLM catalog overlay {path}: provider {name!r} models must be a list, "
+                f"not {type(overlay_models).__name__}"
+            )
+        for model in overlay_models:
+            if not isinstance(model, dict):
+                raise ValueError(f"LLM catalog overlay {path}: provider {name!r} has a model entry that isn't a table")
             if "id" not in model:
-                raise ValueError(f"LLM catalog overlay: every model needs an id (provider {name!r})")
+                raise ValueError(f"LLM catalog overlay {path}: every model needs an id (provider {name!r})")
             models[model["id"]] = {**models.get(model["id"], {}), **model}
         merged["models"] = list(models.values())
     return out
@@ -115,7 +142,7 @@ def _provider(name: str, body: dict[str, Any]) -> ProviderInfo:
                 ModelInfo(
                     id=str(m["id"]),
                     label=str(m.get("label", m["id"])),
-                    tier=m.get("tier"),
+                    tier=m.get("tier") if m.get("tier") in _TIERS else None,
                     tools=bool(m.get("tools", True)),
                 )
                 for m in body.get("models", [])

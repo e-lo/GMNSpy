@@ -106,3 +106,68 @@ def test_repr_never_shows_keys(fake_keyring):
     store = _store(fake_keyring)
     store.set(OPENAI, "sk-test-repr-check")
     assert "sk-test" not in repr(store)
+
+
+def test_origin_of_drops_default_ports_and_keeps_ipv6_brackets():
+    assert origin_of("https://api.example.org:443/v1") == "https://api.example.org"
+    assert origin_of("http://api.example.org:80/v1") == "http://api.example.org"
+    assert origin_of("https://api.example.org:8443/v1") == "https://api.example.org:8443"
+    assert origin_of("http://[::1]:11434/") == "http://[::1]:11434"
+    assert origin_of("https://[2001:db8::1]/v1") == "https://[2001:db8::1]"
+
+
+def test_origin_of_rejects_userinfo_and_empty_scheme_or_host():
+    with pytest.raises(ValueError, match="username or password"):
+        origin_of("https://evil:sneaky@api.example.org/v1")
+    with pytest.raises(ValueError, match="username or password"):
+        origin_of("https://token@api.example.org/v1")
+    with pytest.raises(ValueError, match="scheme and a host"):
+        origin_of("api.example.org/v1")
+    with pytest.raises(ValueError, match="scheme and a host"):
+        origin_of("https:///v1")
+
+
+def test_set_and_remove_errors_have_no_exception_context(fake_keyring):
+    class Broken:
+        def get_password(self, *a):
+            return "something"
+
+        def set_password(self, *a):
+            raise RuntimeError("locked")
+
+        def delete_password(self, *a):
+            raise RuntimeError("locked")
+
+    store = _store(Broken())
+    with pytest.raises(SecretStoreError) as set_info:
+        store.set(OPENAI, "sk-test-key")
+    assert set_info.value.__context__ is None and set_info.value.__cause__ is None
+
+    with pytest.raises(SecretStoreError) as remove_info:
+        store.remove(OPENAI)
+    assert remove_info.value.__context__ is None and remove_info.value.__cause__ is None
+
+
+def test_keyring_read_failure_reports_locked_not_missing():
+    class Broken:
+        def get_password(self, *a):
+            raise RuntimeError("locked")
+
+        def set_password(self, *a):
+            raise RuntimeError("locked")
+
+        def delete_password(self, *a):
+            raise RuntimeError("locked")
+
+    store = _store(Broken())
+    with pytest.raises(MissingKey, match=r"could not be read \(locked\?\)"):
+        store.get(OPENAI, "OpenAI")
+
+
+def test_looks_like_secret_scans_dict_keys_and_sets():
+    key = "sk-proj-abcdefghijklmnopqrstuvwxyz0123"
+    assert looks_like_secret({key: "harmless"})
+    assert looks_like_secret({"abcdefghijklmnopqrstuvwxyz0123", key})  # a set
+    assert looks_like_secret(f"FOO_{key}")  # 'sk-' right after '_' still counts
+    assert looks_like_secret(f"bar-{key}")  # ... and right after '-'
+    assert looks_like_secret(f"SK-ANT-{'A' * 25}")  # case-insensitive prefix

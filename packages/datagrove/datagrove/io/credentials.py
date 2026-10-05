@@ -129,14 +129,41 @@ def credential_source(host: str) -> str:
     return "none"
 
 
+#: Modules of the real OS-backed keyring backends this function trusts. Anything else —
+#: notably ``keyrings.alt.*`` (plaintext/obfuscated file backends, e.g.
+#: ``keyrings.alt.file.PlaintextKeyring`` at priority 0.5) — is rejected even if a hostile
+#: ``PYTHON_KEYRING_BACKEND`` env var or ``keyringrc.cfg`` selects it and gives it a
+#: priority above the fail backend's.
+_REAL_BACKEND_MODULES: Final = frozenset(
+    {
+        "keyring.backends.macOS",
+        "keyring.backends.Windows",
+        "keyring.backends.SecretService",
+        "keyring.backends.libsecret",
+        "keyring.backends.kwallet",
+    }
+)
+_CHAINER_MODULE: Final = "keyring.backends.chainer"
+
+
+def _is_real_os_backend(backend: Any) -> bool:
+    """Whether ``backend`` (or, for a chainer, at least one of its sub-backends) is OS-trusted."""
+    module = type(backend).__module__
+    if module == _CHAINER_MODULE:
+        return any(_is_real_os_backend(b) for b in getattr(backend, "backends", ()))
+    return module in _REAL_BACKEND_MODULES
+
+
 def system_keyring() -> Any | None:
     """Return the ``keyring`` module when a real OS keyring backend is active, else ``None``.
 
     ``None`` when the optional ``keyring`` package is missing (or disabled with
-    ``sys.modules['keyring'] = None``), or when its active backend is the
-    fail/null backend (priority <= 0: headless CI, containers, WSL without a
-    secret service). Callers use this one answer to decide whether secrets can
-    be stored in a keyring at all.
+    ``sys.modules['keyring'] = None``), when its active backend is the fail/null backend
+    (priority <= 0: headless CI, containers, WSL without a secret service), or when the
+    active backend is not one of the trusted OS-native backends (:data:`_REAL_BACKEND_MODULES`) —
+    this rejects plaintext/file-based backends such as ``keyrings.alt.file.PlaintextKeyring``
+    even though their priority (0.5) clears the fail-backend check. Callers use this one
+    answer to decide whether secrets can be stored in a keyring at all.
     """
     try:
         import keyring  # type: ignore[import-not-found]
@@ -149,6 +176,8 @@ def system_keyring() -> Any | None:
     except Exception:  # boundary: a broken backend configuration means "no usable keyring", never a crash
         return None
     if getattr(backend, "priority", 0) <= 0:
+        return None
+    if not _is_real_os_backend(backend):
         return None
     return keyring
 

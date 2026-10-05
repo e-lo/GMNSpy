@@ -312,9 +312,18 @@ def test_credential_source_names_the_first_layer(
 # ---------------------------------------------------------------------------
 
 
-def _fake_keyring_module(priority: float) -> types.ModuleType:
+def _fake_backend(priority: float, backend_module: str = "keyring.backends.macOS") -> Any:
+    """A fake backend instance whose ``type(...).__module__`` is ``backend_module``."""
+    cls = type("FakeBackend", (), {})
+    cls.__module__ = backend_module
+    backend = cls()
+    backend.priority = priority
+    return backend
+
+
+def _fake_keyring_module(priority: float, backend_module: str = "keyring.backends.macOS") -> types.ModuleType:
     module = types.ModuleType("keyring")
-    backend = types.SimpleNamespace(priority=priority)
+    backend = _fake_backend(priority, backend_module)
     module.get_keyring = lambda: backend  # type: ignore[attr-defined]
     return module
 
@@ -337,6 +346,39 @@ def test_system_keyring_returns_module_for_real_backend(monkeypatch: pytest.Monk
     from datagrove.io.credentials import system_keyring
 
     module = _fake_keyring_module(5)
+    monkeypatch.setitem(sys.modules, "keyring", module)
+    assert system_keyring() is module
+
+
+def test_system_keyring_none_for_plaintext_alt_backend(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A ``keyrings.alt``-style plaintext backend is rejected even though priority 0.5 beats the fail backend."""
+    from datagrove.io.credentials import system_keyring
+
+    module = _fake_keyring_module(0.5, "keyrings.alt.file")
+    monkeypatch.setitem(sys.modules, "keyring", module)
+    assert system_keyring() is None
+
+
+def test_system_keyring_none_for_chainer_of_only_alt_backends(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A chainer backend whose sub-backends are all untrusted is rejected too."""
+    from datagrove.io.credentials import system_keyring
+
+    module = types.ModuleType("keyring")
+    chainer = _fake_backend(5, "keyring.backends.chainer")
+    chainer.backends = [_fake_backend(0.5, "keyrings.alt.file"), _fake_backend(0.5, "keyrings.alt.Windows")]
+    module.get_keyring = lambda: chainer  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "keyring", module)
+    assert system_keyring() is None
+
+
+def test_system_keyring_returns_module_for_chainer_with_a_real_backend(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A chainer backend is accepted as soon as one of its sub-backends is OS-trusted."""
+    from datagrove.io.credentials import system_keyring
+
+    module = types.ModuleType("keyring")
+    chainer = _fake_backend(5, "keyring.backends.chainer")
+    chainer.backends = [_fake_backend(0.5, "keyrings.alt.file"), _fake_backend(5, "keyring.backends.SecretService")]
+    module.get_keyring = lambda: chainer  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "keyring", module)
     assert system_keyring() is module
 

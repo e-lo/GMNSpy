@@ -40,8 +40,12 @@ __all__ = [
 KEYRING_SERVICE = "gmnspy-llm"
 Source = Literal["env", "keyring"]
 
-#: Key-shaped text: Anthropic ``sk-ant-…``, OpenAI ``sk-…``, Google ``AIza…``, 20+ chars after the prefix.
-_KEY_SHAPE = re.compile(r"(?<![A-Za-z0-9_-])(?:sk-ant-|sk-|AIza)[A-Za-z0-9_-]{20,}")
+#: Key-shaped text: Anthropic ``sk-ant-…``, OpenAI ``sk-…``, Google ``AIza…``, 20+ chars after the
+#: prefix. Case-insensitive, and matches even right after a ``_`` or ``-`` (e.g. an env-var-style
+#: ``FOO_sk-...``); only an *alphanumeric* character immediately before the prefix rules a match
+#: out, which is what keeps a path segment like ``task-abcdefgh...`` (prefix preceded by ``a``) from
+#: matching.
+_KEY_SHAPE = re.compile(r"(?<![A-Za-z0-9])(?:sk-ant-|sk-|aiza)[A-Za-z0-9_-]{20,}", re.IGNORECASE)
 
 
 class SecretStoreError(ValueError):
@@ -64,10 +68,35 @@ class KeyringLike(Protocol):
         ...
 
 
+#: Default port for a scheme, dropped from the rebuilt origin so ``https://h`` and
+#: ``https://h:443`` bind the same key slot.
+_DEFAULT_PORTS = {"https": 443, "http": 80}
+
+
 def origin_of(url: str) -> str:
-    """``scheme://host[:port]`` of ``url``, lowercased: what a key slot is bound to."""
+    """``scheme://host[:port]`` of ``url``: what a key slot is bound to.
+
+    Rebuilt from the scheme, hostname and port only — never the raw ``netloc`` — so a
+    ``user:pass@host`` component cannot ride along into the origin and, from there, into
+    the keyring username, :class:`KeySlot` repr, ``MissingKey`` text or adapter error
+    messages. Raises ``ValueError`` if ``url`` carries userinfo, or if its scheme or host
+    is empty. An IPv6 literal keeps its brackets; the scheme's default port (``:443`` for
+    ``https``, ``:80`` for ``http``) is dropped so two spellings of the same origin don't
+    bind separate slots.
+    """
     parts = urlsplit(url)
-    return f"{parts.scheme}://{parts.netloc}".lower()
+    if parts.username is not None or parts.password is not None:
+        raise ValueError(f"origin_of: url must not contain a username or password: {url!r}")
+    scheme = parts.scheme.lower()
+    host = parts.hostname  # already lowercased by urlsplit; brackets stripped for IPv6
+    if not scheme or not host:
+        raise ValueError(f"origin_of: url must have a scheme and a host: {url!r}")
+    if ":" in host:  # IPv6 literal
+        host = f"[{host}]"
+    port = parts.port
+    if port is not None and port != _DEFAULT_PORTS.get(scheme):
+        return f"{scheme}://{host}:{port}"
+    return f"{scheme}://{host}"
 
 
 def redact(text: str, *secrets: str) -> str:
@@ -79,12 +108,12 @@ def redact(text: str, *secrets: str) -> str:
 
 
 def looks_like_secret(value: Any) -> bool:
-    """Whether ``value`` (or any string nested in it) looks like an API key."""
+    """Whether ``value`` -- or any string nested in it, including dict keys -- looks like an API key."""
     if isinstance(value, str):
         return bool(_KEY_SHAPE.search(value))
     if isinstance(value, Mapping):
-        return any(looks_like_secret(v) for v in value.values())
-    if isinstance(value, list | tuple):
+        return any(looks_like_secret(k) or looks_like_secret(v) for k, v in value.items())
+    if isinstance(value, list | tuple | set | frozenset):
         return any(looks_like_secret(v) for v in value)
     return False
 
@@ -98,7 +127,7 @@ class KeySlot:
 
     @property
     def name(self) -> str:
-        """The keyring username / file key: ``"openai"`` or ``"openai@https://host"``."""
+        """The keyring username: ``"openai"`` or ``"openai@https://host"``."""
         return self.provider if self.origin is None else f"{self.provider}@{self.origin}"
 
 
@@ -140,26 +169,43 @@ class SecretStore:
         """Env vars checked, in order, for ``provider``'s official-endpoint key."""
         return self._env_names.get(provider, ())
 
+    def _keyring_lookup(self, slot: KeySlot) -> tuple[str | None, bool]:
+        """``(key, read_failed)`` from the keyring for ``slot``.
+
+        ``read_failed`` is true when the backend raised (locked, broken) rather than simply
+        having no entry — :meth:`lookup` treats the two the same ("no key here", as in
+        datagrove's cascade), but :meth:`get` reports a locked/broken keyring differently
+        from "no key configured".
+        """
+        if (ring := self.keyring) is None:
+            return None, False
+        try:
+            return ring.get_password(KEYRING_SERVICE, slot.name), False
+        except Exception:  # boundary: a locked or broken backend; the caller decides how to report it
+            return None, True
+
     def lookup(self, slot: KeySlot) -> tuple[str, Source] | None:
         """``(key, source)`` for ``slot``, or ``None``."""
         if slot.origin is None:
             for name in self.env_names(slot.provider):
                 if value := self._environ.get(name, "").strip():
                     return value, "env"
-        if (ring := self.keyring) is not None:
-            try:
-                stored = ring.get_password(KEYRING_SERVICE, slot.name)
-            except Exception:  # boundary: a locked or broken backend means "no key here", as in datagrove's cascade
-                stored = None
-            if stored:
-                return stored, "keyring"
+        stored, _read_failed = self._keyring_lookup(slot)
+        if stored:
+            return stored, "keyring"
         return None
 
     def get(self, slot: KeySlot, label: str) -> str:
         """The key for ``slot``; raises :class:`~gmnspy.llm.errors.MissingKey` saying how to add one."""
-        found = self.lookup(slot)
-        if found is not None:
-            return found[0]
+        if slot.origin is None:
+            for name in self.env_names(slot.provider):
+                if value := self._environ.get(name, "").strip():
+                    return value
+        stored, read_failed = self._keyring_lookup(slot)
+        if stored:
+            return stored
+        if read_failed:
+            raise MissingKey(slot.provider, f"{label}: the OS keyring could not be read (locked?).")
         if slot.origin is not None:
             raise MissingKey(
                 slot.provider,
@@ -196,10 +242,17 @@ class SecretStore:
         ring = self.keyring
         if ring is None:
             raise SecretStoreError(self.how_to_add(slot.provider))
+        error: SecretStoreError | None = None
         try:
             ring.set_password(KEYRING_SERVICE, slot.name, key)
         except Exception as exc:  # boundary: report the failure by type only; its text could echo the key
-            raise SecretStoreError(f"the OS keyring refused the key ({type(exc).__name__})") from None
+            error = SecretStoreError(f"the OS keyring refused the key ({type(exc).__name__})")
+        # Raised outside the `except` block (and `exc` is dropped) so the error carries no
+        # __context__ at all -- a traceback or log that ignores __suppress_context__ still
+        # can't reach the original exception, whose text may itself contain the key.
+        if error is not None:
+            del key
+            raise error
         return "keyring"
 
     def remove(self, slot: KeySlot) -> list[Source]:
@@ -207,10 +260,13 @@ class SecretStore:
         ring = self.keyring
         if ring is None:
             return []
+        error: SecretStoreError | None = None
         try:
             if not ring.get_password(KEYRING_SERVICE, slot.name):
                 return []
             ring.delete_password(KEYRING_SERVICE, slot.name)
         except Exception as exc:  # boundary: as in set()
-            raise SecretStoreError(f"the OS keyring could not delete the key ({type(exc).__name__})") from None
+            error = SecretStoreError(f"the OS keyring could not delete the key ({type(exc).__name__})")
+        if error is not None:  # raised outside `except`, as in set(): no __context__
+            raise error
         return ["keyring"]

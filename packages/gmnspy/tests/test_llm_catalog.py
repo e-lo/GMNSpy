@@ -53,3 +53,33 @@ def test_unknown_provider_and_bad_entries_raise(tmp_path):
     (tmp_path / CATALOG_OVERLAY).write_text('[[anthropic.models]]\nlabel = "no id"\n')
     with pytest.raises(ValueError, match="every model needs an id"):
         load_catalog(tmp_path)
+
+
+def test_overlay_invalid_toml_raises_with_the_path(tmp_path):
+    overlay = tmp_path / CATALOG_OVERLAY
+    overlay.write_text("this is not [ valid toml")
+    with pytest.raises(ValueError, match=r"invalid TOML") as info:
+        load_catalog(tmp_path)
+    assert str(overlay) in str(info.value)
+
+
+def test_overlay_provider_body_must_be_a_table(tmp_path):
+    (tmp_path / CATALOG_OVERLAY).write_text("openai = 'not a table'\n")
+    with pytest.raises(ValueError, match=r"provider 'openai' must be a table"):
+        load_catalog(tmp_path)
+
+
+def test_overlay_models_must_be_a_list_of_tables(tmp_path):
+    (tmp_path / CATALOG_OVERLAY).write_text('[openai]\nmodels = ["not", "a", "table"]\n')
+    with pytest.raises(ValueError, match=r"models must be a list|has a model entry that isn't a table"):
+        load_catalog(tmp_path)
+
+    (tmp_path / CATALOG_OVERLAY).write_text('[openai]\nmodels = "not a list"\n')
+    with pytest.raises(ValueError, match=r"models must be a list"):
+        load_catalog(tmp_path)
+
+
+def test_overlay_invalid_tier_becomes_none(tmp_path):
+    (tmp_path / CATALOG_OVERLAY).write_text('[[openai.models]]\nid = "gpt-4.1-mini"\ntier = "legendary"\n')
+    cat = load_catalog(tmp_path)
+    assert cat["openai"].model("gpt-4.1-mini").tier is None
