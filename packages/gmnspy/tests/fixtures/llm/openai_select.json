@@ -1,16 +1,16 @@
 {
   "_recorded": false,
   "provider": "openai",
-  "source": "Hand-authored from the Chat Completions reference (function calling), not a real recording. Re-record: uv run --all-extras python scripts/record_llm_fixtures.py openai",
-  "model": "gpt-4.1-mini",
+  "source": "Hand-authored from the Chat Completions reference (function calling) and the gpt-6-luna model page (https://developers.openai.com/api/docs/models/gpt-6-luna, checked 2026-10-05: reasoning model, max_completion_tokens, no temperature, reasoning_effort=none required for Chat Completions function calling), not a real recording. Re-record: uv run --all-extras python scripts/record_llm_fixtures.py openai",
+  "model": "gpt-6-luna",
   "endpoint": "POST /v1/chat/completions",
   "utterance": "I-40 EB between South Miami Boulevard and Airport Boulevard",
-  "request_keys": ["max_tokens", "messages", "model", "tool_choice", "tools"],
+  "request_keys": ["max_completion_tokens", "messages", "model", "reasoning_effort", "tool_choice", "tools"],
   "response": {
     "id": "chatcmpl-abc123",
     "object": "chat.completion",
     "created": 1759400000,
-    "model": "gpt-4.1-mini",
+    "model": "gpt-6-luna",
     "choices": [
       {
         "index": 0,

@@ -73,6 +73,35 @@ def test_reasoning_tier_model_omits_temperature(fake_api):
     assert "temperature" not in fake_api.body()
 
 
+def test_gpt6_luna_forced_tool_sends_none_reasoning_effort_and_no_temperature(fake_api):
+    fake_api.add("POST", "/v1/chat/completions", body=_reply('{"x": 3}'))
+    _provider(fake_api).complete(replace(REQUEST, model="gpt-6-luna", temperature=0.2))
+    body = fake_api.body()
+    assert body["reasoning_effort"] == "none"
+    assert body["max_completion_tokens"] == 1024 and "max_tokens" not in body
+    assert "temperature" not in body
+
+
+def test_gpt5_forced_tool_omits_reasoning_effort(fake_api):
+    """gpt-5's docs list no "none" reasoning_effort value, so it's never sent for this model."""
+    fake_api.add("POST", "/v1/chat/completions", body=_reply('{"x": 3}'))
+    _provider(fake_api).complete(replace(REQUEST, model="gpt-5"))
+    assert "reasoning_effort" not in fake_api.body()
+
+
+def test_compatible_endpoint_model_still_sends_temperature_and_max_tokens(fake_api):
+    """A non-reasoning model id served through an OpenAI-compatible endpoint (e.g. vLLM) is
+    unaffected by the reasoning-tier gating: plain max_tokens/temperature, no reasoning_effort."""
+    fake_api.add("POST", "/v1/chat/completions", body=_reply("{}"))
+    _provider(fake_api, base_url="http://localhost:1234/v1").complete(
+        replace(REQUEST, model="meta-llama/Llama-3-8b-instruct", temperature=0.2)
+    )
+    body = fake_api.body()
+    assert body["max_tokens"] == 1024 and "max_completion_tokens" not in body
+    assert body["temperature"] == 0.2
+    assert "reasoning_effort" not in body
+
+
 def test_unparseable_arguments_come_back_as_text(fake_api):
     fake_api.add("POST", "/v1/chat/completions", body=_reply('{"x": 3'))
     done = _provider(fake_api).complete(REQUEST)
