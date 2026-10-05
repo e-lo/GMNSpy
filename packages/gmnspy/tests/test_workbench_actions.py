@@ -129,3 +129,24 @@ def test_build_network_name_suffix_must_match_the_format():
             BuildNetwork(**{**_BUILD, "name": name, "output_format": fmt}, input_file="/x.osm")
     for name, fmt in (("net.zip", "zip"), ("net.duckdb", "duckdb"), ("v1.2", "parquet")):
         assert BuildNetwork(**{**_BUILD, "name": name, "output_format": fmt}, input_file="/x.osm").name == name
+
+
+def test_set_setting_refuses_key_shaped_values():
+    with pytest.raises(ValidationError, match="looks like an API key"):
+        SetSetting(key="select.model", value="sk-ant-api03-abcdefghijklmnopqrstuvwxyz")
+    nested = {
+        "type": "set_setting",
+        "key": "llm",
+        "value": {"openai": {"base_url": "AIzaSyA-abcdefghijklmnopqrstuvwxyz012"}},
+    }
+    with pytest.raises(ValidationError, match="looks like an API key"):
+        parse_action(nested)
+    assert SetSetting(key="select.model", value="claude-sonnet-5").value == "claude-sonnet-5"
+
+
+def test_set_setting_refuses_urls_with_userinfo():
+    with pytest.raises(ValidationError, match="must not contain a username"):
+        SetSetting(key="llm.openai.base_url", value="https://me:tok@llm.example.org/v1")
+    with pytest.raises(ValidationError, match="must not contain a username"):
+        SetSetting(key="llm", value={"ollama": {"base_url": "http://tok@gpu-box:11434"}})
+    assert SetSetting(key="llm.ollama.base_url", value="http://gpu-box:11434/a@b").value.endswith("a@b")

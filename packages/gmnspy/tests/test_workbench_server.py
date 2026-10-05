@@ -141,3 +141,16 @@ def test_get_with_foreign_origin_still_ok(client):
 def test_post_with_null_origin_is_403(client):
     r = client.post("/api/actions", json={"type": "clear_selection"}, headers={"Origin": "null"})
     assert r.status_code == 403
+
+
+def test_invalid_action_422_never_echoes_values(client):
+    key = "sk-ant-api03-ECHOCHECKabcdefghijklmnop"
+    r = client.post("/api/actions", json={"type": "set_setting", "key": "select.model", "value": key})
+    assert r.status_code == 422 and "ECHOCHECK" not in r.text
+
+
+def test_rejected_base_url_with_userinfo_never_echoed(client):
+    action = {"type": "set_setting", "key": "llm.openai.base_url", "value": "https://me:ECHOTOKEN@llm.example.org"}
+    r = client.post("/api/actions", json=action)  # refused at validation: never recorded, never echoed
+    assert r.status_code == 422 and "must not contain a username" in r.text and "ECHOTOKEN" not in r.text
+    assert "ECHOTOKEN" not in client.get("/api/history").text

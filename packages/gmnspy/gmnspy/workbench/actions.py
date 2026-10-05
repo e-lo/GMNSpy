@@ -11,10 +11,14 @@ the ``to_python`` replay snippet.
 
 from __future__ import annotations
 
+import re
+from collections.abc import Mapping
 from pathlib import PurePath
 from typing import Annotated, Any, ClassVar, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, model_validator
+
+from gmnspy.llm.secrets import looks_like_secret
 
 from .area import Area
 from .registry import Component, default_label
@@ -128,13 +132,43 @@ class Navigate(_Action):
 
 
 class SetSetting(_Action):
-    """Change a setting (dotted key) for this session, or persist it to the user/project file."""
+    """Change a setting (dotted key) for this session, or persist it to the user/project file.
+
+    Refuses API-key-shaped values *at validation*, before anything is recorded: keys are set
+    through the write-only ``/api/llm/keys`` route (or ``gmnspy llm set-key``), never as settings.
+    (``io.allowed_roots`` is refused later, by the session, at every scope.)
+    """
 
     type: Literal["set_setting"] = "set_setting"
     mutates: ClassVar[bool] = True
     key: str
     value: Any = None
     scope: Literal["session", "user", "project"] = "session"
+
+    @model_validator(mode="after")
+    def _no_secrets(self) -> SetSetting:
+        if looks_like_secret(self.value):
+            raise ValueError(
+                "that value looks like an API key; set keys in Settings → Language models (they are never settings)"
+            )
+        if _has_url_userinfo(self.value):
+            raise ValueError("URLs in settings must not contain a username, password or token")
+        return self
+
+
+#: ``scheme://user[:pass]@`` at the start of a string: a URL carrying credentials.
+_URL_USERINFO = re.compile(r"^\s*[A-Za-z][A-Za-z0-9+.-]*://[^/?#@]*@")
+
+
+def _has_url_userinfo(value: Any) -> bool:
+    """Whether ``value`` -- or any string nested in it -- is a URL with userinfo (refused before recording)."""
+    if isinstance(value, str):
+        return bool(_URL_USERINFO.match(value))
+    if isinstance(value, Mapping):
+        return any(_has_url_userinfo(v) for v in value.values())
+    if isinstance(value, list | tuple):
+        return any(_has_url_userinfo(v) for v in value)
+    return False
 
 
 #: Name suffixes that imply an output format; a ``BuildNetwork.name`` ending in one must match it.

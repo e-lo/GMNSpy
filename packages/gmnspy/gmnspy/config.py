@@ -6,7 +6,8 @@ Precedence, lowest to highest: model defaults < user file
 workbench's ``set_setting`` action with ``scope="session"``).
 
 Secrets never live here: credentials stay in env/keyring/netrc via
-:mod:`datagrove.io.credentials`; ``credentials.keyring_hosts`` only names hosts.
+:mod:`datagrove.io.credentials`, and LLM API keys in :mod:`gmnspy.llm.secrets`.
+``credentials.keyring_hosts`` only names hosts; ``llm.*`` only holds endpoints.
 """
 
 from __future__ import annotations
@@ -20,13 +21,20 @@ from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
+from urllib.parse import urlsplit
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
+from gmnspy.llm.secrets import origin_of
 from gmnspy.spec import DEFAULT_SPEC
 
 __all__ = [
+    "PROVIDER_ALIASES",
+    "LLMEndpointSettings",
+    "LLMQualitySettings",
+    "LLMSettings",
     "LoadedSettings",
+    "OllamaSettings",
     "Settings",
     "SettingsError",
     "dumps_toml",
@@ -40,6 +48,9 @@ __all__ = [
 Scope = Literal["user", "project"]
 ENV_PREFIX = "GMNSPY_"
 PROJECT_FILE = "gmnspy.toml"
+
+#: Old ``select.provider`` names, still accepted and stored under the new name, so existing files keep working.
+PROVIDER_ALIASES = {"claude": "anthropic"}
 
 
 class SettingsError(ValueError):
@@ -105,10 +116,83 @@ class ValidationSettings(_Section):
 
 
 class SelectSettings(_Section):
-    """Natural-language selection parser."""
+    """Natural-language selection: which provider parses utterances, and with which model.
 
-    provider: Literal["stub", "claude"] = "stub"
-    model: str = "claude-sonnet-5"
+    ``model=None`` means the provider's catalog default (:mod:`gmnspy.llm.catalog`).
+    """
+
+    provider: Literal["stub", "anthropic", "openai", "gemini", "ollama"] = "stub"
+    model: str | None = None
+
+    @field_validator("provider", mode="before")
+    @classmethod
+    def _alias(cls, value: Any) -> Any:
+        return PROVIDER_ALIASES.get(value, value) if isinstance(value, str) else value
+
+
+class LLMEndpointSettings(_Section):
+    """One LLM provider's endpoint. ``base_url=None`` is the official endpoint. Never a key."""
+
+    base_url: str | None = None
+    timeout_s: float = Field(default=60.0, gt=0, le=600)
+
+    @field_validator("base_url")
+    @classmethod
+    def _http_url(cls, value: str | None) -> str | None:
+        # Messages never echo ``value``: a URL with userinfo carries a credential.
+        if value is None:
+            return None
+        parts = urlsplit(value)
+        if parts.scheme not in ("http", "https") or not parts.netloc:
+            raise ValueError("base_url must be an http(s) URL, e.g. https://llm.example.org/v1")
+        try:
+            origin_of(value)  # refuses userinfo (``https://user:tok@host``) and an empty host
+        except ValueError:
+            raise ValueError(
+                "base_url must not contain a username, password or token, and must name a host; "
+                "API keys go in Settings → Language models"
+            ) from None
+        return value.rstrip("/")
+
+
+class OllamaSettings(LLMEndpointSettings):
+    """The Ollama server (local by default; a non-local URL means utterances leave this machine)."""
+
+    base_url: str | None = "http://localhost:11434"
+    timeout_s: float = Field(default=120.0, gt=0, le=600)
+
+
+class LLMQualitySettings(_Section):
+    """What the natural-language features send to the model, and how hard they try.
+
+    ``"auto"`` means on for a local endpoint (Ollama, or any loopback ``base_url``) and off for a
+    remote provider: these settings send network or project content off the machine.
+    ``match_retry`` is the narrow one: after a miss it sends only the ``match_candidates`` closest
+    names, so it can be opted into for a remote provider without turning on full ``grounding``.
+    """
+
+    assistant_context: bool = True
+    assistant_context_max_chars: int = Field(default=16000, ge=0, le=100_000)
+    project_context: Literal["auto", "on", "off"] = "auto"
+    project_context_max_chars: int = Field(default=4000, ge=0, le=50_000)
+    grounding: Literal["auto", "on", "off"] = "auto"
+    grounding_max_names: int = Field(default=200, ge=1, le=2000)
+    few_shot: bool = False
+    few_shot_max: int = Field(default=3, ge=1, le=10)
+    max_repairs: int = Field(default=1, ge=0, le=5)
+    temperature: float | None = Field(default=0.0, ge=0, le=2)
+    match_retry: Literal["auto", "on", "off"] = "auto"
+    match_candidates: int = Field(default=5, ge=1, le=20)
+
+
+class LLMSettings(_Section):
+    """Language-model endpoints and quality knobs. API keys never live in settings (see :mod:`gmnspy.llm.secrets`)."""
+
+    anthropic: LLMEndpointSettings = Field(default_factory=LLMEndpointSettings)
+    openai: LLMEndpointSettings = Field(default_factory=LLMEndpointSettings)
+    gemini: LLMEndpointSettings = Field(default_factory=LLMEndpointSettings)
+    ollama: OllamaSettings = Field(default_factory=OllamaSettings)
+    quality: LLMQualitySettings = Field(default_factory=LLMQualitySettings)
 
 
 class VizSettings(_Section):
@@ -142,6 +226,7 @@ class Settings(_Section):
     build: BuildSettings = Field(default_factory=BuildSettings)
     validation: ValidationSettings = Field(default_factory=ValidationSettings)
     select: SelectSettings = Field(default_factory=SelectSettings)
+    llm: LLMSettings = Field(default_factory=LLMSettings)
     viz: VizSettings = Field(default_factory=VizSettings)
     app: AppSettings = Field(default_factory=AppSettings)
     credentials: CredentialSettings = Field(default_factory=CredentialSettings)
@@ -259,7 +344,15 @@ def _validate(data: Mapping[str, Any], origin: str) -> Settings:
     try:
         return Settings.model_validate(data)
     except ValidationError as exc:
-        raise SettingsError(f"invalid settings ({origin}): {exc}") from exc
+        # Built without ``input_value`` (and ``from None``): a rejected value may be a credential.
+        raise SettingsError(f"invalid settings ({origin}): {_describe(exc)}") from None
+
+
+def _describe(exc: ValidationError) -> str:
+    errors = exc.errors(include_url=False, include_context=False, include_input=False)
+    lines = [f"{len(errors)} validation error{'s' if len(errors) != 1 else ''}"]
+    lines += [f"{'.'.join(str(p) for p in e['loc']) or '<root>'}: {e['msg']} [type={e['type']}]" for e in errors]
+    return "\n  ".join(lines)
 
 
 def _env_layer(environ: Mapping[str, str]) -> dict[str, Any]:

@@ -152,7 +152,11 @@ class Session:
         """The NL parser chosen by ``select.provider`` (built lazily; an injected parser wins)."""
         if self._parser is None:
             sel = self.settings.select
-            self._parser = ClaudeParser(model=sel.model) if sel.provider == "claude" else StubParser()
+            # Interim until make_parser (NL-providers Task 13): "claude" is now stored as "anthropic".
+            if sel.provider == "anthropic":
+                self._parser = ClaudeParser(model=sel.model) if sel.model else ClaudeParser()
+            else:
+                self._parser = StubParser()
         return self._parser
 
     def dispatch(self, action: Action | dict[str, Any]) -> Any:

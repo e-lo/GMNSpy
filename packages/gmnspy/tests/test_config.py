@@ -30,7 +30,7 @@ def test_precedence_user_project_env_session(tmp_path, isolated_env):
     env = {**isolated_env, "GMNSPY_SELECT__PROVIDER": "claude", "GMNSPY_APP__PORT": "9003"}
     loaded = load_settings(project_dir=tmp_path, environ=env, overrides={"app.port": 9004})
     s = loaded.settings
-    assert (s.viz.basemap, s.app.host, s.select.provider, s.app.port) == ("esri", "0.0.0.0", "claude", 9004)
+    assert (s.viz.basemap, s.app.host, s.select.provider, s.app.port) == ("esri", "0.0.0.0", "anthropic", 9004)
     assert loaded.sources["viz.basemap"] == "user"
     assert loaded.sources["select.provider"] == "env"
     assert loaded.sources["app.port"] == "session"
@@ -102,7 +102,8 @@ def test_save_setting_project_scope_keeps_other_keys(tmp_path, isolated_env):
     (tmp_path / "gmnspy.toml").write_text('[viz]\nbasemap = "esri"\n')
     save_setting("select.provider", "claude", scope="project", project_dir=tmp_path, environ=isolated_env)
     s = load_settings(project_dir=tmp_path, environ=isolated_env).settings
-    assert (s.viz.basemap, s.select.provider) == ("esri", "claude")
+    assert (s.viz.basemap, s.select.provider) == ("esri", "anthropic")
+    assert 'provider = "anthropic"' in (tmp_path / "gmnspy.toml").read_text()  # the alias is stored under its new name
 
 
 def test_save_setting_none_resets_to_default(tmp_path, isolated_env):
@@ -136,3 +137,48 @@ def test_negative_approval_threshold_rejected(tmp_path, isolated_env):
     (tmp_path / "gmnspy.toml").write_text("[app]\napprove_above_s = -1\n")
     with pytest.raises(SettingsError, match="approve_above_s"):
         load_settings(project_dir=tmp_path, environ=isolated_env)
+
+
+def test_select_provider_claude_alias_new_providers_and_model_default(tmp_path, isolated_env):
+    for given, stored in (("claude", "anthropic"), ("openai", "openai"), ("gemini", "gemini"), ("ollama", "ollama")):
+        s = load_settings(project_dir=tmp_path, environ=isolated_env, overrides={"select.provider": given}).settings
+        assert s.select.provider == stored
+    assert load_settings(project_dir=tmp_path, environ=isolated_env).settings.select.model is None
+
+
+def test_llm_section_defaults_env_and_base_url_validation(tmp_path, isolated_env):
+    s = load_settings(project_dir=tmp_path, environ=isolated_env).settings
+    assert (s.llm.ollama.base_url, s.llm.ollama.timeout_s) == ("http://localhost:11434", 120.0)
+    assert (s.llm.openai.base_url, s.llm.openai.timeout_s) == (None, 60.0)
+    env = {
+        **isolated_env,
+        "GMNSPY_LLM__OLLAMA__BASE_URL": "http://gpu-box:11434/",
+        "GMNSPY_LLM__OPENAI__TIMEOUT_S": "30",
+    }
+    s = load_settings(project_dir=tmp_path, environ=env).settings
+    assert (s.llm.ollama.base_url, s.llm.openai.timeout_s) == ("http://gpu-box:11434", 30.0)
+    with pytest.raises(SettingsError, match="base_url must be an http"):
+        load_settings(project_dir=tmp_path, environ=isolated_env, overrides={"llm.openai.base_url": "ftp://x"})
+    with pytest.raises(SettingsError):  # there is no place for a key in settings
+        load_settings(project_dir=tmp_path, environ=isolated_env, overrides={"llm.openai.api_key": "nope"})
+
+
+@pytest.mark.parametrize("url", ["https://user:SECRETTOK@llm.example.org/v1", "http://SECRETTOK@localhost:11434"])
+def test_llm_base_url_with_userinfo_rejected_without_echo(tmp_path, isolated_env, url):
+    with pytest.raises(SettingsError, match="must not contain a username") as info:
+        load_settings(project_dir=tmp_path, environ=isolated_env, overrides={"llm.ollama.base_url": url})
+    assert "SECRETTOK" not in str(info.value)
+    assert info.value.__cause__ is None and info.value.__suppress_context__
+
+
+def test_llm_quality_defaults_and_bounds(tmp_path, isolated_env):
+    q = load_settings(project_dir=tmp_path, environ=isolated_env).settings.llm.quality
+    assert (q.grounding, q.project_context, q.assistant_context, q.few_shot) == ("auto", "auto", True, False)
+    # match_retry is "auto": on for a local endpoint, an explicit opt-in ("on") for a remote one.
+    assert (q.max_repairs, q.temperature, q.match_retry, q.grounding_max_names) == (1, 0.0, "auto", 200)
+    with pytest.raises(SettingsError):
+        load_settings(project_dir=tmp_path, environ=isolated_env, overrides={"llm.quality.max_repairs": 9})
+    with pytest.raises(SettingsError):
+        load_settings(project_dir=tmp_path, environ=isolated_env, overrides={"llm.quality.grounding": "always"})
+    with pytest.raises(SettingsError):
+        load_settings(project_dir=tmp_path, environ=isolated_env, overrides={"llm.quality.match_retry": "maybe"})

@@ -49,7 +49,7 @@ def core_router(session: Session) -> APIRouter:
         try:
             action = parse_action(body)
         except ValidationError as exc:
-            detail = exc.errors(include_url=False, include_context=False)
+            detail = exc.errors(include_url=False, include_context=False, include_input=False)  # input may be a key
             return JSONResponse({"error": "invalid action", "detail": jsonable_encoder(detail)}, status_code=422)
         if action.runs_as_job:
             job = session.submit(action)
