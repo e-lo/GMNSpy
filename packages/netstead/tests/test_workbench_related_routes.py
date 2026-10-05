@@ -146,3 +146,21 @@ def test_a_filter_value_of_the_wrong_type_is_a_400_on_a_lazy_table(client):
     assert client.post(f"{BASE}/table/lane/rows", json={"filter": bad}).status_code == 400
     bad_in = [{"col": "lane_id", "op": "in", "val": ["abc"]}]
     assert client.post(f"{BASE}/table/lane/rows", json={"filter": bad_in}).status_code == 400
+
+
+def test_related_is_computed_once_per_question_and_version(client, session, monkeypatch):
+    from netstead.workbench.routes import network
+
+    calls = []
+    real = network.relate
+    monkeypatch.setattr(network, "relate", lambda *a, **k: calls.append(a[1]) or real(*a, **k))
+    related = {"sources": {"link": [3, 4]}}
+    for offset in (0, 2, 4):  # paging a tinted table
+        client.post(f"{BASE}/table/lane/rows", json={"offset": offset, "limit": 2, "related": related})
+    client.post(f"{BASE}/related", json=related)
+    assert len(calls) == 1
+    client.post(f"{BASE}/related", json={**related, "hops": 2})
+    assert len(calls) == 2
+    session.registry.get("leavenworth").bump()  # a mutated network asks again
+    client.post(f"{BASE}/related", json=related)
+    assert len(calls) == 3

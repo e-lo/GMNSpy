@@ -12,6 +12,7 @@ every route here, nothing is recorded in the session history.
 from __future__ import annotations
 
 import contextlib
+import functools
 import json as _json
 from collections.abc import Iterator, Sequence
 from typing import Any, Literal
@@ -55,6 +56,8 @@ from ..session import Session
 __all__ = ["LocateQuery", "RelatedQuery", "RowsQuery", "network_router"]
 
 ScalarId = int | str
+#: Related-records answers remembered per network version (each holds up to MAX_SOURCE_IDS ids).
+RELATED_MEMO = 16
 
 
 class RelatedQuery(BaseModel):
@@ -149,6 +152,14 @@ def network_router(session: Session) -> APIRouter:
             raise HTTPException(400, f"unknown table(s) {unknown}")
         return {name: keys(h, name, ids) for name, ids in q.sources.items()}
 
+    def related_of(h: NetworkHandle, sources: dict[str, list[Any]], hops: int) -> dict[str, Relation]:
+        """:func:`relate`, memoised per network version: paging a tinted table asks the same question per page."""
+
+        def build() -> Any:
+            return functools.lru_cache(maxsize=RELATED_MEMO)(lambda key: relate(graph(h), dict(key[1]), hops=key[0]))
+
+        return h.cached("related.memo", build)((hops, tuple((t, tuple(ids)) for t, ids in sources.items())))
+
     def prepared(
         h: NetworkHandle, name: str, q: RowsQuery
     ) -> tuple[Any, str | None, list[Any] | None, Relation | None]:
@@ -161,7 +172,7 @@ def network_router(session: Session) -> APIRouter:
         if q.related is None:
             return src, pk, ids, None
         sources = sources_of(h, q.related)
-        relation = relate(g, sources, hops=q.related.hops).get(name)
+        relation = related_of(h, sources, q.related.hops).get(name)
         if q.related_mode == "filter":
             if relation is not None:
                 src = restrict(src, relation.matches)
@@ -302,7 +313,7 @@ def network_router(session: Session) -> APIRouter:
         h = handle(net_id, component)
         g = graph(h)
         with _bad_request():
-            relations = relate(g, sources_of(h, q), hops=q.hops)
+            relations = related_of(h, sources_of(h, q), q.hops)
             tables = [
                 {"table": n, "hop": r.hop, "via": r.via, "partial": r.partial, "count": count(g.tables[n], r.matches)}
                 for n, r in relations.items()
