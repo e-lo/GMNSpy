@@ -6,7 +6,9 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, PlainTextResponse
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 
 from .routes.core import core_router
@@ -65,9 +67,21 @@ def _host_name(header: str) -> str:
     return name.lower()
 
 
+#: Fields of a request-validation error that are safe to return: never ``input`` or ``ctx``,
+#: either of which can carry the submitted value (an API key, a token in a URL).
+_SAFE_ERROR_FIELDS = ("type", "loc", "msg")
+
+
+async def _validation_error(request: Request, exc: RequestValidationError) -> JSONResponse:
+    """422 for a body/query FastAPI itself rejects, without echoing what was sent (FastAPI's default does)."""
+    detail = [{k: err[k] for k in _SAFE_ERROR_FIELDS if k in err} for err in exc.errors()]
+    return JSONResponse({"error": "invalid request", "detail": jsonable_encoder(detail)}, status_code=422)
+
+
 def build_app(session: Session) -> FastAPI:
     """Return the FastAPI app serving ``session``."""
     app = FastAPI(title="GMNSpy Workbench")
+    app.add_exception_handler(RequestValidationError, _validation_error)
     if is_loopback_host(session.settings.app.host):
         # Binding to loopback only stops *other machines* from connecting; a
         # malicious web page on the same machine can still reach us via DNS

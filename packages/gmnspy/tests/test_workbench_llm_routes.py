@@ -140,7 +140,9 @@ def test_key_change_publishes_a_status_only_event_and_resets_the_parser(session,
     assert "ROUTEKEY" not in json.dumps(event) and session._parser is None
 
 
-def test_canary_key_never_leaves_the_secret_store(session, client, fake_api, rdu_source, tmp_path, caplog, monkeypatch):
+def test_canary_key_never_leaves_the_secret_store(
+    session, client, fake_api, fake_keyring, rdu_source, tmp_path, caplog, monkeypatch
+):
     """Set, use, test, replace and remove a key; it must appear nowhere but the provider's request headers.
 
     Searched: every route response, every published (SSE) event and the live SSE snapshot, every log
@@ -187,6 +189,17 @@ def test_canary_key_never_leaves_the_secret_store(session, client, fake_api, rdu
         call("GET", url)
     with client.stream("GET", "/api/events", params={"max_events": 1}) as r:
         seen.append(r.read().decode())
+    # Bodies FastAPI itself rejects (not an object; not JSON) get the app-wide 422, which never echoes input.
+    for kw in ({"json": [canary]}, {"content": canary, "headers": {"content-type": "text/plain"}}):
+        assert call("POST", "/api/actions", **kw).status_code == 422
+    # A server error mid-write (after the key is stored) must not surface the key in the 500 or the logs.
+    unsafe = TestClient(build_app(session), raise_server_exceptions=False)
+    with monkeypatch.context() as m:
+        m.setattr(session, "reset_llm", lambda: (_ for _ in ()).throw(RuntimeError("forced failure")))
+        failed = unsafe.put("/api/llm/keys/anthropic", json={"key": replacement}, headers=SECRETS)
+    seen.append(failed.text)
+    assert failed.status_code == 500
+    assert fake_keyring.store == {(KEYRING_SERVICE, "anthropic"): replacement}  # the official-endpoint slot
     assert call("DELETE", "/api/llm/keys/anthropic", headers=SECRETS).status_code == 200
     history = [json.dumps(e.to_dict(), default=str) for e in session.history]
     files = [p.read_bytes().decode(errors="replace") for p in tmp_path.rglob("*") if p.is_file()]
@@ -201,6 +214,13 @@ def test_canary_key_never_leaves_the_secret_store(session, client, fake_api, rdu
 def test_non_object_key_body_is_422_without_echo(client):
     r = client.put("/api/llm/keys/anthropic", json=KEY, headers=SECRETS)
     assert r.status_code == 422 and "ROUTEKEY" not in r.text
+
+
+def test_bodies_fastapi_rejects_get_the_app_wide_422_without_echo(client):
+    for kw in ({"json": [KEY]}, {"content": KEY, "headers": {"content-type": "text/plain"}}):
+        r = client.post("/api/actions", **kw)
+        assert r.status_code == 422 and r.json()["error"] == "invalid request" and "ROUTEKEY" not in r.text
+        assert all(set(err) <= {"type", "loc", "msg"} for err in r.json()["detail"])
 
 
 def test_key_write_resets_the_registry(session, client):

@@ -20,7 +20,7 @@ from typing import Any
 from fastapi import APIRouter, Body, Depends, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, ValidationError
 
-from gmnspy.llm import LLMError, SecretStoreError
+from gmnspy.llm import LLMError, ProviderRegistry, SecretStoreError
 
 from ..session import Session
 
@@ -59,24 +59,28 @@ def llm_router(session: Session, *, allow_key_writes: bool) -> APIRouter:
         if request.headers.get(SECRETS_HEADER) != "1":
             raise HTTPException(403, f"missing {SECRETS_HEADER} header")
 
-    def known(provider: str) -> str:
-        if provider not in session.llm.names():
+    # Each handler reads ``session.llm`` once: a concurrent key write or setting change swaps the
+    # registry (``Session.reset_llm``), and one response must not mix two registries.
+
+    def known(reg: ProviderRegistry, provider: str) -> str:
+        if provider not in reg.names():
             raise HTTPException(404, f"unknown provider {provider!r}")
         return provider
 
     def snapshot() -> dict[str, Any]:
+        reg = session.llm
         select = session.settings.select
         return {
-            "providers": session.llm.status(),
-            "keyring": session.llm.secrets.keyring_available,
+            "providers": reg.status(),
+            "keyring": reg.secrets.keyring_available,
             "selected": {"provider": select.provider, "model": select.model},
             "key_writes": allow_key_writes,
         }
 
     def changed(provider: str, verb: str, where: str) -> dict[str, Any]:
         logger.info("llm key %s for %s (%s)", verb, provider, where)  # the provider and store only, never the key
-        session.reset_llm()  # a fresh registry and parser pick up the new key
-        session.llm.invalidate_probe_cache()  # so the picker's next status reflects it at once
+        # A fresh registry (empty probe cache) and parser pick up the new key; the picker's next status shows it.
+        session.reset_llm()
         state = snapshot()
         session.events.publish({"type": "llm", **state})
         return state
@@ -89,16 +93,18 @@ def llm_router(session: Session, *, allow_key_writes: bool) -> APIRouter:
     @router.get("/models")
     def models(provider: str) -> dict[str, Any]:
         """Models to offer for ``provider``: the catalog (remote) or what is installed (local)."""
-        known(provider)
+        reg = session.llm
+        known(reg, provider)
         try:
-            return {"provider": provider, "models": session.llm.models(provider)}
+            return {"provider": provider, "models": reg.models(provider)}
         except LLMError as exc:
             raise HTTPException(502, str(exc)) from None
 
     @router.put("/keys/{provider}", dependencies=[Depends(guard)])
     def set_key(provider: str, body: Any = Body(None)) -> dict[str, Any]:  # noqa: B008  (FastAPI Body default)
         """Store ``provider``'s key in the OS keyring; answer with status only."""
-        info = session.llm.catalog[known(provider)]
+        reg = session.llm
+        info = reg.catalog[known(reg, provider)]
         if info.kind == "local":
             raise HTTPException(400, f"{info.label} needs no API key")
         try:
@@ -107,7 +113,7 @@ def llm_router(session: Session, *, allow_key_writes: bool) -> APIRouter:
             # A hand-written detail: the validation error would carry the submitted key.
             raise HTTPException(422, 'send {"key": "..."}; a key is 8-512 characters') from None
         try:
-            source = session.llm.secrets.set(session.llm.slot(provider), parsed.key.get_secret_value())
+            source = reg.secrets.set(reg.slot(provider), parsed.key.get_secret_value())
         except SecretStoreError as exc:
             raise HTTPException(400, str(exc)) from None
         return changed(provider, "set", source)
@@ -115,9 +121,10 @@ def llm_router(session: Session, *, allow_key_writes: bool) -> APIRouter:
     @router.delete("/keys/{provider}", dependencies=[Depends(guard)])
     def remove_key(provider: str) -> dict[str, Any]:
         """Delete ``provider``'s key from the OS keyring (env vars are the user's to unset)."""
-        known(provider)
+        reg = session.llm
+        known(reg, provider)
         try:
-            removed = session.llm.secrets.remove(session.llm.slot(provider))
+            removed = reg.secrets.remove(reg.slot(provider))
         except SecretStoreError as exc:
             raise HTTPException(400, str(exc)) from None
         return changed(provider, "removed", ", ".join(removed) or "nothing stored")
@@ -125,10 +132,11 @@ def llm_router(session: Session, *, allow_key_writes: bool) -> APIRouter:
     @router.post("/test", dependencies=[Depends(guard)])
     def check_connection(body: Any = Body(None)) -> dict[str, Any]:  # noqa: B008  (FastAPI Body default)
         """An authenticated, token-free call to ``provider``; failures are reported in the result."""
+        reg = session.llm
         try:
             parsed = _TestBody.model_validate(body)
         except ValidationError:
             raise HTTPException(422, 'send {"provider": "...", "model": "..." | null}') from None
-        return session.llm.test(known(parsed.provider), parsed.model)
+        return reg.test(known(reg, parsed.provider), parsed.model)
 
     return router
