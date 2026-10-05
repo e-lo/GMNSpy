@@ -17,6 +17,9 @@ const TOOLTIP_STYLE = { background: "#11151a", color: "#e6e8ec", fontSize: "12px
 let map = null, overlay = null, handlers = { onLinkClick() {}, onNodeClick() {}, onBoxSelect() {} };
 let colorCache = { key: null, colors: null };
 let labelsShown = true;
+// Whether the current style's layers exist (style.load fired). Not map.isStyleLoaded(): that also waits for
+// every tile source, so a label toggle right after a basemap swap would be dropped.
+let styleReady = false;
 
 export const hasOffset = () => OFFSET_EXT !== null;
 
@@ -30,6 +33,7 @@ export function initMap(style, hooks) {
   map.on("zoomend", () => { const s = store.get(); if (s.server && s.server.style.show_direction) render(); });
   // Ready once the style is parsed, not on "load": that waits for every basemap tile of the opening
   // (continental) view, so the network would be drawn and fitted seconds late, or never offline.
+  map.on("style.load", () => { styleReady = true; });
   map.once("style.load", hooks.onReady);
   wireBoxSelect();
 }
@@ -123,7 +127,7 @@ function markerLayer(marker) {
 }
 
 function setLabels(show) {
-  if (show === labelsShown || !map.isStyleLoaded()) return;
+  if (show === labelsShown || !styleReady) return;
   labelsShown = show;
   for (const l of map.getStyle().layers || [])
     if (l.type === "symbol" || l.id === "labels") map.setLayoutProperty(l.id, "visibility", show ? "visible" : "none");
@@ -234,6 +238,9 @@ function wireBoxSelect() {
 // label visibility belongs to the old style's layers, so it is re-applied once the new style loads.
 export function setBasemap(style) {
   if (!map) return;
-  map.once("style.load", () => { labelsShown = true; render(); });
-  map.setStyle(style);
+  // A new style shows its labels: reset before the swap, so render() re-applies a "labels off" once it loads.
+  // diff:false makes MapLibre load the style afresh, which fires style.load (a diffed swap may not).
+  labelsShown = true; styleReady = false;
+  map.once("style.load", () => render());
+  map.setStyle(style, { diff: false });
 }
