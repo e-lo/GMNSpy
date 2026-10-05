@@ -1,0 +1,35 @@
+{
+  "_recorded": false,
+  "provider": "gemini",
+  "source": "Hand-authored from the generateContent reference (function calling), not a real recording. Re-record: uv run --all-extras python scripts/record_llm_fixtures.py gemini",
+  "model": "gemini-2.5-flash-lite",
+  "endpoint": "POST /v1beta/models/gemini-2.5-flash-lite:generateContent",
+  "utterance": "I-40 EB between South Miami Boulevard and Airport Boulevard",
+  "request_keys": ["contents", "generationConfig", "systemInstruction", "toolConfig", "tools"],
+  "response": {
+    "candidates": [
+      {
+        "content": {
+          "role": "model",
+          "parts": [
+            {
+              "functionCall": {
+                "name": "emit_selection_intent",
+                "args": {
+                  "facility": {"ref": "I 40", "direction": "EB"},
+                  "from_anchor": "South Miami Boulevard",
+                  "to_anchor": "Airport Boulevard"
+                }
+              }
+            }
+          ]
+        },
+        "finishReason": "STOP",
+        "index": 0
+      }
+    ],
+    "usageMetadata": {"promptTokenCount": 498, "candidatesTokenCount": 33, "totalTokenCount": 531},
+    "modelVersion": "gemini-2.5-flash-lite"
+  },
+  "expected": {"ref": "I 40", "direction": "EB", "from_anchor": "South Miami Boulevard", "to_anchor": "Airport Boulevard"}
+}
