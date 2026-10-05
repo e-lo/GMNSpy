@@ -97,6 +97,16 @@ def test_timeouts_and_connection_errors(fake_api):
         provider.complete(REQUEST)
 
 
+def test_connect_error_with_userinfo_url_never_echoes_the_token(fake_api):
+    token = "super-secret-token-value"
+    fake_api.add("POST", "/v1/messages", raises=httpx.ConnectError("refused"))
+    provider = _provider(fake_api, base_url=f"https://{token}@api.example.org")
+    with pytest.raises(ProviderUnavailable) as info:
+        provider.complete(REQUEST)
+    assert token not in str(info.value)
+    assert "the configured endpoint" in str(info.value)
+
+
 def test_key_is_scrubbed_from_provider_detail(fake_api):
     detail = f"bad header {KEY} and sk-ant-api03-OTHERKEYabcdefghijklmnop"
     fake_api.add("POST", "/v1/messages", status=400, body={"error": {"message": detail}})

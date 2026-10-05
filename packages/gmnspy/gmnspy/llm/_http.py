@@ -76,9 +76,11 @@ def request_json(
             "Settings → Language models.",
         ) from None
     except httpx.TransportError as exc:
-        raise ProviderUnavailable(
-            provider, f"could not reach {label} at {origin_of(url)} ({type(exc).__name__})."
-        ) from None
+        try:
+            where = origin_of(url)
+        except ValueError:
+            where = "the configured endpoint"
+        raise ProviderUnavailable(provider, f"could not reach {label} at {where} ({type(exc).__name__}).") from None
     if response.status_code >= 400:
         raise _status_error(response, provider=provider, label=label, secret=secret)
     try:

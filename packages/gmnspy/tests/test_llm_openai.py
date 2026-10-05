@@ -67,6 +67,12 @@ def test_reasoning_tier_model_uses_max_completion_tokens(fake_api):
     assert body["max_completion_tokens"] == 1024 and "max_tokens" not in body
 
 
+def test_reasoning_tier_model_omits_temperature(fake_api):
+    fake_api.add("POST", "/v1/chat/completions", body=_reply("{}"))
+    _provider(fake_api).complete(replace(REQUEST, model="o3-mini", temperature=0.2))
+    assert "temperature" not in fake_api.body()
+
+
 def test_unparseable_arguments_come_back_as_text(fake_api):
     fake_api.add("POST", "/v1/chat/completions", body=_reply('{"x": 3'))
     done = _provider(fake_api).complete(REQUEST)

@@ -68,6 +68,7 @@ class OpenAIProvider(HTTPProvider):
 
     Sends the output-length cap under ``max_tokens``, or ``max_completion_tokens`` for
     reasoning-tier model ids (``o1``/``o3``/``o4``/``gpt-5``), which reject ``max_tokens``.
+    Those same models also reject a non-default ``temperature``, so it's omitted for them.
     """
 
     name = "openai"
@@ -86,7 +87,7 @@ class OpenAIProvider(HTTPProvider):
             body["tools"] = function_tools(request)
             if request.force_tool:
                 body["tool_choice"] = {"type": "function", "function": {"name": request.force_tool}}
-        if request.temperature is not None:
+        if request.temperature is not None and not request.model.startswith(_REASONING_PREFIXES):
             body["temperature"] = request.temperature
         data = self._call("POST", "/chat/completions", body)
         try:

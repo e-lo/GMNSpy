@@ -40,12 +40,13 @@ __all__ = [
 KEYRING_SERVICE = "gmnspy-llm"
 Source = Literal["env", "keyring"]
 
-#: Key-shaped text: Anthropic ``sk-ant-…``, OpenAI ``sk-…``, Google ``AIza…``, 20+ chars after the
-#: prefix. Case-insensitive, and matches even right after a ``_`` or ``-`` (e.g. an env-var-style
+#: Key-shaped text: Anthropic ``sk-ant-…``, OpenAI ``sk-…`` (case-insensitive), Google ``AIza…``
+#: (exact-case only, so a path like ``/data/Aizawa_county...`` doesn't false-positive), 20+ chars
+#: after the prefix. Matches even right after a ``_`` or ``-`` (e.g. an env-var-style
 #: ``FOO_sk-...``); only an *alphanumeric* character immediately before the prefix rules a match
 #: out, which is what keeps a path segment like ``task-abcdefgh...`` (prefix preceded by ``a``) from
 #: matching.
-_KEY_SHAPE = re.compile(r"(?<![A-Za-z0-9])(?:sk-ant-|sk-|aiza)[A-Za-z0-9_-]{20,}", re.IGNORECASE)
+_KEY_SHAPE = re.compile(r"(?<![A-Za-z0-9])(?:(?i:sk-ant-|sk-)|AIza)[A-Za-z0-9_-]{20,}")
 
 
 class SecretStoreError(ValueError):
@@ -86,11 +87,11 @@ def origin_of(url: str) -> str:
     """
     parts = urlsplit(url)
     if parts.username is not None or parts.password is not None:
-        raise ValueError(f"origin_of: url must not contain a username or password: {url!r}")
+        raise ValueError("base_url must not contain a username or password")
     scheme = parts.scheme.lower()
     host = parts.hostname  # already lowercased by urlsplit; brackets stripped for IPv6
     if not scheme or not host:
-        raise ValueError(f"origin_of: url must have a scheme and a host: {url!r}")
+        raise ValueError("base_url must have a scheme and a host")
     if ":" in host:  # IPv6 literal
         host = f"[{host}]"
     port = parts.port

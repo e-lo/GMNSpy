@@ -127,6 +127,23 @@ def test_origin_of_rejects_userinfo_and_empty_scheme_or_host():
         origin_of("https:///v1")
 
 
+def test_origin_of_errors_never_echo_the_rejected_url():
+    token = "super-secret-token-value"
+    with pytest.raises(ValueError) as userinfo_exc:
+        origin_of(f"https://{token}@api.example.org/v1")
+    assert token not in str(userinfo_exc.value)
+    with pytest.raises(ValueError) as host_exc:
+        origin_of(f"https:///{token}")
+    assert token not in str(host_exc.value)
+
+
+def test_looks_like_secret_ignores_aiza_case_variants():
+    # Google keys match only in exact case; lowercase "aiza" inside an unrelated path is not a key.
+    assert not looks_like_secret("/data/Aizawa_county/roads.csv")
+    assert not looks_like_secret("aiza-should-not-match-1234567890123456")
+    assert looks_like_secret("AIzaSyA-abcdefghijklmnopqrstuvwxyz012")
+
+
 def test_set_and_remove_errors_have_no_exception_context(fake_keyring):
     class Broken:
         def get_password(self, *a):
