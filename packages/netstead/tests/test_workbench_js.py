@@ -126,3 +126,70 @@ def test_scope_note_warns_when_a_higher_layer_wins(node_module):
         ' scopeNote({ source: "user" }, "project"), scopeNote({ source: "default", restart: true }, "session")]',
     )
     assert "env" in got[0] and got[1] is None and got[2] is None and "launch" in got[3]
+
+
+def test_sources_merge_focus_and_highlights_without_duplicates(node_module):
+    got = node_module(
+        "linking.js",
+        ["sourcesFor"],
+        '[sourcesFor({ table: "node", id: 7 }, new Set([1, 2])), sourcesFor({ table: "link", id: 2 }, new Set([1, 2])),'
+        " sourcesFor(null, new Set())]",
+    )
+    assert got == [{"link": [1, 2], "node": [7]}, {"link": [1, 2]}, {}]
+
+
+def test_rows_request_per_scope(node_module):
+    expr = """(() => {
+      const base = { selection: { link_ids: [5, 6] }, highlights: new Set([9]),
+                     focus: { table: "node", id: 3 }, hops: 1 };
+      return {
+        all_link: rowsRequest({ ...base, scope: "all", table: "link" }),
+        sel_link: rowsRequest({ ...base, scope: "selection", table: "link" }),
+        sel_node: rowsRequest({ ...base, scope: "selection", table: "node" }),
+        hl_lane: rowsRequest({ ...base, scope: "highlighted", table: "lane" }),
+        rel_lane: rowsRequest({ ...base, scope: "related", table: "lane" }),
+        empty_sel: rowsRequest({ ...base, selection: null, scope: "selection", table: "link" }),
+        nothing: rowsRequest({ scope: "related", table: "lane", selection: null, highlights: new Set(), focus: null }),
+      };
+    })()"""
+    got = node_module("linking.js", ["rowsRequest"], expr)
+    tint = {"related": {"sources": {"link": [9], "node": [3]}, "hops": 1}, "related_mode": "tint"}
+    assert got["all_link"] == tint
+    assert got["sel_link"] == {"ids": [5, 6], **tint}
+    assert got["sel_node"] == {"related": {"sources": {"link": [5, 6]}, "hops": 1}, "related_mode": "filter"}
+    assert got["hl_lane"] == {"related": {"sources": {"link": [9]}, "hops": 1}, "related_mode": "filter"}
+    assert got["rel_lane"] == {**tint, "related_mode": "filter"}
+    assert got["empty_sel"] == {"ids": [], **tint}  # nothing selected shows no rows, not every row
+    assert got["nothing"] == {"ids": []}
+
+
+def test_row_marks(node_module):
+    expr = """[
+      rowMarks({ table: "link", id: 5, selection: { link_ids: [5] }, highlights: new Set([5]),
+                 focus: { table: "link", id: 5 }, via: null }),
+      rowMarks({ table: "lane", id: 5, selection: { link_ids: [5] }, highlights: new Set([5]),
+                 focus: { table: "link", id: 5 }, via: "lane.link_id → link" }),
+    ]"""
+    assert node_module("linking.js", ["rowMarks"], expr) == [["sel", "hl", "focus"], ["rel"]]
+
+
+def test_page_offset_and_id_coercion(node_module):
+    got = node_module(
+        "linking.js",
+        ["coerceId", "pageOffset"],
+        '[pageOffset(250, 100), pageOffset(0, 100), coerceId("12"), coerceId("A-1"), coerceId("")]',
+    )
+    assert got == [200, 0, 12, "A-1", ""]
+
+
+@pytest.mark.xfail(strict=True, reason="fixed in Task 12 (rowClick sets focus)")
+def test_a_row_click_never_changes_the_recorded_selection():
+    """Carried P1a bug: in filter-to-selection mode a row click collapsed the selection to that row."""
+    import re
+
+    from netstead.workbench.server import STATIC_DIR
+
+    table = (STATIC_DIR / "js" / "table.js").read_text()
+    body = re.search(r"function rowClick\(pkVal\) \{.*?\n\}", table, re.S)
+    assert body, "table.js must define rowClick(pkVal)"
+    assert "dispatch(" not in body.group(0) and "focus" in body.group(0)
