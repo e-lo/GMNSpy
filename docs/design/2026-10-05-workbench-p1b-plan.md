@@ -89,9 +89,11 @@
 
 ---
 
-## Open questions (need the user; the plan is written for the **recommended** answer)
+## Open questions (all decided 2026-10-05: the user approved every recommendation)
 
 1. **What does a click do: focus, or select?**
+   - **Decided 2026-10-05:** a click sets a per-tab focus that is not recorded (the recommendation; confirmed
+     explicitly).
    - The design says "clicking a map feature selects…". In P0, a row click dispatches a recorded `Select(link_ids=[id])`.
    - **Recommended:** a click sets a per-tab **focus**: details, row scroll, map outline or marker, and related tint.
      - It is not recorded, so a session's history isn't flooded with clicks.
@@ -100,33 +102,44 @@
    - *Alternative:* keep dispatching `Select` on click, but not in a filtered scope. That changes only Task 12's
      `rowClick`/`onLinkClick`.
 2. **Box-select → table filter.**
+   - **Decided 2026-10-05:** as recommended. Shift-drag box-select stays in Highlight mode, switches a visible table to
+     Highlighted, and the checkbox becomes the All / Selection / Highlighted / Related scope menu.
    - **Recommended:**
      - shift-drag box-select still needs Highlight mode, as today;
      - when the table is visible, the box switches its filter to **Highlighted**;
      - the old "Filter to map selection" checkbox becomes a scope menu: **All / Selection / Highlighted / Related**.
 3. **What drives the related tint?**
+   - **Decided 2026-10-05:** the focus plus the highlights, not the recorded selection (the recommendation; confirmed
+     explicitly).
    - **Recommended:** the focus plus the highlights, and *not* the recorded selection.
    - The selection still reaches other tables through the **Selection** scope. For a non-link table, that scope means
      "rows related to the selected links".
 4. **`GET` or `POST` for related and rows?**
+   - **Decided 2026-10-05:** as recommended. `POST` with a JSON body for `/related`, `/table/{name}/rows` (the GET
+     stays) and `/locate`.
    - The design names `GET /related?table=&ids=`. Box-selections and NL selections can be thousands of ids, which
      overflows a URL: uvicorn's h11 limit is about 16 KB for the request line plus headers. The current GET `rows?ids=`
      has the same latent bug.
    - **Recommended:** `POST` with a JSON body, for `/related`, `/table/{name}/rows` (the GET stays) and `/locate`.
    - They are still read-only and unrecorded. They pass the same loopback Origin guard as other POSTs.
 5. **Scope of relations.**
+   - **Decided 2026-10-05:** as recommended. Single-column FKs only, no self-references, and a table is never revisited.
    - **Recommended:** single-column FKs only, and no self-references: `link.parent_link_id`, `node.parent_node_id`,
      `zone.super_zone`.
    - A table is never revisited: "Expand a hop" reaches *new* tables (link → lane → lane_tod), not link → node → link
      neighbours.
    - Neighbour links are a later feature.
 6. **The Settings dialog's save model.**
+   - **Decided 2026-10-05:** a Save to menu (User / This project / This session only) and each change saves instantly
+     (the recommendation; confirmed explicitly).
    - **Recommended:**
      - a **Save to** menu: User (default) / This project / This session only;
      - each change saves on `change`;
      - an empty input means "reset": `value=None` removes the key from that layer;
      - a per-field **Reset** removes the value from the layer it actually comes from.
 7. **Which keys are read-only?**
+   - **Decided 2026-10-05:** as recommended. Exactly the refusal the session enforces, derived on the server;
+     `io.allowed_roots` shown read-only with the reason.
    - The brief says "`io.*`, secret-named". Today the session refuses only `io.allowed_roots` (and `io` as a whole,
      which would replace it). `io.spec_version` and `io.default_format` are settable and harmless.
    - The schema has no secret-named fields: by design, keys live in the keyring.
@@ -137,13 +150,19 @@
        automatically.
 8. **Sections that nothing reads yet.** `engine.*`, `validation.*` (P2) and `credentials.*` are in the schema but not
    wired.
+   - **Decided 2026-10-05:** as recommended. Show them with a "not used by the workbench yet" note; `app.*` launch keys
+     get an "applies on next launch" badge.
    - **Recommended:** show them, each with a "not used by the workbench yet" note.
    - `app.host/port/console` carry an "applies on next launch" badge. Session scope has no effect for them, and the
      form says so.
 9. **The node table under the "Selection" scope.**
+   - **Decided 2026-10-05:** all nodes of the selected links, through the FK relation (the recommendation; confirmed
+     explicitly).
    - In P0 it showed only the from/to anchors.
    - **Recommended:** all nodes of the selected links, through the FK relation. The anchors stay drawn on the map.
 10. **Legacy deletion.**
+    - **Decided 2026-10-05:** as recommended (delete `_geojson.py`, its test and both `templates/` folders; keep
+      `ClaudeParser` and the CLI aliases).
     - **Recommended:**
       - also delete `select/_geojson.py` and `tests/test_select_geojson.py` (only `webapp.py` uses them);
       - delete both `templates/` folders;
