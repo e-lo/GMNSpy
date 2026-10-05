@@ -8,8 +8,12 @@ from __future__ import annotations
 
 import json
 
+import pytest
 from gmnspy.cli.app import app
 from typer.testing import CliRunner
+
+# Each test runs the real benchmark suite on the fixture.
+pytestmark = pytest.mark.slow
 
 runner = CliRunner()
 

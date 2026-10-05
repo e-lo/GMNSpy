@@ -15,7 +15,7 @@ Run things via `uv run`:
 ```bash
 uv run gmnspy --help
 uv run datagrove --help
-uv run pytest packages
+uv run pytest packages -n auto    # fast tier; see "Running tests" below
 ```
 
 > **zsh users:** `[` and `]` are glob characters on zsh (the default shell on macOS). If you want to install **just one** extra ad-hoc, quote the brackets: `uv add 'gmnspy[clean]'` (not `uv add gmnspy[clean]`, which gives `zsh: no matches found`). The workspace-level `uv sync --all-packages --all-extras` doesn't hit this — no brackets in the command.
@@ -84,17 +84,52 @@ Generally:
 
 *Contributions which do not meet these requirements may not be approved*
 
-## Testing and CI
+## Running tests
 
-Tests are located in the `tests` folder and leverage `pytest`
+Tests live in `packages/datagrove/tests` and `packages/gmnspy/tests` and use `pytest`. Run them through `uv run --all-extras` from the repo root.
 
-Running tests:
+**While iterating, run your domain. Before committing a cross-cutting change, run the default. Run the full suite before merge.**
 
-```bash
-pytest
-```
+| Tier | Command | Time* |
+|---|---|---|
+| Domain | `uv run --all-extras pytest <paths below>` | 2–12s |
+| Default (fast) | `uv run --all-extras pytest packages -n auto` | ~28s (~50s without `-n auto`) |
+| Full | `uv run --all-extras pytest packages -n auto -m ""` | ~31s |
 
-Tests are automatically run when commits are pushed to Github using the `.github/workflows/tests.yml` workflow.
+\* Measured on an 8-core Apple-silicon laptop.
+
+- **Default** skips tests marked `slow` (end-to-end runs, like executing every documented Python block or running the bench pipeline) and `perf` (performance-regression bounds). `pyproject.toml` sets this with `-m "not slow and not perf"` in `addopts`.
+- **Full** adds `-m ""`, which overrides that filter. Use `-m slow` or `-m perf` to run only one of those groups.
+- **`-n auto`** runs tests in parallel with `pytest-xdist` (a dev dependency). It's opt-in. Leave it off when you use `--pdb` or a single test. `addopts` pins `--dist=loadfile` so each test file stays on one worker.
+- **Naming a slow file is not enough.** `pytest packages/gmnspy/tests/test_cli_bench.py` deselects everything in it unless you add `-m ""`.
+- **`live_llm` tests** call real provider APIs and skip unless you opt in. See the docstring of `packages/gmnspy/tests/test_llm_live.py`.
+
+### Per-domain commands
+
+Paths are relative to the repo root. `T=packages/gmnspy/tests`, `D=packages/datagrove/tests`.
+
+| You touched | Run |
+|---|---|
+| `datagrove/engines`, `datagrove/io` | `$D/engines $D/io` |
+| `datagrove/validation`, `datagrove/quality` | `$D/validation $D/quality` |
+| anything else in datagrove | `packages/datagrove` (~15s; ~10s with `-n auto`) |
+| `gmnspy/workbench` | `$T/test_workbench_*.py $T/test_cli_workbench.py` |
+| `gmnspy/llm` | `$T/test_llm_*.py $T/test_cli_llm.py $T/test_workbench_llm_routes.py $T/test_workbench_ollama_pull.py` |
+| `gmnspy/select` | `$T/test_select_*.py` |
+| `gmnspy/osm` | `$T/test_osm_*.py` |
+| `gmnspy/overture` | `$T/test_overture_*.py` |
+| `gmnspy/map`, `gmnspy/viz` | `$T/test_map_*.py $T/test_viz_*.py` |
+| `gmnspy/graph`, `scope`, `semantics`, `indexes` | `$T/test_graph*.py $T/test_scope.py $T/test_semantics.py $T/test_indexes.py $T/test_network_scope_accessor.py` |
+| `gmnspy/network.py`, `quality`, `spec`, `clean`, geometry | `$T/test_network*.py $T/test_quality.py $T/test_spec.py $T/test_geom*.py $T/test_wkt.py $T/test_clean.py` |
+| `gmnspy/cli` | `$T/test_cli*.py` |
+| docs (`*.md` with Python blocks) | `$T/test_documented_*.py -m ""` |
+| `gmnspy/bench` | `$T/bench $T/test_bench_*.py $T/test_cli_bench*.py -m ""` |
+
+A domain run skips the doctests in the source modules. The default run includes them.
+
+### CI
+
+`.github/workflows/tests.yml` always runs the **full** suite (`-m "" -n auto`), including `slow` and `perf`, on every push and PR across the Python matrix, plus the per-package coverage gates. `bench.yml` also runs the `perf` tests on their own, serially, on PRs that touch performance-critical paths.
 
 ## Documentation
 

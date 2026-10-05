@@ -9,6 +9,7 @@ that point at the deferred-adapter tasks, and registry/protocol wiring.
 from __future__ import annotations
 
 import re
+import shutil
 import threading
 from pathlib import Path
 
@@ -44,8 +45,10 @@ def link_parquet() -> Path:
 
 
 @pytest.fixture
-def duckdb_path() -> Path:
-    return leavenworth.duckdb_path()
+def duckdb_path(tmp_path: Path) -> Path:
+    # A private copy: the engine opens .duckdb read-write, which takes an exclusive
+    # cross-process lock that would block other xdist workers reading the committed file.
+    return Path(shutil.copyfile(leavenworth.duckdb_path(), tmp_path / "leavenworth.duckdb"))
 
 
 @pytest.fixture

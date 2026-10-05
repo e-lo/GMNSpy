@@ -65,7 +65,7 @@ cd GMNSpy
 uv sync --all-packages --all-extras
 
 uv run gmnspy --help              # CLI
-uv run pytest packages            # tests
+uv run pytest packages -n auto    # fast test tier (full: add -m ""; see CONTRIBUTING.md)
 ```
 
 Full contributor workflow: [CONTRIBUTING.md](CONTRIBUTING.md).
