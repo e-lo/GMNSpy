@@ -135,7 +135,7 @@ The tests check the parser's plumbing, not how well a real model reads requests.
 uv run --all-extras python scripts/eval_nl_selection.py --provider ollama --model qwen2.5:7b --runs 3
 ```
 
-It parses each utterance in `scripts/data/nl_eval_set.toml` `--runs` times and prints per-utterance and total accuracy (also how many parses were right without a repair). Options you leave out follow your `llm.quality` settings. Compare against the numbers from before your change, and try `--no-guide` and `--temperature default` (Ollama's own temperature), where small models make most of their mistakes. Add an utterance to the data file when you find a phrasing that a model gets wrong.
+It parses each utterance in `scripts/data/nl_eval_set.toml` `--runs` times and prints per-utterance and total accuracy: `correct` (every field right), `first-try` (right without a repair) and `resolves` (right, or only a street name and route number swapped, which the resolver's fallback recovers). Options you leave out follow your `llm.quality` settings. Compare against the numbers from before your change, and try `--no-guide` and `--temperature default` (Ollama's own temperature), where small models make most of their mistakes. Add an utterance to the data file when you find a phrasing that a model gets wrong.
 
 It never runs in CI. It calls whichever provider you name, so `--provider anthropic`, `openai` or `gemini` spends real tokens; the script says so before it starts.
 

@@ -8,6 +8,11 @@ Each utterance in ``scripts/data/nl_eval_set.toml`` is parsed ``--runs`` times t
 :class:`~netstead.select.intent.SelectionIntent` is checked against the expected fields. It prints
 a per-utterance and total accuracy table, then the misses.
 
+"correct" is a parse with every expected field right. "resolves" also counts a parse whose only
+mistake is a street name in ``facility.ref`` or a route number in ``facility.name``: the resolver
+falls back to the other column for those (see ``_facility_links`` in ``netstead/select/resolve.py``)
+and selects the same links, with a diagnostic.
+
 Options left out follow your netstead settings (``llm.quality``), so a bare run measures what the
 app does today. ``--temperature default`` sends no temperature (the provider's own default).
 ``--guide`` / ``--no-guide`` turns the shipped assistant guide on or off. Grounding, project notes
@@ -60,15 +65,23 @@ def _contains(values: tuple, want: str) -> bool:
     return any(_norm(v) == _norm(want) for v in values)
 
 
+#: Marks a miss the resolver's ref <-> name fallback recovers.
+FALLBACK = " (resolver fallback recovers)"
+
+
 def check(intent, expected: dict[str, Any]) -> list[str]:
-    """The fields of ``intent`` that don't match ``expected`` (empty when the parse is right)."""
+    """The fields of ``intent`` that don't match ``expected`` (empty when the parse is right).
+
+    A ref/name swap that the resolver falls back from ends with :data:`FALLBACK`.
+    """
     facility = intent.facility
     refs = facility.refs() if facility else ()
     names = facility.names() if facility else ()
     errors = []
-    for key, own, other in (("ref", refs, names), ("name", names, refs)):
+    for key, own, other_key, other in (("ref", refs, "name", names), ("name", names, "ref", refs)):
         if key in expected and not _contains(own, expected[key]):
-            errors.append(f"{key}={list(own)}" + (" (swapped)" if _contains(other, expected[key]) else ""))
+            swapped = _contains(other, expected[key])
+            errors.append(f"{key}={list(own)}" + (f" but {other_key}={list(other)}{FALLBACK}" if swapped else ""))
     direction = facility.direction if facility else None
     if "direction" in expected and direction != expected["direction"]:
         errors.append(f"direction={direction}")
@@ -150,7 +163,7 @@ def main(argv: list[str]) -> int:
     rows, misses = [], []
     for case in cases:
         utterance = case["utterance"]
-        right = first_try = 0
+        right = first_try = resolves = 0
         started = time.monotonic()
         for _ in range(args.runs):
             transport.calls = 0
@@ -163,17 +176,18 @@ def main(argv: list[str]) -> int:
             else:
                 right += 1
                 first_try += transport.calls == 1
-        rows.append((utterance, right, first_try, (time.monotonic() - started) / args.runs))
+            resolves += all(error.endswith(FALLBACK) for error in errors)
+        rows.append((utterance, right, first_try, resolves, (time.monotonic() - started) / args.runs))
 
     width = max(len(row[0]) for row in rows)
-    print(f"\n{'utterance':<{width}}  {'correct':<9}  {'first-try':<9}  s/parse")
+    print(f"\n{'utterance':<{width}}  {'correct':<9}  {'first-try':<9}  {'resolves':<9}  s/parse")
     for utterance, *counts, seconds in rows:
         cells = "  ".join(f"{n:>5}/{args.runs:<3}" for n in counts)
         print(f"{utterance:<{width}}  {cells}  {seconds:>7.1f}")
     total = len(rows) * args.runs
-    right, first_try = (sum(row[i] for row in rows) for i in (1, 2))
-    cells = "  ".join(f"{n:>5}/{total:<3}" for n in (right, first_try))
-    print(f"{'TOTAL':<{width}}  {cells}  ({right / total:.0%} correct)")
+    right, first_try, resolves = (sum(row[i] for row in rows) for i in (1, 2, 3))
+    cells = "  ".join(f"{n:>5}/{total:<3}" for n in (right, first_try, resolves))
+    print(f"{'TOTAL':<{width}}  {cells}  ({right / total:.0%} correct, {resolves / total:.0%} resolve)")
     for utterance, errors in misses:
         print(f"  miss: {utterance!r} -> {', '.join(errors)}")
     return 0 if right == total else 1
