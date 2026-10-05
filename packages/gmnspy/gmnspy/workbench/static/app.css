@@ -203,8 +203,10 @@
   .dot.ok.local { background:var(--hl); }
   .dot.warn { background:var(--accent); }
   .dot.off { background:#3a4150; }
-  #llm-panel { position:fixed; top:60px; right:12px; width:min(580px, calc(100vw - 24px));
-               max-height:calc(100vh - 120px); overflow:auto; z-index:6; }
+  /* --header-h is the header's live height (set by llm.js): the header wraps, so floating panels sit below it. */
+  #llm-panel { position:fixed; top:calc(var(--header-h, 52px) + 8px); right:12px; width:min(580px, calc(100vw - 24px));
+               max-height:calc(100vh - var(--header-h, 52px) - 60px); overflow:auto; z-index:6; }
+  #jobs-panel { top:calc(var(--header-h, 52px) + 4px); }
   #llm-panel table { width:100%; border-collapse:collapse; margin:4px 0 8px; }
   #llm-panel th { text-align:left; color:var(--muted); font-weight:600; font-size:11px; padding:4px 6px; }
   #llm-panel td { padding:5px 6px; border-bottom:1px solid var(--edge); vertical-align:middle; font-size:12.5px; }
@@ -217,11 +219,9 @@
   .st.fail { color:var(--to); }
   #llm-quality .row input[type=number] { width:90px; flex:none; }
   #llm-quality .row select { flex:none; max-width:230px; }
-  /* The header is crowded: let it wrap to a second row rather than squeeze the utterance box. */
-  @media (max-width: 1280px) {
-    header { flex-wrap:wrap; row-gap:8px; }
-    #utterance { flex:1 1 280px; min-width:0; }
-  }
+  /* The header is crowded: it wraps to a second row rather than overflow or squeeze the utterance box. */
+  header { flex-wrap:wrap; row-gap:8px; }
+  #utterance { flex:1 1 280px; min-width:0; }
   @media (max-width: 640px) {
     #nl-picker { flex-wrap:wrap; }
     #nl-picker select { max-width:120px; }

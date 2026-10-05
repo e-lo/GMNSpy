@@ -21,12 +21,13 @@ const QUALITY = [
   ["match_retry", "If nothing matches, retry once with only the closest real names", "choice", TRI],
   ["match_candidates", "…this many names", "int", [1, 20]],
   ["max_repairs", "Re-prompts after an invalid reply", "int", [0, 5]],
-  ["temperature", "Temperature", "float", [0, 2]],
+  ["temperature", "Temperature (blank = default 0.0)", "float", [0, 2]],
 ];
 
 let llm = null;          // last /api/llm/providers snapshot: status only, never key values
 let settings = null;     // last /api/settings payload: values, sources, paths
 let savedDefault = null; // the non-session pair: seen before any session override, or what "Make default" saved
+let baseSources = null;  // where that pair came from ({provider, model}: "user" | "project" | "env" | "default")
 let refreshSeq = 0;      // drop out-of-order refresh responses
 let modelsSeq = 0;
 
@@ -64,16 +65,29 @@ export async function refreshLLM() {
   const src = settings.sources;
   if (src["select.provider"] !== "session" && src["select.model"] !== "session") {
     savedDefault = { ...settings.values.select };
+    baseSources = { provider: src["select.provider"], model: src["select.model"] };
   }
+  await renderAll();
+}
+
+async function renderAll() {
   await renderPicker();
   if (panelOpen()) await renderPanel();
 }
 
+// Status-only snapshot (SSE `llm` event, or a key route's reply). It supersedes any refresh in flight.
 export function onLLMEvent(ev) {
   const { type, ...snapshot } = ev;
+  refreshSeq++;
   llm = snapshot;
-  renderPicker().catch(report);
-  if (panelOpen()) renderPanel().catch(report);
+  renderAll().catch(report);
+}
+
+// A project file or GMNSPY_SELECT__* env var outranks the user file, so a saved default would not take effect.
+function shadowingLayers() {
+  if (!baseSources) return [];
+  const layers = new Set(Object.values(baseSources).filter(s => s === "project" || s === "env"));
+  return [...layers].map(s => (s === "project" ? "this project's config" : "a GMNSPY_SELECT__* env var"));
 }
 
 // A set_setting from Python or another tab may change the provider, model, endpoints or quality.
@@ -112,6 +126,10 @@ async function renderPicker() {
   $("nl-dot").className = `dot ${dotClass(current || providerRow(provider))}`;
   $("nl-picker").title = current ? privacyNote(current) : `${provider} is not set up: open Models… to add a key or start it.`;
   $("nl-default").disabled = !canMakeDefault();
+  const shadow = shadowingLayers();
+  $("nl-default").title = shadow.length
+    ? `Save this provider and model to your user config (${shadow.join(" and ")} overrides it)`
+    : "Save this provider and model as your default";
   if (panelOpen()) $("llm-privacy").textContent = privacyNote(providerRow(provider));
   await renderModels(provider, model);
 }
@@ -162,18 +180,29 @@ async function startingModel(provider) {
   return installed.some(m => m.id === p.default_model) || !installed.length ? p.default_model : installed[0].id;
 }
 
+// Model first, then provider; if the provider write fails the model goes back, so the pair never mismatches.
+// (The stub has no model: its switch is a single write.)
 async function onProviderChange(provider) {
+  const before = llm.selected;
+  const sessionModel = settings && settings.sources["select.model"] === "session";
+  let modelWritten = false;
   try {
-    await setSetting("select.provider", provider, "session");
     if (provider !== "stub") {
       const model = await startingModel(provider);
       await setSetting("select.model", model, "session"); // explicit, so history replays the same model
+      modelWritten = true;
+      await setSetting("select.provider", provider, "session");
       llm.selected = { provider, model };
     } else {
-      llm.selected = { ...llm.selected, provider };
+      await setSetting("select.provider", provider, "session");
+      llm.selected = { ...before, provider };
     }
   } catch (e) {
     report(e);
+    if (modelWritten) {
+      // null drops the session override, restoring whatever the lower layers say
+      await setSetting("select.model", sessionModel ? before.model : null, "session").catch(report);
+    }
   }
   await renderPicker();
 }
@@ -188,14 +217,22 @@ async function onModelChange(model) {
   await renderPicker();
 }
 
+// One write of the whole [select] table, so the saved pair is atomic. The model is saved as chosen:
+// null (never chosen, or the stub) leaves it out, so the catalog default keeps applying.
 async function makeDefault() {
   const { provider, model } = llm.selected;
-  const pair = { provider, model: effectiveModel(provider, model) };
+  const pair = { provider, model: provider === "stub" ? null : model ?? null };
   try {
-    await setSetting("select.provider", pair.provider, "user");
-    if (provider !== "stub") await setSetting("select.model", pair.model, "user");
+    await dispatch({ type: "set_setting", key: "select", value: pair, scope: "user" });
     savedDefault = pair;
-    toast(`Saved ${(providerRow(provider) || { label: provider }).label}${pair.model ? ` · ${pair.model}` : ""} as your default.`);
+    const label = (providerRow(provider) || { label: provider }).label;
+    const what = `${label}${pair.model ? ` · ${pair.model}` : ""}`;
+    const shadow = shadowingLayers();
+    toast(
+      shadow.length
+        ? `Saved ${what} to your user config, but ${shadow.join(" and ")} overrides it.`
+        : `Saved ${what} as your default.`,
+    );
     await refreshLLM();
   } catch (e) {
     report(e);
@@ -264,20 +301,40 @@ function qualityHTML(values, sources) {
   }).join("");
 }
 
+// While a key form is open, only patch status cells: a rebuild would drop the field mid-typing.
+function renderProviders() {
+  const table = $("llm-providers");
+  const formOpen = [...table.querySelectorAll("tr.keyrow")].some(r => !r.hidden);
+  const rows = new Map([...table.querySelectorAll("tr[data-provider]")].map(tr => [tr.dataset.provider, tr]));
+  if (!formOpen || llm.providers.some(p => !rows.has(p.provider))) {
+    table.innerHTML = llm.providers.map(rowHTML).join("");
+    return;
+  }
+  for (const p of llm.providers) {
+    const tr = rows.get(p.provider);
+    tr.title = privacyNote(p);
+    tr.querySelector(".dot").className = `dot ${dotClass(p)}`;
+    const cell = tr.querySelector(".st");
+    cell.textContent = statusText(p);
+    cell.className = "st";
+  }
+}
+
 async function renderPanel() {
   if (!llm || !settings) return;
   $("llm-privacy").textContent = privacyNote(providerRow(llm.selected.provider));
   $("llm-storage").textContent = storageNote();
-  $("llm-providers").innerHTML = llm.providers.map(rowHTML).join("");
+  renderProviders();
   const ollama = providerRow("ollama");
   if (ollama && document.activeElement !== $("llm-ollama-url")) $("llm-ollama-url").value = ollama.base_url || "";
   if (!$("llm-quality").contains(document.activeElement)) {
     $("llm-quality").innerHTML = qualityHTML(settings.values.llm.quality, settings.sources);
   }
   const select = $("llm-catalog-provider");
-  if (!select.options.length) {
-    select.innerHTML = llm.providers.map(p => `<option value="${esc(p.provider)}">${esc(p.label)}</option>`).join("");
-  }
+  const keep = select.value;
+  select.innerHTML = llm.providers
+    .map(p => `<option value="${esc(p.provider)}"${p.provider === keep ? " selected" : ""}>${esc(p.label)}</option>`)
+    .join("");
   $("llm-catalog-hint").textContent =
     `Add or relabel models in ${settings.paths.user.replace(/config\.toml$/, "llm_models.toml")} (same shape as models.toml).`;
   await renderCatalog(select.value);
@@ -324,7 +381,9 @@ function openKeyForm(tr) {
   const row = tr.nextElementSibling;
   const cell = row.firstElementChild;
   cell.innerHTML =
-    '<div class="row"><input type="password" class="kval grow" autocomplete="off" spellcheck="false" ' +
+    // Password-manager opt-outs: an API key is not a site login and must not be saved or autofilled.
+    '<div class="row"><input type="password" class="kval grow" autocomplete="new-password" spellcheck="false" ' +
+    'data-1p-ignore data-lpignore="true" data-bwignore ' +
     `placeholder="Paste API key" aria-label="API key for ${esc(provider)}">` +
     '<button class="mini ksave">Save</button><button class="mini ghost kcancel">Cancel</button></div>';
   row.hidden = false;
@@ -381,7 +440,17 @@ async function testProvider(tr) {
   }
 }
 
+// The header wraps to more rows on narrower windows; floating panels read --header-h to sit below it.
+function trackHeaderHeight() {
+  const header = document.querySelector("header");
+  const set = () => document.documentElement.style.setProperty("--header-h", `${Math.ceil(header.getBoundingClientRect().height)}px`);
+  set();
+  if (typeof ResizeObserver === "function") new ResizeObserver(set).observe(header);
+  else window.addEventListener("resize", set);
+}
+
 export function wireLLM() {
+  trackHeaderHeight();
   $("nl-provider").onchange = e => onProviderChange(e.target.value);
   $("nl-model").onchange = e => onModelChange(e.target.value);
   $("nl-default").onclick = () => makeDefault();

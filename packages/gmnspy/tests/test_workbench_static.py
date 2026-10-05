@@ -80,7 +80,8 @@ def test_llm_module_never_persists_or_stores_key_text():
 
 def test_llm_key_field_is_write_only():
     src = (JS_DIR / "llm.js").read_text()
-    assert 'type="password"' in src and 'autocomplete="off"' in src
+    assert 'type="password"' in src and 'autocomplete="new-password"' in src
+    assert "data-1p-ignore" in src and 'data-lpignore="true"' in src and "data-bwignore" in src
     assert "X-GMNSpy-Secrets" in src  # key writes and tests carry the secrets header
 
 
