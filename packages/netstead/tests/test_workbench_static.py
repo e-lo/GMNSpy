@@ -165,3 +165,13 @@ def test_settings_dialog_hosts_the_language_models_section():
 def test_settings_module_is_wired_from_main():
     main = (JS_DIR / "main.js").read_text()
     assert 'from "./settings.js"' in main and "registerSection(" in main and "wireSettings()" in main
+
+
+def test_header_puts_the_utterance_and_picker_on_their_own_row():
+    html = (STATIC_DIR / "index.html").read_text()
+    row = html[html.index('id="nl-row"') : html.index("</header>")]
+    for element_id in ("utterance", "nl-picker", "go"):
+        assert f'id="{element_id}"' in row
+    main_row = html[html.index("<header>") : html.index('id="nl-row"')]
+    for element_id in ("net-select", "open-wizard", "recent", "viewmode", "jobs-btn", "settings-btn"):
+        assert f'id="{element_id}"' in main_row

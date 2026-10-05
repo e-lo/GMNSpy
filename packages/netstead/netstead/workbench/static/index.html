@@ -13,27 +13,32 @@
 <body>
 <div id="app">
   <header>
-    <h1>Netstead Workbench</h1>
-    <select id="net-select" aria-label="Active network"></select>
-    <button id="open-wizard" class="mini">Open / Import…</button>
-    <select id="recent" aria-label="Recent networks"></select>
-    <div id="viewmode">
-      <button data-mode="map" class="on">Map</button>
-      <button data-mode="split">Split</button>
-      <button data-mode="table">Table</button>
+    <div class="hrow">
+      <h1>Netstead Workbench</h1>
+      <select id="net-select" aria-label="Active network"></select>
+      <button id="open-wizard" class="mini">Open / Import…</button>
+      <select id="recent" aria-label="Recent networks"></select>
+      <div id="viewmode">
+        <button data-mode="map" class="on">Map</button>
+        <button data-mode="split">Split</button>
+        <button data-mode="table">Table</button>
+      </div>
+      <span id="count"></span>
+      <span class="spacer"></span>
+      <button id="jobs-btn" class="mini ghost" aria-label="Background jobs">Jobs <span id="jobs-count" class="pcount">0</span></button>
+      <button id="settings-btn" class="mini ghost">Settings…</button>
     </div>
-    <input id="utterance" placeholder='e.g. "I-40 EB between South Miami Boulevard and Airport Boulevard"' aria-label="Selection utterance" />
-    <span id="nl-picker">
-      <span id="nl-dot" class="dot off" aria-hidden="true"></span>
-      <select id="nl-provider" aria-label="Language model provider (this session)"></select>
-      <select id="nl-model" aria-label="Language model (this session)"></select>
-      <button id="nl-default" class="mini ghost" title="Save this provider and model as your default" disabled>Make default</button>
-      <button id="nl-manage" class="mini ghost" aria-label="Manage language models">Models…</button>
-    </span>
-    <button id="go">Select</button>
-    <span id="count"></span>
-    <button id="jobs-btn" class="mini ghost" aria-label="Background jobs">Jobs <span id="jobs-count" class="pcount">0</span></button>
-    <button id="settings-btn" class="mini ghost">Settings…</button>
+    <div class="hrow" id="nl-row">
+      <input id="utterance" placeholder='e.g. "I-40 EB between South Miami Boulevard and Airport Boulevard"' aria-label="Selection utterance" />
+      <span id="nl-picker">
+        <span id="nl-dot" class="dot off" aria-hidden="true"></span>
+        <select id="nl-provider" aria-label="Language model provider (this session)"></select>
+        <select id="nl-model" aria-label="Language model (this session)"></select>
+        <button id="nl-default" class="mini ghost" title="Save this provider and model as your default" disabled>Make default</button>
+        <button id="nl-manage" class="mini ghost" aria-label="Manage language models">Models…</button>
+      </span>
+      <button id="go">Select</button>
+    </div>
   </header>
   <div id="stage" data-mode="map">
     <div id="map">
