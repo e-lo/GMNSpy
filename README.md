@@ -1,5 +1,11 @@
 # GMNSpy
 
+> [!IMPORTANT]
+> **GMNSpy is superseded by [Netstead](https://github.com/e-lo/netstead)** (`pip install netstead`), a ground-up rewrite
+> with a new API. This v0.3 code and the `gmnspy` package on PyPI (v0.3.5) are no longer developed. Existing
+> `gmnspy` installs keep working, and a `gmnspy` requirement will never pull in the rewrite. To upgrade, see the
+> [migration guide](https://github.com/e-lo/netstead/blob/main/packages/netstead/docs/migration/v0.3-to-v1.0.md).
+
  Python tool for [General Modeling Network Specification (GMNS)](https://github.com/zephyr-data-specs/GMNS) developed
  by [Zephyr  Foundation](http://zephyrtransport.org) for Travel Analysis.
 
