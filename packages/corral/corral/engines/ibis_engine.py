@@ -54,7 +54,7 @@ happen inside an already-locked method); callers that step outside them should
 take :func:`backend_lock`.
 
 :meth:`IbisEngine.to_pandas` deliberately holds the lock only for the query: it fetches Arrow
-(``to_pyarrow``) and converts to pandas after the lock is released, so a large conversion never
+(as ``Backend.execute`` does) and converts to pandas after the lock is released, so a large conversion never
 stalls other threads' queries.
 
 Dispatch model (post-issue-#134 inversion)
@@ -608,9 +608,14 @@ class IbisEngine:
             ) from exc
         if not _is_duckdb(expr):
             return expr.to_pandas().convert_dtypes()
-        # Only the query holds the backend lock (``to_pyarrow`` is a locked backend method); the
-        # Arrow -> pandas conversion, which can cost as much as the query, runs after it is released.
-        return _arrow_to_pandas(expr.to_pyarrow(), expr.as_table().schema()).convert_dtypes()
+        # Only the query holds the backend lock; the Arrow -> pandas conversion, which can cost as
+        # much as the query, runs after it is released. The Arrow table is fetched the way
+        # ``Backend.execute`` fetches it (the duckdb relation's own ``to_arrow_table``, not
+        # ``to_pyarrow``, which re-maps types), so the conversion below sees exactly what it sees.
+        backend = expr._find_backend()
+        with backend_lock(backend):
+            arrow = backend._to_duckdb_relation(expr).to_arrow_table()
+        return _arrow_to_pandas(arrow, expr.as_table().schema()).convert_dtypes()
 
     def to_polars(self, expr: ir.Table) -> pl.DataFrame:
         """Materialize ``expr`` and return a ``polars.DataFrame``.

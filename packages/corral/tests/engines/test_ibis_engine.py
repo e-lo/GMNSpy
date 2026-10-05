@@ -453,6 +453,35 @@ def test_to_pandas_matches_ibis_execute_for_every_leavenworth_table(engine: Ibis
         pd.testing.assert_frame_equal(engine.to_pandas(expr), expr.execute().convert_dtypes(), obj=path.name)
 
 
+def test_to_pandas_matches_ibis_execute_for_awkward_types(engine: IbisEngine):
+    """Decimals, tz-aware timestamps, uuid / json values and nullable ints convert as ``execute`` does."""
+    import datetime as dt
+    import decimal
+
+    import pandas as pd
+    import pyarrow as pa
+
+    utc = dt.UTC
+    uid = "00000000-0000-0000-0000-000000000001"
+    arrow = pa.table(
+        {
+            "dec": pa.array([decimal.Decimal("1.25"), None, decimal.Decimal("-3.50")], pa.decimal128(9, 2)),
+            "ts": pa.array(
+                [dt.datetime(2026, 1, 1, tzinfo=utc), None, dt.datetime(2026, 6, 1, 12, tzinfo=utc)],
+                pa.timestamp("us", tz="UTC"),
+            ),
+            "n": pa.array([1, None, 3], pa.int64()),
+            "n_full": pa.array([1, 2, 3], pa.int32()),
+            "uid_text": pa.array([uid, None, uid]),
+            "doc_text": pa.array(['{"a": 1}', None, "[1, 2]"]),
+            "flag": pa.array([True, None, False]),
+        }
+    )
+    expr = engine.from_arrow(arrow)
+    expr = expr.mutate(uid=expr.uid_text.cast("uuid"), doc=expr.doc_text.cast("json"))
+    pd.testing.assert_frame_equal(engine.to_pandas(expr), expr.execute().convert_dtypes())
+
+
 def test_to_pandas_converts_after_releasing_the_backend_lock(engine: IbisEngine, link_parquet: Path, monkeypatch):
     from corral.engines import ibis_engine
 
