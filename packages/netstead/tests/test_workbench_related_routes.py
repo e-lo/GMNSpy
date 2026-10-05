@@ -179,3 +179,37 @@ def test_oversized_filters_are_rejected_without_echoing_values(client):
     assert r.status_code == 422
     ok_in = [{"col": "link_id", "op": "in", "val": list(range(10_000))}]
     assert client.post(f"{BASE}/table/lane/rows", json={"filter": ok_in}).status_code == 200
+
+
+def test_related_reports_partial_and_truncated(client, session, monkeypatch):
+    from netstead.workbench import related
+    from netstead.workbench.routes import network
+
+    session.registry.get("leavenworth").bump()  # drop answers memoised before the caps changed
+    monkeypatch.setattr(related, "MAX_SOURCE_IDS", 1)
+    monkeypatch.setattr(network, "MAX_MAP_IDS", 1)
+    j = client.post(f"{BASE}/related", json={"sources": {"node": [1, 2, 3]}, "hops": 2}).json()
+    by = {t["table"]: t for t in j["tables"]}
+    assert by["link"]["partial"] is False and by["lane"]["partial"] is True
+    assert j["map"]["link"]["truncated"] is True and len(j["map"]["link"]["ids"]) == 1
+    session.registry.get("leavenworth").bump()
+
+
+def test_locate_honours_ids_filter_and_related_filter(client, link1):
+    ids = [5, 9, 2]
+    assert client.post(f"{BASE}/table/link/locate", json={"id": 9, "ids": ids, "sort": "link_id"}).json() == {
+        "index": 2
+    }
+    assert client.post(f"{BASE}/table/link/locate", json={"id": 7, "ids": ids}).json() == {"index": None}
+    flt = [{"col": "link_id", "op": "gte", "val": 5}]
+    assert client.post(f"{BASE}/table/link/locate", json={"id": 6, "filter": flt, "sort": "link_id"}).json() == {
+        "index": 1
+    }
+    assert client.post(f"{BASE}/table/link/locate", json={"id": 4, "filter": flt}).json() == {"index": None}
+    node = int(link1.to_node_id)
+    related = {"related": {"sources": {"link": [1]}}, "related_mode": "filter", "sort": "node_id", "dir": "desc"}
+    j = client.post(f"{BASE}/table/node/locate", json={"id": node, **related}).json()
+    ends = sorted({int(link1.from_node_id), node}, reverse=True)
+    assert j == {"index": ends.index(node)}
+    other = next(n for n in range(1, 100) if n not in ends)
+    assert client.post(f"{BASE}/table/node/locate", json={"id": other, **related}).json() == {"index": None}

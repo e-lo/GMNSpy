@@ -113,3 +113,31 @@ def test_outbound_values_are_distinct_on_lazy_tables(graph):
     first = lanes.head(50)
     (match,) = relate(graph, {"lane": first.lane_id.astype(int).tolist()})["link"].matches
     assert sorted(match.values) == sorted(first.link_id.astype(int).unique().tolist())
+
+
+def test_a_capped_hop_two_frontier_marks_the_next_hop_partial(graph, lw, monkeypatch):
+    from netstead.workbench import related
+
+    links = lw.links_df()
+    busy = int(pd.concat([links.from_node_id, links.to_node_id]).value_counts().index[0])  # a node with 2+ links
+    assert related.relate(graph, {"node": [busy]}, hops=2)["lane"].partial is False
+    monkeypatch.setattr(related, "MAX_SOURCE_IDS", 1)
+    rel = related.relate(graph, {"node": [busy]}, hops=2)
+    assert rel["link"].partial is False  # hop 1 is complete
+    assert rel["lane"].partial is True  # hop 2 started from one of the node's links only
+
+
+def test_an_inbound_key_to_a_non_primary_column_follows_that_columns_values():
+    """``stop.zone_code → zone.code``: a highlighted zone (by its id) reaches the stops carrying its code."""
+    from netstead.workbench.related import ForeignKey, RelationGraph
+
+    zone = pd.DataFrame({"zone_id": [1, 2, 3], "code": ["A", "B", "A"]})
+    stop = pd.DataFrame({"stop_id": [10, 11, 12, 13], "zone_code": ["A", "B", "C", "A"]})
+    g = RelationGraph(
+        tables={"zone": zone, "stop": stop},
+        fks=(ForeignKey("stop", "zone_code", "zone", "code"),),
+        pks={"zone": "zone_id", "stop": "stop_id"},
+    )
+    rel = relate(g, {"zone": [1, 3]})
+    assert rel["stop"].matches == [Match("zone_code", ("A",), "stop.zone_code → zone")]
+    assert restrict(stop, rel["stop"].matches).stop_id.tolist() == [10, 13]
