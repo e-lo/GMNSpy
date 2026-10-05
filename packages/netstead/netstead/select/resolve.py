@@ -46,9 +46,11 @@ def _facility_links(links, facility):
     nothing in its own column is tried against the other one (small models put "Capital Blvd" in
     ``ref`` or "US 1" in ``name``), with the same normalization; each such fallback that hits adds
     a note for the result's diagnostics. A value that matches its own column never falls back.
+    ``ref`` and ``name`` are optional GMNS fields; a missing column matches nothing.
     """
-    ref_sets = links["ref"].apply(norm_ref)
-    names = links["name"].fillna("").astype("string").str.lower().str.replace(r"[^a-z0-9]", "", regex=True)
+    blank = pd.Series(None, index=links.index, dtype="object")
+    ref_sets = links.get("ref", blank).apply(norm_ref)
+    names = links.get("name", blank).fillna("").astype("string").str.lower().str.replace(r"[^a-z0-9]", "", regex=True)
 
     def by_ref(value):
         want = norm_ref(value)

@@ -90,6 +90,16 @@ def test_blank_facility_name_matches_nothing(rdu):
     assert r.link_ids == []
 
 
+def test_network_without_a_ref_column_still_resolves_by_name(rdu):
+    """``ref`` is optional in GMNS: a network without it resolves names and treats refs as unmatched."""
+    links, nodes = rdu
+    no_ref = links.drop(columns=["ref"])
+    by_name = resolve_frames(SelectionIntent(facility=Facility(name="Page Road")), no_ref, nodes)
+    assert by_name.link_ids
+    by_ref = resolve_frames(SelectionIntent(facility=Facility(ref="I 40")), no_ref, nodes)
+    assert by_ref.status == "not_found"
+
+
 # --- ref <-> name fallback (a small model puts a street name in ``ref``, or a route in ``name``) ---
 
 
