@@ -1,0 +1,98 @@
+"""Tests for the related-records, POST rows and locate routes (read-only, never recorded)."""
+
+import json
+
+import pytest
+from fastapi.testclient import TestClient
+from netstead.fixtures import leavenworth
+from netstead.workbench import Session, build_app
+
+BASE = "/api/n/leavenworth/roadway"
+
+
+@pytest.fixture(scope="module")
+def session(tmp_path_factory):
+    tmp = tmp_path_factory.mktemp("wb")
+    src = str(leavenworth.parquet_dir())
+    env = {"NETSTEAD_CONFIG_DIR": str(tmp / "u"), "NETSTEAD_IO__ALLOWED_ROOTS": json.dumps([src])}
+    s = Session(project_dir=tmp, environ=env)
+    s.dispatch({"type": "open_network", "source": src})
+    return s
+
+
+@pytest.fixture(scope="module")
+def client(session):
+    return TestClient(build_app(session))
+
+
+@pytest.fixture(scope="module")
+def link1(session):
+    return session.registry.get("leavenworth").links_df().set_index("link_id").loc[1]
+
+
+def test_schema_lists_spec_keys(client):
+    j = client.get(f"{BASE}/table/link/schema").json()
+    assert j["primary_key"] == "link_id"
+    fks = {(f["column"], f["ref_table"], f["navigable"]) for f in j["foreign_keys"]}
+    assert {("from_node_id", "node", True), ("to_node_id", "node", True)} <= fks
+    lane = client.get(f"{BASE}/table/lane/schema").json()
+    assert lane["primary_key"] == "lane_id" and [f["column"] for f in lane["foreign_keys"]] == ["link_id"]
+
+
+def test_related_summary_and_map_ids(client, link1):
+    j = client.post(f"{BASE}/related", json={"sources": {"link": [1]}}).json()
+    by = {t["table"]: t for t in j["tables"]}
+    assert by["lane"]["count"] >= 1 and by["lane"]["via"] == ["lane.link_id → link"] and by["lane"]["hop"] == 1
+    assert set(j["map"]["node"]["ids"]) == {int(link1.from_node_id), int(link1.to_node_id)}
+    assert j["map"]["node"]["truncated"] is False and "link" not in j["map"]
+
+
+def test_related_is_read_only(client, session):
+    before = len(session.history)
+    assert client.post(f"{BASE}/related", json={"sources": {"node": [1]}, "hops": 2}).status_code == 200
+    assert len(session.history) == before
+
+
+def test_related_rejects_unknown_tables_and_too_many_ids(client):
+    assert client.post(f"{BASE}/related", json={"sources": {"nope": [1]}}).status_code == 400
+    r = client.post(f"{BASE}/related", json={"sources": {"link": list(range(10_001))}})
+    assert r.status_code == 422 and "narrow the highlight" in r.text and "10000" not in r.text  # no echoed ids
+
+
+def test_post_rows_matches_get(client):
+    get = client.get(f"{BASE}/table/link/rows", params={"limit": 7, "sort": "link_id", "dir": "desc"}).json()
+    post = client.post(f"{BASE}/table/link/rows", json={"limit": 7, "sort": "link_id", "dir": "desc"}).json()
+    assert post == get
+
+
+def test_post_rows_empty_ids_means_no_rows(client):
+    assert client.post(f"{BASE}/table/link/rows", json={"ids": []}).json()["total"] == 0
+
+
+def test_post_rows_tints_related_rows(client):
+    j = client.post(f"{BASE}/table/lane/rows", json={"limit": 500, "related": {"sources": {"link": [1]}}}).json()
+    link_col = j["columns"].index("link_id")
+    tinted = [row[link_col] for row, via in zip(j["rows"], j["related"], strict=True) if via]
+    assert tinted and set(tinted) == {1}
+    assert set(v for v in j["related"] if v) == {"lane.link_id → link"}
+
+
+def test_post_rows_filters_to_related_and_to_sources(client):
+    body = {"related": {"sources": {"link": [1]}}, "related_mode": "filter"}
+    lanes = client.post(f"{BASE}/table/lane/rows", json=body).json()
+    assert lanes["total"] >= 1 and "related" not in lanes
+    links = client.post(f"{BASE}/table/link/rows", json=body).json()
+    assert links["total"] == 1  # the source table filters to the sources themselves
+
+
+def test_locate_follows_the_page_order(client):
+    rows = client.post(f"{BASE}/table/link/rows", json={"limit": 500, "sort": "link_id", "dir": "desc"}).json()
+    ids = [r[rows["columns"].index("link_id")] for r in rows["rows"]]
+    j = client.post(f"{BASE}/table/link/locate", json={"id": 5, "sort": "link_id", "dir": "desc"}).json()
+    assert j["index"] == ids.index(5)
+    assert client.post(f"{BASE}/table/lane/locate", json={"id": 1}).json() == {"index": None}  # lazy table
+
+
+def test_post_routes_keep_the_origin_guard(client):
+    r = client.post(f"{BASE}/related", json={"sources": {"link": [1]}}, headers={"Origin": "https://evil.example"})
+    assert r.status_code == 403
