@@ -100,7 +100,7 @@ def test_make_parser_stub_default_model_and_explicit_model(tmp_path, isolated_en
     stub = parser_for({})
     assert isinstance(stub, StubParser) and stub.describe() == {"provider": "stub", "model": None, "mode": "pattern"}
     fake_keyring.set_password(KEYRING_SERVICE, "openai", "sk-test")
-    assert parser_for({"select.provider": "openai"}).model == "gpt-4.1-mini"
+    assert parser_for({"select.provider": "openai"}).model == "gpt-6-luna"
     assert parser_for({"select.provider": "openai", "select.model": "gpt-4.1"}).model == "gpt-4.1"
 
 

@@ -13,9 +13,10 @@
 #                  one forced tool call per utterance doesn't need a large model (design: "Tiny models").
 # Per model: id (sent to the API), label, tier (fast | balanced | best), tools (tool calling).
 #
-# VERIFY: OpenAI, Gemini and Ollama model ids are editable starting points, not
-# checked against the provider docs. `gmnspy llm test <provider>` lists every catalog
-# id the live endpoint does not serve; fix this file before each release.
+# OpenAI, Gemini and Ollama model ids were checked against official vendor docs on 2026-10-05 (see
+# the per-model comments below for sources and caveats — this landscape moves fast, so re-verify
+# before each release). `gmnspy llm test <provider>` also lists every catalog id the live endpoint
+# does not serve.
 
 [anthropic]
 label = "Anthropic"
@@ -47,26 +48,30 @@ label = "OpenAI"
 kind = "remote"
 base_url = "https://api.openai.com/v1"
 key_env = ["GMNSPY_OPENAI_API_KEY", "OPENAI_API_KEY"]
-default_model = "gpt-4.1-mini"
+default_model = "gpt-6-luna"
 
-# VERIFY against https://platform.openai.com/docs/models
+# Verified 2026-10-05 against https://developers.openai.com/api/docs/models (platform.openai.com/docs/models
+# redirects there). gpt-4.1-mini/gpt-4.1/gpt-5 no longer appear anywhere on that page (checked verbatim,
+# including any "legacy"/"previous generation" section) and are superseded by the GPT-6 generation listed
+# below; https://developers.openai.com/api/docs/deprecations also lists dated GPT-5 snapshots as deprecated
+# (shutdown dates through 2026-12-11). GPT-6 Luna is described there as "most efficient for high-volume tasks".
 [[openai.models]]
-id = "gpt-4.1-mini"
-label = "GPT-4.1 mini"
+id = "gpt-6-luna"
+label = "GPT-6 Luna"
 tier = "fast"
 tools = true
 
-# VERIFY
+# Verified 2026-10-05, same source. GPT-6.1 Sol: "balances intelligence and cost".
 [[openai.models]]
-id = "gpt-4.1"
-label = "GPT-4.1"
+id = "gpt-6.1-sol"
+label = "GPT-6.1 Sol"
 tier = "balanced"
 tools = true
 
-# VERIFY
+# Verified 2026-10-05, same source. GPT-6 Astra: flagship, most capable model.
 [[openai.models]]
-id = "gpt-5"
-label = "GPT-5"
+id = "gpt-6-astra"
+label = "GPT-6 Astra"
 tier = "best"
 tools = true
 
@@ -77,21 +82,26 @@ base_url = "https://generativelanguage.googleapis.com/v1beta"
 key_env = ["GMNSPY_GEMINI_API_KEY", "GEMINI_API_KEY"]
 default_model = "gemini-2.5-flash-lite"
 
-# VERIFY against https://ai.google.dev/gemini-api/docs/models
+# Verified 2026-10-05 against https://ai.google.dev/gemini-api/docs/models: the id is correct and the page
+# states the 2.5 models "are not deprecated and will continue to be served until further notice through the
+# API" — but access is now limited to projects that have used them before, and Google recommends 3.5
+# Flash-Lite or 3.8 Flash for new projects. Kept as the catalog default (a key already configured for this
+# endpoint has very likely used 2.5 before); VERIFY again before a new key's first run if `gmnspy llm test`
+# reports it missing.
 [[gemini.models]]
 id = "gemini-2.5-flash-lite"
 label = "Gemini 2.5 Flash-Lite"
 tier = "fast"
 tools = true
 
-# VERIFY
+# Verified 2026-10-05, same source and same access caveat as gemini-2.5-flash-lite above.
 [[gemini.models]]
 id = "gemini-2.5-flash"
 label = "Gemini 2.5 Flash"
 tier = "balanced"
 tools = true
 
-# VERIFY
+# Verified 2026-10-05, same source and same access caveat as gemini-2.5-flash-lite above.
 [[gemini.models]]
 id = "gemini-2.5-pro"
 label = "Gemini 2.5 Pro"
@@ -106,8 +116,9 @@ key_env = []
 default_model = "qwen3:4b"
 
 # Ollama's installed models are discovered at run time (GET /api/tags). These entries
-# only label known tags and power the "ollama pull <id>" hint. VERIFY tags at
-# https://ollama.com/library before release.
+# only label known tags and power the "ollama pull <id>" hint.
+# Verified 2026-10-05 against https://ollama.com/library/qwen3: both tags are listed (qwen3:4b, 2.5GB,
+# 256K context; qwen3:8b, 5.2GB, 40K context, tagged "latest"). The library lists tags from 0.6b to 235b.
 [[ollama.models]]
 id = "qwen3:4b"
 label = "Qwen 3 4B"
