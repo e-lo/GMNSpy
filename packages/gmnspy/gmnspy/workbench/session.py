@@ -39,7 +39,15 @@ from typing import Any
 from datagrove.engines.ibis_engine import IbisEngine
 
 from gmnspy import Network
-from gmnspy.config import LoadedSettings, Settings, SettingsError, get_value, load_settings, save_setting
+from gmnspy.config import (
+    LoadedSettings,
+    Settings,
+    SettingsError,
+    get_value,
+    is_local_url,
+    load_settings,
+    save_setting,
+)
 from gmnspy.llm import LLMError, MissingKey, ProviderRegistry, build_registry
 from gmnspy.llm.context import assistant_context, find_project_context, read_capped
 from gmnspy.select.intent import SelectionIntent
@@ -160,6 +168,9 @@ class Session:
         self.history: list[HistoryEntry] = []
         self._injected_parser = parser
         self._parser = parser
+        #: The registry ``_parser`` was built from (an injected parser is paired with the current one):
+        #: its decisions about what to send must be the ones for the endpoint the parser calls.
+        self._parser_registry: ProviderRegistry | None = self.llm if parser is not None else None
         self.http = http
         self.jobs = JobRunner(lambda event: self.events.publish(event))  # late-bound, like every other publish
         self._lock = threading.RLock()
@@ -176,19 +187,31 @@ class Session:
         """The NL parser for ``select.provider``/``select.model`` (built once and cached; an injected parser wins).
 
         The cache is dropped by :meth:`reset_llm`, which every ``select.*``/``llm.*`` setting change
-        (and every key write) calls. Raises :class:`~gmnspy.llm.errors.MissingKey` when the chosen
-        provider has no key; that answer is reused for :data:`_MISSING_KEY_TTL_S` seconds.
+        (and every key write through the Workbench) calls. Raises :class:`~gmnspy.llm.errors.MissingKey`
+        when the chosen provider has no key; that answer is reused for :data:`_MISSING_KEY_TTL_S`
+        seconds, so a key written outside this session (the ``gmnspy llm`` CLI, another process) may
+        go unseen for that long. The Workbench's key routes call :meth:`reset_llm`, so the UI never waits.
 
         Building reads the API key, which may block on the OS keyring (an unlock prompt), so it
         happens *outside* the session lock; the lock only guards the snapshot and the store.
         """
+        return self._parser_snapshot()[0]
+
+    def _parser_snapshot(self) -> tuple[Any, ProviderRegistry]:
+        """``(parser, the registry it was built from)``: see :meth:`parser`.
+
+        Callers that decide what to send (grounding, notes) must use *this* registry, not
+        ``self.llm`` read later: a setting change in between could pair a remote parser with a
+        registry that thinks the endpoint is local.
+        """
         with self._lock:
             if self._parser is not None:
-                return self._parser
+                return self._parser, self._parser_registry or self.llm
             registry, select = self.llm, self.settings.select
             failure = self._parser_failure
             if failure is not None and failure[0] is registry and time.monotonic() - failure[1] < _MISSING_KEY_TTL_S:
-                raise failure[2]
+                cached = failure[2]
+                raise MissingKey(cached.provider, str(cached))  # fresh: re-raising one instance grows its traceback
         try:
             built = make_parser(select, registry)
         except MissingKey as exc:
@@ -198,8 +221,10 @@ class Session:
             raise
         with self._lock:
             if self._parser is None and self.llm is registry:
-                self._parser = built  # nobody reset or built one meanwhile: cache ours
-            return self._parser if self._parser is not None else built
+                self._parser, self._parser_registry = built, registry  # nobody reset or built one: cache ours
+            if self._parser is not None:
+                return self._parser, self._parser_registry or self.llm
+            return built, registry
 
     def reset_llm(self) -> None:
         """Rebuild the provider registry and drop the cached parser (after a setting, key or endpoint change).
@@ -210,7 +235,9 @@ class Session:
             self.llm = self._build_llm()
             self._parser_failure = None
             if self._injected_parser is None:
-                self._parser = None
+                self._parser, self._parser_registry = None, None
+            else:
+                self._parser_registry = self.llm
 
     def _build_llm(self) -> ProviderRegistry:
         return build_registry(
@@ -491,12 +518,14 @@ class Session:
         with self._lock:
             self._handle(action.net_id)  # fail fast (no network open) before touching the keyring
         try:
-            parser = self.parser()  # takes the lock itself, but never while reading the keyring
+            parser, registry = self._parser_snapshot()  # takes the lock itself, never while reading the keyring
         except LLMError as exc:  # e.g. no key for the chosen provider: the user must act
             raise ActionError(str(exc)) from None
         with self._lock:
+            if self.llm is not registry:  # settings moved since the parser was built: its endpoint is stale
+                raise ActionError("LLM settings changed while preparing; try again")
             handle = self._handle(action.net_id)
-            registry, settings, version = self.llm, self.settings, handle.version
+            settings, version = self.settings, handle.version
             examples = tuple((u, p) for net_id, u, p in self._examples if net_id == handle.id)
         try:
             intent, result, parsed_by = self._select_utterance(
@@ -555,14 +584,19 @@ class Session:
             parsed_by = {**_parser_info(parser), "mode": mode}
             return intent, resolve_frames(intent, handle.links_df(), handle.nodes_df()), parsed_by
         provider = parser.provider.name
-        context = self._prompt_context(handle, provider, registry, settings, examples)
+        endpoint_local = is_local_url(getattr(parser.provider, "base_url", "") or "")
+        context = self._prompt_context(handle, provider, registry, settings, examples, endpoint_local=endpoint_local)
         intent, mode = _parse(parser, utterance, context)
         result = resolve_frames(intent, handle.links_df(), handle.nodes_df())
         parsed_by = {**_parser_info(parser), "mode": mode}
         quality = settings.llm.quality
         # ``match_retry`` is auto/on/off: always resolve it through the registry, never by truthiness.
         # Checked on the *current* registry, so turning it off while the first call ran still counts.
-        if result.status == "not_found" and self.llm.match_retry_on(provider):
+        current = self.llm
+        retry_on = current.match_retry_on(provider) and _follows_endpoint(
+            current.settings.quality.match_retry, endpoint_local
+        )
+        if result.status == "not_found" and retry_on:
             # With grounding off the vocabulary is built here but NOT sent: only the few close names
             # in the hint leave the machine, which is what makes the retry a narrow opt-in.
             vocabulary = context.vocabulary or _vocabulary(handle, quality.grounding_max_names)
@@ -584,16 +618,23 @@ class Session:
         registry: ProviderRegistry,
         settings: Settings,
         examples: tuple[tuple[str, dict[str, Any]], ...],
+        *,
+        endpoint_local: bool,
     ) -> PromptContext:
-        """The optional prompt parts ``llm.quality`` turns on for ``provider`` (see :mod:`gmnspy.select.prompt`)."""
+        """The optional prompt parts ``llm.quality`` turns on for ``provider`` (see :mod:`gmnspy.select.prompt`).
+
+        ``endpoint_local`` is whether the endpoint the parser will *actually* call is on this
+        machine; an ``auto`` setting needs it as well as the registry's say-so (belt and braces).
+        """
         quality = settings.llm.quality
         assistant = assistant_context(quality.assistant_context_max_chars) if quality.assistant_context else ""
         project = ""
-        if registry.project_context_on(provider):
+        if registry.project_context_on(provider) and _follows_endpoint(quality.project_context, endpoint_local):
             roots = allowed_roots(settings)  # notes are only read from inside io.allowed_roots
             path = find_project_context(handle.source, self.project_dir, roots)
             project = read_capped(path, quality.project_context_max_chars, roots) if path else ""
-        vocabulary = _vocabulary(handle, quality.grounding_max_names) if registry.grounding_on(provider) else ()
+        grounding = registry.grounding_on(provider) and _follows_endpoint(quality.grounding, endpoint_local)
+        vocabulary = _vocabulary(handle, quality.grounding_max_names) if grounding else ()
         shots = examples[-quality.few_shot_max :] if quality.few_shot else ()
         return PromptContext(assistant=assistant, project=project, vocabulary=vocabulary, examples=shots)
 
@@ -669,6 +710,11 @@ class _ParsedSelect:
     result: Any
     parsed_by: dict[str, Any] | None
     error: Exception | None = None  # the parser could not read the utterance (a "could not parse" selection)
+
+
+def _follows_endpoint(mode: str, endpoint_local: bool) -> bool:
+    """An ``auto`` quality setting also needs the called endpoint to be local; ``on`` is the user's explicit opt-in."""
+    return mode == "on" or endpoint_local
 
 
 def _vocabulary(handle: NetworkHandle, limit: int) -> tuple[str, ...]:

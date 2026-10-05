@@ -102,7 +102,7 @@ def render_prompt(context: PromptContext, system_prompt: str) -> tuple[str, str]
     if context.examples:
         shots = "\n\n".join(
             f"Request: {json.dumps(_LINE_BREAKERS.sub(' ', utterance).strip(), ensure_ascii=False)}\n"
-            f"Tool input: {json.dumps(payload, sort_keys=True, ensure_ascii=False)}"
+            f"Tool input: {json.dumps(payload, sort_keys=True)}"  # ASCII: no raw U+2028/U+2029/U+0085
             for utterance, payload in context.examples
         )
         per_call.append(

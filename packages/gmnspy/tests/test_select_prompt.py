@@ -71,3 +71,10 @@ def test_payload_round_trips_through_the_intent():
         "modes": ["drive"],
     }
     assert payload_from_intent(intent_from_payload(payload, "x")) == payload
+
+
+def test_few_shot_payloads_never_carry_raw_line_separators():
+    separators = (chr(0x2028), chr(0x2029), chr(0x85))
+    context = PromptContext(examples=(("go", {"facility": {"name": "A".join(separators)}}),))
+    per_call = render_prompt(context, "SYSTEM")[1]
+    assert not any(ch in per_call for ch in separators)

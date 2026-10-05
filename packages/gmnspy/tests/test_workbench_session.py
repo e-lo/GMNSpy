@@ -623,3 +623,60 @@ def test_few_shot_examples_only_come_from_the_same_network(
     assert len(fake_api.body()["system"]) == 1  # network a's example is not offered for network b
     s.dispatch(Select(net_id="a", utterance="the same again"))
     assert f'Request: "{UTTERANCE}"' in fake_api.body()["system"][1]["text"]
+
+
+def test_a_settings_change_between_parser_and_registry_snapshot_is_refused(
+    tmp_path, isolated_env, rdu_source, fake_api, no_network
+):
+    """Reviewer's probe: the parser is built for a REMOTE Ollama, then base_url flips to localhost
+    before the registry is snapshotted. The new registry would call the endpoint local and send the
+    vocabulary to the remote one; the select must refuse instead."""
+    s = Session(project_dir=tmp_path, environ=isolated_env, keyring=None, llm_transport=fake_api.transport())
+    s.dispatch(OpenNetwork(source=rdu_source))
+    s.dispatch(SetSetting(key="llm.ollama.base_url", value="http://ollama.example.com:11434"))
+    s.dispatch(SetSetting(key="select.provider", value="ollama"))
+    fake_api.add("POST", "/api/chat", body=_ollama_reply(FIXED_INTENT))
+    original, flipped = s._parser_snapshot, []
+
+    def snapshot_then_flip():
+        snapshot = original()
+        if not flipped:
+            flipped.append(True)
+            flip = SetSetting(key="llm.ollama.base_url", value="http://localhost:11434")
+            t = threading.Thread(target=lambda: s.dispatch(flip))
+            t.start()
+            t.join()
+        return snapshot
+
+    s._parser_snapshot = snapshot_then_flip
+    with pytest.raises(ActionError, match="LLM settings changed while preparing"):
+        s.dispatch(Select(utterance=UTTERANCE))
+    assert fake_api.requests == []  # nothing was sent anywhere
+    del s._parser_snapshot
+    s.dispatch(Select(utterance=UTTERANCE))  # the retry uses the new, local endpoint
+    assert fake_api.requests[-1].url.host == "localhost"
+
+
+def test_auto_privacy_follows_the_endpoint_the_parser_actually_calls(
+    tmp_path, isolated_env, rdu_source, fake_api, no_network
+):
+    from gmnspy.llm.providers import ADAPTERS
+    from gmnspy.select.parse import LLMParser
+
+    (tmp_path / "GMNSPY.md").write_text("Code 7 means HOV.")
+    remote = ADAPTERS["ollama"](base_url="http://ollama.example.com:11434", transport=fake_api.transport())
+    s = Session(
+        project_dir=tmp_path,
+        environ=isolated_env,
+        keyring=None,
+        llm_transport=fake_api.transport(),
+        parser=LLMParser(remote, "qwen3:4b"),
+    )
+    s.dispatch(OpenNetwork(source=rdu_source))
+    assert s.llm.grounding_on("ollama")  # settings say Ollama is local (the default), but this parser is not
+    fake_api.add("POST", "/api/chat", body=_ollama_reply(TYPO_INTENT))
+    s.dispatch(Select(utterance=UTTERANCE))
+    system = _system_text(fake_api.body())
+    assert fake_api.requests[-1].url.host == "ollama.example.com"
+    assert "in the active network:" not in system and "Code 7" not in system
+    assert len(fake_api.requests) == 1  # nor an auto close-match retry
