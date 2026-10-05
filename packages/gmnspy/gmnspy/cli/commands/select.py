@@ -50,7 +50,9 @@ def register(app: typer.Typer) -> None:
         provider: str = typer.Option(
             None, "--provider", help="Parser: stub | anthropic | openai | gemini | ollama (default: settings)."
         ),
-        model: str = typer.Option(None, "--model", help="Model id (default: settings, else the catalog default)."),
+        model: str = typer.Option(
+            None, "--model", help="Model id (default: settings, else the provider default; see `gmnspy llm status`)."
+        ),
         engine: str = typer.Option(
             None, "--engine", help="Compute engine (DuckDB is the only one; kept for compatibility)."
         ),

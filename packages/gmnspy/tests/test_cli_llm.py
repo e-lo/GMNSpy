@@ -181,3 +181,20 @@ def test_status_says_what_to_do_next_for_ollama(ring, fake_api):
     fake_api.routes.clear()
     fake_api.add("GET", "/api/tags", body={"models": []})
     assert "next step: run: gmnspy llm pull qwen3:4b" in _llm("status").output
+
+
+def test_status_and_test_name_the_installed_stand_in_for_ollama(ring, fake_api):
+    tags = {"models": [{"name": "qwen2.5:7b", "capabilities": ["completion", "tools"]}]}
+    fake_api.add("GET", "/api/tags", body=tags)
+    status = _llm("status")
+    assert status.exit_code == 0, status.output
+    assert "selections use qwen2.5:7b (qwen3:4b is not installed)" in status.output
+    test = _llm("test", "ollama")
+    assert test.exit_code == 0 and "Selections use qwen2.5:7b" in test.output
+
+
+def test_status_says_pull_when_no_installed_model_has_tools(ring, fake_api):
+    fake_api.add("GET", "/api/tags", body={"models": [{"name": "gemma2:2b", "capabilities": ["completion"]}]})
+    status = _llm("status")
+    assert "note: no installed model supports tool calling" in status.output and "ollama pull qwen3:4b" in status.output
+    assert _llm("test", "ollama").exit_code == 1

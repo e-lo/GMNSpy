@@ -48,15 +48,20 @@ def _remote(registry: Any, provider: str) -> Any:
 def _status_line(row: dict[str, Any]) -> str:
     if row["kind"] == "local":
         state = f"running, {row['models']} model(s)" if row["usable"] else (row["error"] or "not reachable")
+        if row["usable"] and not row["error"]:
+            stand_in = f" ({row['default_model']} is not installed)" if row["model"] != row["default_model"] else ""
+            state += f"; selections use {row['model']}{stand_in}"
     else:
         state = row["error"] or (f"key set ({row['source']})" if row["configured"] else "no key")
     return f"{'*' if row['usable'] else '-'} {row['label']:<16} {state}  [{row['base_url']}]"
 
 
 def _next_step(row: dict[str, Any]) -> str | None:
-    """A one-line next step for a local provider that can't be used yet (Ollama down, or no models)."""
-    if row["kind"] != "local" or row["usable"]:
+    """A one-line next step for a local provider that can't be used yet (Ollama down, no models, no usable model)."""
+    if row["kind"] != "local":
         return None
+    if row["usable"]:  # running with models, but maybe none that can stand in for the default
+        return f"note: {row['error']}" if row["error"] else None
     if row["models"] is None:  # the probe failed: not running (or not installed)
         return (
             "next step: start Ollama (open the app, or run: ollama serve); not installed? https://ollama.com/download"

@@ -322,7 +322,11 @@ class ClaudeParser(LLMParser):
 
 
 def make_parser(select: SelectSettings, registry: ProviderRegistry) -> Parser:
-    """The parser that ``select.provider`` / ``select.model`` describe (``model=None`` means the catalog default).
+    """The parser that ``select.provider`` / ``select.model`` describe.
+
+    ``model=None`` means the provider's default, from
+    :meth:`~gmnspy.llm.registry.ProviderRegistry.resolve_model`: the catalog default, or for Ollama an
+    installed tool-capable model when the catalog default isn't installed.
 
     When the catalog knows ``model`` and lists ``tools = false`` (e.g. a model whose docs say
     tool/function calling isn't available), the parser starts in JSON mode instead of attempting
@@ -337,7 +341,7 @@ def make_parser(select: SelectSettings, registry: ProviderRegistry) -> Parser:
         return StubParser()
     quality = registry.settings.quality
     catalog_provider = registry.catalog[select.provider]
-    model = select.model or catalog_provider.default_model
+    model = registry.resolve_model(select.provider, select.model)
     known = catalog_provider.model(model)
     json_mode = known is not None and not known.tools
     return LLMParser(

@@ -2,8 +2,9 @@
 
 import threading
 
+import httpx
 import pytest
-from gmnspy.config import load_settings
+from gmnspy.config import SelectSettings, load_settings
 from gmnspy.llm import registry as registry_module
 from gmnspy.llm.errors import MissingKey, ProviderUnavailable
 from gmnspy.llm.registry import build_registry, is_local_url
@@ -13,17 +14,20 @@ pytestmark = pytest.mark.usefixtures("no_network")
 
 
 class _CountingProvider:
-    """Fake adapter standing in for Ollama: counts ``list_models()`` calls; can be made to fail."""
+    """Fake adapter standing in for Ollama: counts ``installed_models()`` calls; can be made to fail."""
 
     def __init__(self, calls: list[int], *, fail: bool = False, **_ignored) -> None:
         self._calls = calls
         self._fail = fail
 
-    def list_models(self) -> list[str]:
+    def installed_models(self) -> dict[str, frozenset[str] | None]:
         self._calls.append(1)
         if self._fail:
             raise ProviderUnavailable("ollama", "Ollama (local): could not be reached.")
-        return ["qwen3:4b"]
+        return {"qwen3:4b": frozenset({"completion", "tools"})}
+
+    def list_models(self) -> list[str]:
+        return list(self.installed_models())
 
 
 @pytest.fixture
@@ -235,3 +239,68 @@ def test_concurrent_probes_are_serialized_to_one_live_call(make, monkeypatch):
     for thread in threads:
         thread.join()
     assert len(calls) == 1
+
+
+def _tags(*models):
+    """An ``/api/tags`` body: each model is ``name`` or ``(name, capabilities)``."""
+    rows = [{"name": m} if isinstance(m, str) else {"name": m[0], "capabilities": list(m[1])} for m in models]
+    return {"models": rows}
+
+
+@pytest.mark.parametrize(
+    ("installed", "expected"),
+    [
+        ((("qwen3:4b", ["tools"]), ("qwen2.5:7b", ["tools"])), "qwen3:4b"),  # the catalog default wins
+        (("llama3.2:3b", "qwen2.5:7b", "qwen3:8b"), "qwen3:8b"),  # first catalog tools model, in catalog order
+        (("gemma2:2b", ("my-tools:1b", ["completion", "tools"])), "my-tools:1b"),  # Ollama reports tools
+    ],
+)
+def test_ollama_default_falls_back_to_an_installed_tool_model(make, fake_api, installed, expected):
+    fake_api.add("GET", "/api/tags", body=_tags(*installed))
+    reg = make()
+    assert reg.resolve_model("ollama") == expected
+    row = next(r for r in reg.status() if r["provider"] == "ollama")
+    assert (row["model"], row["default_model"], row["error"]) == (expected, "qwen3:4b", None)
+
+
+def test_no_tool_model_installed_keeps_the_default_and_status_says_pull(make, fake_api):
+    fake_api.add("GET", "/api/tags", body=_tags("gemma2:2b", ("embed:1b", ["embedding"])))
+    reg = make()
+    assert reg.resolve_model("ollama") == "qwen3:4b"
+    row = next(r for r in reg.status() if r["provider"] == "ollama")
+    assert row["usable"] is True and "ollama pull qwen3:4b" in row["error"]
+
+
+def test_an_explicit_model_is_never_replaced_and_needs_no_probe(make, fake_api):
+    reg = make()
+    assert reg.resolve_model("ollama", "gemma2:2b") == "gemma2:2b"
+    assert reg.resolve_model("openai") == "gpt-6-luna"
+    assert fake_api.requests == []
+
+
+def test_ollama_down_keeps_the_catalog_default(make, fake_api):
+    fake_api.add("GET", "/api/tags", raises=httpx.ConnectError("refused"))
+    assert make().resolve_model("ollama") == "qwen3:4b"
+
+
+def test_connection_test_names_the_model_selections_use(make, fake_api):
+    fake_api.add("GET", "/api/tags", body=_tags(("qwen2.5:7b", ["completion", "tools"])))
+    result = make().test("ollama")
+    assert result["ok"] is True and result["model"] == "qwen2.5:7b"
+    assert "Selections use qwen2.5:7b (qwen3:4b is not installed)." in result["message"]
+
+
+def test_connection_test_fails_without_a_usable_model(make, fake_api):
+    fake_api.add("GET", "/api/tags", body=_tags("gemma2:2b"))
+    result = make().test("ollama")
+    assert result["ok"] is False and result["error_type"] == "ModelNotFound"
+    assert "gmnspy llm pull qwen3:4b" in result["message"]
+
+
+def test_make_parser_uses_the_installed_stand_in_unless_a_model_is_chosen(make, fake_api):
+    from gmnspy.select.parse import make_parser
+
+    fake_api.add("GET", "/api/tags", body=_tags("qwen2.5:7b"))
+    reg = make()
+    assert make_parser(SelectSettings(provider="ollama"), reg).model == "qwen2.5:7b"
+    assert make_parser(SelectSettings(provider="ollama", model="qwen3:8b"), reg).model == "qwen3:8b"

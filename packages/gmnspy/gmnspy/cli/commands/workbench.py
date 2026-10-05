@@ -93,7 +93,9 @@ def register(app: typer.Typer) -> None:
         provider: str = typer.Option(
             None, "--provider", help="NL parser: stub | anthropic | openai | gemini | ollama (default: settings)."
         ),
-        model: str = typer.Option(None, "--model", help="NL model id (default: settings, else the catalog default)."),
+        model: str = typer.Option(
+            None, "--model", help="NL model id (default: settings, else the provider default; see `gmnspy llm status`)."
+        ),
         basemap: str = typer.Option(None, "--basemap", help="Basemap: positron | esri (default: settings)."),
         host: str = typer.Option(None, "--host", help="Bind host (default: settings, 127.0.0.1)."),
         port: int = typer.Option(None, "--port", help="Bind port (default: settings, 8850)."),

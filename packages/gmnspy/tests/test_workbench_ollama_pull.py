@@ -203,4 +203,5 @@ def test_status_snapshot_offers_the_catalog_pull_choices(client, fake_api):
     fake_api.add("GET", "/api/tags", body={"models": []})
     pull = client.get("/api/llm/providers").json()["ollama_pull"]
     assert pull["allowed"] is True
-    assert [(c["id"], c["size_gb"]) for c in pull["choices"]] == [("qwen3:4b", 2.5), ("qwen3:8b", 5.2)]
+    choices = [(c["id"], c["size_gb"]) for c in pull["choices"]]
+    assert choices == [("qwen3:4b", 2.5), ("qwen3:8b", 5.2), ("qwen2.5:7b", 4.7)]

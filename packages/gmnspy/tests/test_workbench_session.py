@@ -416,6 +416,7 @@ def test_no_match_retries_once_with_the_closest_real_names(llm_session, fake_api
     fake_api.add("POST", "/api/chat", body=_ollama_reply(TYPO_INTENT))
     fake_api.add("POST", "/api/chat", body=_ollama_reply(FIXED_INTENT))
     llm_session.dispatch(SetSetting(key="select.provider", value="ollama"))
+    llm_session.dispatch(SetSetting(key="select.model", value="qwen3:4b"))  # explicit: no /api/tags probe
     sel = llm_session.dispatch(Select(utterance="I-40 EB between S Miami Blvd and Airprt Blvd"))
     assert sel["status"] == "resolved" and sel["parsed_by"]["match_retry"] is True
     assert 'Closest names: <close_matches>["Airport Boulevard"' in _system_text(fake_api.body())
@@ -425,6 +426,7 @@ def test_no_match_retries_once_with_the_closest_real_names(llm_session, fake_api
 def test_match_retry_off_is_respected_even_for_a_local_provider(llm_session, fake_api):
     fake_api.add("POST", "/api/chat", body=_ollama_reply(TYPO_INTENT))
     llm_session.dispatch(SetSetting(key="select.provider", value="ollama"))
+    llm_session.dispatch(SetSetting(key="select.model", value="qwen3:4b"))  # explicit: no /api/tags probe
     llm_session.dispatch(SetSetting(key="llm.quality.match_retry", value="off"))  # "off" is a truthy string
     sel = llm_session.dispatch(Select(utterance="I-40 EB between S Miami Blvd and Airprt Blvd"))
     assert sel["status"] == "not_found" and "match_retry" not in sel["parsed_by"]
@@ -475,6 +477,7 @@ def test_llm_call_runs_without_holding_the_session_lock(tmp_path, isolated_env, 
     s.dispatch(OpenNetwork(source=rdu_source))
     fake_api.add("POST", "/api/chat", body=_ollama_reply(FIXED_INTENT))
     s.dispatch(SetSetting(key="select.provider", value="ollama"))
+    s.dispatch(SetSetting(key="select.model", value="qwen3:4b"))  # explicit: no /api/tags probe
     assert s.dispatch(Select(utterance=UTTERANCE))["status"] == "resolved"
     assert seen == [True]
 
@@ -525,6 +528,7 @@ def test_switching_the_active_network_mid_parse_is_an_error_not_a_divergent_repl
     assert s.active == "b"
     fake_api.add("POST", "/api/chat", body=_ollama_reply(FIXED_INTENT))
     s.dispatch(SetSetting(key="select.provider", value="ollama"))
+    s.dispatch(SetSetting(key="select.model", value="qwen3:4b"))  # explicit: no /api/tags probe
     with pytest.raises(ActionError, match="target network changed"):
         s.dispatch(Select(utterance=UTTERANCE))  # net_id=None: "the active network", which moved
     assert s.selection is None and s.history[-1].ok is False
@@ -635,6 +639,7 @@ def test_a_settings_change_between_parser_and_registry_snapshot_is_refused(
     s.dispatch(OpenNetwork(source=rdu_source))
     s.dispatch(SetSetting(key="llm.ollama.base_url", value="http://ollama.example.com:11434"))
     s.dispatch(SetSetting(key="select.provider", value="ollama"))
+    s.dispatch(SetSetting(key="select.model", value="qwen3:4b"))  # explicit: no /api/tags probe
     fake_api.add("POST", "/api/chat", body=_ollama_reply(FIXED_INTENT))
     original, flipped = s._parser_snapshot, []
 

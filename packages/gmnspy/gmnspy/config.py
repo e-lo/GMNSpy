@@ -145,7 +145,8 @@ class ValidationSettings(_Section):
 class SelectSettings(_Section):
     """Natural-language selection: which provider parses utterances, and with which model.
 
-    ``model=None`` means the provider's catalog default (:mod:`gmnspy.llm.catalog`).
+    ``model=None`` means the provider's catalog default (:mod:`gmnspy.llm.catalog`); for Ollama, when
+    that isn't installed, an installed tool-capable model (``ProviderRegistry.resolve_model``).
     """
 
     provider: Literal["stub", "anthropic", "openai", "gemini", "ollama"] = "stub"

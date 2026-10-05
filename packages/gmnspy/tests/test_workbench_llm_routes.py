@@ -16,7 +16,7 @@ KEY = "sk-ant-api03-ROUTEKEYabcdefghijklmnop"
 UTTERANCE = "I-40 EB between South Miami Boulevard and Airport Boulevard"
 ROW_KEYS = {
     "provider", "label", "kind", "base_url", "local", "default_model", "key_env", "sends",
-    "configured", "source", "usable", "error", "models",
+    "configured", "source", "usable", "error", "models", "model",
 }  # fmt: skip
 TOOL_REPLY = {
     "content": [

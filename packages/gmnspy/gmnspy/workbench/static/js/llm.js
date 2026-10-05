@@ -42,11 +42,15 @@ const providerRow = name => (name === "stub" ? STUB : llm ? llm.providers.find(p
 const panelOpen = () => $("llm-panel").classList.contains("open");
 const report = e => toast(e.message);
 
-// The model a pair really uses: none for the stub, else the explicit one or the provider's catalog default.
+// The model a provider uses when none is chosen: the server's resolved default (for Ollama, an installed
+// tool-capable model when the catalog default isn't installed), else the catalog default.
+const defaultModel = p => p.model || p.default_model;
+
+// The model a pair really uses: none for the stub, else the explicit one or the provider's default.
 function effectiveModel(provider, model) {
   if (provider === "stub") return null;
   const p = providerRow(provider);
-  return model || (p ? p.default_model : null);
+  return model || (p ? defaultModel(p) : null);
 }
 
 export function dotClass(p) {
@@ -172,7 +176,7 @@ async function renderModels(provider, model) {
     report(e);
   }
   if (seq !== modelsSeq) return;
-  const chosen = model || p.default_model;
+  const chosen = model || defaultModel(p);
   const label = m => [m.label, m.tier, m.tools === false ? "JSON mode" : null].filter(Boolean).join(" · ");
   const opts = models.map(m => `<option value="${esc(m.id)}"${m.id === chosen ? " selected" : ""}>${esc(label(m))}</option>`);
   if (chosen && !models.some(m => m.id === chosen)) {
@@ -180,6 +184,9 @@ async function renderModels(provider, model) {
   }
   box.innerHTML = opts.join("");
   box.disabled = !opts.length;
+  box.title = !model && chosen !== p.default_model
+    ? `Using ${chosen}: the default, ${p.default_model}, is not installed`
+    : "";
 }
 
 // The picker changes this session only; "Make default" saves the current choice to the user file.
@@ -188,13 +195,10 @@ async function setSetting(key, value, scope) {
   if (settings) settings.sources = { ...settings.sources, [key]: result.source };
 }
 
-// A new provider starts on its catalog default; a local one on an installed model if the default isn't.
-async function startingModel(provider) {
+// A new provider starts on its default; for Ollama the server already picked an installed stand-in if needed.
+function startingModel(provider) {
   const p = providerRow(provider);
-  if (!p) return null;
-  if (!p.local) return p.default_model;
-  const installed = await fetchModels(provider).catch(() => []);
-  return installed.some(m => m.id === p.default_model) || !installed.length ? p.default_model : installed[0].id;
+  return p ? defaultModel(p) : null;
 }
 
 // Model first, then provider; if the provider write fails the model goes back, so the pair never mismatches.
@@ -205,7 +209,7 @@ async function onProviderChange(provider) {
   let modelWritten = false;
   try {
     if (provider !== "stub") {
-      const model = await startingModel(provider);
+      const model = startingModel(provider);
       await setSetting("select.model", model, "session"); // explicit, so history replays the same model
       modelWritten = true;
       await setSetting("select.provider", provider, "session");

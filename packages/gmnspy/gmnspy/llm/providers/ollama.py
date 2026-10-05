@@ -169,9 +169,17 @@ class OllamaProvider(HTTPProvider):
 
     def list_models(self) -> list[str]:
         """Installed model tags (``GET /api/tags``)."""
+        return list(self.installed_models())
+
+    def installed_models(self) -> dict[str, frozenset[str] | None]:
+        """Installed model tags (``GET /api/tags``), in Ollama's order, each with its capabilities.
+
+        Capabilities (e.g. ``{"completion", "tools"}``) are ``None`` when this Ollama doesn't report
+        them (older servers list models without a ``capabilities`` field).
+        """
         data = self._call("GET", "/api/tags")
         try:
-            return [m["name"] for m in data["models"]]
+            return {m["name"]: _capabilities(m.get("capabilities")) for m in data["models"]}
         except (KeyError, TypeError, AttributeError, IndexError) as exc:
             raise self._bad_shape(exc) from None
 
@@ -240,6 +248,10 @@ def _pull_error(provider: str, label: str, model: str, detail: str) -> LLMError:
     if "file does not exist" in detail or "not found" in detail:
         return ModelNotFound(provider, f"{label}: no model called {model!r} in the Ollama library ({detail}).")
     return ProviderUnavailable(provider, f"{label} could not pull {model}: {detail}")
+
+
+def _capabilities(value: Any) -> frozenset[str] | None:
+    return frozenset(str(c) for c in value) if isinstance(value, list) else None
 
 
 def _int_or_none(value: Any) -> int | None:

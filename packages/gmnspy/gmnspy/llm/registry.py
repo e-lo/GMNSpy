@@ -20,6 +20,9 @@ from .providers.ollama import PULL_CHUNK_TIMEOUT_S, PullProgress
 from .secrets import KeyringLike, KeySlot, SecretStore, origin_of
 from .types import LLMProvider
 
+#: Local models as Ollama lists them: id -> capabilities (``None`` when the server doesn't report them).
+Installed = dict[str, frozenset[str] | None]
+
 if TYPE_CHECKING:
     # gmnspy.config imports gmnspy.llm.secrets, so this module (reached from gmnspy.llm's own
     # __init__) cannot import gmnspy.config at module scope without a circular import; the
@@ -67,8 +70,8 @@ class ProviderRegistry:
         self.catalog = catalog
         self._transport = transport
         self._probe_lock = threading.Lock()
-        #: ``(provider, base_url) -> (monotonic timestamp, installed models or the LLMError raised)``.
-        self._probe_cache: dict[tuple[str, str], tuple[float, list[str] | LLMError]] = {}
+        #: ``(provider, base_url) -> (monotonic timestamp, installed models -> capabilities, or the LLMError raised)``.
+        self._probe_cache: dict[tuple[str, str], tuple[float, Installed | LLMError]] = {}
 
     def names(self) -> list[str]:
         """Providers with both a catalog entry and an adapter, in catalog order."""
@@ -121,7 +124,11 @@ class ProviderRegistry:
         return items
 
     def _probe(self, name: str) -> list[str]:
-        """Installed models for local provider ``name``, from cache when fresh (success or failure alike).
+        """Installed model ids for local provider ``name`` (see :meth:`_probe_installed`)."""
+        return list(self._probe_installed(name))
+
+    def _probe_installed(self, name: str) -> Installed:
+        """Installed models and their capabilities for local ``name``, cached while fresh (success or failure).
 
         The whole check-call-store sequence runs under :attr:`_probe_lock`, so concurrent
         callers for the same (or a different) provider never both pay for a live probe at once;
@@ -136,7 +143,7 @@ class ProviderRegistry:
                     raise outcome
                 return outcome
             try:
-                installed = self.provider(name, timeout_s=PROBE_TIMEOUT_S).list_models()
+                installed = self.provider(name, timeout_s=PROBE_TIMEOUT_S).installed_models()
             except LLMError as exc:
                 self._probe_cache[key] = (time.monotonic(), exc)
                 raise
@@ -151,6 +158,26 @@ class ProviderRegistry:
             else:
                 for key in [k for k in self._probe_cache if k[0] == name]:
                     del self._probe_cache[key]
+
+    def resolve_model(self, name: str, model: str | None = None) -> str:
+        """The model a selection on ``name`` really uses: ``model`` if given, else a default.
+
+        An explicit ``model`` is never replaced. A remote provider's default is the catalog's. For a
+        local provider (Ollama) whose catalog default isn't installed, the default is the first
+        installed catalog model with ``tools = true`` (catalog order), else the first installed model
+        whose Ollama capabilities include ``"tools"``. With none of those (or Ollama unreachable) it
+        stays the catalog default, so the call fails with the usual "pull a model" hint.
+        """
+        if model:
+            return model
+        info = self.catalog[name]
+        if info.kind != "local":
+            return info.default_model
+        try:
+            installed = self._probe_installed(name)
+        except LLMError:
+            return info.default_model
+        return _local_default(info, installed)
 
     def provider(self, name: str, *, timeout_s: float | None = None) -> LLMProvider:
         """An adapter for ``name`` holding its key; raises :class:`~gmnspy.llm.errors.MissingKey` if there is none."""
@@ -183,6 +210,9 @@ class ProviderRegistry:
             "base_url": base,
             "local": is_local_url(base),
             "default_model": info.default_model,
+            # The model used when select.model is unset: the catalog default, or for Ollama an installed
+            # stand-in when that default isn't installed (see resolve_model). None until a probe succeeds.
+            "model": info.default_model if info.kind == "remote" else None,
             "key_env": list(info.key_env),
             "sends": self.disclosure(name),
             "configured": False,
@@ -193,13 +223,20 @@ class ProviderRegistry:
         }
         if info.kind == "local":
             try:
-                installed = self._probe(name)
+                installed = self._probe_installed(name)
             except LLMError as exc:
                 row["error"] = str(exc)
                 return row
             row.update(configured=True, usable=bool(installed), models=len(installed))
             if not installed:
                 row["error"] = f"{info.label} is running but has no models; run: ollama pull {info.default_model}"
+                return row
+            row["model"] = _local_default(info, installed)
+            if row["model"] not in installed:
+                row["error"] = (
+                    f"no installed model supports tool calling and {info.default_model} is not installed; "
+                    f"run: ollama pull {info.default_model} (or pick an installed model)"
+                )
             return row
         row.update(self.secrets.status(self.slot(name)))
         row["usable"] = row["configured"]
@@ -224,7 +261,9 @@ class ProviderRegistry:
         self.invalidate_probe_cache(name)
         started = time.perf_counter()
         try:
-            served = self.provider(name).list_models()
+            adapter = self.provider(name)
+            installed = adapter.installed_models() if info.kind == "local" else None
+            served = list(installed) if installed is not None else adapter.list_models()
         except LLMError as exc:
             return {"provider": name, "ok": False, "error_type": type(exc).__name__, "message": str(exc)}
         result: dict[str, Any] = {
@@ -242,6 +281,21 @@ class ProviderRegistry:
                 error_type="ModelNotFound",
                 message=f"{info.label}: connected, but model {model!r} is not available here.",
             )
+        elif installed is not None and not model:
+            # No model named: check the one a selection would use (see resolve_model).
+            used = result["model"] = _local_default(info, installed)
+            if used in served:
+                stand_in = f" ({info.default_model} is not installed)" if used != info.default_model else ""
+                result["message"] += f" Selections use {used}{stand_in}."
+            else:
+                result.update(
+                    ok=False,
+                    error_type="ModelNotFound",
+                    message=(
+                        f"{info.label}: connected, but {used} is not installed and no installed model supports "
+                        f"tool calling. Run: gmnspy llm pull {used} (or choose an installed model with --model)."
+                    ),
+                )
         return result
 
     def pull_choices(self) -> list[dict[str, Any]]:
@@ -260,6 +314,20 @@ class ProviderRegistry:
             yield from provider.pull(model, chunk_timeout_s=chunk_timeout_s)
         finally:
             self.invalidate_probe_cache("ollama")
+
+
+def _local_default(info: ProviderInfo, installed: Installed) -> str:
+    """The default for a local provider: its catalog default, or an installed tool-capable stand-in.
+
+    The stand-in (only when the catalog default isn't installed) is the first installed catalog model
+    with ``tools = true``, in catalog order, else the first installed model whose capabilities include
+    ``"tools"``. With neither, the catalog default (so the caller reports the usual "pull" hint).
+    """
+    if info.default_model in installed:
+        return info.default_model
+    known = next((m.id for m in info.models if m.tools and m.id in installed), None)
+    reported = next((m for m, caps in installed.items() if caps and "tools" in caps), None)
+    return known or reported or info.default_model
 
 
 def _describe(info: ProviderInfo, model_id: str) -> dict[str, Any]:

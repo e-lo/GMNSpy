@@ -206,6 +206,8 @@ def llm_router(session: Session, *, allow_key_writes: bool) -> APIRouter:
         # and the panel show the new model (or the reason it isn't there) without a reload.
         logger.info("ollama pull %s: %s", job.label, job.status)
         try:
+            # A new model can change which installed model stands in for the default: rebuild the parser.
+            session.reset_llm()
             session.events.publish({"type": "llm", **snapshot()})
         except Exception:  # boundary: a failed status refresh must not fail the finished job
             logger.exception("llm status refresh after %s failed", job.id)

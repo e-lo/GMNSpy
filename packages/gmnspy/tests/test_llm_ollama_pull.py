@@ -138,4 +138,4 @@ def test_registry_pull_drops_the_probe_cache(fake_api, isolated_env):
 def test_registry_pull_choices_carry_sizes(isolated_env):
     reg = build_registry(Settings(), environ=isolated_env, keyring=None)
     sizes = {c["id"]: c["size_gb"] for c in reg.pull_choices()}
-    assert sizes == {"qwen3:4b": 2.5, "qwen3:8b": 5.2}
+    assert sizes == {"qwen3:4b": 2.5, "qwen3:8b": 5.2, "qwen2.5:7b": 4.7}
