@@ -91,7 +91,12 @@ class RelatedQuery(BaseModel):
 
 
 class RowsQuery(BaseModel):
-    """One page of a table: the GET parameters as JSON, plus an optional related ``tint``/``filter``."""
+    """One page of a table: the GET parameters as JSON, plus related records to filter by and/or tint.
+
+    ``related`` with ``related_mode="filter"`` narrows the rows; with ``"tint"`` it only marks them.
+    ``tint`` marks rows by a second set of sources while ``related`` filters (e.g. the selection's lanes,
+    tinted by what is focused).
+    """
 
     model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
     offset: int = Field(default=0, ge=0)
@@ -102,6 +107,7 @@ class RowsQuery(BaseModel):
     ids: list[ScalarId] | None = Field(default=None, max_length=MAX_SOURCE_IDS)
     related: RelatedQuery | None = None
     related_mode: Literal["tint", "filter"] = "tint"
+    tint: RelatedQuery | None = None
 
     @field_validator("filter")
     @classmethod
@@ -302,10 +308,12 @@ def network_router(session: Session) -> APIRouter:
 
     @router.post("/table/{table_name}/rows")
     def table_rows_post(net_id: str, component: str, table_name: str, q: RowsQuery) -> dict[str, Any]:
-        """One page; with ``related`` in ``tint`` mode, ``related[i]`` names why row ``i`` is related (or null)."""
+        """One page; when tinted, ``related[i]`` names why row ``i`` is related (or null)."""
         h = handle(net_id, component)
         with _bad_request():
             src, pk, ids, relation = prepared(h, table_name, q)
+            if q.tint is not None:
+                relation = related_of(h, sources_of(h, q.tint), q.tint.hops).get(table_name)
             payload = page_table(
                 src,
                 offset=q.offset,
@@ -316,7 +324,7 @@ def network_router(session: Session) -> APIRouter:
                 ids=ids or None,
                 pk=pk,
             )
-        if q.related is not None and q.related_mode == "tint":
+        if q.tint is not None or (q.related is not None and q.related_mode == "tint"):
             payload["related"] = row_vias(pd.DataFrame(payload["rows"], columns=payload["columns"]), relation)
         return {"name": table_name, **payload}
 

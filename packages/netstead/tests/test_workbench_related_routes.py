@@ -213,3 +213,24 @@ def test_locate_honours_ids_filter_and_related_filter(client, link1):
     assert j == {"index": ends.index(node)}
     other = next(n for n in range(1, 100) if n not in ends)
     assert client.post(f"{BASE}/table/node/locate", json={"id": other, **related}).json() == {"index": None}
+
+
+def test_post_rows_can_filter_by_one_set_and_tint_by_another(client, link1):
+    """The selection's nodes, tinted by what is focused: ``related`` filters, ``tint`` marks."""
+    body = {"related": {"sources": {"link": [1]}}, "related_mode": "filter", "tint": {"sources": {"node": [1]}}}
+    j = client.post(f"{BASE}/table/node/rows", json=body).json()
+    nodes = [r[j["columns"].index("node_id")] for r in j["rows"]]
+    assert sorted(nodes) == sorted({int(link1.from_node_id), int(link1.to_node_id)})
+    assert len(j["related"]) == len(nodes)  # node 1 is a source, not related to itself: nothing tinted here
+    lanes = client.post(
+        f"{BASE}/table/lane/rows",
+        json={
+            "limit": 500,
+            "related": {"sources": {"link": [1, 2]}},
+            "related_mode": "filter",
+            "tint": {"sources": {"link": [1]}},
+        },
+    ).json()
+    link_col = lanes["columns"].index("link_id")
+    assert {r[link_col] for r in lanes["rows"]} == {1, 2}
+    assert {r[link_col] for r, via in zip(lanes["rows"], lanes["related"], strict=True) if via} == {1}

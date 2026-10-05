@@ -109,6 +109,46 @@ def test_parse_input(node_module, field, raw, expected):
     )
 
 
+def test_a_number_the_browser_cannot_parse_is_not_a_reset(node_module):
+    """A partial number ("-", "1e") reads as "" with validity.badInput: it must not delete the saved value."""
+    got = node_module(
+        "settingsform.js",
+        ["parseControl"],
+        '[parseControl({ kind: "int", label: "Port" }, { type: "number", value: "", badInput: true }),'
+        ' parseControl({ kind: "int", label: "Port" }, { type: "number", value: "", badInput: false }),'
+        ' parseControl({ kind: "bool", label: "C" }, { type: "checkbox", value: "on", checked: true })]',
+    )
+    assert got == [
+        {"ok": False, "error": "Port: enter a whole number"},
+        {"ok": True, "value": None},
+        {"ok": True, "value": True},
+    ]
+
+
+def test_clearing_a_value_from_another_layer_points_to_reset(node_module):
+    got = node_module(
+        "settingsform.js",
+        ["clearHint"],
+        '[clearHint({ label: "Basemap", source: "project" }, "user"),'
+        ' clearHint({ label: "B", source: "user" }, "user"),'
+        ' clearHint({ label: "B", source: "default" }, "user"), clearHint({ label: "B", source: "env" }, "user")]',
+    )
+    assert "project" in got[0] and "Reset" in got[0] and got[1:] == [None, None, None]
+
+
+def test_field_kind_nullable_enum_and_source_precedence(node_module):
+    got = node_module(
+        "settingsform.js",
+        ["fieldKind", "sourceOf"],
+        '[fieldKind({ anyOf: [{ enum: ["a", "b"], type: "string" }, { type: "null" }] }),'
+        ' sourceOf({ "x.y": "project" }, "x.y"),'
+        ' sourceOf({ "r.a": "user", "r.b": "env", "r.c": "project" }, "r"),'
+        ' sourceOf({ "r.a": "session", "r.b": "env" }, "r"), sourceOf({ "rx": "env" }, "r")]',
+    )
+    assert got[0] == {"kind": "choice", "options": ["a", "b"], "nullable": True}
+    assert got[1:] == ["project", "env", "session", "default"]
+
+
 def test_reset_targets_the_layer_the_value_comes_from(node_module):
     got = node_module(
         "settingsform.js",
@@ -153,14 +193,40 @@ def test_rows_request_per_scope(node_module):
       };
     })()"""
     got = node_module("linking.js", ["rowsRequest"], expr)
-    tint = {"related": {"sources": {"link": [9], "node": [3]}, "hops": 1}, "related_mode": "tint"}
+    sources = {"sources": {"link": [9], "node": [3]}, "hops": 1}
+    tint = {"related": sources, "related_mode": "tint"}
     assert got["all_link"] == tint
     assert got["sel_link"] == {"ids": [5, 6], **tint}
-    assert got["sel_node"] == {"related": {"sources": {"link": [5, 6]}, "hops": 1}, "related_mode": "filter"}
-    assert got["hl_lane"] == {"related": {"sources": {"link": [9]}, "hops": 1}, "related_mode": "filter"}
-    assert got["rel_lane"] == {**tint, "related_mode": "filter"}
+    filter_by = {"related_mode": "filter", "tint": sources}  # the other tables are filtered *and* tinted
+    assert got["sel_node"] == {"related": {"sources": {"link": [5, 6]}, "hops": 1}, **filter_by}
+    assert got["hl_lane"] == {"related": {"sources": {"link": [9]}, "hops": 1}, **filter_by}
+    assert got["rel_lane"] == {"related": {"sources": {"link": [9]}, "hops": 1}, **filter_by}  # highlights only
     assert got["empty_sel"] == {"ids": [], **tint}  # nothing selected shows no rows, not every row
     assert got["nothing"] == {"ids": []}
+
+
+def test_related_scope_survives_a_row_click(node_module):
+    """Clicking a row in the Related scope focuses it; the rows listed must not change (review finding)."""
+    expr = """(() => {
+      const base = { scope: "related", table: "node", selection: null, highlights: new Set([1]), hops: 1 };
+      return [rowsRequest({ ...base, focus: null }).related,
+              rowsRequest({ ...base, focus: { table: "node", id: 1 } }).related,
+              rowsRequest({ ...base, highlights: new Set(), focus: { table: "node", id: 1 } })];
+    })()"""
+    before, after, focus_only = node_module("linking.js", ["rowsRequest"], expr)
+    assert before == after == {"sources": {"link": [1]}, "hops": 1}
+    assert focus_only == {"ids": []}  # a focus alone tints; the Related scope lists what is highlighted
+
+
+def test_scope_hint_and_clamped_offset(node_module):
+    got = node_module(
+        "linking.js",
+        ["scopeHint", "clampOffset"],
+        '[scopeHint("selection", 0), scopeHint("related", 0), scopeHint("all", 0), scopeHint("related", 3),'
+        " clampOffset(200, 100, 20), clampOffset(200, 100, 0), clampOffset(100, 100, 250), clampOffset(300, 100, 300)]",
+    )
+    assert got[0] == "Nothing selected." and "Highlight" in got[1] and got[2] == got[3] == ""
+    assert got[4:] == [0, 200, 100, 200]
 
 
 def test_row_marks(node_module):
@@ -177,9 +243,11 @@ def test_page_offset_and_id_coercion(node_module):
     got = node_module(
         "linking.js",
         ["coerceId", "pageOffset"],
-        '[pageOffset(250, 100), pageOffset(0, 100), coerceId("12"), coerceId("A-1"), coerceId("")]',
+        '[pageOffset(250, 100), pageOffset(0, 100), coerceId("12"), coerceId("A-1"), coerceId(""), coerceId("-4"),'
+        ' coerceId("007"), coerceId("007", false), coerceId("12", false), coerceId("1e3"), coerceId("1.5"),'
+        ' coerceId("9007199254740993"), coerceId(" 1")]',
     )
-    assert got == [200, 0, 12, "A-1", ""]
+    assert got == [200, 0, 12, "A-1", "", -4, 7, "007", "12", "1e3", "1.5", "9007199254740993", " 1"]
 
 
 def test_a_row_click_never_changes_the_recorded_selection():

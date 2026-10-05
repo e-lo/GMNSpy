@@ -8,11 +8,16 @@ import { store } from "./store.js";
 
 let seq = 0, timer = null;
 
-// Coalesce bursts (a box-select, quick clicks) into one request.
+// Coalesce bursts (a box-select, quick clicks) into one request. Bumping `seq` here drops any reply still in
+// flight for the sources being replaced.
 export function scheduleRelated() {
   clearTimeout(timer);
+  seq++;
   timer = setTimeout(() => refreshRelated().catch(e => toast(e.message)), 150);
 }
+
+// A network switch: forget the pending request, and drop a reply about the old network.
+export function cancelRelated() { clearTimeout(timer); seq++; }
 
 async function refreshRelated() {
   const s = store.get(), mine = ++seq;

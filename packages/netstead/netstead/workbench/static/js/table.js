@@ -3,7 +3,7 @@
 // highlights, or the records related to them; related rows are tinted; FK cells jump to their target.
 import { getJSON, netPath, postJSON } from "./api.js";
 import { $, esc, toast } from "./dom.js";
-import { coerceId, pageOffset, rowMarks, rowsRequest } from "./linking.js";
+import { clampOffset, coerceId, pageOffset, rowMarks, rowsRequest, scopeHint } from "./linking.js";
 import { resizeSoon } from "./map.js";
 import { renderRelatedBadges } from "./related.js";
 import { activeSelection, store } from "./store.js";
@@ -12,6 +12,9 @@ const TBL = { loaded: false, name: null, schema: null, offset: 0, limit: 100, so
   total: 0, seq: 0 };
 const VIEW_KEY = "netstead.viewmode";
 let filterTimer = null, located = null;
+// Row reloads are coalesced (a box-select changes highlights, focus and related in one burst), and skipped
+// while the table is hidden: `dirty` makes the next showing reload.
+let rowsTimer = null, pendingRestart = false, dirty = false;
 
 const activeId = () => { const s = store.get().server; return s && s.active; };
 const fail = e => toast(e.message);
@@ -25,11 +28,13 @@ export function setViewMode(mode) {
   for (const b of document.querySelectorAll("#viewmode button")) b.classList.toggle("on", b.dataset.mode === mode);
   try { localStorage.setItem(VIEW_KEY, mode); } catch (e) { /* storage unavailable: mode just isn't remembered */ }
   if (mode !== "map" && !TBL.loaded) loadTables().catch(fail);
+  else if (mode !== "map" && dirty) refreshRows();
   resizeSoon();
 }
 
 export function onNetworkChanged() {
   Object.assign(TBL, { loaded: false, name: null, schema: null });
+  TBL.seq++; clearTimeout(rowsTimer); // drop pages still loading for the old network
   $("tbl-rail").innerHTML = ""; $("tbl-grid").innerHTML = ""; $("tbl-name").textContent = "—";
   if (tableVisible()) loadTables().catch(fail);
 }
@@ -38,8 +43,15 @@ export function onNetworkChanged() {
 // when the set of rows may differ, else in place.
 export function refreshRows({ restart = false } = {}) {
   if (!TBL.schema) return;
-  if (restart) TBL.offset = 0;
-  loadRows().catch(fail);
+  pendingRestart ||= restart;
+  if (!tableVisible()) { dirty = true; return; }
+  clearTimeout(rowsTimer);
+  rowsTimer = setTimeout(() => {
+    if (!TBL.schema) return; // the network changed meanwhile
+    if (pendingRestart) TBL.offset = 0;
+    pendingRestart = false; dirty = false;
+    loadRows().catch(fail);
+  }, 100);
 }
 
 async function loadTables() {
@@ -62,6 +74,7 @@ async function loadTables() {
 
 export async function selectTable(name) {
   Object.assign(TBL, { name, offset: 0, sort: null, dir: "asc", filters: {} });
+  located = null;
   for (const el of document.querySelectorAll(".tbl-item")) el.classList.toggle("on", el.dataset.name === name);
   TBL.schema = await getJSON(netPath(activeId(), `table/${encodeURIComponent(name)}/schema`));
   $("tbl-name").textContent = name;
@@ -100,25 +113,18 @@ function query() {
       focus: s.focus, hops: s.relHops }) };
 }
 
-function scopeHint(total) {
-  const s = store.get();
-  if (total) return "";
-  if (s.tableScope === "selection") return "Nothing selected.";
-  if (s.tableScope === "highlighted") return "Nothing highlighted: turn on Highlight links, then click or shift-drag.";
-  if (s.tableScope === "related") return "Nothing related: click a link or node, or highlight links.";
-  return "";
-}
-
 async function loadRows() {
   const seq = ++TBL.seq;
   const j = await postJSON(tablePath("rows"), query());
   if (seq !== TBL.seq) return; // superseded by a newer request
+  const offset = clampOffset(TBL.offset, TBL.limit, j.total);
+  if (offset !== TBL.offset) { TBL.offset = offset; return loadRows(); } // the set shrank under this page
   TBL.total = j.total;
   renderRows(j.columns, j.rows, j.related || []);
   const to = Math.min(TBL.offset + TBL.limit, j.total);
   $("tbl-total").textContent = `· ${j.total.toLocaleString()} row(s)`;
   $("tbl-range").textContent = j.total ? `${TBL.offset + 1}–${to} of ${j.total.toLocaleString()}` : "0";
-  $("tbl-hint").textContent = scopeHint(j.total);
+  $("tbl-hint").textContent = scopeHint(store.get().tableScope, j.total);
   $("tbl-prev").disabled = TBL.offset <= 0;
   $("tbl-next").disabled = to >= j.total;
   await revealFocus();
@@ -127,7 +133,7 @@ async function loadRows() {
 function cellHTML(value, fk) {
   if (value === null) return '<span class="empty">·</span>';
   if (fk && fk.navigable) {
-    return `<a class="fk" href="#" data-ref="${esc(fk.ref_table)}" data-id="${esc(value)}" ` +
+    return `<a class="fk" href="#" data-ref="${esc(fk.ref_table)}" data-id="${esc(value)}" data-num="${typeof value === "number" ? 1 : ""}" ` +
       `title="Go to ${esc(fk.ref_table)} ${esc(value)}">${esc(value)}</a>`;
   }
   return esc(value);
@@ -148,7 +154,7 @@ function renderRows(cols, rows, vias) {
   for (const tr of body.querySelectorAll("tr.data")) tr.onclick = () => rowClick(tr.dataset.pk);
   for (const a of body.querySelectorAll("a.fk")) a.onclick = e => {
     e.preventDefault(); e.stopPropagation();
-    jumpTo(a.dataset.ref, coerceId(a.dataset.id)).catch(fail);
+    jumpTo(a.dataset.ref, coerceId(a.dataset.id, Boolean(a.dataset.num))).catch(fail);
   };
 }
 
@@ -156,7 +162,7 @@ function renderRows(cols, rows, vias) {
 // "Selection" scope built on it) is never collapsed to one row.
 function rowClick(pkVal) {
   if (pkVal === "" || !TBL.schema || !TBL.schema.primary_key) return;
-  store.set({ focus: { table: TBL.name, id: coerceId(pkVal), from: "table" } });
+  store.set({ focus: { table: TBL.name, id: coerceId(pkVal, pkNumeric()), from: "table" } });
 }
 
 // FK navigation: open the referenced table and focus the referenced row (its map feature flies into view).
@@ -166,7 +172,9 @@ export async function jumpTo(table, id) {
   store.set({ focus: { table, id, from: "table" } });
 }
 
-const rowFor = id => [...$("tbl-grid").tBodies[0].querySelectorAll("tr.data")].find(tr => coerceId(tr.dataset.pk) === id);
+const pkNumeric = () => TBL.schema.columns.some(c => c.name === TBL.schema.primary_key && c.kind === "num");
+const rowFor = id => [...$("tbl-grid").tBodies[0].querySelectorAll("tr.data")]
+  .find(tr => coerceId(tr.dataset.pk, pkNumeric()) === id);
 
 export function onFocusChanged() { located = null; revealFocus().catch(fail); }
 

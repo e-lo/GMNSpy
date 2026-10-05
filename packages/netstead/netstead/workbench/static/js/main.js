@@ -9,7 +9,7 @@ import { fitBbox, fitLinks, fitNetwork, flyToNode, initMap, render, setBasemap }
 import { decodeNetwork } from "./netbuf.js";
 import { populateColorby, renderLegend, syncControls, wirePanels } from "./panels.js";
 import { clearDetails, renderHighlights, renderSelection, showDetails, wireSide } from "./side.js";
-import { renderRelatedBadges, scheduleRelated } from "./related.js";
+import { cancelRelated, renderRelatedBadges, scheduleRelated } from "./related.js";
 import { onSettingsHistory, registerSection, wireSettings } from "./settings.js";
 import { activeSelection, store } from "./store.js";
 import { onFocusChanged, onNetworkChanged, refreshRows, restoreViewMode, syncScopeControls, tableVisible, wireTable } from "./table.js";
@@ -111,7 +111,7 @@ function onSelectionMaybeChanged(sel) {
   const key = JSON.stringify(sel ? [sel.net_id, sel.link_ids] : null);
   if (key === lastSelKey) return;
   lastSelKey = key;
-  refreshRows();
+  refreshRows({ restart: true });
 }
 
 function wireStore() {
@@ -122,9 +122,11 @@ function wireStore() {
   });
   store.subscribe(["server", "prop"], s => renderLegend(s.server.style, s.prop));
   store.subscribe(["properties"], s => { populateColorby(s.properties); syncControls(s.server.style); });
-  store.subscribe(["netKey"], () => { onNetworkChanged(); store.set({ highlights: new Set(), focus: null, related: null }); clearDetails(); });
+  store.subscribe(["netKey"], () => { cancelRelated(); onNetworkChanged(); store.set({ highlights: new Set(), focus: null, related: null }); clearDetails(); });
   store.subscribe(["focus"], s => onFocus(s));
-  store.subscribe(["highlights", "focus"], () => refreshRows());
+  // New highlights change the rows of every scope but All (back to the first page); a focus only re-tints.
+  store.subscribe(["highlights"], s => refreshRows({ restart: s.tableScope !== "all" }));
+  store.subscribe(["focus"], () => refreshRows());
   store.subscribe(["tableScope", "relHops"], s => { syncScopeControls(s); refreshRows({ restart: true }); });
   store.subscribe(["highlights"], s => renderHighlights(s.highlights));
   store.subscribe(["focus", "highlights", "relHops"], () => scheduleRelated());
