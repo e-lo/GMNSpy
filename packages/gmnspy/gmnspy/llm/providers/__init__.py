@@ -2,12 +2,14 @@
 
 from ._base import HTTPProvider
 from .anthropic import AnthropicProvider
+from .gemini import GeminiProvider
 from .openai import OpenAIProvider
 
 #: Provider name -> adapter class. A catalog provider without an adapter is never offered.
 ADAPTERS: dict[str, type[HTTPProvider]] = {
     "anthropic": AnthropicProvider,
     "openai": OpenAIProvider,
+    "gemini": GeminiProvider,
 }
 
-__all__ = ["ADAPTERS", "AnthropicProvider", "HTTPProvider", "OpenAIProvider"]
+__all__ = ["ADAPTERS", "AnthropicProvider", "GeminiProvider", "HTTPProvider", "OpenAIProvider"]
