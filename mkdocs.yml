@@ -1,16 +1,16 @@
-site_name: "GMNSpy + datagrove"
-site_description: "Umbrella landing — pick datagrove or gmnspy."
-site_url: https://e-lo.github.io/GMNSpy
-repo_url: https://github.com/e-lo/GMNSpy
+site_name: "Netstead + corral"
+site_description: "Umbrella landing — pick corral or netstead."
+site_url: https://e-lo.github.io/netstead
+repo_url: https://github.com/e-lo/netstead
 edit_uri: edit/main/docs
 
 # Tiny umbrella site — one page that routes to each package's own
 # documentation site. The substantive docs live in each package:
 #
-#   packages/datagrove/docs/  → built independently → deployed at /datagrove/
-#   packages/gmnspy/docs/     → built independently → deployed at /gmnspy/
+#   packages/corral/docs/  → built independently → deployed at /corral/
+#   packages/netstead/docs/     → built independently → deployed at /netstead/
 #
-# See packages/datagrove/mkdocs.yml + packages/gmnspy/mkdocs.yml for
+# See packages/corral/mkdocs.yml + packages/netstead/mkdocs.yml for
 # the actual content sites.
 
 theme:

@@ -11,7 +11,7 @@ Wired by ``mkdocs-macros-plugin`` (declared under ``plugins:`` in
 2. Emits AI-docgen artifacts (``llms.txt``, ``llms-full.txt``,
    ``ai/api-index.json``) into ``docs_dir`` per architecture §6.9.
 
-The renderers themselves live in :mod:`datagrove.docgen`; this file is
+The renderers themselves live in :mod:`corral.docgen`; this file is
 intentionally thin so the macros stay trivial to test and the docgen
 module stays usable from the notebook, CLI, and AI api-index surfaces.
 
@@ -30,19 +30,19 @@ from typing import Any
 
 # The mkdocs-macros plugin imports this module from the repo root; the
 # packages are on ``sys.path`` because uv installs them in dev mode.
-from datagrove.docgen import (
+from corral.docgen import (
     generate_api_index_json,
     generate_llms_full_txt,
     generate_llms_txt,
     package_to_md,
     schemas_to_md,
 )
-from datagrove.spec import SpecLoadError, load_package
+from corral.spec import SpecLoadError, load_package
 
 logger = logging.getLogger(__name__)
 
 REPO_ROOT = Path(__file__).resolve().parent
-VENDORED_SPEC_ROOT = REPO_ROOT / "packages" / "gmnspy" / "gmnspy" / "spec"
+VENDORED_SPEC_ROOT = REPO_ROOT / "packages" / "netstead" / "netstead" / "spec"
 DEFAULT_LOCAL_VERSION = "0.97"
 OFFICIAL_BASE = "https://raw.githubusercontent.com/zephyr-data-specs/GMNS"
 
@@ -52,7 +52,7 @@ FIND_REPLACE: dict[str, str] = {
     "<CONTRIBUTING.md>": "[Contributing Section](development/#CONTRIBUTING)",
     "(CODE_OF_CONDUCT.md)": "(development/#CODE_OF_CONDUCT)",
     "CONTRIBUTING.md)": "development/#CONTRIBUTING)",
-    "<LICENSE>": "[LICENSE](https://github.com/e-lo/GMNSpy/blob/main/LICENSE)",
+    "<LICENSE>": "[LICENSE](https://github.com/e-lo/netstead/blob/main/LICENSE)",
     "contributors.md)": "development/#contributors)",
     "architecture.md)": "architecture)",
 }
@@ -65,7 +65,7 @@ _md_heading_re = {n: re.compile(rf"(#{{{n}}}\s)(.*)") for n in range(1, 6)}
 # live-nav extraction below prefers ``env.conf["nav"]`` and only falls
 # back to this when the build-time config doesn't expose it.
 #
-# Updated for docs Wave D-1: split into datagrove/ + gmnspy/ + shared/
+# Updated for docs Wave D-1: split into corral/ + netstead/ + shared/
 # subtrees per audience separation feedback.
 _DEFAULT_NAV: list[dict] = [
     {
@@ -74,92 +74,92 @@ _DEFAULT_NAV: list[dict] = [
             {
                 "title": "Home",
                 "href": "index.md",
-                "description": "Top-level landing — pick datagrove or gmnspy.",
+                "description": "Top-level landing — pick corral or netstead.",
             },
         ],
     },
     {
-        "section": "datagrove",
+        "section": "corral",
         "pages": [
             {
                 "title": "Overview",
-                "href": "datagrove/index.md",
+                "href": "corral/index.md",
                 "description": "Generic Frictionless data-package engine — what / use cases / install.",
             },
             {
                 "title": "Quickstart",
-                "href": "datagrove/quickstart.md",
+                "href": "corral/quickstart.md",
                 "description": "Install, load, validate any Frictionless package in 5 minutes.",
             },
             {
                 "title": "Cookbook",
-                "href": "datagrove/cookbook/index.md",
+                "href": "corral/cookbook/index.md",
                 "description": "Generic recipes — S3 reads, format conversion, spatial scope.",
             },
             {
                 "title": "API reference",
-                "href": "datagrove/reference/api.md",
-                "description": "Public datagrove API symbols.",
+                "href": "corral/reference/api.md",
+                "description": "Public corral API symbols.",
             },
         ],
     },
     {
-        "section": "gmnspy",
+        "section": "netstead",
         "pages": [
             {
                 "title": "Overview",
-                "href": "gmnspy/index.md",
+                "href": "netstead/index.md",
                 "description": "GMNS Python toolkit — what / use cases / install.",
             },
             {
                 "title": "Quickstart",
-                "href": "gmnspy/quickstart.md",
+                "href": "netstead/quickstart.md",
                 "description": "Load the bundled Leavenworth fixture and run validation in 5 minutes.",
             },
             {
                 "title": "What is GMNS?",
-                "href": "gmnspy/what-is-gmns.md",
+                "href": "netstead/what-is-gmns.md",
                 "description": "Plain-English intro to the spec.",
             },
             {
                 "title": "Visual tour",
-                "href": "gmnspy/visual-tour.md",
+                "href": "netstead/visual-tour.md",
                 "description": "Leavenworth rendered as map + validation + edit + scope.",
             },
             {
                 "title": "Cookbook",
-                "href": "gmnspy/cookbook/index.md",
+                "href": "netstead/cookbook/index.md",
                 "description": "GMNS-specific recipes — validate, scope, edit, host, drive from AI.",
             },
             {
                 "title": "API reference",
-                "href": "gmnspy/reference/api.md",
-                "description": "Public gmnspy API symbols (Network, scope, clean, quality).",
+                "href": "netstead/reference/api.md",
+                "description": "Public netstead API symbols (Network, scope, clean, quality).",
             },
             {
                 "title": "Schema reference",
-                "href": "gmnspy/reference/spec.md",
+                "href": "netstead/reference/spec.md",
                 "description": "GMNS field-level reference per table.",
             },
             {
                 "title": "Table of tables",
-                "href": "gmnspy/reference/table-of-tables.md",
+                "href": "netstead/reference/table-of-tables.md",
                 "description": "Every GMNS table with purpose + FK diagram.",
             },
             {
                 "title": "Glossary",
-                "href": "gmnspy/reference/glossary.md",
+                "href": "netstead/reference/glossary.md",
                 "description": "GMNS terms + project conventions.",
             },
             {
                 "title": "Migration v0.3 → v1.0",
-                "href": "gmnspy/migration/v0.3-to-v1.0.md",
+                "href": "netstead/migration/v0.3-to-v1.0.md",
                 "description": "Side-by-side API mapping for v0.3 users.",
             },
             {
                 "title": "MCP tools reference",
-                "href": "gmnspy/ai/mcp-tools.md",
-                "description": "MCP server tools shipped with gmnspy.",
+                "href": "netstead/ai/mcp-tools.md",
+                "description": "MCP server tools shipped with netstead.",
             },
         ],
     },
@@ -210,7 +210,7 @@ _DEFAULT_NAV: list[dict] = [
     },
 ]
 
-_PACKAGES_FOR_API_INDEX = ["datagrove", "datagrove.reports", "gmnspy"]
+_PACKAGES_FOR_API_INDEX = ["corral", "corral.reports", "netstead"]
 
 
 def _extract_live_nav(env_conf: dict) -> list[dict] | None:
@@ -224,9 +224,9 @@ def _extract_live_nav(env_conf: dict) -> list[dict] | None:
 
     The flattener walks recursively, collecting every leaf under the
     nearest section header. For our purposes a "section" is the
-    second-level container (datagrove / gmnspy / AI surface / etc.) so
+    second-level container (corral / netstead / AI surface / etc.) so
     the resulting structure is two-level — section → pages — and
-    deeper nesting (e.g. gmnspy → Cookbook → recipes) collapses into
+    deeper nesting (e.g. netstead → Cookbook → recipes) collapses into
     the section's flat page list.
 
     Returns ``None`` when ``env_conf`` doesn't carry a parseable nav;
@@ -278,7 +278,7 @@ def _downshift_md(md: str) -> str:
 
 
 def _load_local_package(version: str):
-    """Load a vendored ``packages/gmnspy/gmnspy/spec/<version>/datapackage.json``."""
+    """Load a vendored ``packages/netstead/netstead/spec/<version>/datapackage.json``."""
     pkg_path = VENDORED_SPEC_ROOT / version / "datapackage.json"
     return load_package(pkg_path)
 
@@ -339,7 +339,7 @@ def define_env(env: Any) -> None:
     # --- AI docgen build artifacts (architecture §6.9) ---
     docs_dir = _docs_dir(env)
     env_conf = getattr(env, "conf", {}) if hasattr(env, "conf") else {}
-    site_url = (env_conf.get("site_url") if isinstance(env_conf, dict) else None) or "https://e-lo.github.io/GMNSpy"
+    site_url = (env_conf.get("site_url") if isinstance(env_conf, dict) else None) or "https://e-lo.github.io/netstead"
     # Prefer the live mkdocs nav so llms.txt can't drift from the user-
     # facing site map; fall back to the hand-maintained _DEFAULT_NAV
     # when the macros plugin runs outside a normal build (e.g. tests).

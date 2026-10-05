@@ -17,14 +17,14 @@ name: Bench
 on:
   pull_request:
     paths:
-      - 'packages/datagrove/datagrove/engines/**'
-      - 'packages/datagrove/datagrove/io/**'
-      - 'packages/datagrove/datagrove/validation/**'
-      - 'packages/datagrove/datagrove/dataset/**'
-      - 'packages/gmnspy/gmnspy/network.py'
-      - 'packages/gmnspy/gmnspy/quality/**'
-      - 'packages/gmnspy/gmnspy/scope/**'
-      - 'packages/gmnspy/gmnspy/indexes/**'
+      - 'packages/corral/corral/engines/**'
+      - 'packages/corral/corral/io/**'
+      - 'packages/corral/corral/validation/**'
+      - 'packages/corral/corral/dataset/**'
+      - 'packages/netstead/netstead/network.py'
+      - 'packages/netstead/netstead/quality/**'
+      - 'packages/netstead/netstead/scope/**'
+      - 'packages/netstead/netstead/indexes/**'
       - '.github/workflows/bench.yml'
 
 jobs:

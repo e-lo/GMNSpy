@@ -1,25 +1,25 @@
 ---
 name: gmns-validate
-description: Interpret gmnspy validation reports and data-quality findings on a GMNS network. Use when the user has run gmnspy validate / quality and needs help making sense of the issues, mapping codes to fixes, and prioritizing what to address.
+description: Interpret netstead validation reports and data-quality findings on a GMNS network. Use when the user has run netstead validate / quality and needs help making sense of the issues, mapping codes to fixes, and prioritizing what to address.
 ---
 
 # gmns-validate
 
-Use this skill when a user shows you output from `gmnspy validate` or
-`gmnspy quality`, asks "what does this error mean?", or has a network
+Use this skill when a user shows you output from `netstead validate` or
+`netstead quality`, asks "what does this error mean?", or has a network
 producing dozens of issues and wants to know which to fix first. This skill
 covers both schema-level validation (does the data parse?) and
 GMNS-specific quality heuristics (does the network make physical sense?).
 
 For *generic* Frictionless validation on non-GMNS data, use the
-`datagrove-validate` skill. For authoring fresh networks, use `gmns-author`.
+`corral-validate` skill. For authoring fresh networks, use `gmns-author`.
 
 ## Workflow
 
 1. **Always run with `--json`.** The text output is for humans skimming;
    `--json` gives you a structured array you can group, filter, and count:
    ```bash
-   gmnspy validate ./network --json > report.json
+   netstead validate ./network --json > report.json
    ```
 2. **Read `summary` first.** The header tells you total error/warning counts
    and which tables had issues. If `errors > 0`, the network won't load
@@ -41,7 +41,7 @@ For *generic* Frictionless validation on non-GMNS data, use the
 
 ## Issue code reference
 
-### Schema codes (from datagrove)
+### Schema codes (from corral)
 
 - **`schema.required`** — required field is null/missing. Open the row and
   check the source export.
@@ -54,7 +54,7 @@ For *generic* Frictionless validation on non-GMNS data, use the
   `to_node_id` not in `node.node_id`. Usually means the node table was
   filtered without filtering links.
 
-### GMNS quality codes (from gmnspy.quality)
+### GMNS quality codes (from netstead.quality)
 
 - **`quality.disconnected_components`** — the network graph has more than
   one connected component. Either some links are missing, or the data
@@ -94,7 +94,7 @@ Your response should:
 
 1. Pull the row to confirm:
    ```python
-   from gmnspy import Network
+   from netstead import Network
    net = Network.from_source("./network")
    link = net.links.filter(link_id=...).to_pandas().iloc[0]
    print(link[["link_id", "from_node_id", "to_node_id",
@@ -115,7 +115,7 @@ Your response should:
 ## Example: triaging a fresh report
 
 ```bash
-gmnspy validate ./leavenworth --json > report.json
+netstead validate ./leavenworth --json > report.json
 
 # Headline
 jq '.summary' report.json
@@ -140,5 +140,5 @@ confirmation that they're not parallel facilities.
 
 - `gmns-author` — fix issues by editing the source tables
 - `gmns-clean` — drop stranded nodes / merge duplicates safely with rollback
-- `datagrove-validate` — non-GMNS Frictionless validation
-- `packages/gmnspy/gmnspy/quality/` — source of every `quality.*` code
+- `corral-validate` — non-GMNS Frictionless validation
+- `packages/netstead/netstead/quality/` — source of every `quality.*` code

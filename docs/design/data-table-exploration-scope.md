@@ -3,10 +3,10 @@
 Status: **Phase 0 + Phase 1 BUILT** (+ early Phase-2 cross-linking) · Date: 2026-09-30 · Owner: viz
 
 > **Implemented (2026-10-01).** Server-side paged/sorted/filtered table access
-> (`gmnspy/viz/tables.py`, no raw SQL — passes `lint_no_sql`) behind new endpoints
+> (`netstead/viz/tables.py`, no raw SQL — passes `lint_no_sql`) behind new endpoints
 > `/api/tables`, `/api/table/{name}/schema`, `/api/table/{name}/rows`
 > (offset/limit/sort/dir/filter/ids). `build_app(..., tables=…)` takes extra GMNS
-> frames; `gmnspy viz` auto-exposes lanes/segments/zones/movements/link_tod when
+> frames; `netstead viz` auto-exposes lanes/segments/zones/movements/link_tod when
 > present. Frontend: header **Map / Split / Table** segmented control (persisted in
 > `localStorage`), left rail of tables with row counts, a hand-rolled paged grid
 > (sortable headers, per-column `contains` filters, Prev/Next pager, geometry
@@ -14,7 +14,7 @@ Status: **Phase 0 + Phase 1 BUILT** (+ early Phase-2 cross-linking) · Date: 202
 > `fitSelection` on the map + fill the detail panel; click a node row → anchor +
 > flyTo; a "Filter to map selection" toggle passes `CUR.linkIds`/anchor node ids as
 > `ids`. Tests: `test_viz_tables.py` (11) + 8 endpoint tests in `test_viz_server.py`.
-> **G1 + G2 now DONE (2026-10-01).** Engine push-down is wired: `datagrove.Table`
+> **G1 + G2 now DONE (2026-10-01).** Engine push-down is wired: `corral.Table`
 > gained `order_by`/`limit(offset)` (all engines) and `dataset.filter.filter_rows`
 > (ibis-first attribute filter, no raw SQL); `viz.tables.page_table` accepts a lazy
 > `Table` and pushes filter/sort/page/count to the engine (duckdb over parquet
@@ -31,7 +31,7 @@ Goal: let a user flip between the deck.gl map and the underlying GMNS tables
 (`link`, `node`, `lane`, `segment`, …), inspect / sort / filter large tables,
 and cross-link the two (table row → highlight on map; map selection → filter
 the table). Think CARTO linked widgets / a data grid, over the DuckDB/parquet
-data gmnspy already loads.
+data netstead already loads.
 
 This doc evaluates the options, recommends an approach + concrete tech, and
 lays out a phased plan. **No code is changed by this doc.**
@@ -53,9 +53,9 @@ lays out a phased plan. **No code is changed by this doc.**
   live engine, so it has no access to `lane`, `segment`, `zone`, the signal
   family, etc., and no lazy DuckDB handle to page against.
 - **Data layer is engine-agnostic and lazy.** `Network` (subclass of
-  `datagrove.dataset.Package`) exposes named accessors for every canonical GMNS
+  `corral.dataset.Package`) exposes named accessors for every canonical GMNS
   table (`links`, `nodes`, `lanes`, `segments`, `segment_lanes`, `zones`,
-  `movements`, `signal_*`, `link_tod`, …). Each returns a datagrove `Table`
+  `movements`, `signal_*`, `link_tod`, …). Each returns a corral `Table`
   wrapping a lazy expr. `Table` already offers, **across ibis/duckdb, pandas and
   polars engines**: `.filter(predicate)`, `.select(*cols)`, `.head(n)`,
   `.count()`, `.columns`, `.to_pandas()` / `.to_polars()`. The default engine is
@@ -99,7 +99,7 @@ Two gaps fall out immediately, independent of which grid we pick:
 
 ### 3.1 Endpoints (new, additive)
 
-All engine-agnostic — built on the datagrove `Table` API, **no raw SQL**, so
+All engine-agnostic — built on the corral `Table` API, **no raw SQL**, so
 they work whether the active engine is ibis/duckdb, pandas, or polars. DuckDB
 does the paging/sorting/filtering under the hood when ibis is active, so a
 million-row `lane` table never fully crosses into the browser.
@@ -131,7 +131,7 @@ data.
 Implementation sketch (server-side, engine-agnostic):
 
 ```python
-tbl = network.table(name)              # datagrove Table (lazy)
+tbl = network.table(name)              # corral Table (lazy)
 if filter_spec: tbl = tbl.filter(compile_predicate(filter_spec))
 if ids:         tbl = tbl.filter(lambda t: t[pk].isin(ids))
 total = tbl.count()                    # lazy count, pushed to duckdb
@@ -239,7 +239,7 @@ never string-built elsewhere, and gate hard:
   **statement timeout** / interrupt.
 - **Localhost bind only.** The console is enabled only when the server is bound
   to `127.0.0.1` (the viz default) and behind an explicit `--enable-sql` flag,
-  **off by default**. Never exposed on a public bind (datagrove already has an
+  **off by default**. Never exposed on a public bind (corral already has an
   `is_public_bind` check to reuse).
 - **No parameters from untrusted callers**; the query is the user's own, typed
   locally.
@@ -287,7 +287,7 @@ flashes the row) is a Phase-2 polish on the same store.
 
 - **duckdb-wasm (MIT).** Query parquet directly in the browser, no server paging.
   Genuinely attractive for a *static export* (host the parquet + HTML, no Python
-  process). But for the live `gmnspy viz` server it **duplicates the engine**
+  process). But for the live `netstead viz` server it **duplicates the engine**
   already running in Python, ships a multi-MB WASM bundle, and diverges from the
   server-authoritative ibis/duckdb we already loaded. **Decision:** server-side
   (reuse the loaded duckdb via ibis) is primary; keep duckdb-wasm as a future
@@ -298,7 +298,7 @@ flashes the row) is a Phase-2 polish on the same store.
   for this view (worth citing as prior art for the SQL/table UX).
 - **lonboard / anywidget (both MIT).** The notebook path: lonboard renders deck.gl
   in Jupyter via anywidget, pairs naturally with a pandas/Arrow table cell.
-  **Complementary** — a good story for `gmnspy` in notebooks, not a replacement
+  **Complementary** — a good story for `netstead` in notebooks, not a replacement
   for the standalone web view. Worth a small `notebook` helper later.
 
 **License summary (all fit Apache-2.0):** TanStack Table/Virtual — MIT;
@@ -336,7 +336,7 @@ all modes. Persist the chosen mode + split height in `localStorage`.
 ## 8. Recommendation (summary)
 
 1. **Primary: server-side paged/sorted/filtered grid (§3)** on new endpoints
-   built over the **engine-agnostic datagrove `Table` API — no raw SQL**. DuckDB
+   built over the **engine-agnostic corral `Table` API — no raw SQL**. DuckDB
    pages under the hood; the browser holds one page.
 2. **Grid: hand-rolled thin table first (lean deps); escalate to TanStack Table
    (headless, MIT) only when client-side interactions demand it.** Perspective
@@ -359,7 +359,7 @@ all modes. Persist the chosen mode + split height in `localStorage`.
   table lazily. Keep the existing binary/attrs endpoints (they can materialize
   `links`/`nodes` from the Network internally).
 - **G2:** add `order_by(col, dir)` and `offset(n)` (or `limit(n, offset=k)`) to
-  the datagrove `Table` API — one thin wrapper per engine. Benefits the whole
+  the corral `Table` API — one thin wrapper per engine. Benefits the whole
   library, not just viz.
 
 ---
@@ -401,7 +401,7 @@ all modes. Persist the chosen mode + split height in `localStorage`.
 ## 10. Open questions
 
 - **Foreign-key map** GMNS child table → parent link/node for cross-highlight:
-  derive from the vendored GMNS spec (`gmnspy.spec`) rather than hardcoding?
+  derive from the vendored GMNS spec (`netstead.spec`) rather than hardcoding?
 - **Composite/nonexistent PKs** (e.g. `lane` keyed by `link_id`+`lane_id`): the
   `ids` cross-filter needs a per-table pk definition (extend `/schema`).
 - **Count cost** on very large tables on the pandas engine (no push-down) — cap

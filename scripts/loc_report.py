@@ -15,8 +15,8 @@ multi-line strings together. For our "is the bloat docstrings or
 algorithm?" question we want docstrings called out specifically.
 
 Usage:
-    uv run python scripts/loc_report.py packages/datagrove/datagrove/validation/*.py
-    uv run python scripts/loc_report.py --recursive packages/datagrove/datagrove/
+    uv run python scripts/loc_report.py packages/corral/corral/validation/*.py
+    uv run python scripts/loc_report.py --recursive packages/corral/corral/
 """
 
 from __future__ import annotations

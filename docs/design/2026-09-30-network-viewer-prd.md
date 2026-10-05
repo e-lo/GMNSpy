@@ -1,9 +1,9 @@
-# PRD — GMNS network viewer (`gmnspy.viz`)
+# PRD — GMNS network viewer (`netstead.viz`)
 
 **Status:** Draft for review. Capability-first; tech is "considerations," not locked.
 **Author:** Elizabeth Sall (easall@gmail.com) with Claude.
-**Related:** [[gmnspy.select]] (NL selection), existing `gmnspy.map` (static Leaflet report
-viewer — this supersedes it for interactive use), the `gmnspy select-serve` prototype.
+**Related:** [[netstead.select]] (NL selection), existing `netstead.map` (static Leaflet report
+viewer — this supersedes it for interactive use), the `netstead select-serve` prototype.
 
 ---
 
@@ -40,12 +40,12 @@ basemap**, fed by typed arrays derived cheaply from GeoParquet.
 **Non-goals (now)**
 - Editing geometry/attributes in the viewer (view + select only; editing is a separate track).
 - Rendering bike/ped/transit *yet* — but the architecture must not preclude them.
-- Server-side heavy GIS analytics; the viewer visualizes, gmnspy computes.
+- Server-side heavy GIS analytics; the viewer visualizes, netstead computes.
 - Planet-scale streaming (billions of features); regional-model scale is the target.
 
 ## 4. Users & primary use cases
 
-1. **Selection confirm** — type/inspect a `gmnspy.select` result; see highlighted links + gore/
+1. **Selection confirm** — type/inspect a `netstead.select` result; see highlighted links + gore/
    merge anchors; correct if wrong. (Exists in prototype.)
 2. **Network QA/QC** — load a network, color by attribute (facility_type, lanes, speed),
    click links/nodes to verify attributes, spot connectivity/geometry errors.
@@ -78,7 +78,7 @@ basemap**, fed by typed arrays derived cheaply from GeoParquet.
 - Style changes are cheap (update a GPU attribute buffer, no reload).
 
 ### 5.4 Selection & highlighting
-- Highlight a **path** (ordered link set from `gmnspy.select`).
+- Highlight a **path** (ordered link set from `netstead.select`).
 - Highlight arbitrary **link sets** (e.g. "selected links", a query result).
 - Highlight **nodes** with roles (e.g. origin/destination markers, gore/merge anchors).
 - Multiple concurrent highlight sets, each independently styled (color/width), toggleable.
@@ -129,7 +129,7 @@ basemap**, fed by typed arrays derived cheaply from GeoParquet.
 - Serves both QA/QC (did my edit do only what I intended?) and scenario comparison.
 
 ### 5.9 Selection / search integration
-- Enter a natural-language utterance (via `gmnspy.select`) → resolved selection highlighted +
+- Enter a natural-language utterance (via `netstead.select`) → resolved selection highlighted +
   fragment shown (the current prototype, folded into this viewer).
 - Later: attribute queries ("all links where lanes ≥ 3") as ad-hoc selections.
 
@@ -192,12 +192,12 @@ These future modes influence the tech approach now: a **per-feature-class layer 
 
 ## 7. Data model & inputs
 
-- **Primary input:** a GMNS network as GeoParquet/Parquet (via `gmnspy.Network`) — `node`,
+- **Primary input:** a GMNS network as GeoParquet/Parquet (via `netstead.Network`) — `node`,
   `link`, and related tables (`lane`, `segment`, `geometry`, `zone`, signals, `*_tod`).
 - **Geometry:** node `x_coord`/`y_coord` (EPSG:4326); link geometry as WKT today (optionally a
   coordinate-native GeoParquet/GeoArrow geometry column — see §8).
-- **Selections:** from `gmnspy.select` (`SelectionResult` / fragment) and ad-hoc queries.
-- **Diffs:** computed over two `Network`s (added/removed/changed) — reuse `datagrove.editing`
+- **Selections:** from `netstead.select` (`SelectionResult` / fragment) and ad-hoc queries.
+- **Diffs:** computed over two `Network`s (added/removed/changed) — reuse `corral.editing`
   / a diff helper.
 - **Future:** GTFS feed(s); extension tables for bike/ped/trails.
 
@@ -211,7 +211,7 @@ These future modes influence the tech approach now: a **per-feature-class layer 
   (`getOffset`) for directional offset — prefer this over a custom shader.** SimWrapper
   subclasses the layer and injects its own offset shader (`LineOffsetLayer`), but that is a
   recurring maintenance cost across deck.gl majors **and SimWrapper is GPL-3.0, so we cannot copy
-  its shader/layer code into Apache-2.0 GMNSpy** (§13). Use the extension's signed per-link
+  its shader/layer code into Apache-2.0 Netstead** (§13). Use the extension's signed per-link
   `getOffset` (a binary attribute, MIT) first; if we ever need offset behavior the extension can't
   express, write our **own** offset shader from scratch (referencing SimWrapper only for the idea)
   and **offset the picking pass too** so clicks match what users see. `ScatterplotLayer`/`IconLayer`
@@ -255,7 +255,7 @@ These future modes influence the tech approach now: a **per-feature-class layer 
   only when a network is too big to hold resident. Both tracks share MapLibre + the same data
   origin, so consistency holds. Plus a cheap high-value **"export visible viewport"** (→ GeoParquet/
   GeoJSON) feature falls out of track (2).
-- **Backend:** FastAPI (reuse `datagrove.api` composition), consistent with `gmnspy
+- **Backend:** FastAPI (reuse `corral.api` composition), consistent with `netstead
   select-serve`; endpoints: network binary buffers, attribute detail, selection resolve, diff.
 - **Frontend footprint:** deck.gl + luma + MapLibre + a small offset-shader layer + a
   virtualized table. Heavier than the current one-file MapLibre+GeoJSON page — the cost of the
@@ -263,14 +263,14 @@ These future modes influence the tech approach now: a **per-feature-class layer 
 
 ## 9. Module layout (proposal)
 
-`gmnspy/viz/` (new submodule; absorbs the `gmnspy.select` webapp, supersedes `gmnspy.map`'s
+`netstead/viz/` (new submodule; absorbs the `netstead.select` webapp, supersedes `netstead.map`'s
 interactive role):
 - `server.py` — FastAPI app factory (network buffers, attribute detail, selection, diff).
 - `buffers.py` — Parquet frames → typed-array buffers (positions/colors/widths; Arrow IPC).
 - `layers.py` — layer registry / layer specs (per feature class; style spec; time-aware hook).
 - `diff.py` — network A/B diff sets.
 - `static/` + `templates/` — deck.gl + MapLibre frontend (offset layer, panels, table).
-- CLI: `gmnspy viz <network>` (and the existing `select-serve` folds in).
+- CLI: `netstead viz <network>` (and the existing `select-serve` folds in).
 
 ## 10. Phasing (rough)
 
@@ -286,11 +286,11 @@ interactive role):
 ## 11. Open questions
 
 - Geometry representation: adopt a **coordinate-native (GeoArrow) geometry** column in the GMNS
-  parquet to make the render path zero-parse? (Affects gmnspy I/O, not just the viewer.)
+  parquet to make the render path zero-parse? (Affects netstead I/O, not just the viewer.)
 - Straight-vs-polyline default: render links straight (node-to-node) for speed, with true
   geometry as an opt-in layer? For most GMNS links straight is visually fine and fastest.
 - Server-built binary vs in-browser parquet-wasm/GeoArrow — which as the primary path?
-- Does the viewer live in `gmnspy.viz`, or extend `gmnspy.map`? (Naming/consolidation.)
+- Does the viewer live in `netstead.viz`, or extend `netstead.map`? (Naming/consolidation.)
 - Diff granularity: attribute-level deltas vs link-level added/removed/changed only, for P3.
 
 *(Resolved by the renderer survey: use `PathStyleExtension.getOffset` for directional offset,
@@ -324,9 +324,9 @@ with offline shape-cutting.)*
 
 ## 13. License & legal considerations
 
-**GMNSpy is Apache-2.0** (permissive). Rule of thumb: we may depend on, bundle, and even copy code
+**Netstead is Apache-2.0** (permissive). Rule of thumb: we may depend on, bundle, and even copy code
 from **permissive** licenses (MIT / BSD-2 / BSD-3 / Apache-2.0) with proper attribution; we must
-**not copy source from copyleft** projects (GPL / AGPL / LGPL-with-static-linking) into GMNSpy, as
+**not copy source from copyleft** projects (GPL / AGPL / LGPL-with-static-linking) into Netstead, as
 that can force relicensing. **Functionality, UX patterns, and APIs are not copyrightable** — we can
 freely learn from any tool (including commercial ones); the line is *copying code or assets*.
 
@@ -348,7 +348,7 @@ freely learn from any tool (including commercial ones); the line is *copying cod
 
 **Restrictions to honor:**
 - **SimWrapper is GPL-3.0.** Reference for architecture/ideas only. **Do not copy** its shaders,
-  layers, or any source into GMNSpy. Our offset uses MIT `PathStyleExtension`; any custom shader we
+  layers, or any source into Netstead. Our offset uses MIT `PathStyleExtension`; any custom shader we
   write from scratch. (This is why the §8 recommendation is what it is.)
 - **Mapbox GL JS v2+ is proprietary** (Mapbox BSL / commercial terms). Do not use it or its code —
   we use **MapLibre** (BSD-3). Mapbox's expression spec/Studio are inspiration, not code to copy.
@@ -361,7 +361,7 @@ freely learn from any tool (including commercial ones); the line is *copying cod
   option embeds or requires a secret.** If a keyed provider is ever wanted, inject the key at
   runtime via a config endpoint from an env var — never commit it. Always show attribution; a
   production deployment should confirm the provider's terms or self-host tiles.
-- **Network *data* licenses.** GMNS networks built from OSM (`osm2gmns` / `gmnspy.osm.build`) carry
+- **Network *data* licenses.** GMNS networks built from OSM (`osm2gmns` / `netstead.osm.build`) carry
   **ODbL** obligations — attribution + share-alike on derived databases; our bundled fixtures
   already state ODbL. **Overture** data is CDLA-Permissive-2.0 for most themes and **ODbL** for
   OSM-derived transportation — attribution required; check per-theme before redistributing.

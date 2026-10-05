@@ -7,7 +7,7 @@ names are skipped (issues are deduplicated by exact title match).
 Usage:
     uv run python scripts/setup_github_issues.py [--dry-run] [--repo OWNER/NAME]
 
-Default repo: e-lo/GMNSpy.
+Default repo: e-lo/netstead.
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ import subprocess
 import sys
 from dataclasses import dataclass, field
 
-DEFAULT_REPO = "e-lo/GMNSpy"
+DEFAULT_REPO = "e-lo/netstead"
 
 # ---------------------------------------------------------------------------
 # Labels — see PRD §"GitHub Governance / Labels"
@@ -27,14 +27,14 @@ DEFAULT_REPO = "e-lo/GMNSpy"
 LABELS: list[tuple[str, str, str]] = [
     # phase
     ("phase:0", "0e8a16", "Phase 0 — Repo prep"),
-    ("phase:1", "1d76db", "Phase 1 — datagrove foundation"),
+    ("phase:1", "1d76db", "Phase 1 — corral foundation"),
     ("phase:2", "5319e7", "Phase 2 — validation + dataset"),
     ("phase:3", "b60205", "Phase 3 — operations + GMNS bindings"),
     ("phase:4", "fbca04", "Phase 4 — surfaces (CLI/notebook/API/MCP/skills)"),
     ("phase:5", "d93f0b", "Phase 5 — hardening + beta + GA"),
     # package
-    ("pkg:datagrove", "0366d6", "datagrove (generic engine)"),
-    ("pkg:gmnspy", "0366d6", "gmnspy (GMNS-specific)"),
+    ("pkg:corral", "0366d6", "corral (generic engine)"),
+    ("pkg:netstead", "0366d6", "netstead (GMNS-specific)"),
     ("pkg:skills", "0366d6", "Claude Code Skills"),
     ("pkg:repo", "0366d6", "monorepo / cross-cutting"),
     # area
@@ -74,9 +74,9 @@ LABELS: list[tuple[str, str, str]] = [
 ]
 
 MILESTONES: list[tuple[str, str]] = [
-    ("datagrove-v0.1.0-beta.1", "First public beta of the generic datagrove engine."),
-    ("gmnspy-v1.0.0-beta.1", "First public beta of GMNSpy v1.0."),
-    ("gmnspy-v1.0.0", "GMNSpy v1.0 GA. All 29 product-owner requirements verified."),
+    ("corral-v0.1.0-beta.1", "First public beta of the generic corral engine."),
+    ("netstead-v1.0.0-beta.1", "First public beta of Netstead v1.0."),
+    ("netstead-v1.0.0", "Netstead v1.0 GA. All 29 product-owner requirements verified."),
     ("v1.1", "Post-GA additive: more cleanup ops, more quality rules, polygon scope, CLI edit REPL."),
 ]
 
@@ -117,7 +117,7 @@ def _task_body(t: Task, phase: Phase) -> str:
 
 ---
 
-This issue is part of the v1.0 refactor tracked in the Epic. See the PRD ([docs/PRD.md](https://github.com/e-lo/GMNSpy/blob/refactor/v1.0/docs/PRD.md)) and the plan file in `.claude/plans/` for full context.
+This issue is part of the v1.0 refactor tracked in the Epic. See the PRD ([docs/PRD.md](https://github.com/e-lo/netstead/blob/refactor/v1.0/docs/PRD.md)) and the plan file in `.claude/plans/` for full context.
 """
 
 
@@ -133,7 +133,7 @@ PHASES: list[Phase] = [
             Task(
                 "0.1",
                 "Cut refactor/v1.0 + clear legacy modules",
-                "Cut `refactor/v1.0` from `develop` (or current main if develop is stale). Plan calls for a clean break — delete legacy `gmnspy/` Python modules at end of phase.",
+                "Cut `refactor/v1.0` from `develop` (or current main if develop is stale). Plan calls for a clean break — delete legacy `netstead/` Python modules at end of phase.",
                 ["pkg:repo", "area:ci", "type:chore"],
                 effort="S",
                 sa=False,
@@ -141,21 +141,21 @@ PHASES: list[Phase] = [
             Task(
                 "0.2",
                 "Set up uv workspace at repo root",
-                "Create `packages/datagrove/` and `packages/gmnspy/` with stub `pyproject.toml` files and a workspace-root `pyproject.toml` declaring `[tool.uv.workspace]`.",
+                "Create `packages/corral/` and `packages/netstead/` with stub `pyproject.toml` files and a workspace-root `pyproject.toml` declaring `[tool.uv.workspace]`.",
                 ["pkg:repo", "area:ci", "type:chore"],
                 effort="S",
             ),
             Task(
                 "0.3",
                 "Vendor GMNS spec versions side-by-side",
-                "Move existing spec into `packages/gmnspy/gmnspy/spec/0.97/`; vendor 0.95 + 0.96 from upstream tags. Add `VERSION` files. Multi-version support per req #29.",
-                ["pkg:gmnspy", "area:spec", "type:chore"],
+                "Move existing spec into `packages/netstead/netstead/spec/0.97/`; vendor 0.95 + 0.96 from upstream tags. Add `VERSION` files. Multi-version support per req #29.",
+                ["pkg:netstead", "area:spec", "type:chore"],
                 effort="M",
             ),
             Task(
                 "0.4",
                 "Set up shared dev tooling (ruff, pyright, import-linter, coverage, pytest-benchmark, pre-commit)",
-                "Configure shared dev tooling at workspace root. import-linter contracts: datagrove cannot import gmnspy; gmnspy core cannot require optional-extra submodules. ruff replaces black + flake8 + isort + pydocstyle.",
+                "Configure shared dev tooling at workspace root. import-linter contracts: corral cannot import netstead; netstead core cannot require optional-extra submodules. ruff replaces black + flake8 + isort + pydocstyle.",
                 ["pkg:repo", "area:ci", "type:chore"],
                 effort="M",
             ),
@@ -169,7 +169,7 @@ PHASES: list[Phase] = [
             Task(
                 "0.6",
                 "Split publish.yml into per-package workflows; update tests.yml",
-                "`publish-datagrove.yml` (tag pattern `datagrove-v*`) + `publish-gmnspy.yml` (`gmnspy-v*`). `tests.yml` rewritten for monorepo (uv, ruff, importlinter, per-package pytest with doctest).",
+                "`publish-corral.yml` (tag pattern `corral-v*`) + `publish-netstead.yml` (`netstead-v*`). `tests.yml` rewritten for monorepo (uv, ruff, importlinter, per-package pytest with doctest).",
                 ["pkg:repo", "area:ci", "type:chore"],
                 effort="M",
             ),
@@ -185,91 +185,91 @@ PHASES: list[Phase] = [
     ),
     Phase(
         id="1",
-        title="Phase 1 — datagrove foundation",
+        title="Phase 1 — corral foundation",
         summary="Spec model, engine abstraction, format adapters, Leavenworth fixture.",
         tasks=[
             Task(
                 "1.1",
                 "Pydantic spec model + Frictionless loader (multi-version)",
                 "Pydantic v2 models for `DataPackage`, `Resource`, `Schema`, `Field`, `ForeignKey`, `MissingValues`, `SharedCategory`. Loader resolves `$ref` + `shared_categories.json`. Round-trip tests for each vendored schema.",
-                ["pkg:datagrove", "area:spec", "type:feature"],
+                ["pkg:corral", "area:spec", "type:feature"],
                 effort="M",
             ),
             Task(
                 "1.2",
                 "Engine ABC + registry",
                 "Engine protocol: `scan/materialize/to_pandas/to_polars/write`. Registry with `set_engine`/`get_engine`. Stub impls.",
-                ["pkg:datagrove", "area:engine", "type:feature"],
+                ["pkg:corral", "area:engine", "type:feature"],
                 effort="S",
             ),
             Task(
                 "1.3",
                 "Ibis engine impl (duckdb backend)",
                 "All internal queries via ibis expressions (no raw SQL — req #28). In-memory default; file-backed for `.duckdb` sources.",
-                ["pkg:datagrove", "area:engine", "type:feature"],
+                ["pkg:corral", "area:engine", "type:feature"],
                 effort="M",
             ),
             Task(
                 "1.4",
                 "Polars engine impl (lazy frames)",
                 "Polars LazyFrame backend for users who prefer polars.",
-                ["pkg:datagrove", "area:engine", "type:feature"],
+                ["pkg:corral", "area:engine", "type:feature"],
                 effort="M",
             ),
             Task(
                 "1.5",
                 "Pandas engine impl (eager)",
                 "Pandas backend for compatibility / familiarity.",
-                ["pkg:datagrove", "area:engine", "type:feature"],
+                ["pkg:corral", "area:engine", "type:feature"],
                 effort="S",
             ),
             Task(
                 "1.6",
                 "FormatAdapter ABC + registry + dispatch",
                 "Extension/scheme-based adapter dispatch. Pluggable.",
-                ["pkg:datagrove", "area:io", "type:feature"],
+                ["pkg:corral", "area:io", "type:feature"],
                 effort="S",
             ),
             Task(
                 "1.7",
                 "CSV adapter",
                 "Read/write CSV via the active engine.",
-                ["pkg:datagrove", "area:io", "type:feature"],
+                ["pkg:corral", "area:io", "type:feature"],
                 effort="S",
             ),
             Task(
                 "1.8",
                 "Parquet adapter (single + partitioned)",
                 "Partition pruning verified via duckdb `EXPLAIN` snapshot test. Default persistent format per req #8.",
-                ["pkg:datagrove", "area:io", "type:feature"],
+                ["pkg:corral", "area:io", "type:feature"],
                 effort="M",
             ),
             Task(
                 "1.9",
                 "DuckDB adapter",
                 "Read `.duckdb` file as a Package; write Package to `.duckdb`. Default API-download format per req #8.",
-                ["pkg:datagrove", "area:io", "type:feature"],
+                ["pkg:corral", "area:io", "type:feature"],
                 effort="M",
             ),
             Task(
                 "1.10",
                 "Zip-CSVs adapter",
                 "Read/write a zipped CSV bundle as a Package.",
-                ["pkg:datagrove", "area:io", "type:feature"],
+                ["pkg:corral", "area:io", "type:feature"],
                 effort="S",
             ),
             Task(
                 "1.11",
                 "Remote (URL) layer + credentials cascade",
-                "fsspec-backed remote IO. Credentials cascade: kwarg → `DATAGROVE_CRED_<host>_TOKEN` env → `keyring` → `.netrc`. Per req #4.",
-                ["pkg:datagrove", "area:io", "type:feature"],
+                "fsspec-backed remote IO. Credentials cascade: kwarg → `CORRAL_CRED_<host>_TOKEN` env → `keyring` → `.netrc`. Per req #4.",
+                ["pkg:corral", "area:io", "type:feature"],
                 effort="M",
             ),
             Task(
                 "1.12",
                 "Leavenworth WA fixture network",
                 "Sub-agent task: pull OSM + city open data and synthesize a tiny GMNS network covering ≥6 tables incl. one TOD + shared_categories. CSV + Parquet + DuckDB + zip variants. Provenance documented.",
-                ["pkg:gmnspy", "area:spec", "type:test"],
+                ["pkg:netstead", "area:spec", "type:test"],
                 effort="L",
             ),
         ],
@@ -283,63 +283,63 @@ PHASES: list[Phase] = [
                 "2.1",
                 "ValidationReport + Issue dataclasses; rich + JSON renderers",
                 "Severity levels (Error/Warning/Info/DataQuality); `category` field. Rich console + JSON output.",
-                ["pkg:datagrove", "area:validation", "type:feature"],
+                ["pkg:corral", "area:validation", "type:feature"],
                 effort="S",
             ),
             Task(
                 "2.2",
                 "Interactive HTML report renderer",
                 "Self-contained single-file HTML (Jinja2 + DataTables + Vega-Lite). Severity ranking, filter by table/severity/rule/category, click-to-expand row context, embedded map view. Per req #25.",
-                ["pkg:datagrove", "area:validation", "type:feature"],
+                ["pkg:corral", "area:validation", "type:feature"],
                 effort="L",
             ),
             Task(
                 "2.3",
                 "Schema check (required/types/enums/min/max/regex)",
                 "Engine-agnostic via ibis expressions. Regression tests for the 4 latent bugs in legacy `constraint_checking.py`.",
-                ["pkg:datagrove", "area:validation", "type:feature"],
+                ["pkg:corral", "area:validation", "type:feature"],
                 effort="M",
             ),
             Task(
                 "2.4",
                 "Foreign-key validator (lazy / streaming-aware)",
                 "Cross-table FK validation pushed to the engine where supported (duckdb does).",
-                ["pkg:datagrove", "area:validation", "type:feature"],
+                ["pkg:corral", "area:validation", "type:feature"],
                 effort="M",
             ),
             Task(
                 "2.5",
                 "Structural validator (required tables, file presence)",
                 "Detect missing required tables and required files in a package directory.",
-                ["pkg:datagrove", "area:validation", "type:feature"],
+                ["pkg:corral", "area:validation", "type:feature"],
                 effort="S",
             ),
             Task(
                 "2.6",
                 "DirtyTracker + sync-state model",
                 "Content hashes per table + FK-validation hash stamps. `OutOfSyncWarning` on stale FK at write. Per req #5.",
-                ["pkg:datagrove", "area:validation", "type:feature"],
+                ["pkg:corral", "area:validation", "type:feature"],
                 effort="M",
             ),
             Task(
                 "2.7",
                 "Lazy Package + Table wrappers",
                 "Lazy ibis-backed `Package`, `Table` with provenance, dirty flag, scope, mutation surface.",
-                ["pkg:datagrove", "area:engine", "type:feature"],
+                ["pkg:corral", "area:engine", "type:feature"],
                 effort="L",
             ),
             Task(
                 "2.8",
-                "Generic spatial scoping in datagrove.dataset.view",
-                "bbox, polygon, geometry-buffer; predicate pushdown verified via duckdb `EXPLAIN`. (Network-aware scope is gmnspy-side, Phase 3.)",
-                ["pkg:datagrove", "area:scope", "type:feature"],
+                "Generic spatial scoping in corral.dataset.view",
+                "bbox, polygon, geometry-buffer; predicate pushdown verified via duckdb `EXPLAIN`. (Network-aware scope is netstead-side, Phase 3.)",
+                ["pkg:corral", "area:scope", "type:feature"],
                 effort="M",
             ),
             Task(
                 "2.9",
                 "Generic Edit/Diff/Session/Rollback framework",
                 "`EditResult` carries diff + log entry; `Session` records ops + rollback records to sidecar parquet. No GMNS semantics here. Per req #27.",
-                ["pkg:datagrove", "area:clean", "type:feature"],
+                ["pkg:corral", "area:clean", "type:feature"],
                 effort="L",
             ),
         ],
@@ -353,91 +353,91 @@ PHASES: list[Phase] = [
                 "3.1",
                 "Cost model + gating (>30s estimate, >3min approval)",
                 "Calibrate on Leavenworth + synthetic regional fixture. Per req #12.",
-                ["pkg:datagrove", "type:feature"],
+                ["pkg:corral", "type:feature"],
                 effort="M",
             ),
             Task(
                 "3.2",
                 "Pool / batch context manager (atomic on exception)",
                 "`with net.batch():` defers + coalesces. Per req #6.",
-                ["pkg:datagrove", "type:feature"],
+                ["pkg:corral", "type:feature"],
                 effort="M",
             ),
             Task(
                 "3.3",
                 "Progress wrapper (rich, notebook-aware)",
                 "Rich progress with `force_terminal=False` for inline notebook rendering.",
-                ["pkg:datagrove", "type:feature"],
+                ["pkg:corral", "type:feature"],
                 effort="S",
             ),
             Task(
                 "3.4",
                 "Markdown docgen (port from legacy)",
                 "Port `document_schemas_to_md` / `document_spec_to_md` to new spec model. Snapshot test against current output. Update `main.py` mkdocs-macros.",
-                ["pkg:datagrove", "area:docs", "type:refactor"],
+                ["pkg:corral", "area:docs", "type:refactor"],
                 effort="M",
             ),
             Task(
                 "3.5",
                 "AI docgen (llms.txt, llms-full.txt, ai/api-index.json)",
                 "mkdocs build hook generates AI-consumable artifacts. Per req #22.",
-                ["pkg:datagrove", "area:docs", "type:feature"],
+                ["pkg:corral", "area:docs", "type:feature"],
                 effort="M",
             ),
             Task(
                 "3.6",
                 "GMNS spec loader (multi-version)",
                 "`SUPPORTED_SPECS = ['0.95','0.96','0.97']`, `DEFAULT_SPEC = '0.97'`. Per req #29.",
-                ["pkg:gmnspy", "area:spec", "type:feature"],
+                ["pkg:netstead", "area:spec", "type:feature"],
                 effort="M",
             ),
             Task(
                 "3.7",
                 "GMNS Network class + accessors + dirty-tracked mutations",
                 "`Network` = `Package` + `.links`/`.nodes`/... accessors + `add_*`/`update_*` routed through `DirtyTracker`.",
-                ["pkg:gmnspy", "type:feature"],
+                ["pkg:netstead", "type:feature"],
                 effort="L",
             ),
             Task(
                 "3.8",
                 "GMNS semantics (connectivity, geometry assembly, TOD resolution)",
                 "Domain-specific operations; some can slip to v1.1 if Phase 3 runs hot.",
-                ["pkg:gmnspy", "type:feature"],
+                ["pkg:netstead", "type:feature"],
                 effort="L",
             ),
             Task(
                 "3.9",
-                "gmnspy.indexes — spatial (STRtree) + graph (igraph)",
+                "netstead.indexes — spatial (STRtree) + graph (igraph)",
                 "Build/cache/load. Sidecar parquet keyed on content hash. Auto-build heuristic >50k nodes. Per req #29.",
-                ["pkg:gmnspy", "area:scope", "type:feature"],
+                ["pkg:netstead", "area:scope", "type:feature"],
                 effort="L",
             ),
             Task(
                 "3.10",
-                "gmnspy.scope — network-aware scope ops",
+                "netstead.scope — network-aware scope ops",
                 "`from_nodes`, `from_node`, `from_link`, `from_point`, `connected_component`, `from_zone`. Chainable composition. Per req #29.",
-                ["pkg:gmnspy", "area:scope", "type:feature"],
+                ["pkg:netstead", "area:scope", "type:feature"],
                 effort="L",
             ),
             Task(
                 "3.11a",
-                "datagrove.quality — generic rule framework",
+                "corral.quality — generic rule framework",
                 '`Rule` base class, threshold/config model, entry-point plugin discovery, `Issue` emission with `category="data_quality"`, `run()` orchestrator. NO domain rules.',
-                ["pkg:datagrove", "area:quality", "type:feature"],
+                ["pkg:corral", "area:quality", "type:feature"],
                 effort="M",
             ),
             Task(
                 "3.11b",
-                "gmnspy.quality — GMNS rule pack (entry-point registered)",
-                "Initial rules: high-speed-residential, disconnected components, lane-count mismatch, near-duplicate nodes, sharp-angle bends, implausible v/c, missing critical-but-optional fields. Registered into `datagrove.quality` via entry point. Per req #26.",
-                ["pkg:gmnspy", "area:quality", "type:feature"],
+                "netstead.quality — GMNS rule pack (entry-point registered)",
+                "Initial rules: high-speed-residential, disconnected components, lane-count mismatch, near-duplicate nodes, sharp-angle bends, implausible v/c, missing critical-but-optional fields. Registered into `corral.quality` via entry point. Per req #26.",
+                ["pkg:netstead", "area:quality", "type:feature"],
                 effort="L",
             ),
             Task(
                 "3.12",
-                "gmnspy.clean (optional extra) — editing ops with rollback",
+                "netstead.clean (optional extra) — editing ops with rollback",
                 "`simplify_geometry`, `merge_close_nodes`, `remove_orphans`, `split_link_at_node`, `connect_disconnected_components`, `recompute_lengths`, `snap_to_reference`. Each returns `EditResult`. Per req #27.",
-                ["pkg:gmnspy", "area:clean", "type:feature"],
+                ["pkg:netstead", "area:clean", "type:feature"],
                 effort="L",
             ),
         ],
@@ -449,99 +449,99 @@ PHASES: list[Phase] = [
         tasks=[
             Task(
                 "4.1a",
-                "datagrove.cli — generic typer app + commands (validate/convert/info/scope/describe)",
-                "Generic CLI for any Frictionless data package. `--json` on every command. Entry point `datagrove = datagrove.cli.app:app`. Designed to be extended via plugin pattern.",
-                ["pkg:datagrove", "area:cli", "type:feature"],
+                "corral.cli — generic typer app + commands (validate/convert/info/scope/describe)",
+                "Generic CLI for any Frictionless data package. `--json` on every command. Entry point `corral = corral.cli.app:app`. Designed to be extended via plugin pattern.",
+                ["pkg:corral", "area:cli", "type:feature"],
                 effort="M",
             ),
             Task(
                 "4.1b",
-                "gmnspy.cli — extend datagrove typer app with GMNS commands",
-                "Register GMNS-specific commands (`read` GMNS-aware, `spec`, `quality`, `clean`, `scope from-nodes/from-link/...`, `index`) onto the same typer app. Entry point `gmnspy = gmnspy.cli.app:app`. Per req #13.",
-                ["pkg:gmnspy", "area:cli", "type:feature"],
+                "netstead.cli — extend corral typer app with GMNS commands",
+                "Register GMNS-specific commands (`read` GMNS-aware, `spec`, `quality`, `clean`, `scope from-nodes/from-link/...`, `index`) onto the same typer app. Entry point `netstead = netstead.cli.app:app`. Per req #13.",
+                ["pkg:netstead", "area:cli", "type:feature"],
                 effort="M",
             ),
             Task(
                 "4.2",
-                "datagrove.cli convert (csv↔parquet↔duckdb↔zip)",
-                "Generic format conversion (lives in datagrove.cli but covers all formats from any package). Progress + cost gating.",
-                ["pkg:datagrove", "area:cli", "type:feature"],
+                "corral.cli convert (csv↔parquet↔duckdb↔zip)",
+                "Generic format conversion (lives in corral.cli but covers all formats from any package). Progress + cost gating.",
+                ["pkg:corral", "area:cli", "type:feature"],
                 effort="M",
             ),
             Task(
                 "4.3",
                 "CLI spec sync|list|diff",
                 "Vendored spec management via CLI.",
-                ["pkg:gmnspy", "area:cli", "type:feature"],
+                ["pkg:netstead", "area:cli", "type:feature"],
                 effort="S",
             ),
             Task(
                 "4.4",
                 "CLI bench",
                 "Run engine benchmarks on Leavenworth + synthetic.",
-                ["pkg:gmnspy", "area:cli", "type:feature"],
+                ["pkg:netstead", "area:cli", "type:feature"],
                 effort="S",
             ),
             Task(
                 "4.5",
                 "CLI doctor",
                 "Env + spec version + sample-data smoke + credential resolution diagnostic.",
-                ["pkg:gmnspy", "area:cli", "type:feature"],
+                ["pkg:netstead", "area:cli", "type:feature"],
                 effort="S",
             ),
             Task(
                 "4.6",
                 "CLI quality / clean / scope / index",
                 "Wraps quality, clean, scope, indexes modules; rollback/save and index-cache semantics surfaced.",
-                ["pkg:gmnspy", "area:cli", "type:feature"],
+                ["pkg:netstead", "area:cli", "type:feature"],
                 effort="M",
             ),
             Task(
                 "4.7",
-                "datagrove.cli prompts + approval gating (--yes / GMNSPY_AUTO_APPROVE)",
-                "Generic prompts + gating in datagrove.cli.prompts so the same logic works for `datagrove`, `gmnspy`, and any future CLI. Claude Code-style short prompts. Per req #12.",
-                ["pkg:datagrove", "area:cli", "type:feature"],
+                "corral.cli prompts + approval gating (--yes / NETSTEAD_AUTO_APPROVE)",
+                "Generic prompts + gating in corral.cli.prompts so the same logic works for `corral`, `netstead`, and any future CLI. Claude Code-style short prompts. Per req #12.",
+                ["pkg:corral", "area:cli", "type:feature"],
                 effort="M",
             ),
             Task(
                 "4.8",
                 "CLI edit REPL (stretch — defer to v1.1 if hot)",
                 "Implicit batch + `:save`/`:abort`.",
-                ["pkg:gmnspy", "area:cli", "type:feature"],
+                ["pkg:netstead", "area:cli", "type:feature"],
                 effort="L",
             ),
             Task(
                 "4.9a",
-                "datagrove.notebook — generic _repr_html_ for Package/Table/ValidationReport/EditResult",
+                "corral.notebook — generic _repr_html_ for Package/Table/ValidationReport/EditResult",
                 "Generic notebook reprs + notebook-aware rich progress wrapper. Reused by any domain package.",
-                ["pkg:datagrove", "area:notebook", "type:feature"],
+                ["pkg:corral", "area:notebook", "type:feature"],
                 effort="M",
             ),
             Task(
                 "4.9b",
-                "gmnspy.notebook — Network._repr_html_ + scope-builder widget",
-                "Extends datagrove.notebook by composition. Adds Network-specific repr (link/node counts, FK badge, dirty flag, last-validated badge) + an ipywidget for interactive scope construction.",
-                ["pkg:gmnspy", "area:notebook", "type:feature"],
+                "netstead.notebook — Network._repr_html_ + scope-builder widget",
+                "Extends corral.notebook by composition. Adds Network-specific repr (link/node counts, FK badge, dirty flag, last-validated badge) + an ipywidget for interactive scope construction.",
+                ["pkg:netstead", "area:notebook", "type:feature"],
                 effort="M",
             ),
             Task(
                 "4.10",
-                "gmnspy.server (optional extra) — FastAPI + auto-OpenAPI",
+                "netstead.server (optional extra) — FastAPI + auto-OpenAPI",
                 "Endpoints per architecture spec. Pluggable auth. Config-file driven. Dockerfile + docker-compose example. Per req #23.",
-                ["pkg:gmnspy", "area:server", "type:feature"],
+                ["pkg:netstead", "area:server", "type:feature"],
                 effort="L",
             ),
             Task(
                 "4.11",
-                "gmnspy.mcp (optional extra) — MCP server",
-                "Tools: `read_network`, `describe_network`, `query_table`, `scope`, `validate`, `quality_check`, `convert`, `edit_session`. `gmnspy mcp serve` CLI entry. Also a `datagrove mcp serve` for the generic case. Per req #22.",
-                ["pkg:gmnspy", "pkg:datagrove", "area:mcp", "type:feature"],
+                "netstead.mcp (optional extra) — MCP server",
+                "Tools: `read_network`, `describe_network`, `query_table`, `scope`, `validate`, `quality_check`, `convert`, `edit_session`. `netstead mcp serve` CLI entry. Also a `corral mcp serve` for the generic case. Per req #22.",
+                ["pkg:netstead", "pkg:corral", "area:mcp", "type:feature"],
                 effort="L",
             ),
             Task(
                 "4.12",
                 "Populate Skills in skills/",
-                "Fill in SKILL.md bodies for `datagrove-validate`, `gmns-author`, `gmns-validate`, `gmns-convert`, `gmns-clean`. Per req #22.",
+                "Fill in SKILL.md bodies for `corral-validate`, `gmns-author`, `gmns-validate`, `gmns-convert`, `gmns-clean`. Per req #22.",
                 ["pkg:skills", "area:docs", "type:docs"],
                 effort="M",
             ),
@@ -575,7 +575,7 @@ PHASES: list[Phase] = [
         tasks=[
             Task(
                 "5.1",
-                "Coverage gate (datagrove ≥85%, gmnspy ≥75%)",
+                "Coverage gate (corral ≥85%, netstead ≥75%)",
                 "Fail-on-drop in CI.",
                 ["pkg:repo", "area:ci", "type:test"],
                 effort="M",
@@ -605,20 +605,20 @@ PHASES: list[Phase] = [
             Task(
                 "5.5",
                 "Verify TestPyPI publish for both packages",
-                "Smoke install of `datagrove`, `gmnspy`, `gmnspy[clean]`, `gmnspy[server]`, `gmnspy[mcp]`, `gmnspy[notebook]` from TestPyPI on a fresh venv.",
+                "Smoke install of `corral`, `netstead`, `netstead[clean]`, `netstead[server]`, `netstead[mcp]`, `netstead[notebook]` from TestPyPI on a fresh venv.",
                 ["pkg:repo", "area:ci", "type:test"],
                 effort="M",
             ),
             Task(
                 "5.6",
-                "Docker image for gmnspy[server] → ghcr.io",
-                "Built and pushed on `gmnspy-v*` tags.",
-                ["pkg:gmnspy", "area:server", "area:ci", "type:feature"],
+                "Docker image for netstead[server] → ghcr.io",
+                "Built and pushed on `netstead-v*` tags.",
+                ["pkg:netstead", "area:server", "area:ci", "type:feature"],
                 effort="M",
             ),
             Task(
                 "5.7",
-                "Release datagrove-v0.1.0-beta.1 + gmnspy-v1.0.0-beta.1",
+                "Release corral-v0.1.0-beta.1 + netstead-v1.0.0-beta.1",
                 "Via GitHub release UI. Trusted-publishing fires.",
                 ["pkg:repo", "type:chore", "blocks-beta"],
                 effort="S",
@@ -642,7 +642,7 @@ PHASES: list[Phase] = [
             ),
             Task(
                 "5.10",
-                "Release datagrove-v0.1.0 + gmnspy-v1.0.0 (GA)",
+                "Release corral-v0.1.0 + netstead-v1.0.0 (GA)",
                 "README updates + announcement.",
                 ["pkg:repo", "type:chore", "blocks-ga"],
                 effort="S",
@@ -739,10 +739,10 @@ def create_issue(repo: str, title: str, body: str, labels: list[str], milestone:
 
 def epic_body(phase_issue_urls: dict[str, str]) -> str:
     lines = [
-        "**GMNSpy v1.0 + datagrove v0.1 refactor**",
+        "**Netstead v1.0 + corral v0.1 refactor**",
         "",
-        "Major restructure to a two-package monorepo (datagrove generic engine + gmnspy GMNS-specific).",
-        "Full plan in [docs/PRD.md](https://github.com/e-lo/GMNSpy/blob/refactor/v1.0/docs/PRD.md) and the workspace plan file.",
+        "Major restructure to a two-package monorepo (corral generic engine + netstead GMNS-specific).",
+        "Full plan in [docs/PRD.md](https://github.com/e-lo/netstead/blob/refactor/v1.0/docs/PRD.md) and the workspace plan file.",
         "",
         "## Phases",
         "",
@@ -797,7 +797,7 @@ def main():
     print("[3/4] Issues")
     existing_titles = get_existing_issue_titles(repo) if not dry else set()
 
-    epic_title = "Epic: GMNSpy v1.0 + datagrove v0.1 refactor"
+    epic_title = "Epic: Netstead v1.0 + corral v0.1 refactor"
 
     # Pass 1: create task issues, recording URLs
     task_urls: dict[str, str] = {}
@@ -834,11 +834,11 @@ def main():
             if milestone is None:
                 # Default milestone: beta milestone for tasks in phases 0-4; GA-blocking for phase 5
                 if phase.id in ("0", "1", "2"):
-                    milestone = "datagrove-v0.1.0-beta.1"
+                    milestone = "corral-v0.1.0-beta.1"
                 elif phase.id in ("3", "4"):
-                    milestone = "gmnspy-v1.0.0-beta.1"
+                    milestone = "netstead-v1.0.0-beta.1"
                 else:
-                    milestone = "gmnspy-v1.0.0"
+                    milestone = "netstead-v1.0.0"
             url = create_issue(repo, full_title, _task_body(t, phase), labels, milestone, dry)
             if url:
                 task_urls[t.id] = url
@@ -876,7 +876,7 @@ def main():
 
     # Pass 3: create epic with checklist of phase URLs
     if epic_title not in existing_titles:
-        epic_url = create_issue(repo, epic_title, epic_body(phase_urls), ["epic"], "gmnspy-v1.0.0", dry)
+        epic_url = create_issue(repo, epic_title, epic_body(phase_urls), ["epic"], "netstead-v1.0.0", dry)
         if epic_url:
             print(f"+ Epic {epic_url}")
 

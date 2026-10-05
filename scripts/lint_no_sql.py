@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
-"""Enforce the "no raw SQL outside datagrove.engines.ibis_engine" architecture rule.
+"""Enforce the "no raw SQL outside corral.engines.ibis_engine" architecture rule.
 
 The rule (see ``docs/architecture.md`` section 3) exists because raw SQL strings
 in engine adapters, IO adapters, or any dataset/validation code lock the
 project into a specific dialect and bypass the lazy-ibis composition that
-``datagrove`` is built on. A future polars-engine implementer could
+``corral`` is built on. A future polars-engine implementer could
 accidentally embed a duckdb-fallback SELECT and nothing else in CI would
 catch it.
 
 What this script does
 ---------------------
 
-Walks every ``*.py`` file under ``packages/datagrove/datagrove/`` and
-``packages/gmnspy/gmnspy/`` (excluding the one allowed module,
-``datagrove.engines.ibis_engine``, plus build scripts and test fixtures),
+Walks every ``*.py`` file under ``packages/corral/corral/`` and
+``packages/netstead/netstead/`` (excluding the one allowed module,
+``corral.engines.ibis_engine``, plus build scripts and test fixtures),
 parses each file with Python's ``ast`` module, inspects every string
 literal (``ast.Constant`` with ``str`` value), and flags any string that
 matches a conservative SQL-keyword regex.
@@ -62,14 +62,14 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 # Directories we scan. Each entry is (root, allowed-to-have-sql relative paths).
 SCAN_ROOTS: list[tuple[Path, set[Path]]] = [
     (
-        REPO_ROOT / "packages" / "datagrove" / "datagrove",
+        REPO_ROOT / "packages" / "corral" / "corral",
         {
             # The one and only module permitted to embed raw SQL.
-            REPO_ROOT / "packages" / "datagrove" / "datagrove" / "engines" / "ibis_engine.py",
+            REPO_ROOT / "packages" / "corral" / "corral" / "engines" / "ibis_engine.py",
         },
     ),
     (
-        REPO_ROOT / "packages" / "gmnspy" / "gmnspy",
+        REPO_ROOT / "packages" / "netstead" / "netstead",
         {
             # The fixture build script bypasses ibis intentionally (it has to
             # run before the ibis engine is wired and needs raw duckdb). The
@@ -183,7 +183,7 @@ def main() -> int:
             all_violations.extend(_scan_file(path))
 
     if all_violations:
-        print("Raw SQL strings detected outside datagrove.engines.ibis_engine:", file=sys.stderr)
+        print("Raw SQL strings detected outside corral.engines.ibis_engine:", file=sys.stderr)
         for v in all_violations:
             print(f"  {v.format()}", file=sys.stderr)
         print(

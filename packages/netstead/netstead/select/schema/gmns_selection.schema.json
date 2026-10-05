@@ -1,0 +1,42 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "gmns_selection.schema.json",
+  "title": "GMNS roadway selection (facility fragment)",
+  "description": "A GMNS-native profile of the ProjectCard roadway selection. Mirrors roadway.selection.select_links + select_segment, keyed by GMNS-native link_id / node_id. Convert to ProjectCard's model_link_id / model_node_id via netstead.select.emit.to_projectcard.",
+  "type": "object",
+  "required": ["links"],
+  "additionalProperties": true,
+  "properties": {
+    "links": {
+      "type": "object",
+      "description": "Link selection (select_links profile): resolved (link_id) or query (all/name/ref) form; extra keys are attribute AND-conditions.",
+      "additionalProperties": true,
+      "anyOf": [
+        {"required": ["link_id"]},
+        {"required": ["name"]},
+        {"required": ["ref"]},
+        {"required": ["all"]}
+      ],
+      "properties": {
+        "link_id": {"type": "array", "minItems": 1, "items": {"type": ["integer", "string"]},
+                    "description": "Ordered GMNS link_id values (resolved form)."},
+        "name": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+        "ref": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+        "all": {"type": "boolean"},
+        "modes": {"type": "array", "items": {"type": "string"}},
+        "ignore_missing": {"type": "boolean"}
+      }
+    },
+    "from": {"$ref": "#/$defs/nodeRef"},
+    "to": {"$ref": "#/$defs/nodeRef"},
+    "notes": {"type": "string"}
+  },
+  "$defs": {
+    "nodeRef": {
+      "type": "object",
+      "required": ["node_id"],
+      "additionalProperties": true,
+      "properties": {"node_id": {"type": ["integer", "string"]}}
+    }
+  }
+}

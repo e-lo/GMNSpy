@@ -1,6 +1,6 @@
 # ADR — Geometry encoding: WKT on-disk-CSV, binary in-memory + GeoParquet at rest
 
-Status: **accepted, implementing** · Date: 2026-10-01 · Owner: datagrove/gmnspy
+Status: **accepted, implementing** · Date: 2026-10-01 · Owner: corral/netstead
 
 ## Context
 
@@ -11,9 +11,9 @@ fields typed `any` (no enumerated values — any geopandas-readable encoding is 
 - **`geometry_field_format`** — the geometry encoding (example: `WKT`).
 - **`crs`** — coordinate system (a pyproj-acceptable string / EPSG code).
 
-So geometry encoding is **a config-declared, per-dataset property** — not something gmnspy should hard-code
+So geometry encoding is **a config-declared, per-dataset property** — not something netstead should hard-code
 or invent a parallel convention for. Today the code hard-codes the assumption "geometry is a WKT string in
-EPSG:4326" and re-parses that WKT text (`gmnspy._wkt._parse_linestring_points`, a regex) every time it needs
+EPSG:4326" and re-parses that WKT text (`netstead._wkt._parse_linestring_points`, a regex) every time it needs
 coordinates — once per viewer load, once per binary-buffer pack, again for any spatial op.
 
 ## Decision
@@ -44,16 +44,16 @@ coordinates — once per viewer load, once per binary-buffer pack, again for any
    - **On disk:** WKT (CSV) via `ST_AsText`; WKB/GeoParquet (Parquet) directly (already WKB).
    - **Ingest from CSV (WKT):** `ST_AsWKB(ST_GeomFromText(geometry))` once at scan → WKB.
    - **Viewer / transport:** GeoArrow (native coord arrays) is a *later* targeted optimization; for now the
-     viewer decodes WKB coords via a dep-free `struct` reader in `gmnspy._wkt`.
+     viewer decodes WKB coords via a dep-free `struct` reader in `netstead._wkt`.
    - **Consumer migration (required by this decision):** the shapely family swaps `from_wkt`→`from_wkb`;
      the dep-free regex family (`viz/buffers`, `select/_geojson`, `map/geo_resolver`) uses a new
-     `gmnspy._wkt` dispatcher that handles **both** `str` (WKT) and `bytes` (WKB) — and the
+     `netstead._wkt` dispatcher that handles **both** `str` (WKT) and `bytes` (WKB) — and the
      `isinstance(g, str)` silent-fallback guards are removed so WKB cannot be silently dropped.
      `clean` reads WKB→shapely→writes WKB; `semantics.assemble_link_geometry` emits WKB (not a
      `geometry_wkt` string). Their WKT-asserting tests are rewritten against WKB.
 
 5. **CRS:** honor `crs` from config (default `EPSG:4326`), record it in GeoParquet, and round-trip it.
-   gmnspy stays lon/lat-centric but no longer *assumes* 4326.
+   netstead stays lon/lat-centric but no longer *assumes* 4326.
 
 6. **No hard geopandas dependency.** "geopandas-readable" is the compatibility *target*; DuckDB spatial does
    the encode/decode internally (lean-deps: geopandas drags in GEOS/shapely/pyproj). We emit formats
@@ -66,7 +66,7 @@ coordinates — once per viewer load, once per binary-buffer pack, again for any
 - `to_pandas()` geometry changes from a WKT string to **WKB bytes** — a behavior change for any downstream
   code that expected WKT. Consumers that currently regex-parse WKT (viz buffers, `select/_geojson`,
   map/geo_resolver, semantics/geometry, indexes/spatial) migrate to read coordinates from the binary form;
-  `gmnspy._wkt` stays as the no-DuckDB / pure-CSV fallback.
+  `netstead._wkt` stays as the no-DuckDB / pure-CSV fallback.
 - Requires the **DuckDB spatial extension** at ingest — already an architectural assumption (`view.py`
   `_ensure_spatial`), so no new dependency; gate conversion on extension-available + geometry-present.
 - **Round-trip guarantee:** CSV(WKT) ↔ Parquet(WKB/GeoParquet) must be geometry- and CRS-lossless (modulo

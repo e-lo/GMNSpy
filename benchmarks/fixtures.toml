@@ -6,20 +6,20 @@
 #   M  10^4-10^5 links   "does it scale" middle           -> bundled (small real)
 #   L  2.5x10^5+ links   advertisable headline            -> NOT committed
 #
-# The two bundled fixtures (leavenworth, rdu_i40) ship inside the gmnspy wheel;
+# The two bundled fixtures (leavenworth, rdu_i40) ship inside the netstead wheel;
 # their on-disk paths are resolved from the package, so only the tier, formats,
 # expected counts and selection cases live here.
 #
 # The L tier is never committed. Point the suite at a larger GMNS network with
 # an environment variable (see the [large] section below), e.g.:
 #
-#   export GMNSPY_BENCH_LARGE=/path/to/rdu_metro        # dir of csv/parquet, or a .duckdb
-#   .venv/bin/python -m gmnspy.cli.app bench-suite --sizes S,M,L
+#   export NETSTEAD_BENCH_LARGE=/path/to/rdu_metro        # dir of csv/parquet, or a .duckdb
+#   .venv/bin/python -m netstead.cli.app bench-suite --sizes S,M,L
 #
 # or build one live from OSM (hits Overpass once):
 #
-#   export GMNSPY_BENCH_LARGE_BBOX="-78.95,35.74,-78.56,35.94"
-#   .venv/bin/python -m gmnspy.cli.app bench-suite --sizes L --run-osm
+#   export NETSTEAD_BENCH_LARGE_BBOX="-78.95,35.74,-78.56,35.94"
+#   .venv/bin/python -m netstead.cli.app bench-suite --sizes L --run-osm
 
 schema_version = "1"
 
@@ -54,8 +54,8 @@ selections = [
 [large]
 id = "large"
 tier = "L"
-env_var = "GMNSPY_BENCH_LARGE"
-bbox_env_var = "GMNSPY_BENCH_LARGE_BBOX"
+env_var = "NETSTEAD_BENCH_LARGE"
+bbox_env_var = "NETSTEAD_BENCH_LARGE_BBOX"
 selections = [
   { case = "ref_match", utterance = "I 40" },
   { case = "no_match", utterance = "Nonexistent Road 999" },

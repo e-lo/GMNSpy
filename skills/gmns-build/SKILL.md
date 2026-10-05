@@ -7,15 +7,15 @@ description: Build a GMNS network from OpenStreetMap for a place, bounding box, 
 
 Use this skill when the user wants to *create* a GMNS network from OpenStreetMap,
 rather than validate, convert, or edit one they already have. The capability
-lives in `gmnspy.osm` and the `gmnspy build` CLI command, and needs the optional
-`[osm]` extra (`pip install 'gmnspy[osm]'`).
+lives in `netstead.osm` and the `netstead build` CLI command, and needs the optional
+`[osm]` extra (`pip install 'netstead[osm]'`).
 
 For *format* conversion of an existing network use `gmns-convert`; for fixing a
 built network use `gmns-clean`; to interpret validation use `gmns-validate`.
 
 ## Workflow
 
-1. **Confirm the extra is installed.** `pip install 'gmnspy[osm]'` (pulls
+1. **Confirm the extra is installed.** `pip install 'netstead[osm]'` (pulls
    `requests` + `pyyaml`). Without it the command exits with an install hint.
 2. **Pick the area spec — exactly one:**
    - `--place "City, ST"` — geocoded via Nominatim to a boundary polygon.
@@ -24,15 +24,15 @@ built network use `gmns-clean`; to interpret validation use `gmns-validate`.
 3. **Pick `--network-type`:** `drive` (default) / `walk` / `bike` / `all`.
 4. **Build and write:**
    ```bash
-   gmnspy build --place "Leavenworth, WA" --network-type drive --format csv ./net
+   netstead build --place "Leavenworth, WA" --network-type drive --format csv ./net
    ```
-5. **Validate the result:** `gmnspy validate ./net` — the build is already
+5. **Validate the result:** `netstead validate ./net` — the build is already
    schema-valid, but confirm and surface any warnings.
 
 ## Programmatic API
 
 ```python
-from gmnspy.osm import build_network_from_osm
+from netstead.osm import build_network_from_osm
 
 net = build_network_from_osm("Leavenworth, WA", network_type="drive")
 net.write("net", format="csv", overwrite=True)
@@ -40,7 +40,7 @@ net.write("net", format="csv", overwrite=True)
 
 `build_network_from_osm` accepts a place string, a `(lat, lon)` point (with
 `buffer_m=`), or a `(west, south, east, north)` bbox, plus `extra_tags=[...]`,
-`spec_version=`, and `engine=`. It returns a `gmnspy.network.Network`.
+`spec_version=`, and `engine=`. It returns a `netstead.network.Network`.
 
 ## What the conversion does
 
@@ -50,7 +50,7 @@ net.write("net", format="csv", overwrite=True)
 - Every link is `directed=True`: a two-way street → two directed links, a oneway
   → one (honoring `oneway=-1` and implied-oneway for motorways/roundabouts).
 - `name`, `lanes`, `free_speed`, `facility_type` are mapped from OSM tags via the
-  maintained `gmnspy/osm/mappings/osm_to_gmns.yaml`; `--extra-tags a,b` carries
+  maintained `netstead/osm/mappings/osm_to_gmns.yaml`; `--extra-tags a,b` carries
   additional tags through as columns.
 
 ## Pitfalls
@@ -63,7 +63,7 @@ net.write("net", format="csv", overwrite=True)
 
 ## See also
 
-- `gmns-validate` — interpret `gmnspy validate` on the built network.
+- `gmns-validate` — interpret `netstead validate` on the built network.
 - `gmns-clean` — simplify geometry / merge nodes / drop orphans with rollback.
-- Cookbook: `packages/gmnspy/docs/cookbook/build-from-osm.md`.
+- Cookbook: `packages/netstead/docs/cookbook/build-from-osm.md`.
 - Benchmark harness: `scripts/bench_osm_build.py`.
