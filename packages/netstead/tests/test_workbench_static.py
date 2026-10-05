@@ -193,3 +193,11 @@ def test_table_bar_has_a_scope_menu_not_the_old_checkbox():
 def test_fk_cells_link_to_their_target():
     table = (JS_DIR / "table.js").read_text()
     assert 'class="fk"' in table and "jumpTo(" in table and "stopPropagation" in table  # an FK click is not a row click
+
+
+def test_related_module_feeds_the_map_and_the_rail():
+    related = (JS_DIR / "related.js").read_text()
+    assert '"related"' in related and "rel-badge" in related
+    assert "relatedLayers(" in (JS_DIR / "map.js").read_text()
+    main = (JS_DIR / "main.js").read_text()
+    assert 'from "./related.js"' in main and "scheduleRelated" in main

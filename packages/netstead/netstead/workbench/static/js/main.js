@@ -9,6 +9,7 @@ import { fitBbox, fitLinks, fitNetwork, flyToNode, initMap, render, setBasemap }
 import { decodeNetwork } from "./netbuf.js";
 import { populateColorby, renderLegend, syncControls, wirePanels } from "./panels.js";
 import { clearDetails, renderHighlights, renderSelection, showDetails, wireSide } from "./side.js";
+import { renderRelatedBadges, scheduleRelated } from "./related.js";
 import { onSettingsHistory, registerSection, wireSettings } from "./settings.js";
 import { activeSelection, store } from "./store.js";
 import { onFocusChanged, onNetworkChanged, refreshRows, restoreViewMode, syncScopeControls, tableVisible, wireTable } from "./table.js";
@@ -126,6 +127,8 @@ function wireStore() {
   store.subscribe(["highlights", "focus"], () => refreshRows());
   store.subscribe(["tableScope", "relHops"], s => { syncScopeControls(s); refreshRows({ restart: true }); });
   store.subscribe(["highlights"], s => renderHighlights(s.highlights));
+  store.subscribe(["focus", "highlights", "relHops"], () => scheduleRelated());
+  store.subscribe(["related"], s => renderRelatedBadges(s.related));
   store.subscribe(["highlightMode"], s => { $("btn-highlight").classList.toggle("on", s.highlightMode); $("map").classList.toggle("highlighting", s.highlightMode); });
 }
 

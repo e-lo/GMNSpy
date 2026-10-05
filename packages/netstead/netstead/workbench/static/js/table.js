@@ -5,6 +5,7 @@ import { getJSON, netPath, postJSON } from "./api.js";
 import { $, esc, toast } from "./dom.js";
 import { coerceId, pageOffset, rowMarks, rowsRequest } from "./linking.js";
 import { resizeSoon } from "./map.js";
+import { renderRelatedBadges } from "./related.js";
 import { activeSelection, store } from "./store.js";
 
 const TBL = { loaded: false, name: null, schema: null, offset: 0, limit: 100, sort: null, dir: "asc", filters: {},
@@ -55,6 +56,7 @@ async function loadTables() {
     el.onclick = () => selectTable(t.name).catch(fail);
     rail.appendChild(el);
   }
+  renderRelatedBadges(store.get().related);
   if (j.tables.length) await selectTable(TBL.name || j.tables[0].name);
 }
 

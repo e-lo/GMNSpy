@@ -8,6 +8,7 @@ const OFFSET_EXT = typeof deck.PathStyleExtension === "function" ? new deck.Path
 const OFFSET_AMT = 0.8, ARROW_ZOOM = 13;
 const HIGHLIGHT_COLOR = [45, 210, 230];
 const FOCUS_COLOR = [255, 255, 255, 235];
+const RELATED_COLOR = [45, 210, 230, 110]; // the highlight hue, lighter
 const ARROW_SVG = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(
   '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><polygon points="12,3 20,21 12,16 4,21" fill="white"/></svg>');
 const TOOLTIP_STYLE = { background: "#11151a", color: "#e6e8ec", fontSize: "12px", padding: "6px 8px",
@@ -97,6 +98,22 @@ function selectionLayers(net, style, sel) {
   return layers;
 }
 
+// Records a foreign key away from the focus/highlights: lighter links, and rings on nodes.
+function relatedLayers(net, related) {
+  const layers = [], links = related.map.link, nodes = related.map.node;
+  if (links && links.ids.length) {
+    const l = idPathLayer(net, "related-links", links.ids, RELATED_COLOR, 1.5);
+    if (l) layers.push(l);
+  }
+  if (nodes && nodes.ids.length) {
+    const idx = nodes.ids.map(id => net.nodeId2idx.get(id)).filter(i => i != null);
+    layers.push(new deck.ScatterplotLayer({ id: "related-nodes", data: idx,
+      getPosition: i => [net.nodePositions[i * 2], net.nodePositions[i * 2 + 1]], getRadius: 5, radiusUnits: "pixels",
+      stroked: true, filled: false, getLineColor: RELATED_COLOR, lineWidthMinPixels: 2, parameters: { depthTest: false } }));
+  }
+  return layers;
+}
+
 function markerLayer(marker) {
   return new deck.ScatterplotLayer({ id: "marker", data: [marker], getPosition: m => [m.lon, m.lat],
     getRadius: 7, radiusUnits: "pixels", getFillColor: [45, 210, 230], getLineColor: [17, 21, 26],
@@ -117,6 +134,7 @@ export function render() {
   const style = s.server.style, sel = activeSelection(s);
   const layers = baseLayers(s.net, style, linkColors(s));
   if (style.show.selection && sel) layers.push(...selectionLayers(s.net, style, sel));
+  if (s.related) layers.push(...relatedLayers(s.net, s.related));
   if (s.highlights.size) { const l = idPathLayer(s.net, "highlighted", s.highlights, [...HIGHLIGHT_COLOR, 255], 2.5); if (l) layers.push(l); }
   if (s.focus && s.focus.table === "link") { const l = idPathLayer(s.net, "focus", [s.focus.id], FOCUS_COLOR, 4); if (l) layers.push(l); }
   if (s.marker) layers.push(markerLayer(s.marker));
