@@ -1,7 +1,7 @@
 """One-shot rename: gmnspy -> netstead, datagrove -> corral, repo GMNSpy -> netstead.
 
-Idempotent and mechanical, so it can be re-run on a fresh trunk or applied to an
-in-flight branch before merging it onto the renamed trunk:
+Idempotent and mechanical. To move a pre-rename branch onto main, use
+scripts/migrate_branch_to_netstead.sh (it runs this script for you). Direct use:
 
     uv run python scripts/rename_to_netstead.py
     uv lock && uv run ruff format . && uv run ruff check --fix .
@@ -41,6 +41,7 @@ REPLACEMENTS = [
     ("GMNSpy", "Netstead"),
     ("GMNSPY", "NETSTEAD"),
     ("Gmnspy", "Netstead"),
+    ("GmnSpy", "NetStead"),
     ("gmnspy", "netstead"),
     ("DATAGROVE", "CORRAL"),
     ("Datagrove", "Corral"),
