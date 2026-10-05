@@ -1,7 +1,7 @@
 """``gmnspy llm``: language-model providers for the natural-language features.
 
-Status, setting and removing API keys, connection tests and model lists, from the
-terminal. Keys are read from a hidden prompt (or stdin with ``--stdin``), never from a
+Status, setting and removing API keys, connection tests, model lists and pulling a local
+Ollama model, from the terminal. Keys are read from a hidden prompt (or stdin with ``--stdin``), never from a
 command-line argument, so they stay out of shell history and ``ps``. This is also how to
 manage keys when the Workbench is bound to a non-local address, since its key routes
 refuse writes then.
@@ -53,6 +53,49 @@ def _status_line(row: dict[str, Any]) -> str:
     return f"{'*' if row['usable'] else '-'} {row['label']:<16} {state}  [{row['base_url']}]"
 
 
+def _next_step(row: dict[str, Any]) -> str | None:
+    """A one-line next step for a local provider that can't be used yet (Ollama down, or no models)."""
+    if row["kind"] != "local" or row["usable"]:
+        return None
+    if row["models"] is None:  # the probe failed: not running (or not installed)
+        return (
+            "next step: start Ollama (open the app, or run: ollama serve); not installed? https://ollama.com/download"
+        )
+    return f"next step: run: gmnspy llm pull {row['default_model']}"
+
+
+def _size_text(registry: Any, model: str) -> str:
+    known = registry.catalog["ollama"].model(model)
+    return f"about {known.size_gb:g} GB" if known and known.size_gb else "several GB"
+
+
+def _pull_with_progress(registry: Any, model: str) -> None:
+    """Stream the pull to a rich progress bar on stderr; LLMError propagates to the caller."""
+    from rich.console import Console
+    from rich.progress import BarColumn, DownloadColumn, Progress, TaskProgressColumn, TextColumn, TransferSpeedColumn
+
+    from gmnspy.llm.providers.ollama import PullTracker
+
+    tracker = PullTracker()
+    columns = (
+        TextColumn("{task.description}"),
+        BarColumn(),
+        TaskProgressColumn(),
+        DownloadColumn(),
+        TransferSpeedColumn(),
+    )
+    with Progress(*columns, console=Console(stderr=True)) as bar:
+        task = bar.add_task(f"{model}: starting", total=None)
+        for event in registry.pull(model):
+            tracker.update(event)
+            bar.update(
+                task,
+                description=f"{model}: {tracker.stage}",
+                total=tracker.total or None,
+                completed=tracker.total if event.status == "success" else tracker.completed,
+            )
+
+
 def register(app: typer.Typer) -> None:
     """Register the ``llm`` sub-app on ``app``."""
     llm_app = typer.Typer(no_args_is_help=True, help="Language-model providers for natural-language features.")
@@ -68,6 +111,9 @@ def register(app: typer.Typer) -> None:
             return
         for row in rows:
             typer.echo(_status_line(row))
+            step = _next_step(row)
+            if step:
+                typer.echo(f"  {step}")
         where = (
             "OS keyring" if registry.secrets.keyring_available else "none (no OS keyring): use environment variables"
         )
@@ -140,3 +186,42 @@ def register(app: typer.Typer) -> None:
             raise typer.Exit(1) from None
         for row in rows:
             typer.echo(f"{row['id']:<32} {row['label']:<24} {row['tier'] or '-':<9} tools={row['tools']}")
+
+    @llm_app.command(name="pull")
+    def pull(
+        model: str = typer.Argument(..., help="An Ollama model, e.g. qwen3:4b"),
+        yes: bool = typer.Option(False, "--yes", "-y", help="Download without asking first."),
+    ) -> None:
+        """Download MODEL into the configured Ollama server (llm.ollama.base_url), with progress.
+
+        Exit 1 if Ollama can't be reached or the pull fails; exit 2 for a bad model name or provider setup.
+        """
+        from gmnspy.llm import LLMError, ProviderUnavailable
+        from gmnspy.llm.providers.ollama import setup_hint, valid_model_name
+
+        registry = _registry()
+        info = _known(registry, "ollama")
+        if not valid_model_name(model):
+            typer.echo(f"error: {model!r} is not an Ollama model name (e.g. qwen3:4b or user/model:tag)", err=True)
+            raise typer.Exit(2)
+        base = registry.base_url("ollama")
+        try:
+            installed = registry.provider("ollama").list_models()
+        except ProviderUnavailable:
+            typer.echo(f"error: {setup_hint(base)}", err=True)
+            raise typer.Exit(1) from None
+        except LLMError as exc:
+            typer.echo(f"error: {exc}", err=True)
+            raise typer.Exit(1) from None
+        where = "" if registry.is_local("ollama") else f" on {base} (a remote server)"
+        if model in installed:
+            typer.echo(f"{model} is already installed{where}; pulling again checks for an update.")
+        if not yes and not typer.confirm(f"Download {model} ({_size_text(registry, model)}) with {info.label}{where}?"):
+            typer.echo("cancelled")
+            raise typer.Exit(1)
+        try:
+            _pull_with_progress(registry, model)
+        except LLMError as exc:
+            typer.echo(f"error: {exc}", err=True)
+            raise typer.Exit(1) from None
+        typer.echo(f"pulled {model}. Use it with: gmnspy select ... --provider ollama --model {model}")

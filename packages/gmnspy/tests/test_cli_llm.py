@@ -101,3 +101,75 @@ def test_set_key_without_a_keyring_names_the_env_vars(ring, monkeypatch):
     result = _llm("set-key", "gemini", input=KEY + "\n")
     assert result.exit_code == 1 and "set GMNSPY_GEMINI_API_KEY or GEMINI_API_KEY" in result.output
     assert "key storage: none (no OS keyring)" in _llm("status").output
+
+
+# ------------------------------------------------------------------ gmnspy llm pull / status next steps
+
+PULL_LINES = b"".join(
+    json.dumps(line).encode() + b"\n"
+    for line in (
+        {"status": "pulling manifest"},
+        {"status": "pulling abc", "digest": "sha256:abc", "total": 2000, "completed": 1000},
+        {"status": "pulling abc", "digest": "sha256:abc", "total": 2000, "completed": 2000},
+        {"status": "success"},
+    )
+)
+
+
+def _pulls(fake_api):
+    return [r for r in fake_api.requests if r.url.path == "/api/pull"]
+
+
+def test_pull_yes_streams_and_reports(ring, fake_api):
+    fake_api.add("GET", "/api/tags", body={"models": []})
+    fake_api.add("POST", "/api/pull", body=PULL_LINES)
+    result = _llm("pull", "qwen3:4b", "--yes")
+    assert result.exit_code == 0, result.output
+    assert "pulled qwen3:4b" in result.stdout and "[y/N]" not in result.output
+    assert json.loads(_pulls(fake_api)[0].content) == {"model": "qwen3:4b", "stream": True}
+
+
+def test_pull_asks_first_with_the_catalog_size(ring, fake_api):
+    fake_api.add("GET", "/api/tags", body={"models": []})
+    fake_api.add("POST", "/api/pull", body=PULL_LINES)
+    result = _llm("pull", "qwen3:8b", input="n\n")
+    assert result.exit_code == 1 and "Download qwen3:8b (about 5.2 GB)" in result.output
+    assert _pulls(fake_api) == []  # declined: nothing downloaded
+    result = _llm("pull", "qwen3:8b", input="y\n")
+    assert result.exit_code == 0, result.output
+    assert len(_pulls(fake_api)) == 1
+
+
+def test_pull_unknown_size_says_several_gb(ring, fake_api):
+    fake_api.add("GET", "/api/tags", body={"models": []})
+    result = _llm("pull", "llama3.2:3b", input="n\n")
+    assert "Download llama3.2:3b (several GB)" in result.output
+
+
+def test_pull_unreachable_prints_install_and_start_hint(ring, fake_api):
+    fake_api.add("GET", "/api/tags", raises=httpx.ConnectError("refused"))
+    result = _llm("pull", "qwen3:4b", "--yes")
+    assert result.exit_code == 1
+    for hint in ("https://ollama.com/download", "ollama serve", "local-llm-ollama"):
+        assert hint in result.output
+    assert _pulls(fake_api) == []
+
+
+def test_pull_failure_mid_stream_exits_1(ring, fake_api):
+    fake_api.add("GET", "/api/tags", body={"models": []})
+    fake_api.add("POST", "/api/pull", body=b'{"error":"pull model manifest: file does not exist"}\n')
+    result = _llm("pull", "nosuch:1b", "--yes")
+    assert result.exit_code == 1 and "no model called 'nosuch:1b'" in result.output
+
+
+def test_pull_rejects_a_registry_host_or_url(ring, fake_api):
+    result = _llm("pull", "evil.example/ns/model", "--yes")
+    assert result.exit_code == 2 and fake_api.requests == []
+
+
+def test_status_says_what_to_do_next_for_ollama(ring, fake_api):
+    fake_api.add("GET", "/api/tags", raises=httpx.ConnectError("refused"))
+    assert "next step: start Ollama" in _llm("status").output
+    fake_api.routes.clear()
+    fake_api.add("GET", "/api/tags", body={"models": []})
+    assert "next step: run: gmnspy llm pull qwen3:4b" in _llm("status").output
