@@ -24,7 +24,7 @@ the **Recent** list, and switch between them with the network picker. `gmnspy vi
 are aliases of `gmnspy app`.
 
 ```bash
-uv run gmnspy app ./base ./build --port 8900 --basemap esri --provider claude
+uv run gmnspy app ./base ./build --port 8900 --basemap esri --provider anthropic
 ```
 
 The server binds `127.0.0.1` by default. While bound to a local host (`127.0.0.1`, `localhost`, or `[::1]`),
@@ -147,7 +147,147 @@ port = 8900
 basemap = "esri"
 
 [select]
-provider = "claude"
+provider = "anthropic"
+```
+
+## Language models (natural-language selection)
+
+The utterance box can be read by:
+
+- an offline pattern parser (`stub`, the default — nothing leaves this machine);
+- a local model through [Ollama](https://ollama.com), for example Qwen;
+- Anthropic, OpenAI or Gemini, with your own API key.
+
+`select.provider` accepts `anthropic`, `openai`, `gemini`, `ollama` or `stub`. `claude` is still
+accepted as an alias for `anthropic` (existing config files keep working).
+
+Pick a provider and model with the picker next to the utterance box. The choice is
+`SetSetting(scope="session")` — it applies to this session only; **Make default** saves the same
+pair with `scope="user"`, and warns first if a project setting or a `GMNSPY_SELECT__*` /
+`GMNSPY_SELECT__MODEL` environment variable would still override it. **Models…** opens the
+Language models panel: set, replace, remove and test keys, point at another Ollama server, tune
+quality and context, and browse the model catalog.
+
+The defaults are each provider's small, fast model — enough for one selection at a time — and are
+maintained in `gmnspy/llm/models.toml`:
+
+| Provider | Default model |
+|---|---|
+| `anthropic` | Haiku 4.5 (`claude-haiku-4-5-20251001`) |
+| `openai` | small/fast tier |
+| `gemini` | small/fast tier |
+| `ollama` | `qwen3:4b` |
+
+Pick a larger model from the picker if parses go wrong.
+
+### Keys are write-only
+
+- A key is looked up in an environment variable first (`GMNSPY_<PROVIDER>_API_KEY`, or the
+  provider's own variable — `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`), then in the
+  OS keyring (macOS Keychain, Windows Credential Manager, or Secret Service on Linux). There is no
+  plaintext file fallback.
+- Keys are never written to `config.toml`, shown in the browser, recorded in the session history,
+  returned by any API response, or logged.
+- Set a key with `uv run gmnspy llm set-key <provider>` (a hidden prompt, or `--stdin` to pipe one
+  in — never a command-line argument, so it never reaches shell history or `ps`), or from the
+  Workbench's Language models panel.
+- **Keys are bound to their endpoint.** If you point a provider at a different `base_url` (for
+  example an OpenAI-compatible server), it needs a new key entered for that endpoint; an existing
+  key is never sent there.
+- The Workbench's key routes (`/api/llm/keys/*`, `/api/llm/test`) are loopback-only (refused unless
+  the server is bound to `127.0.0.1`/`localhost`/`[::1]`) and every request must also carry an
+  `X-GMNSpy-Secrets: 1` header, which a cross-origin page cannot add without a CORS preflight this
+  server never approves. When the Workbench is bound elsewhere, manage keys from a terminal with
+  `gmnspy llm set-key`/`remove-key` instead.
+- **Known limitation:** a key written by the CLI (or another process) while the Workbench is
+  already running may take up to about 5 seconds to be seen by that running Workbench.
+
+### Errors are explicit
+
+A missing or rejected key, a rate limit or a timeout shows as an error. The Workbench never
+quietly switches to another provider.
+
+### What is sent, and quality settings
+
+Every selection sends your utterance and the selection tool's schema (GMNS field names such as
+`lanes`), never your network tables or files. The `[llm.quality]` settings add more, and the
+privacy note next to the picker always lists exactly what the chosen provider receives. Every part
+of the prompt that is network- or project-sourced data (not an instruction) is fenced in its own
+tagged block (for example `<network_vocabulary>…</network_vocabulary>`) so a street name or
+project note can never be mistaken for a new instruction to the model.
+
+`"auto"` means on for a model running on this machine (Ollama, or any loopback `base_url`) and off
+for a remote provider.
+
+| Setting | Default | What it does |
+|---|---|---|
+| `assistant_context` | `true` | Sends the GMNS assistant guide that ships with gmnspy (data model, examples) |
+| `project_context` | `"auto"` | Sends your project notes — see below — when allowed for the provider in use |
+| `grounding` | `"auto"` | Sends the network's most common street names and route numbers, so the model spells them as the network does |
+| `grounding_max_names` | `200` | Cap on those names |
+| `few_shot` | `false` | Shows the model this session's earlier selections that resolved. Remembered only for this session, on this network — never persisted |
+| `match_retry` | `"auto"` | If nothing matches, asks the model once more with the closest real names. `"auto"` is on for a local endpoint and off for a remote one |
+| `match_candidates` | `5` | How many close names that retry offers |
+| `max_repairs` | `1` | Re-prompts after an invalid reply |
+| `temperature` | `0.0` | Sampling temperature; leave it blank for models that only accept their default (the field blank means the `0.0` default, not "unset") |
+
+```toml
+# ~/.config/gmnspy/config.toml: endpoints, choices and quality only, never keys
+[select]
+provider = "anthropic"
+model = "claude-haiku-4-5-20251001"
+
+[llm.ollama]
+base_url = "http://localhost:11434"
+
+[llm.quality]
+grounding = "on"        # also send street names to remote providers
+few_shot = true
+```
+
+### Project notes
+
+A project's notes are discovered next to the active network's folder first, then in the project
+directory — never the process's current working directory if neither of those applies. gmnspy
+looks, in order:
+
+1. A dedicated `GMNSPY.md`, sent whole when found.
+2. Otherwise, `AGENTS.md` — and failing that, `CLAUDE.md` — but **only** its `## gmnspy` section
+   (any heading level `##`-`####`, matched case-insensitively, up to the next heading at the same
+   or a shallower level). A file without that section is treated as if it were absent: the rest of
+   an `AGENTS.md`/`CLAUDE.md` holds instructions for a coding agent, not notes for the network
+   assistant, and is never read or sent.
+3. If neither is found, no project notes are sent.
+
+Every candidate must resolve inside `io.allowed_roots` (symlinks included), so a notes file can't
+be used to exfiltrate an arbitrary file on disk.
+
+A `GMNSPY.md` might read:
+
+```markdown
+- "the Beltline" is I 440.
+- SR-520 is the Evergreen Point Bridge.
+- facility_type 7 means HOV lanes.
+```
+
+Or, inside an existing `AGENTS.md`:
+
+```markdown
+## gmnspy
+- "the Beltline" is I 440.
+- SR-520 is the Evergreen Point Bridge.
+```
+
+### From a terminal
+
+Also the way to manage keys when the Workbench is bound to a non-local address:
+
+```bash
+uv run gmnspy llm status
+uv run gmnspy llm set-key anthropic
+uv run gmnspy llm test anthropic
+uv run gmnspy llm models ollama
+uv run gmnspy select "I-40 EB between South Miami Boulevard and Airport Boulevard" ./my-network --provider ollama --model qwen3:4b
 ```
 
 ## Every action is replayable
