@@ -108,10 +108,13 @@ jobs:
         # file. Tests with `pytest.importorskip("…")` still skip cleanly
         # when an extra is genuinely missing.
         run: uv sync --all-packages --all-extras
+      # CI always runs the FULL suite: `-m ""` overrides the default
+      # `not slow and not perf` filter in pyproject addopts. `-n auto` is
+      # pytest-xdist (dev dep); addopts pins --dist=loadfile.
       - name: Test datagrove
-        run: uv run pytest packages/datagrove/tests --doctest-modules packages/datagrove/datagrove
+        run: uv run pytest -m "" -n auto packages/datagrove/tests --doctest-modules packages/datagrove/datagrove
       - name: Test gmnspy
-        run: uv run pytest packages/gmnspy/tests --doctest-modules packages/gmnspy/gmnspy
+        run: uv run pytest -m "" -n auto packages/gmnspy/tests --doctest-modules packages/gmnspy/gmnspy
       # Coverage gates are per-package so a regression in one package
        # can't be masked by overshoot in the other. Baseline measured
        # 2026-05-26: datagrove 87%, gmnspy 85%. Gates set one point
@@ -121,13 +124,13 @@ jobs:
        # wide run conflates the two.
       - name: Coverage gate — datagrove ≥86%
         if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.13'
-        run: uv run pytest packages/datagrove/tests --cov=datagrove --cov-fail-under=86 --cov-report=term
+        run: uv run pytest -m "" -n auto packages/datagrove/tests --cov=datagrove --cov-fail-under=86 --cov-report=term
       - name: Coverage gate — gmnspy ≥84%
         if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.13'
-        run: uv run pytest packages/gmnspy/tests --cov=gmnspy --cov-fail-under=84 --cov-report=term
+        run: uv run pytest -m "" -n auto packages/gmnspy/tests --cov=gmnspy --cov-fail-under=84 --cov-report=term
       - name: Combined coverage XML for codecov upload
         if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.13'
-        run: uv run pytest --cov --cov-report=xml --cov-report=term
+        run: uv run pytest -m "" -n auto --cov --cov-report=xml --cov-report=term
       - name: Upload coverage
         if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.13'
         uses: codecov/codecov-action@v5

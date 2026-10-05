@@ -10,9 +10,13 @@ from __future__ import annotations
 
 import json
 
+import pytest
 from gmnspy.cli.app import app
 from gmnspy.fixtures import leavenworth
 from typer.testing import CliRunner
+
+# Each test runs the real bench pipeline on the fixture.
+pytestmark = pytest.mark.slow
 
 runner = CliRunner()
 

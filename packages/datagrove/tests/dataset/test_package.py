@@ -8,6 +8,7 @@ scope, write, and validate surfaces.
 
 from __future__ import annotations
 
+import shutil
 import warnings
 from pathlib import Path
 
@@ -80,9 +81,12 @@ def test_package_from_leavenworth_parquet_dir(engine_name: str) -> None:
 
 
 @pytest.mark.parametrize("engine_name", ["ibis"])
-def test_package_from_leavenworth_duckdb(engine_name: str) -> None:
+def test_package_from_leavenworth_duckdb(engine_name: str, tmp_path: Path) -> None:
+    # A private copy: the engine opens .duckdb read-write, which takes an exclusive
+    # cross-process lock that would block other xdist workers reading the committed file.
+    db = shutil.copyfile(leavenworth.duckdb_path(), tmp_path / "leavenworth.duckdb")
     pkg = Package.from_source(
-        leavenworth.duckdb_path(),
+        db,
         engine=_make_engine(engine_name),
         spec=_gmns_datapackage(),
     )

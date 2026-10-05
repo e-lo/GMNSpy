@@ -9,14 +9,30 @@ selection / viz-pack paths wire together and that the count co-assertion holds
 
 from __future__ import annotations
 
+import shutil
+from pathlib import Path
+
 import pytest
 
 pytestmark = pytest.mark.perf
 
 
-def test_run_suite_small_fixture_shape_and_counts():
+def test_run_suite_small_fixture_shape_and_counts(monkeypatch, tmp_path):
     suite = pytest.importorskip("gmnspy.bench.suite")
     pytest.importorskip("gmnspy.select")  # selection needs the [nl] extra
+    bench_fixtures = pytest.importorskip("gmnspy.bench.fixtures")
+
+    # Bench a private copy of the bundled .duckdb: the suite opens it read-write, which takes an
+    # exclusive cross-process lock that would block other xdist workers reading the committed file.
+    bundled = bench_fixtures._bundled_source_dirs
+
+    def private_duckdb(fixture_id: str, formats: tuple[str, ...]) -> dict[str, Path]:
+        dirs = bundled(fixture_id, formats)
+        if "duckdb" in dirs:
+            dirs["duckdb"] = Path(shutil.copyfile(dirs["duckdb"], tmp_path / dirs["duckdb"].name))
+        return dirs
+
+    monkeypatch.setattr(bench_fixtures, "_bundled_source_dirs", private_duckdb)
 
     doc = suite.run_suite(sizes=("S",), repeats=1, warm_repeats=2)
 

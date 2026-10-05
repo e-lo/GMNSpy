@@ -1,6 +1,7 @@
 """Tests for `gmnspy app` and its viz / select-serve aliases."""
 
 import json
+import shutil
 from pathlib import Path
 
 import pytest
@@ -116,14 +117,17 @@ def test_cli_does_not_widen_roots_when_already_allowed(served, monkeypatch, rdu_
 
 
 def test_cli_expands_user_in_trusted_sources(served, monkeypatch, rdu_source, tmp_path):
-    home = Path(rdu_source).parent.parent
+    # HOME is a throwaway dir holding a copy of the network, never the committed fixture tree:
+    # anything else that writes under ~ in this process (e.g. DuckDB installing its spatial
+    # extension into ~/.duckdb) must not land in gmnspy/fixtures.
+    home = tmp_path / "home"
+    network = Path(shutil.copytree(rdu_source, home / "rdu_i40" / "parquet"))
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setenv("GMNSPY_IO__ALLOWED_ROOTS", json.dumps([str(tmp_path / "elsewhere")]))
-    rel = Path(rdu_source).resolve().relative_to(home.resolve())
-    result = runner.invoke(app, ["app", f"~/{rel}"])
+    result = runner.invoke(app, ["app", "~/rdu_i40/parquet"])
     assert result.exit_code == 0, result.output
     assert served[0].registry.ids() == ["rdu-i40"]
-    assert str(Path(rdu_source).resolve()) in served[0].settings.io.allowed_roots
+    assert str(network.resolve()) in served[0].settings.io.allowed_roots
 
 
 def test_cli_never_trusts_unsupported_schemes(served, monkeypatch, tmp_path):

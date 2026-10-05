@@ -53,6 +53,9 @@ from pathlib import Path
 
 import pytest
 
+# Executes every doc example end to end (~6s serial): a pre-merge check, not an iteration loop.
+pytestmark = pytest.mark.slow
+
 # Repo layout: packages/gmnspy/tests/test_documented_python_contract.py
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
