@@ -38,7 +38,8 @@ function showSection(id) {
   for (const b of $("set-nav").querySelectorAll("button")) b.classList.toggle("on", b.dataset.sec === id);
   const ext = extra.get(id);
   $("set-form").hidden = Boolean(ext);
-  $("set-scope").hidden = Boolean(ext); // a registered section saves on its own terms (Language models: user)
+  // A registered section saves on its own terms (Language models: user), so the Save to menu goes, label and all.
+  for (const el of [$("set-scope"), document.querySelector(".set-scope-lbl")]) el.hidden = Boolean(ext);
   for (const [key, e] of extra) $(e.element).hidden = key !== id;
   if (ext) Promise.resolve(ext.onShow()).catch(e => toast(e.message));
   else renderForm();

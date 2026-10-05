@@ -33,7 +33,7 @@
   .tbl-item.on { background:#20242e; color:var(--accent); border-left:2px solid var(--accent); padding-left:10px; }
   .tbl-item .rc { color:var(--muted); font-size:11px; }
   #tbl-main { flex:1; display:flex; flex-direction:column; min-width:0; min-height:0; }
-  #tbl-bar { display:flex; align-items:center; gap:10px; padding:8px 12px; border-bottom:1px solid var(--edge);
+  #tbl-bar { display:flex; flex-wrap:wrap; align-items:center; gap:6px 10px; padding:8px 12px; border-bottom:1px solid var(--edge);
              font-size:12.5px; color:var(--muted); }
   #tbl-bar .tname { color:var(--ink); font-weight:600; }
   #tbl-grid-wrap { flex:1; overflow:auto; }
