@@ -181,3 +181,10 @@ def test_basemap_swaps_in_place_on_a_viz_setting():
     assert "export function setBasemap(" in (JS_DIR / "map.js").read_text()
     main = (JS_DIR / "main.js").read_text()
     assert "setBasemap(" in main and "viz" in main
+
+
+def test_table_bar_has_a_scope_menu_not_the_old_checkbox():
+    html = (STATIC_DIR / "index.html").read_text()
+    assert 'id="tbl-scope"' in html and 'id="tbl-hint"' in html and 'id="tbl-tosel"' not in html
+    for scope in ("all", "selection", "highlighted", "related"):
+        assert f'<option value="{scope}"' in html

@@ -80,8 +80,15 @@
       <div id="tbl-rail"></div>
       <div id="tbl-main">
         <div id="tbl-bar"><span class="tname" id="tbl-name">—</span><span id="tbl-total"></span>
-          <label class="sw" style="margin-left:auto"><input type="checkbox" id="tbl-tosel"><span></span></label>
-          <span>Filter to map selection</span></div>
+          <span id="tbl-hint" class="empty"></span>
+          <label for="tbl-scope" style="margin-left:auto">Show</label>
+          <select id="tbl-scope" aria-label="Which rows to show">
+            <option value="all">All rows</option>
+            <option value="selection">Selection</option>
+            <option value="highlighted">Highlighted</option>
+            <option value="related">Related</option>
+          </select>
+          <button class="mini ghost" id="tbl-hops" title="Follow keys one more step">Expand a hop</button></div>
         <div id="tbl-grid-wrap"><table id="tbl-grid"></table></div>
         <div id="tbl-pager"><button id="tbl-prev">&#8592; Prev</button>
           <span id="tbl-range">—</span><button id="tbl-next">Next &#8594;</button></div>
@@ -98,8 +105,8 @@
         <button class="mini ghost" id="hl-clear">Clear highlights</button>
       </div>
     </div>
-    <div class="label">Link details</div>
-    <div id="details"><span class="empty">Click a link on the map.</span></div>
+    <div class="label">Details</div>
+    <div id="details"><span class="empty">Click a link or node on the map, or a row in the table.</span></div>
     <div class="label">Anchors</div>
     <div id="anchors"><span class="empty">—</span></div>
     <div class="label">Fragment</div>

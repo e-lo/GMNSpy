@@ -7,26 +7,27 @@ import { activeSelection, store } from "./store.js";
 const OFFSET_EXT = typeof deck.PathStyleExtension === "function" ? new deck.PathStyleExtension({ offset: true }) : null;
 const OFFSET_AMT = 0.8, ARROW_ZOOM = 13;
 const HIGHLIGHT_COLOR = [45, 210, 230];
+const FOCUS_COLOR = [255, 255, 255, 235];
 const ARROW_SVG = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(
   '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><polygon points="12,3 20,21 12,16 4,21" fill="white"/></svg>');
 const TOOLTIP_STYLE = { background: "#11151a", color: "#e6e8ec", fontSize: "12px", padding: "6px 8px",
   borderRadius: "6px", border: "1px solid #2a2f3a" };
 
-let map = null, overlay = null, onLinkClick = () => {};
+let map = null, overlay = null, handlers = { onLinkClick() {}, onNodeClick() {}, onBoxSelect() {} };
 let colorCache = { key: null, colors: null };
 let labelsShown = true;
 
 export const hasOffset = () => OFFSET_EXT !== null;
 
-export function initMap(style, handlers) {
-  onLinkClick = handlers.onLinkClick;
+export function initMap(style, hooks) {
+  handlers = { ...handlers, ...hooks };
   map = new maplibregl.Map({ container: "map", style, center: [-98.5, 39.8], zoom: 3 });
   map.addControl(new maplibregl.NavigationControl(), "top-left");
   overlay = new deck.MapboxOverlay({ interleaved: false, layers: [], getTooltip });
   map.addControl(overlay);
   new ResizeObserver(() => map.resize()).observe($("map"));
   map.on("zoomend", () => { const s = store.get(); if (s.server && s.server.style.show_direction) render(); });
-  map.on("load", handlers.onReady);
+  map.on("load", hooks.onReady);
   wireBoxSelect();
 }
 
@@ -41,10 +42,6 @@ function linkColors(s) {
 
 function baseLayers(net, style, colors) {
   const layers = [];
-  if (style.show.nodes) layers.push(new deck.ScatterplotLayer({ id: "nodes",
-    data: { length: net.N.count, attributes: { getPosition: { value: net.nodePositions, size: 2 } } },
-    getRadius: 1.8, radiusUnits: "pixels", radiusMinPixels: 1,
-    getFillColor: [...style.colors.nodes, 150], pickable: false }));
   if (style.show.links) {
     const props = { id: "links", _pathType: "open",
       data: { length: net.L.count, startIndices: net.linkStart,
@@ -52,7 +49,7 @@ function baseLayers(net, style, colors) {
                       getColor: { value: colors, size: 4 } } },
       widthUnits: "pixels", widthMinPixels: 1, capRounded: true, jointRounded: true,
       pickable: true, autoHighlight: true, highlightColor: [255, 140, 59, 235],
-      onClick: info => { if (info && info.index >= 0) onLinkClick(store.get().attrs.link_id[info.index]); } };
+      onClick: info => { if (info && info.index >= 0) handlers.onLinkClick(store.get().attrs.link_id[info.index]); } };
     if (OFFSET_EXT) { props.extensions = [OFFSET_EXT]; props.getOffset = style.offset ? OFFSET_AMT : 0; }
     layers.push(new deck.PathLayer(props));
     if (style.show_direction && map.getZoom() >= ARROW_ZOOM) layers.push(new deck.IconLayer({ id: "arrows",
@@ -60,6 +57,12 @@ function baseLayers(net, style, colors) {
       getPosition: d => d.position, getAngle: d => d.angle, getSize: 13, sizeUnits: "pixels",
       getColor: [40, 52, 78, 230], pickable: false }));
   }
+  // Nodes draw above links, and are pickable, so a map click can focus a node.
+  if (style.show.nodes) layers.push(new deck.ScatterplotLayer({ id: "nodes",
+    data: { length: net.N.count, attributes: { getPosition: { value: net.nodePositions, size: 2 } } },
+    getRadius: 1.8, radiusUnits: "pixels", radiusMinPixels: 2,
+    getFillColor: [...style.colors.nodes, 150], pickable: true, autoHighlight: true, highlightColor: [255, 140, 59, 235],
+    onClick: info => { if (info && info.index >= 0) handlers.onNodeClick(net.nodeIds[info.index]); } }));
   return layers;
 }
 
@@ -115,6 +118,7 @@ export function render() {
   const layers = baseLayers(s.net, style, linkColors(s));
   if (style.show.selection && sel) layers.push(...selectionLayers(s.net, style, sel));
   if (s.highlights.size) { const l = idPathLayer(s.net, "highlighted", s.highlights, [...HIGHLIGHT_COLOR, 255], 2.5); if (l) layers.push(l); }
+  if (s.focus && s.focus.table === "link") { const l = idPathLayer(s.net, "focus", [s.focus.id], FOCUS_COLOR, 4); if (l) layers.push(l); }
   if (s.marker) layers.push(markerLayer(s.marker));
   overlay.setProps({ layers });
   setLabels(style.show.labels);
@@ -162,12 +166,12 @@ export function fitLinks(ids) {
 
 export function fitBbox(bbox) { if (map) map.fitBounds([[bbox[0], bbox[1]], [bbox[2], bbox[3]]], { padding: 40, duration: 500 }); }
 
-export function flyToNode(nodeId) {
+export function flyToNode(nodeId, { fly = true } = {}) {
   const net = store.get().net, i = net && net.nodeId2idx.get(nodeId);
   if (i == null) return;
   const lon = net.nodePositions[i * 2], lat = net.nodePositions[i * 2 + 1];
   store.set({ marker: { lon, lat } });
-  map.flyTo({ center: [lon, lat], zoom: Math.max(map.getZoom(), 15), duration: 500 });
+  if (fly) map.flyTo({ center: [lon, lat], zoom: Math.max(map.getZoom(), 15), duration: 500 });
 }
 
 // shift-drag box select over the links layer (deck region picking) adds to highlights
@@ -199,6 +203,7 @@ function wireBoxSelect() {
     for (const p of dk.pickObjects({ x: x0, y: y0, width: w, height: h, layerIds: ["links"] }))
       if (p.index != null && p.index >= 0) highlights.add(s.net.linkIds[p.index]);
     store.set({ highlights });
+    handlers.onBoxSelect();
   };
   mapEl.addEventListener("pointerup", finish);
   mapEl.addEventListener("pointerleave", e => { if (start) finish(e); });

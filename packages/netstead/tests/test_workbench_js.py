@@ -182,7 +182,6 @@ def test_page_offset_and_id_coercion(node_module):
     assert got == [200, 0, 12, "A-1", ""]
 
 
-@pytest.mark.xfail(strict=True, reason="fixed in Task 12 (rowClick sets focus)")
 def test_a_row_click_never_changes_the_recorded_selection():
     """Carried P1a bug: in filter-to-selection mode a row click collapsed the selection to that row."""
     import re

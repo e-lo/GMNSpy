@@ -257,3 +257,10 @@
     #set-nav { flex-direction:row; flex-wrap:wrap; border-right:0; border-bottom:1px solid var(--edge); }
     .set-field { grid-template-columns:1fr auto; }
   }
+  /* ---- linked rows ---- */
+  #tbl-grid tr.hl td { background:rgba(45,210,230,.16); }
+  #tbl-grid tr.rel td { background:rgba(45,210,230,.07); }
+  #tbl-grid tr.focus td { box-shadow:inset 0 1px 0 var(--accent), inset 0 -1px 0 var(--accent); }
+  #tbl-grid a.fk { color:var(--hl); text-decoration:none; border-bottom:1px dotted var(--hl); }
+  .tbl-item .rel-badge { font-size:10.5px; color:var(--hl); margin-left:6px; }
+  #tbl-hint { margin-left:10px; font-size:12px; }
