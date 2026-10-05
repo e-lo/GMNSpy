@@ -14,6 +14,8 @@ materialized frames.
 
 from __future__ import annotations
 
+import re
+from collections.abc import Iterable
 from typing import Any
 
 import numpy as np
@@ -23,6 +25,9 @@ __all__ = [
     "GEOM_COLS",
     "MAX_LIMIT",
     "FilterError",
+    "KeyTypeError",
+    "coerce_keys",
+    "column_dtype",
     "locate_row",
     "page_table",
     "parse_ids",
@@ -94,6 +99,49 @@ def parse_ids(ids: str | None) -> list | None:
         except ValueError:
             out.append(tok)
     return out or None
+
+
+class KeyTypeError(ValueError):
+    """An id that cannot be compared with its key column (``"abc"`` for an integer key)."""
+
+
+_INT_TEXT = re.compile(r"[+-]?\d+")
+
+
+def _as_int(value: Any) -> int:
+    if isinstance(value, int) and not isinstance(value, bool):
+        return value
+    if isinstance(value, str) and _INT_TEXT.fullmatch(value.strip()):
+        return int(value)
+    raise KeyTypeError(f"{str(value)[:40]!r} is not an integer id")
+
+
+def coerce_keys(values: Iterable[Any], dtype: Any) -> list[Any]:
+    """``values`` as the key column's type, so an eager mask and a DuckDB ``IN`` agree.
+
+    An integer key takes ints and digit strings (``"1"`` is ``1``); a string key takes text and
+    ints (``1`` is ``"1"``). Any other key type (``object``, floats) passes the values through.
+
+    Raises:
+        KeyTypeError: a value that cannot be an integer id.
+
+    >>> coerce_keys(["1", 2, " -3"], pd.Int64Dtype())
+    [1, 2, -3]
+    >>> coerce_keys([7, "a"], pd.StringDtype())
+    ['7', 'a']
+    """
+    if pd.api.types.is_bool_dtype(dtype):
+        return list(values)
+    if pd.api.types.is_integer_dtype(dtype):
+        return [_as_int(v) for v in values]
+    if isinstance(dtype, pd.StringDtype):
+        return [v if isinstance(v, str) else str(v) for v in values]
+    return list(values)
+
+
+def column_dtype(src: Any, column: str) -> Any:
+    """The pandas dtype ``column`` materialises as (one row sampled from a lazy table)."""
+    return _schema_frame(src)[column].dtype
 
 
 def _is_frame(src: Any) -> bool:

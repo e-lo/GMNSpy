@@ -111,3 +111,38 @@ def test_jump_from_a_link_to_its_from_node_lands_on_that_row(client, link1):
     j = client.post(f"{BASE}/table/node/locate", json={"id": node}).json()
     page = client.post(f"{BASE}/table/node/rows", json={"offset": (j["index"] // 100) * 100, "limit": 100}).json()
     assert node in [r[page["columns"].index("node_id")] for r in page["rows"]]
+
+
+@pytest.mark.parametrize("source", ["link", "lane"])  # eager frame, lazy duckdb table
+def test_numeric_string_ids_answer_like_ints(client, source):
+    as_int = client.post(f"{BASE}/related", json={"sources": {source: [1]}}).json()
+    as_text = client.post(f"{BASE}/related", json={"sources": {source: ["1"]}}).json()
+    assert as_text == as_int and as_int["tables"]
+    for name in ("lane", "link"):
+        body = {"limit": 500, "related": {"sources": {source: [1]}}}
+        rows_int = client.post(f"{BASE}/table/{name}/rows", json=body).json()
+        body["related"]["sources"][source] = ["1"]
+        assert client.post(f"{BASE}/table/{name}/rows", json=body).json() == rows_int
+
+
+@pytest.mark.parametrize("name", ["link", "lane"])
+def test_numeric_string_row_ids_and_locate_answer_like_ints(client, name):
+    rows = [client.post(f"{BASE}/table/{name}/rows", json={"ids": ids}).json() for ids in ([1, 2], ["1", " 2"])]
+    assert rows[0] == rows[1] and rows[0]["total"] == 2
+    located = [client.post(f"{BASE}/table/{name}/locate", json={"id": key}).json() for key in (5, "5")]
+    assert located[0] == located[1]
+
+
+@pytest.mark.parametrize("name", ["link", "lane"])
+def test_ids_that_cannot_be_keys_are_rejected(client, name):
+    assert client.post(f"{BASE}/related", json={"sources": {name: ["abc"]}}).status_code == 422
+    assert client.post(f"{BASE}/table/{name}/rows", json={"ids": ["abc"]}).status_code == 422
+    assert client.post(f"{BASE}/table/{name}/locate", json={"id": "abc"}).status_code == 422
+    assert client.get(f"{BASE}/table/{name}/rows", params={"ids": "1,abc"}).status_code == 422
+
+
+def test_a_filter_value_of_the_wrong_type_is_a_400_on_a_lazy_table(client):
+    bad = [{"col": "lane_id", "op": "eq", "val": "abc"}]
+    assert client.post(f"{BASE}/table/lane/rows", json={"filter": bad}).status_code == 400
+    bad_in = [{"col": "lane_id", "op": "in", "val": ["abc"]}]
+    assert client.post(f"{BASE}/table/lane/rows", json={"filter": bad_in}).status_code == 400

@@ -11,16 +11,30 @@ every route here, nothing is recorded in the session history.
 
 from __future__ import annotations
 
+import contextlib
 import json as _json
+from collections.abc import Iterator, Sequence
 from typing import Any, Literal
 
+import duckdb
 import pandas as pd
 from fastapi import APIRouter, HTTPException, Response
+from ibis.common.exceptions import IbisTypeError
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from netstead.viz.buffers import network_attrs, pack_network
 from netstead.viz.styling import json_scalar, property_payload, styleable_columns
-from netstead.viz.tables import FilterError, locate_row, page_table, parse_ids, table_list_entry, table_schema
+from netstead.viz.tables import (
+    FilterError,
+    KeyTypeError,
+    coerce_keys,
+    column_dtype,
+    locate_row,
+    page_table,
+    parse_ids,
+    table_list_entry,
+    table_schema,
+)
 
 from ..registry import NetworkHandle
 from ..related import (
@@ -77,11 +91,20 @@ class LocateQuery(RowsQuery):
     id: ScalarId
 
 
-def _coerce_key(raw: str) -> Any:
+@contextlib.contextmanager
+def _bad_request() -> Iterator[None]:
+    """A bad filter, or a value the engine cannot compare with its column, is the client's error (400).
+
+    Ids are coerced to their key's type before they reach the engine (422 when they cannot be);
+    this is the backstop for everything else, such as a filter value of the wrong type.
+    """
     try:
-        return int(raw)
-    except ValueError:
-        return raw
+        yield
+    except FilterError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    except (duckdb.ConversionException, IbisTypeError) as exc:
+        reason = (str(exc).splitlines() or [""])[0][:200]
+        raise HTTPException(400, f"a value does not match its column's type: {reason}") from exc
 
 
 def network_router(session: Session) -> APIRouter:
@@ -107,44 +130,46 @@ def network_router(session: Session) -> APIRouter:
     def graph(h: NetworkHandle) -> RelationGraph:
         return h.cached("relations", lambda: relation_graph(h.roadway.spec, h.tables()))
 
-    def related_of(g: RelationGraph, q: RelatedQuery) -> dict[str, Relation]:
-        unknown = sorted(set(q.sources) - set(g.tables))
+    def keys(h: NetworkHandle, name: str, ids: Sequence[Any]) -> list[Any]:
+        """``ids`` as ``name``'s primary-key type (``"1"`` is ``1`` for an integer key); 422 when one cannot be."""
+        g = graph(h)
+        dtypes = h.cached(
+            "key.dtypes", lambda: {n: column_dtype(src, pk) for n, src in g.tables.items() if (pk := g.pks.get(n))}
+        )
+        if name not in dtypes:
+            return list(ids)
+        try:
+            return coerce_keys(ids, dtypes[name])
+        except KeyTypeError as exc:
+            raise HTTPException(422, f"{name}: {exc}") from exc
+
+    def sources_of(h: NetworkHandle, q: RelatedQuery) -> dict[str, list[Any]]:
+        unknown = sorted(set(q.sources) - set(graph(h).tables))
         if unknown:
             raise HTTPException(400, f"unknown table(s) {unknown}")
-        return relate(g, q.sources, hops=q.hops)
+        return {name: keys(h, name, ids) for name, ids in q.sources.items()}
 
-    def prepared(h: NetworkHandle, name: str, q: RowsQuery) -> tuple[Any, str | None, Relation | None]:
-        """The table (narrowed when ``related_mode`` is ``filter``), its key, and its relation (for the tint)."""
+    def prepared(
+        h: NetworkHandle, name: str, q: RowsQuery
+    ) -> tuple[Any, str | None, list[Any] | None, Relation | None]:
+        """The table (narrowed when ``related_mode`` is ``filter``), its key, ``q.ids`` as keys, its relation."""
         g, src = graph(h), table(h, name)
         pk = g.pks.get(name)
-        if q.ids is not None and not q.ids:  # an explicit empty id list is "no rows", not "all rows"
+        ids = None if q.ids is None else keys(h, name, q.ids)
+        if ids is not None and not ids:  # an explicit empty id list is "no rows", not "all rows"
             src = restrict(src, [])
         if q.related is None:
-            return src, pk, None
-        relation = related_of(g, q.related).get(name)
+            return src, pk, ids, None
+        sources = sources_of(h, q.related)
+        relation = relate(g, sources, hops=q.related.hops).get(name)
         if q.related_mode == "filter":
             if relation is not None:
                 src = restrict(src, relation.matches)
-            elif name in q.related.sources and pk:  # the source table: its own highlighted rows
-                src = restrict(src, [Match(pk, tuple(q.related.sources[name]), "")])
+            elif name in sources and pk:  # the source table: its own highlighted rows
+                src = restrict(src, [Match(pk, tuple(sources[name]), "")])
             else:
                 src = restrict(src, [])
-        return src, pk, relation
-
-    def page(src: Any, pk: str | None, q: RowsQuery) -> dict[str, Any]:
-        try:
-            return page_table(
-                src,
-                offset=q.offset,
-                limit=q.limit,
-                sort=q.sort,
-                direction=q.dir,
-                filter_spec=q.filter,
-                ids=q.ids or None,
-                pk=pk,
-            )
-        except FilterError as exc:
-            raise HTTPException(400, str(exc)) from exc
+        return src, pk, ids, relation
 
     @router.get("/network.bin")
     def network_bin(net_id: str, component: str) -> Response:
@@ -174,8 +199,9 @@ def network_router(session: Session) -> APIRouter:
         src, pk = table(h, table_name), graph(h).pks.get(table_name)
         if pk is None:
             raise HTTPException(404, f"table {table_name!r} has no primary key")
-        key = _coerce_key(pk_value)
-        rows = page_table(src, limit=1, ids=[key], pk=pk)
+        key = keys(h, table_name, [pk_value])[0]
+        with _bad_request():
+            rows = page_table(src, limit=1, ids=[key], pk=pk)
         if not rows["rows"]:
             raise HTTPException(404, f"{table_name} {pk_value} not found")
         return {
@@ -224,7 +250,8 @@ def network_router(session: Session) -> APIRouter:
             spec = _json.loads(filter) if filter else None
         except _json.JSONDecodeError as exc:
             raise HTTPException(400, f"bad filter json: {exc}") from exc
-        try:
+        id_list = parse_ids(ids)
+        with _bad_request():
             payload = page_table(
                 table(h, table_name),
                 offset=offset,
@@ -232,18 +259,27 @@ def network_router(session: Session) -> APIRouter:
                 sort=sort,
                 direction=dir,
                 filter_spec=spec,
-                ids=parse_ids(ids),
+                ids=None if id_list is None else keys(h, table_name, id_list),
                 pk=graph(h).pks.get(table_name),
             )
-        except FilterError as exc:
-            raise HTTPException(400, str(exc)) from exc
         return {"name": table_name, **payload}
 
     @router.post("/table/{table_name}/rows")
     def table_rows_post(net_id: str, component: str, table_name: str, q: RowsQuery) -> dict[str, Any]:
         """One page; with ``related`` in ``tint`` mode, ``related[i]`` names why row ``i`` is related (or null)."""
-        src, pk, relation = prepared(handle(net_id, component), table_name, q)
-        payload = page(src, pk, q)
+        h = handle(net_id, component)
+        with _bad_request():
+            src, pk, ids, relation = prepared(h, table_name, q)
+            payload = page_table(
+                src,
+                offset=q.offset,
+                limit=q.limit,
+                sort=q.sort,
+                direction=q.dir,
+                filter_spec=q.filter,
+                ids=ids or None,
+                pk=pk,
+            )
         if q.related is not None and q.related_mode == "tint":
             payload["related"] = row_vias(pd.DataFrame(payload["rows"], columns=payload["columns"]), relation)
         return {"name": table_name, **payload}
@@ -251,30 +287,32 @@ def network_router(session: Session) -> APIRouter:
     @router.post("/table/{table_name}/locate")
     def locate(net_id: str, component: str, table_name: str, q: LocateQuery) -> dict[str, Any]:
         """``{"index": i}``: the row's position in ``q``'s order (``None``: lazy table, or not in the view)."""
-        src, pk, _ = prepared(handle(net_id, component), table_name, q)
-        if pk is None:
-            return {"index": None}
-        try:
-            index = locate_row(src, q.id, pk=pk, sort=q.sort, direction=q.dir, filter_spec=q.filter, ids=q.ids)
-        except FilterError as exc:
-            raise HTTPException(400, str(exc)) from exc
+        h = handle(net_id, component)
+        with _bad_request():
+            src, pk, ids, _ = prepared(h, table_name, q)
+            if pk is None:
+                return {"index": None}
+            key = keys(h, table_name, [q.id])[0]
+            index = locate_row(src, key, pk=pk, sort=q.sort, direction=q.dir, filter_spec=q.filter, ids=ids)
         return {"index": index}
 
     @router.post("/related")
     def related(net_id: str, component: str, q: RelatedQuery) -> dict[str, Any]:
         """Per related table: hop, relation labels and row count; plus link/node ids to tint on the map."""
-        g = graph(handle(net_id, component))
-        relations = related_of(g, q)
-        tables = [
-            {"table": name, "hop": r.hop, "via": r.via, "partial": r.partial, "count": count(g.tables[name], r.matches)}
-            for name, r in relations.items()
-        ]
-        drawn: dict[str, Any] = {}
-        for name in ("link", "node"):
-            relation, pk = relations.get(name), g.pks.get(name)
-            if relation is not None and pk:
-                ids, more = ids_of(g.tables[name], relation.matches, pk, limit=MAX_MAP_IDS)
-                drawn[name] = {"ids": ids, "truncated": more}
+        h = handle(net_id, component)
+        g = graph(h)
+        with _bad_request():
+            relations = relate(g, sources_of(h, q), hops=q.hops)
+            tables = [
+                {"table": n, "hop": r.hop, "via": r.via, "partial": r.partial, "count": count(g.tables[n], r.matches)}
+                for n, r in relations.items()
+            ]
+            drawn: dict[str, Any] = {}
+            for name in ("link", "node"):
+                relation, pk = relations.get(name), g.pks.get(name)
+                if relation is not None and pk:
+                    ids, more = ids_of(g.tables[name], relation.matches, pk, limit=MAX_MAP_IDS)
+                    drawn[name] = {"ids": ids, "truncated": more}
         return {"hops": q.hops, "tables": tables, "map": drawn}
 
     return router
