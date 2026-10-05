@@ -7,6 +7,7 @@ import zipfile
 
 import pytest
 from corral.engines.ibis_engine import IbisEngine
+from corral.io import remote, zipcsv_adapter
 from netstead import Network
 from netstead.cli.app import app
 from netstead.fixtures import leavenworth
@@ -25,6 +26,28 @@ def test_open_bundled_zip_matches_csv_dir() -> None:
     assert set(zipped.keys()) == set(on_disk.keys())
     assert zipped.links.count() == on_disk.links.count()
     assert zipped.nodes.count() == on_disk.nodes.count()
+
+
+def test_open_remote_zip_via_fsspec(monkeypatch, tmp_path) -> None:
+    """An ``s3://`` zip streams through fsspec; the local look-alike path ``s3:/b/...`` is never read."""
+    url = "s3://b/leavenworth.csv.zip"
+    decoy = tmp_path / "s3:" / "b" / "leavenworth.csv.zip"
+    decoy.parent.mkdir(parents=True)
+    decoy.write_bytes(b"not a zip")
+    monkeypatch.chdir(tmp_path)
+    opened: list[str] = []
+
+    def fake_open(path, mode="rb", **_storage_options):
+        opened.append(path)
+        return open(leavenworth.zip_path(), mode)  # the caller closes it
+
+    monkeypatch.setattr(zipcsv_adapter.fsspec, "open", fake_open)
+    for mod in (zipcsv_adapter, remote):  # keep the OS keyring out of the credential cascade
+        monkeypatch.setattr(mod, "resolve_credentials", lambda host, explicit=None: {})
+
+    net = Network.from_source(url, engine=IbisEngine())
+    assert set(opened) == {url}
+    assert net.links.count() == leavenworth.load("csv").links.count()
 
 
 def test_fixture_load_zip() -> None:
