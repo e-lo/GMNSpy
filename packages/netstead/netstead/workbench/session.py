@@ -31,11 +31,13 @@ import logging
 import threading
 import time
 from collections import deque
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
+from corral.editing import Edit, EditResult
+from corral.editing.apply import apply_edit
 from corral.engines.ibis_engine import IbisEngine
 
 from netstead import Network
@@ -79,7 +81,7 @@ from .events import EventBus
 from .jobs import Job, JobContext, JobRunner
 from .paths import allowed_roots, open_locator
 from .redact import scrub
-from .registry import NetworkHandle, NetworkRegistry, as_pandas
+from .registry import NetworkHandle, NetworkRegistry, as_pandas, derived_copy
 from .selection import selection_payload, unparsed_payload
 
 __all__ = [
@@ -425,6 +427,48 @@ class Session:
             self.active = self.active or handle.id
             self.events.publish({"type": "state", "state": self.state()})
         return handle
+
+    def mutate(self, net_id: str | None, edits: Sequence[Edit], *, note: str) -> list[EditResult]:
+        """Apply corral ``edits`` to a network's roadway, in order and all-or-nothing; return their results.
+
+        A failing edit restores every table to what it was before the first edit and re-raises. On
+        success the network's ``version`` is bumped (dropping its caches), ``note`` is appended to its
+        lineage, and ``state`` is published. The returned :class:`~corral.editing.EditResult` objects
+        carry the rollback data :func:`corral.editing.apply.reverse_edit` needs, so a caller can undo
+        them later. Not an Action itself: the Action that calls it is what history records.
+        """
+        with self._lock:
+            handle = self._handle(net_id)
+            roadway = handle.roadway
+            # Table expressions are immutable, so restoring the old ones is an exact, null-safe rollback
+            # (corral's ``reverse_edit`` anti-joins with ``=``, which duplicates rows holding a NULL).
+            before = {name: (table.expr, table.dirty) for name, table in roadway.tables.items()}
+            applied: list[EditResult] = []
+            try:
+                for edit in edits:
+                    applied.append(apply_edit(roadway, edit))
+            except Exception:
+                for name, (expr, dirty) in before.items():
+                    roadway.tables[name].expr, roadway.tables[name].dirty = expr, dirty
+                raise
+            handle.bump()
+            handle.lineage.append(note)
+            self.events.publish({"type": "state", "state": self.state()})
+        return applied
+
+    def derive(self, net_id: str | None, *, label: str, note: str) -> str:
+        """Register a copy-on-write copy of a network as a new one (a preview, a scenario); return its id.
+
+        The base is never touched by edits to the copy. The copy records ``derived_from`` and inherits
+        the base's lineage plus ``note``. The active network does not change.
+        """
+        with self._lock:
+            base = self._handle(net_id)
+            handle = self.registry.add(derived_copy(base.roadway), source=base.source, label=label)
+            handle.derived_from = base.id
+            handle.lineage = [*base.lineage, note]
+            self.events.publish({"type": "state", "state": self.state()})
+        return handle.id
 
     def state(self) -> dict[str, Any]:
         """JSON-safe snapshot pushed to the browser."""
