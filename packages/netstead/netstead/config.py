@@ -26,7 +26,7 @@ from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
-from netstead.llm.secrets import origin_of
+from netstead.llm.secrets import origin_of, settings_secret_problem
 from netstead.spec import DEFAULT_SPEC
 
 __all__ = [
@@ -294,6 +294,16 @@ class Settings(_Section):
     credentials: CredentialSettings = Field(default_factory=CredentialSettings)
     #: One free-form table per Workbench plugin (``[plugins.<id>]``), validated by that plugin's own model.
     plugins: dict[str, dict[str, Any]] = Field(default_factory=dict)
+
+    @field_validator("plugins")
+    @classmethod
+    def _no_plugin_secrets(cls, value: dict[str, dict[str, Any]]) -> dict[str, dict[str, Any]]:
+        # Free-form tables escape every typed field's checks, so apply SetSetting's credential rules here,
+        # to every layer (files and env included). The message names the key, never the value.
+        problem = settings_secret_problem(value, "plugins")
+        if problem is not None:
+            raise ValueError(problem)
+        return value
 
 
 @dataclass(frozen=True)

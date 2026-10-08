@@ -504,3 +504,11 @@ def test_session_script_with_plugin_and_failed_entries_replays(make_session, rdu
     exec(script.replace("app = Session()", "app = replay"), {"replay": replay}, namespace)
     assert namespace["Session"].__module__ == "netstead.workbench.session"  # never rebound by a plugin import
     assert replay.state() == session.state()
+
+
+def test_settings_payload_redacts_plugin_values(make_session):
+    """Defence in depth: even a plugin table that bypassed validation reaches the browser redacted."""
+    session = make_session(make_hello(), **{"plugins.hello.prefix": "Hi"})
+    session.settings.plugins["hello"]["token"] = "MARKER"  # in place: no validator runs
+    values = session.settings_payload()["values"]["plugins"]
+    assert values == {"hello": {"prefix": "Hi", "token": "[redacted]"}}

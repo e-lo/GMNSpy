@@ -53,6 +53,7 @@ from netstead.config import (
 )
 from netstead.llm import LLMError, MissingKey, ProviderRegistry, build_registry
 from netstead.llm.context import assistant_context, find_project_context, read_capped
+from netstead.llm.secrets import redact_settings
 from netstead.select.intent import SelectionIntent
 from netstead.select.parse import LLMParser, make_parser, payload_from_intent
 from netstead.select.prompt import PromptContext, close_match_hint, vocabulary_from_links
@@ -577,8 +578,10 @@ class Session:
         lists keys read only at launch; ``notes`` explains sections nothing reads yet.
         """
         sources = dict(self.loaded.sources)
+        values = self.settings.model_dump(mode="json")
+        values["plugins"] = redact_settings(values["plugins"])  # validated secret-free; belt and braces
         return {
-            "values": self.settings.model_dump(mode="json"),
+            "values": values,
             "sources": sources,
             "schema": Settings.model_json_schema(),
             "paths": {"user": str(self.loaded.user_path), "project": str(self.loaded.project_path)},

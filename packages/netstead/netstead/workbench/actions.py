@@ -13,14 +13,13 @@ from __future__ import annotations
 
 import functools
 import operator
-import re
 from collections.abc import Iterable, Iterator, Mapping
 from pathlib import PurePath
 from typing import TYPE_CHECKING, Annotated, Any, ClassVar, Literal, get_args, get_origin
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, model_validator
 
-from netstead.llm.secrets import looks_like_secret
+from netstead.llm.secrets import has_url_userinfo, is_secret_name, looks_like_secret
 
 from .area import Area
 from .registry import Component, default_label
@@ -189,35 +188,13 @@ class SetSetting(BaseAction):
             raise ValueError(
                 "keys, tokens and passwords are never settings; set API keys in Settings → Language models"
             )
-        if any(_URL_USERINFO.match(text) for text in (self.key, *_strings(self.value))):
+        if any(has_url_userinfo(text) for text in (self.key, *_strings(self.value))):
             raise ValueError("URLs in settings must not contain a username, password or token")
         base_urls = [self.value] if names[0] == "base_url" else []
         base_urls += _values_under(self.value, "base_url")
         if any(isinstance(u, str) and ("?" in u or "#" in u) for u in base_urls):
             raise ValueError("base_url must not contain a query string or fragment")
         return self
-
-
-#: Setting names that could only hold a credential (last key segment, or any key nested in the value).
-_SECRET_NAME = re.compile(
-    r"(?i)(^|[_.-])(api_?key|key|token|secret|password|passwd|authorization|bearer|credential)s?$"
-)
-#: Legitimate names that match :data:`_SECRET_NAME`: ``credentials`` only names keyring hosts;
-#: ``key_env`` names env vars.
-_SECRET_NAME_ALLOWED = frozenset({"credentials", "key_env"})
-
-
-def is_secret_name(name: str) -> bool:
-    """Whether a setting named ``name`` could only hold a credential (``api_key``, ``token``, ...).
-
-    >>> is_secret_name("api_key"), is_secret_name("credentials"), is_secret_name("basemap")
-    (True, False, False)
-    """
-    return bool(_SECRET_NAME.search(name)) and name.lower() not in _SECRET_NAME_ALLOWED
-
-
-#: ``scheme://user[:pass]@`` at the start of a string: a URL carrying credentials.
-_URL_USERINFO = re.compile(r"^\s*[A-Za-z][A-Za-z0-9+.-]*://[^/?#@]*@")
 
 
 def _nested_keys(value: Any) -> Iterator[str]:
