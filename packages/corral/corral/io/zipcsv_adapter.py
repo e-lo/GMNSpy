@@ -317,18 +317,10 @@ class ZipCsvAdapter:
                 # any subdirectories created. extract() returns the full path.
                 # Use the engine's per-format primitive directly.
                 expr = engine.read_csv(extracted, schema=schema, **kwargs)
-                # Force engine-side materialization to cut the file-lifetime
+                # Materialize into a DuckDB temp table to cut the file-lifetime
                 # dependency before the TemporaryDirectory context exits.
-                # For pandas this is a no-op identity; for polars this
-                # collects to a DataFrame; for ibis this creates a duckdb
-                # temp table. After this line, ``extracted`` may be deleted.
+                # After this line, ``extracted`` may be deleted.
                 materialized = engine.materialize(expr)
-                # Polars' materialize() returns DataFrame but its
-                # to_pandas() / to_polars() / write() all expect a
-                # LazyFrame — re-lazify so downstream engine calls keep
-                # the contract that the read primitive produced. Pandas
-                # and ibis already round-trip cleanly.
-                materialized = _relazy_if_needed(engine, materialized)
 
         return materialized
 
@@ -444,31 +436,6 @@ def _open_zip(path_str: str, storage_options: dict | None = None) -> Iterator[zi
         storage_options = resolve_credentials(urlparse(path_str).hostname or "")
     with fsspec.open(path_str, "rb", **storage_options) as f, zipfile.ZipFile(f) as z:
         yield z
-
-
-def _relazy_if_needed(engine: Engine, materialized: Any) -> Any:
-    """Re-wrap a materialized polars DataFrame into a LazyFrame.
-
-    Polars ``Engine.materialize`` returns ``pl.DataFrame`` (eager) but
-    every other Polars Engine method (``to_pandas`` / ``to_polars`` /
-    ``write``) signature-types its first argument as ``pl.LazyFrame``
-    and calls ``.collect()`` on it. To keep the engine surface
-    consistent for adapters that have to materialize early (zipcsv,
-    future remote-fsspec), we re-lazify the polars case here. This is
-    a single-line workaround keyed on ``engine.name`` rather than
-    isinstance — avoids importing polars at module import time when
-    the optional dep is not installed.
-
-    Pandas (eager) and ibis (lazy-into-duckdb-temp-table) both round-
-    trip materialize() correctly and pass through unchanged.
-    """
-    if engine.name == "polars":
-        # ``.lazy()`` on a polars DataFrame returns a LazyFrame backed
-        # by the in-memory frame — no re-read, no file dependency.
-        lazy = getattr(materialized, "lazy", None)
-        if callable(lazy):
-            return lazy()
-    return materialized
 
 
 def _is_csv_member(name: str) -> bool:
