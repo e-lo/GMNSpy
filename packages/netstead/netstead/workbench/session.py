@@ -508,7 +508,12 @@ class Session:
                 result, ok, error, error_type = exc.payload, False, str(exc), type(exc).__name__
             except Exception as exc:  # boundary: an unexpected handler failure is still a recorded, user-facing error
                 logger.exception("workbench action %s failed", action.type)
-                error = f"internal error: {type(exc).__name__}: {exc}"
+                if self._is_plugin_action(action.type):
+                    # A plugin's exception message (or a pydantic input value) must not reach the
+                    # browser verbatim: it can carry secrets the plugin was handling.
+                    error = f"internal error: {describe_error(exc)}"
+                else:
+                    error = f"internal error: {type(exc).__name__}: {exc}"
                 result, ok, error_type = None, False, "InternalError"
             except BaseException:  # SystemExit, KeyboardInterrupt: propagate, but never half-applied
                 self._running.pop()
@@ -542,6 +547,11 @@ class Session:
         self.selection = selection if selection is None or selection.get("net_id") in ids else None
         self.style = style
         _mark_rolled_back(running.children, running.action.type)
+
+    def _is_plugin_action(self, action_type: str) -> bool:
+        """Whether ``action_type`` belongs to an installed plugin (``"<plugin id>.<name>"``), not core."""
+        plugin_id, _, rest = action_type.partition(".")
+        return bool(rest) and plugin_id in self.plugins
 
     def _core_handler(self, action_type: str) -> Callable[..., Any]:
         """The handler-table entry for a core Action: calls ``_do_<type>``, looked up at call time.

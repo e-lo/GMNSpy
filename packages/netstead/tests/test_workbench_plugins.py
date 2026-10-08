@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any, ClassVar, Literal
 
 import pytest
@@ -434,6 +435,65 @@ def test_a_plugin_previews_an_edit_on_a_derived_network(make_session, rdu_source
     summary = next(n for n in session.state()["networks"] if n["id"] == preview)
     assert summary["derived_from"] == "rdu-i40" and summary["lineage"] == ["edit: preview", f"edit: widen {first}"]
     assert session.registry.get("rdu-i40").version == 0
+
+
+class Boom(BaseAction):
+    type: Literal["leaky.boom"] = "leaky.boom"
+
+
+class Leak(BaseAction):
+    type: Literal["leaky.leak"] = "leaky.leak"
+
+
+#: A presigned-URL signature: ``redact.scrub`` strips it (and any userinfo) from a URL's query string.
+_TOKEN = "sk-ant-api03-SECRETMARKER0123456789"
+_URL_SECRET = f"https://me:{_TOKEN}@uploads.example.com/blob?sig={_TOKEN}"
+
+
+class _Inner(BaseModel):
+    value: int
+
+
+def test_plugin_handler_failure_is_scrubbed_everywhere(make_session):
+    """A plugin's raw exception message (``boom``, a URL carrying a signature) or a pydantic input
+    value (``leak``) must not reach the history entry, the published event, or ``/api/history`` --
+    unlike a core Action's failure, which keeps the raw message (pinned by
+    ``test_unexpected_handler_error_is_recorded_not_raised_raw`` in test_workbench_session.py)."""
+
+    def boom(host, action):
+        raise ValueError(f"upload failed: {_URL_SECRET}")
+
+    def leak(host, action):
+        _Inner(value=_TOKEN)  # pydantic ValidationError carrying _TOKEN as the rejected input
+
+    leaky = WorkbenchPlugin(
+        id="leaky",
+        name="Leaky",
+        version="0.1",
+        requires_api=HOST_API,
+        actions=(ActionSpec(Boom, boom), ActionSpec(Leak, leak)),
+    )
+    session = make_session(leaky)
+    published: list[dict[str, Any]] = []
+    session.events.publish = published.append
+
+    with pytest.raises(ActionError) as boom_info:
+        session.dispatch(Boom())
+    entry = session.history[-1]
+    assert entry.ok is False and entry.error_type == "InternalError" and "ValueError" in entry.error
+    assert _TOKEN not in entry.error and _TOKEN not in str(boom_info.value)
+    assert _TOKEN not in json.dumps(published)
+
+    published.clear()
+    with pytest.raises(ActionError) as leak_info:
+        session.dispatch(Leak())
+    entry = session.history[-1]
+    assert entry.ok is False and entry.error_type == "InternalError" and "ValidationError" in entry.error
+    assert _TOKEN not in entry.error and _TOKEN not in str(leak_info.value)
+    assert _TOKEN not in json.dumps(published)
+
+    script, _ = session_script(session)
+    assert _TOKEN not in script
 
 
 # ---------------------------------------------------------------------------- a real entry point
