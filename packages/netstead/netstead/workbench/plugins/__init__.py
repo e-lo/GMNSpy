@@ -7,6 +7,16 @@ Plugins import only what this package exports. See the cookbook page "Write a Wo
 
 from ..actions import BaseAction
 from .discovery import ENTRY_POINT_GROUP, PluginStatus, discover
+from .host import Host
 from .spec import HOST_API, ActionSpec, WorkbenchPlugin
 
-__all__ = ["ENTRY_POINT_GROUP", "HOST_API", "ActionSpec", "BaseAction", "PluginStatus", "WorkbenchPlugin", "discover"]
+__all__ = [
+    "ENTRY_POINT_GROUP",
+    "HOST_API",
+    "ActionSpec",
+    "BaseAction",
+    "Host",
+    "PluginStatus",
+    "WorkbenchPlugin",
+    "discover",
+]

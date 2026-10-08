@@ -123,3 +123,20 @@ def test_discover_skips_disabled_without_importing_them():
     assert plugins == [] and statuses == [
         PluginStatus(id="broken", name="broken", version="", requires_api=None, state="disabled")
     ]
+
+
+# ---------------------------------------------------------------------------- host settings
+
+from netstead.workbench.plugins.host import PluginSettingsError, validate_plugin_settings  # noqa: E402
+
+
+def test_validate_plugin_settings_defaults_and_values():
+    assert validate_plugin_settings(HelloSettings, {}, "hello").prefix == "Hello"
+    assert validate_plugin_settings(HelloSettings, {"prefix": "Hi"}, "hello").prefix == "Hi"
+
+
+def test_validate_plugin_settings_never_echoes_values():
+    with pytest.raises(PluginSettingsError) as info:
+        validate_plugin_settings(HelloSettings, {"prefix": "s3cr3t-value", "bogus": "s3cr3t-value"}, "hello")
+    assert "plugins.hello.bogus" in str(info.value) and "s3cr3t" not in str(info.value)
+    assert info.value.__context__ is None and info.value.__cause__ is None
