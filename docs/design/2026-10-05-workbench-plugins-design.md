@@ -1,9 +1,9 @@
 # Workbench plugins: design
 
-- **Status:** draft for review.
+- **Status:** accepted (decisions recorded 2026-10-05). Implementation not started; Part 1 plan: [`2026-10-05-workbench-plugins-p1-plan.md`](2026-10-05-workbench-plugins-p1-plan.md).
 - **Date:** 2026-10-05.
-- **Depends on:** the Workbench (`netstead app`, package `netstead.workbench`), which landed on the pre-rename `feat/nl-providers` stack. Code references below use post-rename paths.
-- **Supersedes:** part of `2026-10-02-gmnspy-workbench-design.md`, which ships with that stack.
+- **Depends on:** the Workbench (`netstead app`, package `netstead.workbench`), which lands with PR #211 (`feat/nl-providers`). Implementation stacks on that.
+- **Supersedes:** part of [`2026-10-02-netstead-workbench-design.md`](2026-10-02-netstead-workbench-design.md), which ships with that PR.
   - The planned in-core `changes/` package (`NetworkChange`, `DraftCard`, `apply_card`, `Scenario`) is **no longer core**.
   - It moves to an external ProjectCard plugin repo (see [Target plugins](#target-plugins-used-as-requirements)).
 
