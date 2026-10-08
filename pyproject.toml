@@ -24,6 +24,8 @@ dev = [
     "pytest-cov>=5",
     "pytest-benchmark>=4",
     "pytest-xdist>=3.6",
+    # starlette>=1.7 TestClient requires httpx2 (plain httpx is deprecated there).
+    "httpx2",
     "hypothesis>=6.100",
     "ruff>=0.5",
     "pyright>=1.1.370",
