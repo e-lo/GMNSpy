@@ -192,7 +192,17 @@ Interactive OpenAPI at `http://127.0.0.1:8000/docs`.
     ```
 
 ??? note "Docker"
-    Dockerfile is on the Phase 5 roadmap; for now `pip install` in your own image and copy the config alongside.
+    The repo ships a server image definition at `packages/netstead/Dockerfile` (plus `docker-compose.example.yml` beside it). Build it from the repo root — the build needs both workspace packages — and mount your config and data:
+
+    ```bash
+    docker build -f packages/netstead/Dockerfile -t netstead-server .
+    docker run --rm -p 8000:8000 \
+        -v $(pwd)/server.yaml:/etc/netstead/config.yml:ro \
+        -v $(pwd)/data:/data:ro \
+        netstead-server
+    ```
+
+    A prebuilt `ghcr.io` image is not published yet (tracked in [#104](https://github.com/e-lo/netstead/issues/104)). Alternatively, `pip install` into your own image and copy the config alongside:
 
     ```dockerfile
     FROM python:3.12-slim

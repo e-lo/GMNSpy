@@ -1,4 +1,4 @@
-# Netstead v1.0 + corral v0.1 — beta program
+# Netstead + corral v1.0 — beta program
 
 Thanks for trying the v1.0 beta. This page tells you what the beta is, what to expect, and how to get the most useful feedback to us.
 
@@ -6,31 +6,35 @@ Thanks for trying the v1.0 beta. This page tells you what the beta is, what to e
 
 Two PyPI packages, released together:
 
-| Package | First beta tag | What it is |
-|---|---|---|
-| **`corral`** | `corral-v0.1.0-beta.1` | Generic Frictionless Data Package engine — lazy ibis/DuckDB, validation, scope, edit/rollback. |
-| **`netstead`** | `netstead-v1.0.0-beta.1` | GMNS-specific toolkit on top — quality rules, network-aware scope, clean/edit, HTTP server, MCP. |
+| Package (PyPI) | Import | Beta tag | What it is |
+|---|---|---|---|
+| **`dbcorral`** | `corral` | `corral-v1.0.0-beta.2` | Generic Frictionless Data Package engine — lazy DuckDB (via ibis), validation, scope, edit/rollback. |
+| **`netstead`** | `netstead` | `netstead-v1.0.0-beta.2` | GMNS-specific toolkit on top — quality rules, network-aware scope, clean/edit, NL selection, interactive viewer, HTTP server, MCP. |
 
-Most users only install `netstead`. `corral` comes as a transitive dependency.
+Most users only install `netstead`. `dbcorral` comes as a transitive dependency. The two
+packages version in lockstep.
+
+> `beta.2` is the first beta under these names. `beta.1` was tagged as
+> `gmnspy-v1.0.0-beta.1` / `datagrove-v1.0.0-beta.1` before the 2026-10-05 rename.
 
 ## Install the beta
 
 === "uv (recommended)"
 
     ```bash
-    uv add 'netstead[all]==1.0.0b1'
+    uv add 'netstead[all]==1.0.0b2'
     ```
 
 === "pip"
 
     ```bash
-    pip install 'netstead[all]==1.0.0b1'
+    pip install 'netstead[all]==1.0.0b2'
     ```
 
 === "pipx (CLI-only)"
 
     ```bash
-    pipx install 'netstead[all]==1.0.0b1'
+    pipx install 'netstead[all]==1.0.0b2'
     ```
 
 See the [install guide](https://e-lo.github.io/netstead/netstead/#install) for extras + the `zsh` quoting note.
@@ -45,7 +49,7 @@ That should report all green. If anything fails, [file a beta-feedback issue](#h
 
 ## Try it on the bundled fixture
 
-A tiny real network (Leavenworth, WA — ~600 m of OSM-derived streets) ships in the wheel so you can try things without finding data:
+A small real network (Leavenworth, WA — the whole city, OSM-derived) ships in the wheel so you can try things without finding data:
 
 ```bash
 # Print the bundled-fixture path
@@ -119,16 +123,16 @@ You don't have to fill every section — anything beats a silent fail.
 
 ## When does it ship?
 
-We're targeting GA (`corral-v0.1.0` + `netstead-v1.0.0`) **after at least two `beta.N` cycles** with no new critical bugs reported in the most recent cycle. Realistic timeline: 4–8 weeks from `beta.1`, depending on what beta finds.
+We're targeting GA (`corral-v1.0.0` + `netstead-v1.0.0`) **after at least two `beta.N` cycles** with no new critical bugs reported in the most recent cycle. Realistic timeline: 4–8 weeks from `beta.1`, depending on what beta finds.
 
 ## Roadmap beyond v1.0
 
-After GA we'll publish a `v1.1` roadmap. Likely candidates (not promised):
+Planned and in-flight work is indexed in [`docs/design/README.md`](docs/design/README.md).
+Likely post-GA candidates (not promised):
 
-- More network-cleanup ops (`split_link_at_node`, `snap_to_reference`).
-- Map-view embed in the HTML validation report.
+- The **Workbench** (`netstead app`) — one front end for open / select / inspect / edit, with a plugin API.
+- More network-cleanup ops (`split_link_at_node`, `snap_to_reference` — [#152](https://github.com/e-lo/netstead/issues/152)).
 - Polygon and CRS-aware scope operations.
-- Programmatic `netstead.bench` API (currently CLI-only).
 - More quality rules (community contributions welcome).
 
 ## Thank you

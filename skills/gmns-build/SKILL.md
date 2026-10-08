@@ -59,7 +59,9 @@ net.write("net", format="csv", overwrite=True)
 - **Overpass/Nominatim limits:** prefer `--bbox` for repeated runs; point at a
   self-hosted Overpass (`endpoint=` in the API) for regional-scale areas.
 - **Attribution:** OSM data is ODbL — attribute OpenStreetMap in published work.
-- **Overture** is not yet a source; `--source osm` is the only option today.
+- **Overture:** `--source overture` builds from Overture Maps transportation
+  GeoParquet (needs the `overture` extra; `--overture-release` pins a release,
+  `--data-root` points at a mirror or local snapshot). `--source osm` is the default.
 
 ## See also
 

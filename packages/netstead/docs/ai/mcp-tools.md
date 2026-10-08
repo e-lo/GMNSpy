@@ -2,14 +2,14 @@
 title: MCP tools reference
 audience: both
 kind: reference
-summary: Complete reference for the seven MCP tools the netstead server exposes — four generic corral tools plus three GMNS-aware ones.
+summary: Complete reference for the seven MCP tools the netstead server exposes — three generic corral tools plus four GMNS-aware ones.
 ---
 
 # MCP tools reference
 
 ## Summary
 
-`netstead mcp serve` runs a stdio MCP server that exposes seven tools: four generic Frictionless-package tools inherited from `corral.mcp`, plus three GMNS-aware tools. Every tool is **stateless** — each call takes a `source` (path or URL) and loads the package fresh. No session, no cache, no cross-call mutation. The deferred-tools issue tracks the stateful surface (editing sessions, indexed scope ops).
+`netstead mcp serve` runs a stdio MCP server that exposes seven tools: three generic Frictionless-package tools inherited from `corral.mcp`, plus four GMNS-aware tools. Every tool is **stateless** — each call takes a `source` (path or URL) and loads the package fresh. No session, no cache, no cross-call mutation. A stateful surface (editing sessions, indexed scope ops) is deferred and not yet tracked in an issue.
 
 All tools return JSON-shaped dicts (or lists of strings); shapes are stable inside a major version. For wiring the server into Claude Desktop or Claude Code, see [Wire the MCP server](../cookbook/serve-mcp.md).
 

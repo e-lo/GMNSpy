@@ -17,7 +17,7 @@ This repo holds **two PyPI packages with separate utility and separate audiences
 
     ---
 
-    Generic engine for **Frictionless tabular data packages** — any spec, any backend. Lazy ibis (DuckDB) by default, pandas / polars on demand. Reads CSV / Parquet / DuckDB / zip-CSV from local paths and URLs with a credentials cascade. Composable primitives for validation, scope, editing, HTTP and MCP.
+    Generic engine for **Frictionless tabular data packages** — any spec. Lazy DuckDB compute (via ibis); pandas / polars / Arrow in and out. Reads CSV / Parquet / DuckDB / zip-CSV from local paths and URLs with a credentials cascade. Composable primitives for validation, scope, editing, HTTP and MCP.
 
     Pick corral if you're working with **any Frictionless data package** — GTFS-derived feeds, OGD datasets, a custom internal spec, or building your own toolkit.
 

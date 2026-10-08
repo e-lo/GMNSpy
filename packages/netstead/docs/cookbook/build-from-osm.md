@@ -116,15 +116,8 @@ print(net.links.count())
     netstead build --bbox -120.67,47.58,-120.64,47.61 --extra-tags surface,bridge ./net
     ```
 
-??? note "Pick the engine"
-    The build runs on `ibis` (default), `pandas`, or `polars`.
-
-    ```bash
-    netstead build --place "Leavenworth, WA" --engine polars ./net
-    ```
-
-??? note "Benchmark the build across engines"
-    The `scripts/bench_osm_build.py` harness times the convert + build path per engine.
+??? note "Benchmark the build"
+    The `scripts/bench_osm_build.py` harness times the convert + build path (DuckDB is the single compute engine); add `--baselines` for directional osmnx / osm2gmns comparisons.
 
     ```bash
     uv run python scripts/bench_osm_build.py --grids 10,40,120 --json

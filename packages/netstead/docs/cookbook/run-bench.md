@@ -9,7 +9,7 @@ summary: netstead bench measures load + validate + connectivity timings per phas
 
 ## When to use this
 
-You want a fast read on how `netstead` performs on your hardware against your network — sizing a server, comparing engines (`ibis` / `pandas` / `polars`), or tracking CI regressions over time.
+You want a fast read on how `netstead` performs on your hardware against your network — sizing a server, comparing hardware or storage formats, or tracking CI regressions over time.
 
 ## Quick example
 
@@ -24,14 +24,15 @@ Expected:
 ```json
 {
   "source": "packages/netstead/netstead/fixtures/leavenworth/csv",
-  "engine": "ibis",
+  "engine": "IbisEngine",
+  "total_seconds": 0.555,
   "phases": [
-    {"name": "load",         "seconds": 0.082},
-    {"name": "validate",     "seconds": 0.124},
-    {"name": "quality",      "seconds": 0.041},
-    {"name": "connectivity", "seconds": 0.038}
-  ],
-  "total_seconds": 0.285
+    {"phase": "load",         "seconds": 0.112},
+    {"phase": "validate",     "seconds": 0.130},
+    {"phase": "links_count",  "seconds": 0.002},
+    {"phase": "nodes_count",  "seconds": 0.001},
+    {"phase": "is_connected", "seconds": 0.309}
+  ]
 }
 ```
 
@@ -53,14 +54,13 @@ Same command, different path. The bench accepts the same source surface as `Netw
 netstead bench /path/to/my/network --json > bench.json
 ```
 
-### 3. Compare engines
+### 3. Compare storage formats
 
-`ibis` (the default) typically wins for partitioned Parquet on a fast disk; `polars` wins for CSV bulk loads; `pandas` is the slowest of the three on anything > 100k rows but is the most portable:
+DuckDB (via ibis) is the single compute engine, so there is no engine to sweep — `--engine` is accepted only for compatibility. What *does* move the numbers is the on-disk format you load from. Convert the same network to CSV and Parquet and bench each:
 
 ```bash
-netstead bench /path/to/net --engine ibis --json > ibis.json
-netstead bench /path/to/net --engine pandas --json > pandas.json
-netstead bench /path/to/net --engine polars --json > polars.json
+netstead bench /path/to/net-csv --json > csv.json
+netstead bench /path/to/net-parquet --json > parquet.json
 ```
 
 ### 4. Capture a baseline for CI
@@ -81,21 +81,20 @@ assert c < b * 1.3, f'regression: {c:.2f}s vs baseline {b:.2f}s (+{(c/b-1)*100:.
 
 ### 5. Read the JSON
 
-The shape is stable inside a major version. Each phase is one logical operation: `load` opens the package and instantiates the engine; `validate` runs structural + schema + FK + sync passes; `quality` runs the GMNS rule pack; `connectivity` builds the igraph index and counts components:
+The shape is stable inside a major version. Each phase is one logical operation: `load` opens the package; `validate` runs structural + schema + FK + sync passes; `links_count` / `nodes_count` force a count on each table; `is_connected` builds the scipy-CSR graph and checks connectivity:
 
 ```json
 {
-  "source": "...",
-  "engine": "ibis",
-  "spec_version": "0.97",
-  "table_counts": {"link": 339, "node": 121, "lane": 429, ...},
+  "source": "packages/netstead/netstead/fixtures/leavenworth/csv",
+  "engine": "IbisEngine",
+  "total_seconds": 0.555,
   "phases": [
-    {"name": "load",         "seconds": 0.082},
-    {"name": "validate",     "seconds": 0.124},
-    {"name": "quality",      "seconds": 0.041},
-    {"name": "connectivity", "seconds": 0.038}
-  ],
-  "total_seconds": 0.285
+    {"phase": "load",         "seconds": 0.112},
+    {"phase": "validate",     "seconds": 0.130},
+    {"phase": "links_count",  "seconds": 0.002},
+    {"phase": "nodes_count",  "seconds": 0.001},
+    {"phase": "is_connected", "seconds": 0.309}
+  ]
 }
 ```
 
@@ -119,7 +118,7 @@ The shape is stable inside a major version. Each phase is one logical operation:
     For charting or copying into a spreadsheet.
 
     ```bash
-    netstead bench ./my-net --json | jq -r '.phases[] | [.name,.seconds] | @csv'
+    netstead bench ./my-net --json | jq -r '.phases[] | [.phase,.seconds] | @csv'
     ```
 
 ??? note "CI regression check (one-liner)"
@@ -129,60 +128,50 @@ The shape is stable inside a major version. Each phase is one logical operation:
     netstead bench ./my-net --json | jq -e '.total_seconds < 5.0'
     ```
 
-??? note "Engine sweep"
-    Loop over engines in shell and compare.
+??? note "Format sweep"
+    Loop over copies of the same network in different storage formats.
 
     ```bash
-    for e in ibis pandas polars; do
-      netstead bench ./my-net --engine "$e" --json > "bench-$e.json"
+    for d in ./my-net-csv ./my-net-parquet; do
+      netstead bench "$d" --json > "bench-$(basename "$d").json"
     done
     ```
 
 ## Pitfalls
 
-* **Micro-network timing is noisy.** On Leavenworth the absolute numbers fluctuate by ±30% between runs. Use it to confirm correctness, not for engine choice — switch to a regional-scale network before drawing conclusions.
+* **Micro-network timing is noisy.** On Leavenworth the absolute numbers fluctuate by ±30% between runs. Use it to confirm correctness, not for sizing decisions — switch to a regional-scale network before drawing conclusions.
 * **First run pays the GraphIndex build cost.** Subsequent calls hit the in-memory cache, so the second run is faster. For a representative cold-start number, restart Python between runs; for a hot-cache number, run the bench twice and take the second.
-* **`--engine polars` needs the `polars` extra.** `pip install 'netstead[polars]'`. Without it the CLI errors before timing anything.
 * **Quality + connectivity require `[clean]`.** A pure `pip install netstead` skips those phases (they show as `null` seconds in the JSON).
 
 ## Bench the OSM build path (`scripts/bench_osm_build.py`)
 
-A separate harness measures the *construction* of a network from OpenStreetMap across the three engines (and, optionally, against `osmnx` as a directional baseline). It lives at `scripts/bench_osm_build.py`. Examples:
+A separate harness measures the *construction* of a network from OpenStreetMap (convert + `Network` assembly on the DuckDB engine) and, optionally, compares it against `osmnx` and `osm2gmns` as directional baselines. It lives at `scripts/bench_osm_build.py`. Examples:
 
 ```bash
 # Synthetic grids (no network I/O — reproducible, fast).
 uv run python scripts/bench_osm_build.py --grids 10,40,100
 
-# Real bbox (one Overpass fetch, reused across engines + the osmnx baseline).
+# Real bbox (one Overpass fetch, reused by the netstead build + the osmnx baseline).
 uv run python scripts/bench_osm_build.py --bbox=-120.6794,47.5751,-120.6411,47.6082 --baselines
 ```
 
-Representative numbers from this run on the Leavenworth bbox + synthetic grids (M1 / macOS, scipy 1.17, polars 1.x, ibis 9.x; absolute numbers are noisy ±30%, the cross-engine ratios are the signal):
+Representative numbers (M1 / macOS; absolute numbers are noisy ±30%). The first dataset in a run also pays one-time import / DuckDB warm-up, so treat it as a cold-start figure:
 
-| Dataset | engine | build | peak mem | result |
+| Dataset | tool | build | peak mem | result (nodes / links) |
 |---|---|---|---|---|
-| grid 10×10 (100 nodes / 20 ways) | ibis | 0.17 s | 2.6 MB | 100 / 360 |
-| | pandas | 0.02 s | 0.6 MB | 100 / 360 |
-| | polars | 0.04 s | 0.6 MB | 100 / 360 |
-| grid 40×40 (1.6k nodes / 80 ways) | ibis | 0.05 s | 1.2 MB | 1600 / 6240 |
-| | pandas | 0.06 s | 2.3 MB | 1600 / 6240 |
-| | polars | 0.02 s | 0.6 MB | 1600 / 6240 |
-| grid 100×100 (10k nodes / 200 ways) | ibis | 0.08 s | 5.3 MB | 10000 / 39600 |
-| | pandas | 0.27 s | 12.2 MB | 10000 / 39600 |
-| | polars | 0.08 s | 0.8 MB | 10000 / 39600 |
-| Leavenworth bbox (8.5k OSM nodes → 1.9k GMNS nodes / 4.3k directed links) | ibis | 0.13 s | 2.6 MB | 1871 / 4250 |
-| | pandas | 0.03 s | 1.4 MB | 1871 / 4250 |
-| | polars | 0.02 s | 0.6 MB | 1871 / 4250 |
+| grid 10×10 (100 nodes / 20 ways) | netstead | 0.17 s | 2.6 MB | 100 / 360 |
+| grid 40×40 (1.6k nodes / 80 ways) | netstead | 0.05 s | 1.2 MB | 1600 / 6240 |
+| grid 100×100 (10k nodes / 200 ways) | netstead | 0.08 s | 5.3 MB | 10000 / 39600 |
+| Leavenworth bbox (8.5k OSM nodes → 1.9k GMNS nodes / 4.3k directed links) | netstead | 0.13 s | 2.6 MB | 1871 / 4250 |
 | Leavenworth bbox (same area) | osmnx | 1.11 s | 20.3 MB | 1871 / ~4250 (directional) |
 
 Takeaways:
 
-* All three engines produce **identical** node/link counts (engine-agnostic builder).
-* **polars** is the leanest at scale on both memory and wall-clock.
 * The **osmnx baseline** is intentionally directional, not apples-to-apples — `osmnx` performs its own simplification and uses a different directed-link convention. Use it as a sanity check that we're in the same order of magnitude, not as a strict speed comparison.
-* The `osm2gmns` baseline requires a C/C++ toolchain to install and is not currently runnable on the macOS dev environment — the harness will prompt with the install command and skip cleanly.
+* The `osm2gmns` baseline needs a local `--osm-file` and a C/C++ toolchain to install; when it is missing, the harness prints the install command and skips that baseline cleanly.
+* There is no engine axis: DuckDB (via ibis) is the single compute engine. For the broader create / selection / viz-pack timing suite, use `netstead bench-suite`.
 
 ## See also
 
 * [Convert CSV ↔ Parquet ↔ DuckDB](https://e-lo.github.io/netstead/corral/cookbook/convert-formats/) — the format you load from dominates `load` time.
-* [API reference](../reference/api.md) — `Network.from_source()` + `.validate()` for programmatic equivalents (the bench command itself is CLI-only at v1.0; a programmatic API is tracked for v1.1).
+* [API reference](../reference/api.md) — `Network.from_source()` + `.validate()` for programmatic equivalents. The timing harness is also importable: `netstead.bench` exports the capture primitives (`time_call`, `memory_call`, `repeat_wall_seconds`, …) and report renderers (`build_document`, `render_json` / `render_csv` / `render_markdown`), and `netstead.bench.suite.run_suite(...)` runs the same suite as `netstead bench-suite`.
