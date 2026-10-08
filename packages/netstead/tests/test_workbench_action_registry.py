@@ -70,3 +70,15 @@ def test_module_level_parse_and_schema_stay_core_only():
 def test_import_line_uses_the_public_module_for_core_and_the_class_module_otherwise():
     assert import_line(OpenNetwork(source="/x")) == "from netstead.workbench import OpenNetwork"
     assert import_line(Greet(name="Ada")) == f"from {Greet.__module__} import Greet"
+
+
+def test_script_imports_keep_the_core_line_and_add_each_plugin_line_once():
+    from netstead.workbench.actions import script_imports
+
+    core = (
+        "from netstead.workbench import Session, OpenNetwork, BuildNetwork, CloseNetwork, SetActiveNetwork,"
+        " Select, ClearSelection, Style, Navigate, SetSetting"
+    )
+    greet = import_line(Greet(name="Ada"))
+    assert script_imports([]) == [core]
+    assert script_imports([import_line(OpenNetwork(source="/x")), greet, greet]) == [core, greet]

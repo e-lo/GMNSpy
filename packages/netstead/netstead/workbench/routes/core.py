@@ -13,6 +13,7 @@ from pydantic import ValidationError
 
 from netstead.viz.styling import basemap_style
 
+from ..actions import script_imports
 from ..events import sse_format
 from ..session import Session
 
@@ -40,7 +41,12 @@ def core_router(session: Session) -> APIRouter:
 
     @router.get("/history")
     def history() -> dict[str, Any]:
-        return {"entries": [e.to_dict() for e in list(session.history)]}
+        """Every entry, plus the import lines that head them as a script ("copy session as Python")."""
+        entries = list(session.history)
+        return {
+            "entries": [e.to_dict() for e in entries],
+            "imports": script_imports(e.imports for e in entries if e.ok),
+        }
 
     @router.post("/actions")
     def actions(body: dict = Body(...)) -> JSONResponse:  # noqa: B008  (FastAPI Body default)

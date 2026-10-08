@@ -43,6 +43,7 @@ __all__ = [
     "import_line",
     "is_secret_name",
     "parse_action",
+    "script_imports",
     "to_python",
 ]
 
@@ -386,9 +387,26 @@ def action_json_schema() -> dict[str, Any]:
 
 def import_line(action: BaseAction) -> str:
     """The ``from ... import ...`` line a replayed ``to_python`` snippet needs for ``action``."""
-    cls = type(action)
+    return _import_line(type(action))
+
+
+def _import_line(cls: type[BaseAction]) -> str:
     module = "netstead.workbench" if cls in CORE_ACTIONS else cls.__module__
     return f"from {module} import {cls.__name__}"
+
+
+def script_imports(lines: Iterable[str]) -> list[str]:
+    """The import lines heading a replayed session script, given its entries' :func:`import_line` values.
+
+    The first line is always ``Session`` plus every core Action from ``netstead.workbench`` (so a
+    core-only script is unchanged from before plugins existed); each other line follows once, in order.
+
+    >>> script_imports(["from netstead.workbench import Select", "from hello import Greet"])[1:]
+    ['from hello import Greet']
+    """
+    core = {_import_line(model) for model in CORE_ACTIONS}
+    head = ", ".join(["Session", *(model.__name__ for model in CORE_ACTIONS)])
+    return [f"from netstead.workbench import {head}", *dict.fromkeys(ln for ln in lines if ln not in core)]
 
 
 def to_python(action: BaseAction) -> str:
