@@ -39,6 +39,10 @@ shared network.
 > `0.0.0.0`, or don't use `--host 0.0.0.0` on a shared network. This is a known limitation, not something
 > a future release has silently fixed — check the current docs before relying on it.
 
+> **Plugins.** Installed [Workbench plugins](workbench-plugins.md) are full-trust Python running inside
+> this server, and an exposed bind exposes their routes and Actions too. Install only plugins you trust,
+> and turn one off with `[app] disabled_plugins = ["<id>"]`.
+
 ## Open or import a network
 
 **Open / Import…** opens a wizard with four sources:
