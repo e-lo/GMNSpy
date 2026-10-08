@@ -140,3 +140,185 @@ def test_validate_plugin_settings_never_echoes_values():
         validate_plugin_settings(HelloSettings, {"prefix": "s3cr3t-value", "bogus": "s3cr3t-value"}, "hello")
     assert "plugins.hello.bogus" in str(info.value) and "s3cr3t" not in str(info.value)
     assert info.value.__context__ is None and info.value.__cause__ is None
+
+
+# ---------------------------------------------------------------------------- session install
+
+from netstead.select.parse import StubParser  # noqa: E402
+from netstead.workbench.actions import SetSetting  # noqa: E402
+from netstead.workbench.session import ActionError, Session  # noqa: E402
+from pydantic import ValidationError  # noqa: E402
+
+
+@pytest.fixture
+def make_session(tmp_path, isolated_env):
+    def build(*plugins: WorkbenchPlugin, **overrides: Any) -> Session:
+        return Session(
+            project_dir=tmp_path, environ=isolated_env, parser=StubParser(), plugins=list(plugins), overrides=overrides
+        )
+
+    return build
+
+
+def _status(session: Session, plugin_id: str):
+    return next(s for s in session.plugin_status if s.id == plugin_id)
+
+
+def test_plugin_action_dispatches_records_and_replays(make_session):
+    session = make_session(make_hello())
+    assert session.dispatch(Greet(name="Ada")) == "Hello, Ada!"
+    assert session.dispatch({"type": "hello.greet", "name": "Bo"}) == "Hello, Bo!"
+    entry = session.history[-1]
+    assert entry.python == "app.do(Greet(name='Bo'))" and entry.imports == f"from {Greet.__module__} import Greet"
+    assert _status(session, "hello").state == "loaded"
+
+
+def test_plugin_state_is_merged_under_plugins(make_session):
+    session = make_session(make_hello())
+    session.dispatch(Greet(name="Ada"))
+    assert session.state()["plugins"] == {"hello": {"greeted": ["Ada"]}}
+
+
+def test_plugin_settings_come_from_the_layers(make_session):
+    session = make_session(make_hello(), **{"plugins.hello.prefix": "Hi"})
+    assert session.dispatch(Greet(name="Ada")) == "Hi, Ada!"
+
+
+def test_invalid_plugin_settings_at_start_mark_the_plugin_error(make_session):
+    session = make_session(make_hello(), **{"plugins.hello.bogus": 1})
+    assert _status(session, "hello").state == "error" and "plugins.hello.bogus" in _status(session, "hello").error
+    assert not session.actions.has("hello.greet")
+
+
+def test_set_setting_validates_plugin_settings(make_session):
+    session = make_session(make_hello())
+    with pytest.raises(ActionError, match="plugin 'hello'"):
+        session.dispatch(SetSetting(key="plugins.hello.prefix", value=3))
+    assert session.dispatch(SetSetting(key="plugins.hello.prefix", value="Hey"))["value"] == "Hey"
+    assert session.dispatch(Greet(name="Ada")) == "Hey, Ada!"
+    assert session.dispatch(SetSetting(key="plugins.hello.prefix", value=None))["value"] is None
+    assert session.dispatch(Greet(name="Ada")) == "Hello, Ada!"
+
+
+@pytest.mark.parametrize("scope", ["user", "project"])
+def test_set_setting_checks_a_persisted_plugin_setting_before_writing(make_session, scope):
+    session = make_session(make_hello())
+    paths = {"user": session.loaded.user_path, "project": session.loaded.project_path}
+    with pytest.raises(ActionError, match=r"plugins\.hello\.bogus"):
+        session.dispatch(SetSetting(key="plugins.hello.bogus", value="x", scope=scope))
+    with pytest.raises(ActionError, match="plugin 'hello'"):
+        session.dispatch(SetSetting(key="plugins.hello", value={"prefix": 3}, scope=scope))
+    assert not paths[scope].exists()  # nothing a plugin rejects ever reaches a file
+    assert session.dispatch(SetSetting(key="plugins.hello.prefix", value="Yo", scope=scope))["value"] == "Yo"
+    assert session.dispatch(Greet(name="Ada")) == "Yo, Ada!"
+
+
+def test_settings_of_a_plugin_that_is_not_loaded_are_not_checked(make_session):
+    session = make_session(make_hello(), **{"app.disabled_plugins": ["hello"]})
+    assert session.dispatch(SetSetting(key="plugins.hello.anything", value=1))["value"] == 1
+
+
+@pytest.mark.parametrize(
+    ("key", "value"),
+    [
+        ("plugins.hello.api_key", "x"),  # secret-named key
+        ("plugins.hello.token", "x"),
+        ("plugins.hello.prefix", "sk-ant-api03-" + "a" * 40),  # key-shaped value
+        ("plugins.hello", {"auth": {"password": "x"}}),  # secret-named key nested in the value
+        ("plugins.hello.endpoint", "https://user:pw@example.com/"),  # URL userinfo
+    ],
+)
+def test_plugin_secrets_are_refused_like_any_setting(key, value):
+    with pytest.raises(ValidationError) as info:
+        SetSetting(key=key, value=value)
+    assert "sk-ant" not in str(info.value) and "pw@" not in str(info.value)
+
+
+def test_a_refused_plugin_secret_is_recorded_without_its_value(make_session):
+    session = make_session(make_hello())
+    with pytest.raises(ValidationError):
+        session.dispatch({"type": "set_setting", "key": "plugins.hello.api_key", "value": "hunter2"})
+    assert session.history == [] and "api_key" not in session.settings.plugins.get("hello", {})
+
+
+@pytest.mark.parametrize(
+    ("plugin", "overrides", "state"),
+    [
+        (make_hello(), {"app.disabled_plugins": ["hello"]}, "disabled"),
+        (make_hello(requires_api="2.0"), {}, "incompatible"),
+        (make_hello(id="Bad Id"), {}, "error"),
+    ],
+)
+def test_plugins_that_do_not_install(make_session, plugin, overrides, state):
+    session = make_session(plugin, **overrides)
+    assert session.plugin_status[0].state == state and not session.actions.has("hello.greet")
+
+
+def test_failing_on_load_installs_nothing(make_session):
+    def boom(host):
+        raise RuntimeError("cannot start")
+
+    session = make_session(make_hello(on_load=boom))
+    assert _status(session, "hello").state == "error" and "cannot start" in _status(session, "hello").error
+    assert not session.actions.has("hello.greet") and "hello" not in session.plugins
+
+
+def test_failing_state_is_reported_not_raised(make_session):
+    def bad_state(host):
+        raise RuntimeError("oops")
+
+    session = make_session(make_hello(state=bad_state))
+    assert session.state()["plugins"]["hello"] == {"error": "RuntimeError: oops"}
+
+
+def test_duplicate_plugin_ids_keep_the_first(make_session):
+    session = make_session(make_hello(), make_hello())
+    assert [s.state for s in session.plugin_status] == ["loaded", "error"]
+
+
+class Shout(BaseAction):
+    type: Literal["loud.shout"] = "loud.shout"
+    name: str
+
+
+def test_plugins_call_each_other_through_actions(make_session):
+    def shout(host, action: Shout) -> str:
+        if not host.has_action("hello.greet"):
+            return action.name.upper()
+        return host.dispatch(Greet(name=action.name)).upper()
+
+    loud = WorkbenchPlugin(
+        id="loud", name="Loud", version="0.1", requires_api=HOST_API, actions=(ActionSpec(Shout, shout),)
+    )
+    assert make_session(loud).dispatch(Shout(name="ada")) == "ADA"
+    both = make_session(make_hello(), loud)
+    assert both.dispatch(Shout(name="ada")) == "HELLO, ADA!"
+    assert [e.action["type"] for e in both.history] == ["hello.greet", "loud.shout"]  # inner first
+
+
+class Widen(BaseAction):
+    type: Literal["edit.widen"] = "edit.widen"
+    mutates: ClassVar[bool] = True
+    link_id: int
+
+
+def test_a_plugin_previews_an_edit_on_a_derived_network(make_session, rdu_source):
+    from corral.editing import Edit
+    from netstead.workbench.actions import OpenNetwork
+
+    def widen(host, action: Widen) -> str:
+        preview = host.derive(None, label="Preview", note="preview")
+        payload = {"predicate": lambda t: t.link_id == action.link_id, "set": {"lanes": 9}}
+        host.mutate(preview, [Edit(op="update_rows", table="link", payload=payload)], note=f"widen {action.link_id}")
+        return preview
+
+    editor = WorkbenchPlugin(
+        id="edit", name="Edit", version="0.1", requires_api=HOST_API, actions=(ActionSpec(Widen, widen),)
+    )
+    session = make_session(editor)
+    session.dispatch(OpenNetwork(source=rdu_source))
+    first = int(session.registry.get("rdu-i40").links_df()["link_id"].iloc[0])
+    preview = session.dispatch(Widen(link_id=first))
+    summary = next(n for n in session.state()["networks"] if n["id"] == preview)
+    assert summary["derived_from"] == "rdu-i40" and summary["lineage"] == ["edit: preview", f"edit: widen {first}"]
+    assert session.registry.get("rdu-i40").version == 0

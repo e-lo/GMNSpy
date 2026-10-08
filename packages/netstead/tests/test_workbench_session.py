@@ -177,7 +177,7 @@ def test_add_network_from_python(session, rdu_source):
 
 def test_state_shape(opened):
     st = opened.state()
-    assert set(st) == {"networks", "active", "selection", "style"}
+    assert set(st) == {"networks", "active", "selection", "style", "plugins"}
     assert st["networks"][0]["links"] == 178
 
 
@@ -704,7 +704,7 @@ def test_settings_payload_marks_readonly_restart_and_unused_sections(opened):
     p = opened.settings_payload()
     assert set(p["readonly"]) == {"io.allowed_roots"}
     assert "config file" in p["readonly"]["io.allowed_roots"]
-    assert set(p["restart"]) == {"app.host", "app.port", "app.console"}
+    assert set(p["restart"]) == {"app.host", "app.port", "app.console", "app.disabled_plugins"}
     assert set(p["notes"]) == {"engine", "validation", "credentials"}
 
 

@@ -27,11 +27,12 @@ silent fallback to another provider.
 from __future__ import annotations
 
 import copy
+import functools
 import logging
 import threading
 import time
 from collections import deque
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 from typing import Any
@@ -80,6 +81,9 @@ from .estimate import Estimate, needs_approval
 from .events import EventBus
 from .jobs import Job, JobContext, JobRunner
 from .paths import allowed_roots, open_locator
+from .plugins.discovery import PluginStatus, discover
+from .plugins.host import Host, PluginSettingsError, validate_plugin_settings
+from .plugins.spec import HOST_API, WorkbenchPlugin, api_compatible, problems
 from .redact import scrub
 from .registry import NetworkHandle, NetworkRegistry, as_pandas, derived_copy
 from .selection import selection_payload, unparsed_payload
@@ -151,6 +155,7 @@ class Session:
         http: Any = None,
         llm_transport: Any = None,
         keyring: Any = "auto",
+        plugins: Iterable[WorkbenchPlugin] | None = None,
     ) -> None:
         """Load settings (raises :class:`~netstead.config.SettingsError` on bad config) and start empty.
 
@@ -158,6 +163,9 @@ class Session:
         :mod:`requests`); ``None`` means ``requests`` itself. Tests inject a fake. ``llm_transport``
         (an ``httpx`` transport) and ``keyring`` (``"auto"``, ``None`` or a keyring-like object) do
         the same for the LLM providers; the defaults use the network and the OS keyring.
+        ``plugins``: plugins to install (default ``None``: discover the installed
+        ``netstead.workbench.plugins`` entry points). A plugin that can't install is recorded in
+        :attr:`plugin_status`, never raised.
         """
         self.project_dir = project_dir
         self._environ = environ
@@ -195,6 +203,12 @@ class Session:
         self._handlers: dict[str, Callable[..., Any]] = {
             t: self._core_handler(t) for t in self.actions.types() if not self.actions.model(t).runs_as_job
         }
+        #: Installed plugins by id, and the :class:`Host` each one was given.
+        self.plugins: dict[str, WorkbenchPlugin] = {}
+        self._hosts: dict[str, Host] = {}
+        #: One status per plugin seen at startup: loaded, disabled, incompatible or error (with the reason).
+        self.plugin_status: list[PluginStatus] = []
+        self._install_plugins(plugins)
 
     # ------------------------------------------------------------------ public API
 
@@ -263,6 +277,81 @@ class Session:
         return build_registry(
             self.settings, environ=self._environ, keyring=self._keyring, transport=self._llm_transport
         )
+
+    def _install_plugins(self, plugins: Iterable[WorkbenchPlugin] | None) -> None:
+        """Install ``plugins`` (default: discover installed entry points); record a status for each."""
+        disabled = set(self.settings.app.disabled_plugins)
+        if plugins is None:
+            plugins, self.plugin_status = discover(disabled)
+        for plugin in plugins:
+            self.plugin_status.append(self._install(plugin, disabled))
+
+    def _install(self, plugin: WorkbenchPlugin, disabled: set[str]) -> PluginStatus:
+        """Check ``plugin``, run its ``on_load``, then register its Actions (all or none); never raises."""
+        frontend = f"/plugins/{plugin.id}/{plugin.frontend}" if plugin.static_dir is not None else None
+        status = PluginStatus(plugin.id, plugin.name, plugin.version, plugin.requires_api, "loaded", frontend=frontend)
+        if plugin.id in disabled:
+            return replace(status, state="disabled", frontend=None)
+        if not api_compatible(plugin.requires_api):
+            reason = f"needs plugin API {plugin.requires_api}; this netstead provides {HOST_API}"
+            return replace(status, state="incompatible", error=reason, frontend=None)
+        errors = problems(plugin, self.actions, self.plugins)
+        host = Host(self, plugin)
+        if not errors:
+            try:
+                host.settings  # noqa: B018  (validates [plugins.<id>] now, so a bad file is reported at startup)
+                if plugin.on_load is not None:
+                    plugin.on_load(host)
+            except PluginSettingsError as exc:
+                errors.append(str(exc))
+            except Exception as exc:  # boundary: third-party code must not stop the session
+                logger.exception("workbench plugin %r failed to load", plugin.id)
+                errors.append(f"{type(exc).__name__}: {exc}")
+        if not errors:
+            errors = self._register_actions(plugin, host)
+        if errors:
+            return replace(status, state="error", error="; ".join(errors), frontend=None)
+        self.plugins[plugin.id] = plugin
+        self._hosts[plugin.id] = host
+        return status
+
+    def _register_actions(self, plugin: WorkbenchPlugin, host: Host) -> list[str]:
+        """Register every one of ``plugin``'s Actions and handlers, or (on any failure) none; return the errors."""
+        registered: list[str] = []
+        try:
+            for spec in plugin.actions:
+                action_type = spec.model.action_type()
+                self.actions.register(spec.model)
+                registered.append(action_type)  # type: ignore[arg-type]  # register() refused a None type
+                self._handlers[action_type] = functools.partial(spec.handler, host)  # type: ignore[index]
+        except (TypeError, ValueError) as exc:  # ``problems`` should have caught it; never half-install
+            for action_type in registered:
+                self.actions.unregister(action_type)
+                self._handlers.pop(action_type, None)
+            return [str(exc)]
+        return []
+
+    def _plugin_state(self) -> dict[str, Any]:
+        """Each plugin's contributed state; a failing ``state()`` is logged and shown, never raised."""
+        out: dict[str, Any] = {}
+        for plugin_id, plugin in self.plugins.items():
+            if plugin.state is None:
+                continue
+            try:
+                out[plugin_id] = copy.deepcopy(plugin.state(self._hosts[plugin_id]))
+            except Exception as exc:  # boundary: third-party code
+                logger.exception("workbench plugin %r state() failed", plugin_id)
+                out[plugin_id] = {"error": f"{type(exc).__name__}: {exc}"}
+        return out
+
+    def _check_plugin_settings(self, settings: Settings) -> None:
+        """Raise :class:`ActionError` if ``settings`` breaks any installed plugin's settings model."""
+        for plugin_id, plugin in self.plugins.items():
+            if plugin.settings_model is not None:
+                try:
+                    validate_plugin_settings(plugin.settings_model, settings.plugins.get(plugin_id, {}), plugin_id)
+                except PluginSettingsError as exc:
+                    raise ActionError(str(exc)) from None
 
     def dispatch(self, action: BaseAction | dict[str, Any]) -> Any:
         """Apply ``action`` (waiting for a job action to finish) and return its result.
@@ -478,6 +567,7 @@ class Session:
                 "active": self.active,
                 "selection": copy.deepcopy(self.selection),
                 "style": copy.deepcopy(self.style),
+                "plugins": self._plugin_state(),
             }
 
     def settings_payload(self) -> dict[str, Any]:
@@ -753,13 +843,21 @@ class Session:
             if action.scope == "session":
                 overrides = {**self._overrides, action.key: action.value}
                 loaded = load_settings(project_dir=self.project_dir, overrides=overrides, environ=self._environ)
+                self._check_plugin_settings(loaded.settings)
                 self._overrides = overrides
             else:
+                if key.split(".", 1)[0] == "plugins":  # check first: a saved file a plugin rejects breaks startup
+                    preview = load_settings(
+                        project_dir=self.project_dir,
+                        overrides={**self._overrides, action.key: action.value},
+                        environ=self._environ,
+                    )
+                    self._check_plugin_settings(preview.settings)
                 save_setting(
                     action.key, action.value, scope=action.scope, project_dir=self.project_dir, environ=self._environ
                 )
                 loaded = load_settings(project_dir=self.project_dir, overrides=self._overrides, environ=self._environ)
-            value = get_value(loaded.settings, action.key)
+            value = _value_or_unset(loaded.settings, action.key)
         except SettingsError as exc:
             raise ActionError(str(exc)) from exc
         self.loaded = loaded
@@ -780,7 +878,7 @@ _CONFIG_ONLY_REASON = (
 #: Shown beside a secret-named key (none exist today; keys live in the OS keyring).
 _SECRET_REASON = "Credentials are never settings. Set API keys in Settings → Language models."
 #: Keys the server reads only at launch: a change applies the next time `netstead app` starts.
-_RESTART_KEYS = ("app.host", "app.port", "app.console")
+_RESTART_KEYS = ("app.host", "app.port", "app.console", "app.disabled_plugins")
 #: Sections in the schema that nothing reads yet (see the P1b plan, open question 8).
 _SECTION_NOTES = {
     "engine": "Not used by the workbench yet: networks open with DuckDB's own defaults.",
@@ -829,6 +927,16 @@ class _ParsedSelect:
     result: Any
     parsed_by: dict[str, Any] | None
     error: Exception | None = None  # the parser could not read the utterance (a "could not parse" selection)
+
+
+def _value_or_unset(settings: Settings, key: str) -> Any:
+    """``get_value`` for ``key``; a removed plugin setting (no model default at this layer) reads as ``None``."""
+    try:
+        return get_value(settings, key)
+    except SettingsError:
+        if key.strip().lower().split(".", 1)[0] == "plugins":
+            return None
+        raise
 
 
 def _follows_endpoint(mode: str, endpoint_local: bool) -> bool:

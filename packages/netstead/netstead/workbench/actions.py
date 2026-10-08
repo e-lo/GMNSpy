@@ -344,6 +344,11 @@ class ActionRegistry:
         self._models[action_type] = model
         self._adapter = None
 
+    def unregister(self, action_type: str) -> None:
+        """Remove ``action_type`` (``KeyError`` if it isn't registered); used to undo a failed plugin install."""
+        del self._models[action_type]
+        self._adapter = None
+
     def has(self, action_type: str) -> bool:
         """Whether ``action_type`` is registered."""
         return action_type in self._models
