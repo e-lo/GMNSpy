@@ -722,3 +722,23 @@ def test_settings_payload_marks_readonly_restart_and_unused_sections(opened):
 )
 def test_refusal_reason(key, refused):
     assert (refusal_reason(key) is not None) is refused
+
+
+def test_history_entry_carries_its_import_line(opened):
+    assert opened.history[-1].imports == "from netstead.workbench import OpenNetwork"
+
+
+def test_session_has_its_own_action_registry(session):
+    assert session.actions.has("open_network") and session.actions.types()[0] == "open_network"
+
+
+def test_dispatch_refuses_an_unregistered_action_instance(session):
+    from typing import Literal
+
+    from netstead.workbench.actions import BaseAction
+
+    class Stray(BaseAction):
+        type: Literal["stray.thing"] = "stray.thing"
+
+    with pytest.raises(ValueError, match="not registered"):
+        session.dispatch(Stray())

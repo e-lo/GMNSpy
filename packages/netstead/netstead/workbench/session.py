@@ -31,7 +31,7 @@ import logging
 import threading
 import time
 from collections import deque
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 from typing import Any
@@ -58,7 +58,8 @@ from netstead.viz.styling import styleable_columns
 
 from . import build
 from .actions import (
-    Action,
+    ActionRegistry,
+    BaseAction,
     BuildNetwork,
     ClearSelection,
     CloseNetwork,
@@ -68,8 +69,8 @@ from .actions import (
     SetActiveNetwork,
     SetSetting,
     Style,
+    import_line,
     is_secret_name,
-    parse_action,
     to_python,
 )
 from .errors import ActionError, ApprovalRequired, JobCancelled, NotSupportedYet, PathNotAllowed
@@ -123,6 +124,7 @@ class HistoryEntry:
     seq: int
     action: dict[str, Any]
     python: str
+    imports: str  # the ``from ... import ...`` line ``python`` needs (a plugin's Action lives in its own package)
     ok: bool
     error: str | None
     error_type: str | None
@@ -184,6 +186,13 @@ class Session:
         self.jobs = JobRunner(lambda event: self.events.publish(event))  # late-bound, like every other publish
         self._lock = threading.RLock()
         self._committed: dict[str, int] = {}  # job id -> history seq its ``_commit`` recorded
+        #: The Actions this session understands: the core ones, plus any its plugins register.
+        self.actions = ActionRegistry()
+        #: ``type`` -> handler run under the lock. Core handlers are this class's ``_do_<type>`` methods
+        #: (job actions use ``_job_<type>``); plugins add theirs when installed.
+        self._handlers: dict[str, Callable[..., Any]] = {
+            t: self._core_handler(t) for t in self.actions.types() if not self.actions.model(t).runs_as_job
+        }
 
     # ------------------------------------------------------------------ public API
 
@@ -253,7 +262,7 @@ class Session:
             self.settings, environ=self._environ, keyring=self._keyring, transport=self._llm_transport
         )
 
-    def dispatch(self, action: Action | dict[str, Any]) -> Any:
+    def dispatch(self, action: BaseAction | dict[str, Any]) -> Any:
         """Apply ``action`` (waiting for a job action to finish) and return its result.
 
         Raises the recorded failure's type: :class:`~netstead.workbench.errors.ApprovalRequired` (with
@@ -269,13 +278,12 @@ class Session:
 
     do = dispatch
 
-    def dispatch_recorded(self, action: Action | dict[str, Any]) -> HistoryEntry:
+    def dispatch_recorded(self, action: BaseAction | dict[str, Any]) -> HistoryEntry:
         """Apply ``action``, record and publish it, and return the entry (never raises ``ActionError``).
 
         A ``runs_as_job`` action is submitted as a background job and this call waits for it.
         """
-        if isinstance(action, dict):
-            action = parse_action(action)
+        action = self._coerce(action)
         if action.runs_as_job:
             # The job thread needs the lock (``_commit``/``_finish``) and we wait for it below, so a
             # caller already holding the lock (e.g. a handler) would deadlock: fail loudly instead.
@@ -288,7 +296,7 @@ class Session:
             if job.history_seq is None:  # on_finish itself failed (already logged by the runner)
                 raise RuntimeError(f"job {job.id} finished without a history entry")
             return self.history[job.history_seq - 1]
-        handler = getattr(self, f"_do_{action.type}")
+        handler = self._handlers[action.type]
         # An optional ``_prepare_<type>`` does the slow, read-only part (an LLM call) WITHOUT the lock,
         # so other actions and state reads proceed meanwhile; the handler then applies its result and
         # the entry is recorded in one critical section, as before. Its failure is recorded like the
@@ -315,13 +323,28 @@ class Session:
                 result, ok, error_type = None, False, "InternalError"
             return self._record(action, ok=ok, result=result, error=error, error_type=error_type)
 
-    def submit(self, action: Action | dict[str, Any]) -> Job:
+    def _core_handler(self, action_type: str) -> Callable[..., Any]:
+        """The handler-table entry for a core Action: calls ``_do_<type>``, looked up at call time.
+
+        Late-bound so an instance-level override of the method (a test's ``monkeypatch``) still takes effect.
+        """
+        name = f"_do_{action_type}"
+        return lambda *args: getattr(self, name)(*args)
+
+    def _coerce(self, action: BaseAction | dict[str, Any]) -> BaseAction:
+        """Parse a dict with this session's registry; refuse an instance of a class it doesn't know."""
+        if isinstance(action, dict):
+            return self.actions.parse(action)
+        if not self.actions.has(action.type) or self.actions.model(action.type) is not type(action):
+            raise ValueError(f"action type {action.type!r} is not registered in this session")
+        return action
+
+    def submit(self, action: BaseAction | dict[str, Any]) -> Job:
         """Start a ``runs_as_job`` action on a background job and return the :class:`Job` at once.
 
         The history entry is recorded when the job finishes (so ``seq`` follows completion order).
         """
-        if isinstance(action, dict):
-            action = parse_action(action)
+        action = self._coerce(action)
         if not action.runs_as_job:
             raise ValueError(f"{action.type} is not a job action; use dispatch()")
         run = getattr(self, f"_job_{action.type}")
@@ -332,7 +355,7 @@ class Session:
             on_finish=lambda job: self._finish(action, job),
         )
 
-    def _commit(self, action: Action, ctx: JobContext, loaded: _Loaded) -> dict[str, Any]:
+    def _commit(self, action: BaseAction, ctx: JobContext, loaded: _Loaded) -> dict[str, Any]:
         """Register ``loaded`` and record the success entry in ONE critical section; return the job result.
 
         Doing both under one lock acquisition is what keeps history order equal to registry order:
@@ -349,7 +372,7 @@ class Session:
             self._committed[ctx.job_id] = entry.seq
         return result
 
-    def _finish(self, action: Action, job: Job) -> None:
+    def _finish(self, action: BaseAction, job: Job) -> None:
         """Job callback: link the committed entry to the job, or record a failure/cancellation entry."""
         with self._lock:
             seq = self._committed.pop(job.id, None)
@@ -365,7 +388,7 @@ class Session:
         self.jobs.update(job, history_seq=seq)
 
     def _record(
-        self, action: Action, *, ok: bool, result: Any, error: str | None, error_type: str | None
+        self, action: BaseAction, *, ok: bool, result: Any, error: str | None, error_type: str | None
     ) -> HistoryEntry:
         """Append and publish a history entry (then a ``state`` event on success). Call with the lock held.
 
@@ -377,6 +400,7 @@ class Session:
             seq=len(self.history) + 1,
             action=action.model_dump(mode="json"),
             python=to_python(action),
+            imports=import_line(action),
             ok=ok,
             error=error,
             error_type=error_type,

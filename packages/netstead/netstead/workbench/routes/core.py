@@ -13,7 +13,6 @@ from pydantic import ValidationError
 
 from netstead.viz.styling import basemap_style
 
-from ..actions import parse_action
 from ..events import sse_format
 from ..session import Session
 
@@ -47,7 +46,7 @@ def core_router(session: Session) -> APIRouter:
     def actions(body: dict = Body(...)) -> JSONResponse:  # noqa: B008  (FastAPI Body default)
         """Apply an action. A job action (open/build) answers 202 with its job; the outcome arrives over SSE."""
         try:
-            action = parse_action(body)
+            action = session.actions.parse(body)
         except ValidationError as exc:
             detail = exc.errors(include_url=False, include_context=False, include_input=False)  # input may be a key
             return JSONResponse({"error": "invalid action", "detail": jsonable_encoder(detail)}, status_code=422)
