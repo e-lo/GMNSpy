@@ -783,8 +783,9 @@ def test_mutate_publishes_state(opened):
     opened.events.publish = published.append
     first = int(opened.registry.get("rdu-i40").links_df()["link_id"].iloc[0])
     opened.mutate(None, [_set_lanes(first, 9)], note="lanes=9")
-    assert [e["type"] for e in published] == ["state"]
-    assert published[0]["state"]["networks"][0]["version"] == 1
+    assert [e["type"] for e in published] == ["history", "state"]  # outside an Action: recorded, not replayable
+    assert published[0]["entry"]["action"] == {"type": "python.mutate", "net_id": "rdu-i40", "note": "lanes=9"}
+    assert published[1]["state"]["networks"][0]["version"] == 1
 
 
 def test_mutate_is_all_or_nothing(opened):

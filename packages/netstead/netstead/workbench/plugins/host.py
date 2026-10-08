@@ -84,8 +84,12 @@ class Host:
             return self._session._handle(net_id)
 
     def mutate(self, net_id: str | None, edits: Sequence[Edit], *, note: str) -> list[EditResult]:
-        """Apply corral edits all-or-nothing and return their results; lineage gets ``"<plugin id>: <note>"``."""
-        return self._session.mutate(net_id, edits, note=f"{self.plugin_id}: {note}")
+        """Apply corral edits all-or-nothing and return their results; lineage gets ``"<plugin id>: <note>"``.
+
+        Inside an Action handler, a failing handler undoes it. Anywhere else (a job, a route) it is
+        recorded as a non-replayable ``<plugin id>.mutate`` history entry.
+        """
+        return self._session.mutate(net_id, edits, note=note, origin=self.plugin_id)
 
     def derive(self, net_id: str | None, *, label: str, note: str) -> str:
         """Register a copy-on-write copy of a network (a preview or scenario) and return its id."""

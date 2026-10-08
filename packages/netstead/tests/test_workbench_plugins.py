@@ -766,8 +766,87 @@ def test_history_js_writes_nested_entries_as_comments(wrecked, tmp_path, run_nod
 
     wrecked.dispatch(Outer(inner="action_error"))
     wrecked.dispatch_recorded(Outer(then="raise"))
+    wrecked.mutate(None, [_delete_all_links()], note="by hand")
     history = TestClient(build_app(wrecked)).get("/api/history").json()
     script = _js_session_script(history, tmp_path, run_node)
     assert script == _script_lines(history)
     assert "# via wreck.outer: app.do(Wreck(then='action_error'))  # failed: refused after mutate" in script
     assert "# via wreck.outer: app.do(Style(offset=False))  # failed: rolled back: wreck.outer failed" in script
+    assert script.endswith("\n# python changed rdu-i40 outside an Action: by hand (not replayable)")
+
+
+# ---------------------------------------------------------------------------- mutate outside an Action (I-6)
+
+
+class Spawn(BaseAction):
+    type: Literal["wreck.spawn"] = "wreck.spawn"
+
+
+def make_background(seen: dict[str, Any]) -> WorkbenchPlugin:
+    """``wreck.spawn`` starts a job that mutates the active network; ``GET /trim`` mutates from a route."""
+    from fastapi import APIRouter
+
+    def spawn(host, action: Spawn) -> str:
+        def work(ctx) -> int:
+            ctx.stage("trim", progress=0.5)
+            (result,) = host.mutate(None, [_delete_all_links()], note="trim in a job")
+            return result.diff.rows_removed
+
+        seen["job"] = host.submit_job("Trim links", work)
+        return seen["job"]
+
+    def router(host) -> APIRouter:
+        api = APIRouter()
+
+        @api.post("/trim")
+        def trim() -> dict:
+            host.mutate(None, [_delete_all_links()], note="trim\nfrom a route")
+            return {"ok": True}
+
+        return api
+
+    return WorkbenchPlugin(
+        id="wreck", name="Wreck", version="0", requires_api=HOST_API, actions=(ActionSpec(Spawn, spawn),), router=router
+    )
+
+
+def test_a_job_mutates_without_deadlock_and_is_recorded(make_session, rdu_source):
+    seen: dict[str, Any] = {}
+    session = make_session(make_background(seen))
+    session.dispatch(OpenNetwork(source=rdu_source))
+    links = _links(session)
+    job_id = session.dispatch(Spawn())
+    job = session.jobs.get(job_id)
+    assert job_id == seen["job"] and job.wait(timeout=30), "the job's mutate deadlocked"
+    assert job.status == "done" and job.result == links and job.kind == "wreck.job"
+    assert _links(session) == 0
+    entry = session.history[-1]
+    assert entry.ok and entry.action == {"type": "wreck.mutate", "net_id": "rdu-i40", "note": "trim in a job"}
+    assert entry.python == "# wreck changed rdu-i40 outside an Action: trim in a job (not replayable)"
+    assert session.registry.get("rdu-i40").lineage == ["wreck: trim in a job"]
+
+
+def test_a_route_mutation_is_recorded_as_a_one_line_comment(make_session, rdu_source):
+    from fastapi.testclient import TestClient
+    from netstead.workbench import build_app
+
+    session = make_session(make_background({}))
+    session.dispatch(OpenNetwork(source=rdu_source))
+    assert TestClient(build_app(session)).post("/api/plugins/wreck/trim").json() == {"ok": True}
+    script, imports = session_script(session)
+    assert imports[1:] == []  # nothing to import for a comment
+    assert script.splitlines()[-1] == "# wreck changed rdu-i40 outside an Action: trim from a route (not replayable)"
+
+
+def test_a_python_mutate_outside_an_action_is_recorded(make_session, rdu_source):
+    session = make_session()
+    session.dispatch(OpenNetwork(source=rdu_source))
+    session.mutate(None, [_delete_all_links()], note="by hand")
+    entry = session.history[-1]
+    assert entry.ok and entry.action["type"] == "python.mutate" and entry.imports == ""
+    assert entry.python == "# python changed rdu-i40 outside an Action: by hand (not replayable)"
+
+
+def test_a_mutate_inside_an_action_adds_no_entry_of_its_own(wrecked):
+    wrecked.dispatch(Wreck(then="ok"))
+    assert [e.action["type"] for e in wrecked.history] == ["open_network", "wreck.all"]

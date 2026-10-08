@@ -642,7 +642,9 @@ class Session:
             self.events.publish({"type": "state", "state": self.state()})
         return handle
 
-    def mutate(self, net_id: str | None, edits: Sequence[Edit], *, note: str) -> list[EditResult]:
+    def mutate(
+        self, net_id: str | None, edits: Sequence[Edit], *, note: str, origin: str | None = None
+    ) -> list[EditResult]:
         """Apply corral ``edits`` to a network's roadway, in order and all-or-nothing; return their results.
 
         The edits run on a copy-on-write draft of the roadway, so the network itself never holds a
@@ -650,7 +652,10 @@ class Session:
         sync stamps and the caches as they were. On success the changed tables are swapped in at once,
         the ``version`` is bumped (dropping caches), ``note`` is appended to the lineage, and ``state``
         is published. Inside an Action, the change is undone if that Action (or one it is nested in)
-        fails. The returned :class:`~corral.editing.EditResult` objects carry the rollback data
+        fails. Outside any Action (a job, a plugin route, Python) nothing would record it, so it gets a
+        history entry of its own, ``<origin>.mutate``, whose ``python`` is a comment: it is visible but
+        not replayable. ``origin`` (a plugin id; default ``"python"``) also prefixes the lineage note.
+        The returned :class:`~corral.editing.EditResult` objects carry the rollback data
         :func:`corral.editing.apply.reverse_edit` needs, so a caller can undo them later.
         """
         with self._lock:
@@ -671,9 +676,28 @@ class Session:
                     )
                 )
             handle.replace_tables(changed)
-            handle.lineage.append(note)
-            self.events.publish({"type": "state", "state": self.state()})
+            handle.lineage.append(f"{origin}: {note}" if origin else note)
+            if self._running:
+                self.events.publish({"type": "state", "state": self.state()})
+            else:
+                self._record_outside_action(handle.id, note, origin or "python")
         return applied
+
+    def _record_outside_action(self, net_id: str, note: str, origin: str) -> None:
+        """Record a ``mutate`` no Action covers, so nothing changes silently (not replayable: a comment)."""
+        text = " ".join(note.split())  # one line: it becomes a comment in a script
+        entry = HistoryEntry(
+            seq=len(self.history) + 1,
+            action={"type": f"{origin}.mutate", "net_id": net_id, "note": text},
+            python=f"# {origin} changed {net_id} outside an Action: {text} (not replayable)",
+            imports="",
+            ok=True,
+            error=None,
+            error_type=None,
+            result=None,
+            ts=time.time(),
+        )
+        self._append(entry, state=True)
 
     def derive(self, net_id: str | None, *, label: str, note: str) -> str:
         """Register a copy-on-write copy of a network as a new one (a preview, a scenario); return its id.

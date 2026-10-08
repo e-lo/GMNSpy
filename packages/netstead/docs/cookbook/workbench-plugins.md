@@ -71,8 +71,11 @@ the design. Core enforces some of them and plugins are expected to follow the re
    prefilled from the selection, sees a preview on the map, and commits. Present your workflows in
    this shape.
 3. **Nothing mutates silently.** Previews and scenarios are derived networks (`host.derive`) and
-   leave the base untouched. An in-place change (`host.mutate`) happens only inside an Action, so
-   it appears in history.
+   leave the base untouched. Make in-place changes (`host.mutate`) inside an Action handler: the
+   Action is recorded in history and replays in "copy as Python", and if the handler fails the
+   change is undone. A `mutate` from anywhere else (a `submit_job` function, a plugin route) still
+   appears in history, as a `<id>.mutate` entry, but it can't be replayed: the copied script shows
+   it only as a comment.
 4. **Everything is an Action, plugins included.** Plugin Action types are namespaced
    (`<id>.<name>`) and get the same history, "copy as Python", replay and HTTP dispatch as core
    Actions.
