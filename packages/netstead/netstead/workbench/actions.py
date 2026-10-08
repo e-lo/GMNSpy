@@ -16,7 +16,7 @@ import operator
 import re
 from collections.abc import Iterable, Iterator, Mapping
 from pathlib import PurePath
-from typing import Annotated, Any, ClassVar, Literal
+from typing import TYPE_CHECKING, Annotated, Any, ClassVar, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, model_validator
 
@@ -63,6 +63,8 @@ class BaseAction(BaseModel):
     mutates: ClassVar[bool] = False
     runs_as_job: ClassVar[bool] = False
     replay_overrides: ClassVar[dict[str, Any]] = {}
+    if TYPE_CHECKING:  # every concrete Action declares its own ``type`` field; not a field of the base
+        type: str
 
     @classmethod
     def action_type(cls) -> str | None:
