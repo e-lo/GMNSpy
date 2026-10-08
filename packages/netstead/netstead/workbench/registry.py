@@ -11,7 +11,7 @@ from __future__ import annotations
 import re
 import threading
 from collections.abc import Callable, Iterator
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Literal
 
@@ -21,7 +21,15 @@ from netstead import Network
 
 from .redact import scrub, scrub_source
 
-__all__ = ["COMPONENTS", "Component", "NetworkHandle", "NetworkRegistry", "as_pandas", "default_label"]
+__all__ = [
+    "COMPONENTS",
+    "Component",
+    "NetworkHandle",
+    "NetworkRegistry",
+    "as_pandas",
+    "default_label",
+    "derived_copy",
+]
 
 Component = Literal["roadway", "transit"]
 COMPONENTS: tuple[Component, ...] = ("roadway", "transit")
@@ -58,6 +66,17 @@ def as_pandas(table: Any) -> pd.DataFrame:
     return table.to_pandas() if hasattr(table, "to_pandas") else table.execute()
 
 
+def derived_copy(net: Network) -> Network:
+    """A copy of ``net`` whose tables can be edited without touching ``net`` (copy-on-write).
+
+    The :class:`~corral.dataset.Table` wrappers are copied; their expressions are immutable, so
+    they are shared, not duplicated. The copy has no sync-state tracker: it was never read from,
+    and must never be written back to, the base network's source.
+    """
+    tables = {name: replace(table, metadata=dict(table.metadata)) for name, table in net.tables.items()}
+    return replace(net, tables=tables, dirty_tracker=None, metadata=dict(net.metadata))
+
+
 def _extra_tables(net: Network) -> dict[str, Any]:
     """Additional GMNS tables the network carries, kept lazy (best-effort), keyed by singular name."""
     out: dict[str, Any] = {}
@@ -82,6 +101,7 @@ class NetworkHandle:
     transit: Any | None = None
     version: int = 0
     lineage: list[str] = field(default_factory=list)
+    derived_from: str | None = None  # the id of the network this one is a copy-on-write copy of
     _cache: dict[tuple[str, int], Any] = field(default_factory=dict, repr=False)
     _lock: threading.RLock = field(default_factory=threading.RLock, repr=False)
 
@@ -148,6 +168,7 @@ class NetworkHandle:
             "links": len(self.links_df()),
             "nodes": len(self.nodes_df()),
             "lineage": list(self.lineage),
+            "derived_from": self.derived_from,
         }
 
 

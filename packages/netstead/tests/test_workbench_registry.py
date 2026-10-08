@@ -88,3 +88,32 @@ def test_remove(net, rdu_source):
     h = reg.add(net, source=rdu_source)
     reg.remove(h.id)
     assert len(reg) == 0
+
+
+def test_derived_copy_is_copy_on_write(rdu_source):
+    from corral.editing import Edit
+    from corral.editing.apply import apply_edit
+    from netstead import Network
+    from netstead.workbench.registry import as_pandas, derived_copy
+
+    base = Network.from_source(rdu_source)
+    copy_ = derived_copy(base)
+    first = int(as_pandas(base.links)["link_id"].iloc[0])
+    payload = {"predicate": lambda t: t.link_id == first, "set": {"lanes": 9}}
+    edit = Edit(op="update_rows", table="link", payload=payload)
+    apply_edit(copy_, edit)
+    lanes = lambda net: int(as_pandas(net.links).set_index("link_id").loc[first, "lanes"])  # noqa: E731
+    assert lanes(copy_) == 9 and lanes(base) != 9
+    assert copy_.dirty_tracker is None and copy_.spec_version == base.spec_version
+    assert not base.links.dirty and copy_.links.dirty
+
+
+def test_summary_reports_derived_from(rdu_source):
+    from netstead import Network
+    from netstead.workbench.registry import NetworkRegistry
+
+    reg = NetworkRegistry()
+    handle = reg.add(Network.from_source(rdu_source), source=rdu_source)
+    assert handle.summary()["derived_from"] is None
+    handle.derived_from = "base"
+    assert handle.summary()["derived_from"] == "base"
