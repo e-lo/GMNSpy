@@ -135,3 +135,12 @@ def test_unregister_removes_the_type_from_parsing():
     assert not reg.has("hello.greet")
     with pytest.raises(ValidationError):
         reg.parse({"type": "hello.greet", "name": "Ada"})
+
+
+def test_action_union_and_core_actions_hold_the_same_models_in_order():
+    from typing import get_args
+
+    from netstead.workbench.actions import Action
+
+    union = get_args(Action)[0]
+    assert get_args(union) == CORE_ACTIONS

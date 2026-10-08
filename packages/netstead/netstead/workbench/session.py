@@ -880,7 +880,8 @@ _CONFIG_ONLY_REASON = (
     "The folders the app may read and write. Set them in a config file, a NETSTEAD_IO__ALLOWED_ROOTS "
     "env var, or on the command line: if an action could widen them, the sandbox would protect nothing."
 )
-#: Shown beside a secret-named key (none exist today; keys live in the OS keyring).
+#: Shown beside a secret-named key. Config validation refuses them (keys live in the OS keyring), so this
+#: only appears if one slips into the sources some other way.
 _SECRET_REASON = "Credentials are never settings. Set API keys in Settings → Language models."
 #: Keys the server reads only at launch: a change applies the next time `netstead app` starts.
 _RESTART_KEYS = ("app.host", "app.port", "app.console", "app.disabled_plugins")

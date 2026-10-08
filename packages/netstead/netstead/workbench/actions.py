@@ -56,6 +56,10 @@ class BaseAction(BaseModel):
     and its fields. ``mutates`` marks actions the assistant must draft before applying;
     ``runs_as_job`` (core only) runs the slow work on a background job thread; ``replay_overrides``
     are fields forced in the ``to_python`` replay snippet.
+
+    Field values must round-trip through ``repr`` (str, numbers, bools, None, lists/dicts/tuples of
+    those, nested pydantic models): "copy session as Python" writes each field as ``name=<repr(value)>``,
+    so a value whose ``repr`` isn't valid Python makes the copied script fail.
     """
 
     model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)  # errors never echo a value (keys)
@@ -387,12 +391,19 @@ _CORE_REGISTRY = ActionRegistry()
 
 
 def parse_action(data: dict[str, Any]) -> Action:
-    """Validate a JSON dict into a core Action (raises ``pydantic.ValidationError``)."""
+    """Validate a JSON dict into a core Action (raises ``pydantic.ValidationError``).
+
+    Core only: a session that has plugins parses with its own registry, ``session.actions.parse``.
+    """
     return _CORE_REGISTRY.parse(data)  # type: ignore[return-value]  # core registry: always a core Action
 
 
 def action_json_schema() -> dict[str, Any]:
-    """JSON schema of the core Action union (the assistant's tool vocabulary)."""
+    """JSON schema of the *core* Action union.
+
+    Not the assistant's tool vocabulary once plugins exist: exposing Actions to the NL assistant (P3)
+    must use the session's own ``session.actions.json_schema()``, which includes its plugins' Actions.
+    """
     return _CORE_REGISTRY.json_schema()
 
 
