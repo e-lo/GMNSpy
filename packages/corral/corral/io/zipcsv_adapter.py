@@ -37,6 +37,11 @@ Design notes:
       :class:`NotImplementedError` for any input that would require it.
       Existing destinations are refused unless ``overwrite=True`` is
       passed (I6) — silent clobber was a footgun.
+    - A URL source (``https://h/net.csv.zip``, ``s3://b/net.csv.zip``) is
+      opened through ``fsspec`` and never as a local path; credentials
+      come from ``storage_options=`` (as forwarded by
+      :class:`~corral.io.remote.RemoteAdapter`) or the credentials
+      cascade. Writes to a URL are refused.
 
 Architecture cross-reference
 ----------------------------
@@ -56,13 +61,20 @@ import tempfile
 import zipfile
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
+from urllib.parse import urlparse
+
+import fsspec
 
 from corral.engines.errors import InvalidEngineCallError
-from corral.io import register_adapter
+from corral.io import _scheme_of, register_adapter
 from corral.io._paths import normalize_to_str
 from corral.io.base import ResourceListing, ResourceRef, SourceRef
+from corral.io.credentials import resolve_credentials
+from corral.io.errors import WriteUnsupportedForSchemeError
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
+    from collections.abc import Iterator
+
     from corral.engines.base import Engine, TableExpr
     from corral.spec.model import Schema
 
@@ -154,7 +166,8 @@ class ZipCsvAdapter:
         # 2. Bare .zip — peek at the central directory. ZipFile.namelist()
         # only reads the central directory record at the tail of the file,
         # which is cheap (a few KB even for huge archives).
-        if lower.endswith(".zip"):
+        # A URL is never peeked at: probing must stay cheap and offline.
+        if lower.endswith(".zip") and _scheme_of(str(source)) is None:
             try:
                 with zipfile.ZipFile(str(source)) as z:
                     return any(_is_csv_member(n) for n in z.namelist())
@@ -183,7 +196,8 @@ class ZipCsvAdapter:
         future adapters may need it for cheap metadata reads.
 
         Args:
-            source: A path to a zip file.
+            source: A path to a zip file, or a URL (opened via fsspec with
+                credentials from the cascade).
             engine: Unused for this adapter (kept for protocol parity).
 
         Returns:
@@ -205,7 +219,7 @@ class ZipCsvAdapter:
             'csv'
         """
         path_str = normalize_to_str(source, adapter="zipcsv adapter")
-        with zipfile.ZipFile(path_str) as z:
+        with _open_zip(path_str) as z:
             members = [n for n in z.namelist() if _is_csv_member(n)]
         return [
             ResourceRef(
@@ -244,13 +258,15 @@ class ZipCsvAdapter:
         contract is identical to the duckdb adapter's.
 
         Args:
-            source: Path to the zip file.
+            source: Path to the zip file, or a URL (opened via fsspec).
             engine: The execution engine to defer the actual csv read to.
             schema: Optional Frictionless schema, forwarded to the
                 engine's csv reader.
             **kwargs: Adapter-specific options. ``table=<name>`` selects
                 the csv to read and is **required** even for single-csv
-                zips. Any other kwargs are forwarded to
+                zips. ``storage_options=`` (fsspec options for a URL
+                source; the credentials cascade is used when absent) is
+                consumed here. Any other kwargs are forwarded to
                 ``engine.read_csv(extracted_path, **kwargs)``.
 
         Returns:
@@ -282,8 +298,10 @@ class ZipCsvAdapter:
         # I10: only ``table=`` is accepted. Pop it so we don't forward
         # the selector to ``engine.read_csv``.
         selector = kwargs.pop("table", None)
+        # The extracted member is a local file: fsspec options apply to the zip only.
+        storage_options = kwargs.pop("storage_options", None)
 
-        with zipfile.ZipFile(path_str) as z:
+        with _open_zip(path_str, storage_options) as z:
             csv_members = [n for n in z.namelist() if _is_csv_member(n)]
 
             if not csv_members:
@@ -357,6 +375,8 @@ class ZipCsvAdapter:
         Raises:
             FileExistsError: If ``dest`` exists and ``overwrite=True``
                 was not passed.
+            WriteUnsupportedForSchemeError: If ``dest`` is a URL — this
+                adapter only writes local files.
 
         Examples:
             >>> from corral.engines import get_engine
@@ -375,6 +395,12 @@ class ZipCsvAdapter:
             ['data.csv']
         """
         dest_str = normalize_to_str(dest, adapter="zipcsv adapter")
+        scheme = _scheme_of(dest_str)
+        if scheme is not None:
+            raise WriteUnsupportedForSchemeError(
+                f"zipcsv adapter: writing a zip to a {scheme}:// URL is not supported; "
+                "write to a local path and upload it instead"
+            )
         # I10: only ``table=`` selector.
         selector = kwargs.pop("table", None)
         # I6: explicit overwrite kwarg; default False refuses an
@@ -398,6 +424,26 @@ class ZipCsvAdapter:
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+@contextlib.contextmanager
+def _open_zip(path_str: str, storage_options: dict | None = None) -> Iterator[zipfile.ZipFile]:
+    """Open the zip at ``path_str``: a local path directly, a URL through fsspec.
+
+    A URL is never handed to :class:`zipfile.ZipFile` as a string — that
+    would open ``<cwd>/https:/host/...`` as a relative local path.
+    ``storage_options`` defaults to the credentials cascade for the URL's
+    host. fsspec files are seekable, so only the central directory and
+    the chosen member are fetched.
+    """
+    if _scheme_of(path_str) is None:
+        with zipfile.ZipFile(path_str) as z:
+            yield z
+        return
+    if storage_options is None:
+        storage_options = resolve_credentials(urlparse(path_str).hostname or "")
+    with fsspec.open(path_str, "rb", **storage_options) as f, zipfile.ZipFile(f) as z:
+        yield z
 
 
 def _relazy_if_needed(engine: Engine, materialized: Any) -> Any:

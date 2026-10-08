@@ -43,6 +43,8 @@ from corral.io import (
     FormatNotDetected,
     ResourceListing,
     ResourceRef,
+    WriteUnsupportedForSchemeError,
+    _scheme_of,
     dispatch,
     get_adapter,
     list_adapters,
@@ -303,9 +305,14 @@ class Package:
             # *member* format (a zip member is "csv"), so the read goes back
             # to the recorded container adapter with ``table=<member>``.
             # Path text alone is never trusted: "a::b.csv" is a legal filename.
-            if ref.container_adapter is not None and adapter.name != "remote":
-                adapter = get_adapter(ref.container_adapter)
+            # A remote container (a zip at a URL) still reads through the
+            # remote adapter, told the container's format, so credentials apply.
+            if ref.container_adapter is not None:
                 read_kwargs["table"] = ref.member
+                if adapter.name == "remote":
+                    read_kwargs["format"] = ref.container_adapter
+                else:
+                    adapter = get_adapter(ref.container_adapter)
                 expr = adapter.read(ref.container, engine=eng, schema=schema, **read_kwargs)
             else:
                 expr = adapter.read(ref.path, engine=eng, schema=schema, **read_kwargs)
@@ -727,6 +734,8 @@ class Package:
             FormatNotDetected: When ``format`` is not given and the
                 ``dest`` extension is unknown — the user must pass
                 ``format=`` explicitly to disambiguate.
+            WriteUnsupportedForSchemeError: When ``dest`` is a URL —
+                packages are written to local paths only.
 
         Examples:
             Roundtrip the bundled sample fixture through parquet::
@@ -769,6 +778,11 @@ class Package:
         # 2. Resolve target format. Explicit wins; else sniff dest tail;
         #    else default to parquet (the recommended persistent layout
         #    per architecture §6.1).
+        if isinstance(dest, str) and (scheme := _scheme_of(dest)) is not None:
+            # Path("s3://b/x") is the local relative path "s3:/b/x".
+            raise WriteUnsupportedForSchemeError(
+                f"Package.write: writing to a {scheme}:// URL is not supported; write to a local path instead"
+            )
         dest_path = Path(dest)
         target_format = _resolve_write_format(dest_path, format)
 

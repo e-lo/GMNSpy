@@ -80,6 +80,11 @@ REMOTE_SCHEMES: Final[tuple[str, ...]] = (
 # (``s3fs``/``gcsfs``/``adlfs``) are installed.
 _READONLY_SCHEMES: Final[frozenset[str]] = frozenset({"http", "https"})
 
+# Inner adapters whose single file holds several tables and that can list
+# them over fsspec themselves. ``scan`` delegates to these so each member
+# becomes its own ResourceRef (a remote ``.duckdb`` file is not supported).
+_REMOTE_CONTAINER_ADAPTERS: Final[frozenset[str]] = frozenset({"zipcsv"})
+
 
 # ---------------------------------------------------------------------------
 # Parsed-URL cache (S6)
@@ -263,8 +268,11 @@ class RemoteAdapter:
     def scan(self, source: SourceRef, engine: Engine | None = None) -> ResourceListing:
         """List one-or-more resources at ``source``.
 
-        For a URL pointing at a single file the listing has one entry.
-        For a URL pointing at a directory-like prefix (``s3://b/p/``),
+        For a URL pointing at a single file the listing has one entry,
+        except a zip of csvs, whose members are listed by the zipcsv
+        adapter (refs carry ``container_adapter``/``member``; read each
+        back with ``read(ref.container, format=ref.container_adapter,
+        table=ref.member)``). For a URL pointing at a directory-like prefix (``s3://b/p/``),
         ``fsspec.filesystem(scheme).ls(...)`` is consulted. Each child
         that has a recognised extension contributes one
         :class:`ResourceRef`.
@@ -304,6 +312,13 @@ class RemoteAdapter:
                 if is_dir:
                     entries = fs.ls(parsed.stripped)
                     return [_resource_ref_for(entry) for entry in entries if _has_known_extension(str(entry))]
+
+        try:
+            inner = self._inner_adapter(parsed)
+        except FormatNotDetected:
+            inner = None
+        if inner is not None and inner.name in _REMOTE_CONTAINER_ADAPTERS:
+            return inner.scan(url_str, engine)
 
         # Single-resource fallback (also the path for non-dir URLs).
         return [_resource_ref_for(url_str)]

@@ -149,6 +149,8 @@ def test_s3_url_with_userinfo_is_rejected_like_open_without_echoing_it():
     [
         ("s3:../x", "scheme://host"),
         ("https://h.example/a/../x", "'..' path segments"),
+        ("https://h.example/a\\..\\x", "backslashes"),
+        ("s3://b/a\\net.csv.zip", "backslashes"),
         ("duckdb:///data/x.duckdb", "local file browser"),
         ("/data/net", "local file browser"),
     ],

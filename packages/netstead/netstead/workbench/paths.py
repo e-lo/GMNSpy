@@ -59,7 +59,8 @@ def split_source(source: str) -> tuple[SourceKind, str]:
 
     ``duckdb://`` and ``file://`` prefixes are stripped to their local path. Raises
     :class:`PathNotAllowed` for an fsspec ``::`` chain, any other scheme, or a remote URL carrying
-    ``user:password@`` credentials (those belong in env/keyring/netrc, never in a recorded source).
+    ``user:password@`` credentials (those belong in env/keyring/netrc, never in a recorded source),
+    ``..`` path segments, or backslashes.
     """
     source = str(source)
     # urlsplit drops leading whitespace/C0 characters and deletes tab/CR/LF, so " s3://..." or
@@ -86,6 +87,8 @@ def split_source(source: str) -> tuple[SourceKind, str]:
             )
         if ".." in PurePosixPath(parts.path).parts:
             raise PathNotAllowed(f"{scrub_source(source)}: remote URLs must not contain '..' path segments")
+        if "\\" in source:  # WHATWG URL parsers read a backslash as "/", which could hide a '..' segment
+            raise PathNotAllowed(f"{scrub_source(source)}: remote URLs must not contain backslashes")
         return "remote", source
     if scheme == "duckdb":
         return "local", re.sub(r"^duckdb:(//)?", "", source, flags=re.IGNORECASE)
