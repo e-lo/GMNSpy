@@ -14,7 +14,7 @@
 
 **Spec:** `docs/design/2026-10-05-workbench-plugins-design.md`.
 
-**Status:** not started. Depends on PR #211 (Workbench P0 + P1a) and PR #212 (P1b).
+**Status:** not started. Its prerequisites, Workbench P0 + P1a (#211) and P1b (#212), have merged; branch from `main`.
 
 **Part 2 (separate plan, written after P1b merges):** front-end slots (workspace tabs, dock, commands, layer registry, `schemaForm`), the browser plugin loader that calls `activate(wb)`, and the Plugins settings UI. That plan is kept separate because P1b is rewriting `index.html`, `main.js`, `map.js` and `table.js`, and the settings dialog, right now.
 

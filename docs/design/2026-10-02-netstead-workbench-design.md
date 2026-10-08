@@ -2,7 +2,7 @@
 
 Status: **accepted; P0, P1a, P1b implemented** (#211, #212); P2 next · Date: 2026-10-02 · Owner: netstead
 
-> **Amended by the [Workbench plugins design](2026-10-05-workbench-plugins-design.md) (PR #217):**
+> **Amended by the [Workbench plugins design](2026-10-05-workbench-plugins-design.md) (#217):**
 > P2's `netstead.changes` package (NetworkChange, DraftCard, ProjectCard export) moves out of core into
 > an external ProjectCard plugin. Core keeps `mutate` and `derive`; it stays card-agnostic.
 
