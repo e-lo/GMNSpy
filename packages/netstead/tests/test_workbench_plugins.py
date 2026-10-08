@@ -542,3 +542,36 @@ def test_on_load_calling_sys_exit_marks_the_plugin_error(make_session):
 def test_on_load_keyboard_interrupt_propagates(make_session):
     with pytest.raises(KeyboardInterrupt):
         make_session(make_hello(on_load=_raise(KeyboardInterrupt())))
+
+
+# ---------------------------------------------------------------------------- the hello example package
+
+
+def test_hello_example_plugin_works(tmp_path, isolated_env, monkeypatch):
+    from pathlib import Path
+
+    example = Path(__file__).resolve().parents[3] / "examples" / "workbench-plugin-hello"
+    monkeypatch.syspath_prepend(str(example))
+    import netstead_hello
+
+    session = Session(
+        project_dir=tmp_path, environ=isolated_env, parser=StubParser(), plugins=[netstead_hello.plugin()]
+    )
+    assert session.dispatch({"type": "hello.greet", "name": "Ada"}) == "Hello, Ada!"
+    assert session.state()["plugins"]["hello"] == {"greeted": 1}
+    assert session.history[-1].imports == "from netstead_hello import Greet"
+    assert (netstead_hello.plugin().static_dir / "main.js").is_file()
+
+
+def test_installed_hello_example_is_discovered_through_its_entry_point(tmp_path, isolated_env):
+    """CI installs ``examples/workbench-plugin-hello``, so its real packaging metadata is exercised here."""
+    from importlib.metadata import PackageNotFoundError, distribution
+
+    try:
+        distribution("netstead-hello")
+    except PackageNotFoundError:
+        pytest.skip("examples/workbench-plugin-hello is not installed (CI installs it)")
+    session = Session(project_dir=tmp_path, environ=isolated_env, parser=StubParser())  # plugins=None: discover
+    assert _status(session, "hello").state == "loaded"
+    assert _status(session, "hello").frontend == "/plugins/hello/main.js"
+    assert session.dispatch({"type": "hello.greet", "name": "Ada"}) == "Hello, Ada!"
