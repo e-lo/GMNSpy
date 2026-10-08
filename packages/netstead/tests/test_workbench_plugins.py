@@ -83,3 +83,43 @@ def test_problems_reports_a_type_already_registered():
     registry = ActionRegistry()
     registry.register(Greet)
     assert any("already registered" in p for p in problems(make_hello(), registry, taken=()))
+
+
+# ---------------------------------------------------------------------------- discovery
+
+from dataclasses import dataclass  # noqa: E402
+
+from netstead.workbench.plugins.discovery import PluginStatus, discover  # noqa: E402
+
+
+@dataclass
+class FakeEntryPoint:
+    name: str
+    target: Any  # the factory, or an exception ``load`` raises
+
+    def load(self) -> Any:
+        if isinstance(self.target, Exception):
+            raise self.target
+        return self.target
+
+
+def test_discover_loads_factories_and_isolates_failures():
+    eps = [
+        FakeEntryPoint("hello", make_hello),
+        FakeEntryPoint("broken", ImportError("no module named broken")),
+        FakeEntryPoint("not_a_plugin", lambda: 42),
+        FakeEntryPoint("misnamed", make_hello),  # factory's plugin id is "hello"
+    ]
+    plugins, statuses = discover(eps=eps)
+    assert [p.id for p in plugins] == ["hello"]
+    by_id = {s.id: s for s in statuses}
+    assert by_id["broken"].state == "error" and "no module named broken" in by_id["broken"].error
+    assert by_id["not_a_plugin"].state == "error" and "WorkbenchPlugin" in by_id["not_a_plugin"].error
+    assert by_id["misnamed"].state == "error" and "must equal" in by_id["misnamed"].error
+
+
+def test_discover_skips_disabled_without_importing_them():
+    plugins, statuses = discover(disabled={"broken"}, eps=[FakeEntryPoint("broken", ImportError("x"))])
+    assert plugins == [] and statuses == [
+        PluginStatus(id="broken", name="broken", version="", requires_api=None, state="disabled")
+    ]
