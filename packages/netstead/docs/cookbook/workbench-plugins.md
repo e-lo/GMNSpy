@@ -182,7 +182,7 @@ def plugin() -> WorkbenchPlugin:
 | `actions` | A tuple of `ActionSpec(model, handler)`. |
 | `settings_model` | A pydantic model that validates the `[plugins.<id>]` table. Read the result as `host.settings`. |
 | `state(host)` | Returns a JSON-safe dict merged into `/api/state` under `plugins.<id>`. Keep it cheap, because it runs on every state push. |
-| `router(host)` | Returns a FastAPI `APIRouter`, mounted at `/api/plugins/<id>`. |
+| `router(host)` | Returns a FastAPI `APIRouter`, mounted at `/api/plugins/<id>`. Called once, at install. |
 | `static_dir` / `frontend` | A directory served at `/plugins/<id>/`, and the ES module in it the browser loads (default `main.js`). |
 | `on_load(host)` | Runs once at install, before the Actions register. If it raises, the plugin isn't installed. |
 
@@ -224,9 +224,10 @@ def router(host: Host) -> APIRouter:
 
 `static_dir` is served at `/plugins/<id>/`. Requests can't escape it (`..` and its encoded forms
 get a 404). The browser loader that imports `frontend` and calls its `activate(wb)` arrives with the
-Workbench's plugin front end. Until then the file is only served. If `router` raises or
-`static_dir` doesn't exist, the plugin is marked `error` and nothing of it is mounted, but its
-Actions stay available from Python.
+Workbench's plugin front end. Until then the file is only served. `router(host)` is called once,
+when the session installs the plugin. If it raises or returns something other than an `APIRouter`,
+or `static_dir` isn't a directory, the plugin isn't installed: it is marked `error`, none of its
+Actions register, its state isn't merged, and nothing of it is mounted.
 
 ## The `Host` reference
 

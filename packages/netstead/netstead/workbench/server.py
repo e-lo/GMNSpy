@@ -3,11 +3,10 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import replace
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from fastapi import FastAPI, Request
+from fastapi import APIRouter, FastAPI, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
@@ -134,29 +133,24 @@ def build_app(session: Session) -> FastAPI:
 
 
 def _mount_plugins(app: FastAPI, session: Session) -> None:
-    """Mount each loaded plugin's router (``/api/plugins/<id>``) and static dir (``/plugins/<id>``).
+    """Attach each installed plugin's router (``/api/plugins/<id>``) and static dir (``/plugins/<id>``).
 
     Both sit behind the same Host-header and Origin guards as every core route (the middleware wraps
-    the whole app). Both are built before either is attached, so a plugin is mounted whole or not at
-    all: a router factory that raises, or a ``static_dir`` that isn't a directory, marks that plugin
-    ``error`` in ``session.plugin_status``. Its Actions stay registered (Python and replays still
-    work), but the browser won't load its front end.
+    the whole app). The session built and checked them when it installed the plugin; here both are
+    staged inside one failure boundary before either is attached, so a plugin is mounted whole or
+    not at all. If staging fails the plugin is unloaded (no Actions, no state) and marked ``error``.
     """
-    for index, status in enumerate(session.plugin_status):
-        plugin = session.plugins.get(status.id)
-        if plugin is None or status.state != "loaded":
-            continue
+    for plugin_id, (router, static_dir) in session.plugin_mounts().items():
         try:
-            static = StaticFiles(directory=plugin.static_dir) if plugin.static_dir is not None else None
-            router = plugin.router(session._hosts[plugin.id]) if plugin.router is not None else None
+            staged = APIRouter()
+            if router is not None:
+                staged.include_router(router, prefix=f"/api/plugins/{plugin_id}")
+            static = StaticFiles(directory=static_dir) if static_dir is not None else None
         # boundary: third-party code must not stop the app (not even with ``sys.exit``)
         except (Exception, SystemExit) as exc:
-            logger.exception("mounting workbench plugin %r failed", plugin.id)
-            session.plugin_status[index] = replace(
-                status, state="error", error=f"{type(exc).__name__}: {exc}", frontend=None
-            )
+            logger.exception("mounting workbench plugin %r failed", plugin_id)
+            session.unload_plugin(plugin_id, f"{type(exc).__name__}: {exc}")
             continue
-        if router is not None:
-            app.include_router(router, prefix=f"/api/plugins/{plugin.id}")
+        app.include_router(staged)
         if static is not None:
-            app.mount(f"/plugins/{plugin.id}", static, name=f"plugin-{plugin.id}")
+            app.mount(f"/plugins/{plugin_id}", static, name=f"plugin-{plugin_id}")

@@ -260,6 +260,8 @@ class Session:
         #: Installed plugins by id, and the :class:`Host` each one was given.
         self.plugins: dict[str, WorkbenchPlugin] = {}
         self._hosts: dict[str, Host] = {}
+        #: Each installed plugin's ``(router, static_dir)``, built and checked at install (see :meth:`plugin_mounts`).
+        self._plugin_mounts: dict[str, tuple[Any, Path | None]] = {}
         #: One status per plugin seen at startup: loaded, disabled, incompatible or error (with the reason).
         self.plugin_status: list[PluginStatus] = []
         self._install_plugins(plugins)
@@ -341,7 +343,12 @@ class Session:
             self.plugin_status.append(self._install(plugin, disabled))
 
     def _install(self, plugin: WorkbenchPlugin, disabled: set[str]) -> PluginStatus:
-        """Check ``plugin``, run its ``on_load``, then register its Actions (all or none); never raises."""
+        """Check ``plugin``, run its ``on_load``, build its router, then register its Actions (all or none).
+
+        Never raises. A router factory that fails (or returns something other than an ``APIRouter``)
+        or a ``static_dir`` that isn't a directory is an install failure like any other: no Actions,
+        no state, status ``error``.
+        """
         frontend = f"/plugins/{plugin.id}/{plugin.frontend}" if plugin.static_dir is not None else None
         status = PluginStatus(plugin.id, plugin.name, plugin.version, plugin.requires_api, "loaded", frontend=frontend)
         if plugin.id in disabled:
@@ -363,13 +370,42 @@ class Session:
             except (Exception, SystemExit) as exc:
                 logger.exception("workbench plugin %r failed to load", plugin.id)
                 errors.append(f"{type(exc).__name__}: {exc}")
+        mount: tuple[Any, Path | None] = (None, None)
+        if not errors:
+            try:
+                mount = _build_mount(plugin, host)
+            except (Exception, SystemExit) as exc:  # boundary: third-party code, as for ``on_load``
+                logger.exception("workbench plugin %r failed to build its routes", plugin.id)
+                errors.append(f"{type(exc).__name__}: {exc}")
         if not errors:
             errors = self._register_actions(plugin, host)
         if errors:
             return replace(status, state="error", error="; ".join(errors), frontend=None)
         self.plugins[plugin.id] = plugin
         self._hosts[plugin.id] = host
+        self._plugin_mounts[plugin.id] = mount
         return status
+
+    def plugin_mounts(self) -> dict[str, tuple[Any, Path | None]]:
+        """``plugin id -> (APIRouter or None, static dir or None)`` for every installed plugin, to attach to the app."""
+        with self._lock:
+            return dict(self._plugin_mounts)
+
+    def unload_plugin(self, plugin_id: str, error: str) -> None:
+        """Take an installed plugin out (Actions, state, mounts) and mark it ``error``: its mount failed to attach."""
+        with self._lock:
+            plugin = self.plugins.pop(plugin_id)
+            self._hosts.pop(plugin_id, None)
+            self._plugin_mounts.pop(plugin_id, None)
+            for spec in plugin.actions:
+                action_type = spec.model.action_type()
+                if action_type is not None and self.actions.has(action_type):
+                    self.actions.unregister(action_type)
+                    self._handlers.pop(action_type, None)
+            failed = {"state": "error", "error": error, "frontend": None}
+            self.plugin_status = [
+                replace(s, **failed) if s.id == plugin_id and s.state == "loaded" else s for s in self.plugin_status
+            ]
 
     def _register_actions(self, plugin: WorkbenchPlugin, host: Host) -> list[str]:
         """Register every one of ``plugin``'s Actions and handlers, or (on any failure) none; return the errors."""
@@ -1086,6 +1122,21 @@ class _ParsedSelect:
     result: Any
     parsed_by: dict[str, Any] | None
     error: Exception | None = None  # the parser could not read the utterance (a "could not parse" selection)
+
+
+def _build_mount(plugin: WorkbenchPlugin, host: Host) -> tuple[Any, Path | None]:
+    """``(router, static_dir)`` for ``plugin``, checked: raises if either can't be served."""
+    static_dir = Path(plugin.static_dir) if plugin.static_dir is not None else None
+    if static_dir is not None and not static_dir.is_dir():
+        raise ValueError(f"static_dir {static_dir.name!r} is not a directory")
+    if plugin.router is None:
+        return None, static_dir
+    from fastapi import APIRouter  # the server's dependency: only needed when a plugin brings routes
+
+    router = plugin.router(host)
+    if not isinstance(router, APIRouter):
+        raise TypeError(f"router(host) returned {type(router).__name__}, not a fastapi APIRouter")
+    return router, static_dir
 
 
 def _mark_rolled_back(children: list[_Nested], parent_type: str) -> None:

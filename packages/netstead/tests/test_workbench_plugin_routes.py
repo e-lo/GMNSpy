@@ -17,6 +17,18 @@ class Greet(BaseAction):
     name: str
 
 
+class Poke(BaseAction):
+    type: Literal["broken.poke"] = "broken.poke"
+
+
+class Prod(BaseAction):
+    type: Literal["missing.prod"] = "missing.prod"
+
+
+class Nudge(BaseAction):
+    type: Literal["wrongtype.nudge"] = "wrongtype.nudge"
+
+
 def _router(host) -> APIRouter:
     router = APIRouter()
 
@@ -50,13 +62,37 @@ def client(tmp_path, isolated_env):
         router=_router,
         static_dir=static,
     )
+    alive = {"state": lambda host: {"alive": True}}
     broken = WorkbenchPlugin(
-        id="broken", name="Broken", version="0.1", requires_api=HOST_API, router=_broken_router, static_dir=static
+        id="broken",
+        name="Broken",
+        version="0.1",
+        requires_api=HOST_API,
+        actions=(ActionSpec(Poke, lambda host, a: "poked"),),
+        router=_broken_router,
+        static_dir=static,
+        **alive,
     )
     missing = WorkbenchPlugin(
-        id="missing", name="Missing", version="0.1", requires_api=HOST_API, static_dir=tmp_path / "no_such_dir"
+        id="missing",
+        name="Missing",
+        version="0.1",
+        requires_api=HOST_API,
+        actions=(ActionSpec(Prod, lambda host, a: "prodded"),),
+        static_dir=tmp_path / "no_such_dir",
+        **alive,
     )
-    session = Session(project_dir=tmp_path, environ=isolated_env, parser=StubParser(), plugins=[hello, broken, missing])
+    wrongtype = WorkbenchPlugin(  # its router factory returns something that isn't an APIRouter
+        id="wrongtype",
+        name="Wrong type",
+        version="0.1",
+        requires_api=HOST_API,
+        actions=(ActionSpec(Nudge, lambda host, a: "nudged"),),
+        router=lambda host: object(),
+        **alive,
+    )
+    plugins = [hello, broken, missing, wrongtype]
+    session = Session(project_dir=tmp_path, environ=isolated_env, parser=StubParser(), plugins=plugins)
     return TestClient(build_app(session))
 
 
@@ -68,6 +104,45 @@ def test_plugins_listing(client):
     assert by_id["broken"]["state"] == "error" and "router exploded" in by_id["broken"]["error"]
     assert by_id["broken"]["frontend"] is None
     assert by_id["missing"]["state"] == "error" and by_id["missing"]["frontend"] is None
+    assert "not a directory" in by_id["missing"]["error"]
+    assert by_id["wrongtype"]["state"] == "error" and "APIRouter" in by_id["wrongtype"]["error"]
+
+
+@pytest.mark.parametrize("action", ["broken.poke", "missing.prod", "wrongtype.nudge"])
+def test_a_plugin_that_cannot_mount_is_not_installed_at_all(client, action):
+    """A failed router or static dir is an install failure: no Actions and no state, not a half-alive plugin."""
+    assert client.post("/api/actions", json={"type": action}).status_code == 422
+    assert set(client.get("/api/state").json()["plugins"]) == set()
+
+
+def test_a_mount_that_fails_while_attaching_unloads_the_plugin(tmp_path, isolated_env, monkeypatch):
+    import netstead.workbench.server as server
+
+    static = tmp_path / "static"
+    static.mkdir()
+    real = server.StaticFiles
+
+    def refuse_plugin_dirs(*, directory):
+        if directory == static:
+            raise RuntimeError("cannot serve")
+        return real(directory=directory)
+
+    monkeypatch.setattr(server, "StaticFiles", refuse_plugin_dirs)
+    hello = WorkbenchPlugin(
+        id="hello",
+        name="Hello",
+        version="0.1",
+        requires_api=HOST_API,
+        actions=(ActionSpec(Greet, lambda host, a: "hi"),),
+        router=_router,
+        static_dir=static,
+    )
+    session = Session(project_dir=tmp_path, environ=isolated_env, parser=StubParser(), plugins=[hello])
+    client = TestClient(build_app(session))
+    (status,) = client.get("/api/plugins").json()["plugins"]
+    assert status["state"] == "error" and "cannot serve" in status["error"] and status["frontend"] is None
+    assert client.get("/api/plugins/hello/whoami").status_code == 404  # neither half is attached
+    assert client.post("/api/actions", json={"type": "hello.greet", "name": "Ada"}).status_code == 422
 
 
 def test_plugin_router_and_static_are_mounted(client):
@@ -90,6 +165,7 @@ def test_plugin_action_over_http(client):
         "/api/plugins/broken/whoami",  # its router factory raised: nothing of it is mounted
         "/plugins/broken/main.js",
         "/plugins/missing/main.js",
+        "/api/plugins/wrongtype/anything",
     ],
 )
 def test_a_plugin_that_is_not_loaded_is_404(client, path):
