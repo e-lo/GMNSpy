@@ -82,3 +82,56 @@ def test_script_imports_keep_the_core_line_and_add_each_plugin_line_once():
     greet = import_line(Greet(name="Ada"))
     assert script_imports([]) == [core]
     assert script_imports([import_line(OpenNetwork(source="/x")), greet, greet]) == [core, greet]
+
+
+class StrType(BaseAction):
+    type: str = "hello.str"
+
+
+class TwoTypes(BaseAction):
+    type: Literal["hello.a", "hello.b"] = "hello.a"
+
+
+class WrongDefault(BaseAction):
+    type: Literal["hello.x"] = "hello.y"  # type: ignore[assignment]
+
+
+@pytest.mark.parametrize("model", [StrType, TwoTypes, WrongDefault])
+def test_only_an_exact_single_literal_type_registers(model):
+    """A ``type: str`` or multi-value ``Literal`` would break every later parse (core Actions too)."""
+    assert model.action_type() is None
+    reg = ActionRegistry()
+    with pytest.raises(ValueError, match="one value"):
+        reg.register(model)
+    assert reg.types() == [m.action_type() for m in CORE_ACTIONS]
+    assert isinstance(reg.parse({"type": "open_network", "source": "/x"}), OpenNetwork)
+
+
+def test_a_model_pydantic_refuses_leaves_the_registry_unchanged(monkeypatch):
+    reg = ActionRegistry()
+    monkeypatch.setattr(reg, "_build_adapter", lambda: (_ for _ in ()).throw(TypeError("bad union")))
+    with pytest.raises(ValueError, match="bad union"):
+        reg.register(Greet)
+    assert not reg.has("hello.greet")
+    monkeypatch.undo()
+    assert isinstance(reg.parse({"type": "open_network", "source": "/x"}), OpenNetwork)
+
+
+def test_registries_with_one_or_no_models():
+    one = ActionRegistry([Greet])
+    assert one.parse({"type": "hello.greet", "name": "Ada"}) == Greet(name="Ada")
+    assert "name" in one.json_schema()["properties"]
+    one.unregister("hello.greet")
+    with pytest.raises(ValueError, match="no Action types"):
+        one.parse({"type": "hello.greet", "name": "Ada"})
+    with pytest.raises(ValueError, match="no Action types"):
+        ActionRegistry([]).json_schema()
+
+
+def test_unregister_removes_the_type_from_parsing():
+    reg = ActionRegistry()
+    reg.register(Greet)
+    reg.unregister("hello.greet")
+    assert not reg.has("hello.greet")
+    with pytest.raises(ValidationError):
+        reg.parse({"type": "hello.greet", "name": "Ada"})

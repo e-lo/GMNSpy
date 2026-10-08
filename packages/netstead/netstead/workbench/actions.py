@@ -16,7 +16,7 @@ import operator
 import re
 from collections.abc import Iterable, Iterator, Mapping
 from pathlib import PurePath
-from typing import TYPE_CHECKING, Annotated, Any, ClassVar, Literal
+from typing import TYPE_CHECKING, Annotated, Any, ClassVar, Literal, get_args, get_origin
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, model_validator
 
@@ -68,10 +68,17 @@ class BaseAction(BaseModel):
 
     @classmethod
     def action_type(cls) -> str | None:
-        """The ``type`` discriminator this class carries (``None`` when it declares none)."""
+        """The ``type`` discriminator this class carries: ``x`` for exactly ``type: Literal["x"] = "x"``.
+
+        ``None`` for anything else (no ``type``, ``type: str``, a multi-value ``Literal``, a default that
+        isn't its one value): such a class can't be a member of the discriminated Action union.
+        """
         field_info = cls.model_fields.get("type")
-        default = field_info.default if field_info is not None else None
-        return default if isinstance(default, str) and default else None
+        if field_info is None or get_origin(field_info.annotation) is not Literal:
+            return None
+        default = field_info.default
+        valid = isinstance(default, str) and default and get_args(field_info.annotation) == (default,)
+        return default if valid else None
 
     def job_label(self) -> str:
         """The label a ``runs_as_job`` action's background job shows in the jobs panel."""
@@ -323,31 +330,44 @@ CORE_ACTIONS: tuple[type[BaseAction], ...] = (
 
 
 class ActionRegistry:
-    """The Action types one session understands: the core ones plus any its plugins register."""
+    """The Action types one session understands: the core ones plus any its plugins register.
+
+    The parsing adapter is rebuilt on every change, so a model pydantic can't put in the union is
+    refused by :meth:`register` itself, never by a later :meth:`parse` (which every request uses).
+    """
 
     def __init__(self, models: Iterable[type[BaseAction]] = CORE_ACTIONS) -> None:
         """Start with ``models`` registered (default: :data:`CORE_ACTIONS`)."""
         self._models: dict[str, type[BaseAction]] = {}
-        self._adapter: TypeAdapter[Any] | None = None
         for model in models:
-            self.register(model)
+            self._models[self._check(model)] = model
+        self._adapter: TypeAdapter[Any] | None = self._build_adapter()
 
     def register(self, model: type[BaseAction]) -> None:
-        """Add ``model``; raises ``TypeError`` for a non-Action, ``ValueError`` for a missing or taken ``type``."""
-        if not (isinstance(model, type) and issubclass(model, BaseAction)):
-            raise TypeError(f"{model!r} is not a BaseAction subclass")
-        action_type = model.action_type()
-        if action_type is None:
-            raise ValueError(f"{model.__name__} needs a `type: Literal[...]` field with a default")
-        if action_type in self._models:
-            raise ValueError(f"action type {action_type!r} is already registered")
+        """Add ``model``; raises ``TypeError`` for a non-Action, ``ValueError`` for a bad or taken ``type``."""
+        action_type = self._check(model)
         self._models[action_type] = model
-        self._adapter = None
+        try:
+            self._adapter = self._build_adapter()
+        except Exception as exc:  # pydantic refuses the union: leave the registry exactly as it was
+            del self._models[action_type]
+            raise ValueError(f"{model.__name__} can't join the Action union: {exc}") from exc
 
     def unregister(self, action_type: str) -> None:
         """Remove ``action_type`` (``KeyError`` if it isn't registered); used to undo a failed plugin install."""
         del self._models[action_type]
-        self._adapter = None
+        self._adapter = self._build_adapter()
+
+    def _check(self, model: type[BaseAction]) -> str:
+        """``model``'s ``type``, if it may be registered next to the ones already here."""
+        if not (isinstance(model, type) and issubclass(model, BaseAction)):
+            raise TypeError(f"{model!r} is not a BaseAction subclass")
+        action_type = model.action_type()
+        if action_type is None:
+            raise ValueError(f'{model.__name__} needs a `type: Literal["<type>"] = "<type>"` field (one value)')
+        if action_type in self._models:
+            raise ValueError(f"action type {action_type!r} is already registered")
+        return action_type
 
     def has(self, action_type: str) -> bool:
         """Whether ``action_type`` is registered."""
@@ -371,11 +391,18 @@ class ActionRegistry:
 
     def _get_adapter(self) -> TypeAdapter[Any]:
         if self._adapter is None:
-            union = functools.reduce(operator.or_, self._models.values())
-            self._adapter = TypeAdapter(
-                Annotated[union, Field(discriminator="type")], config=ConfigDict(hide_input_in_errors=True)
-            )
+            raise ValueError("no Action types are registered")
         return self._adapter
+
+    def _build_adapter(self) -> TypeAdapter[Any] | None:
+        """The adapter for the current models (``None`` when there are none; one model needs no union)."""
+        models = list(self._models.values())
+        if not models:
+            return None
+        if len(models) == 1:  # a discriminator needs a union (BaseAction's own config hides inputs)
+            return TypeAdapter(models[0])
+        union = functools.reduce(operator.or_, models)
+        return TypeAdapter(Annotated[union, Field(discriminator="type")], config=ConfigDict(hide_input_in_errors=True))
 
 
 #: The core-only registry behind the module-level helpers (a session has its own, see ``Session.actions``).
