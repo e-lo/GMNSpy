@@ -751,6 +751,16 @@ class Session:
             self.events.publish({"type": "state", "state": self.state()})
         return handle.id
 
+    def network(self, net_id: str | None = None) -> NetworkHandle:
+        """The handle for ``net_id`` (default: the active network); :class:`ActionError` if there is none."""
+        with self._lock:
+            return self._handle(net_id)
+
+    def selection_copy(self) -> dict[str, Any] | None:
+        """A deep copy of the shared selection payload (``None`` when nothing is selected)."""
+        with self._lock:
+            return copy.deepcopy(self.selection)
+
     def state(self) -> dict[str, Any]:
         """JSON-safe snapshot pushed to the browser."""
         with self._lock:
@@ -864,6 +874,9 @@ class Session:
     def _do_close_network(self, action: CloseNetwork) -> None:
         self._handle(action.net_id)
         self.registry.remove(action.net_id)
+        for handle in self.registry:  # a later network may reuse the id: never leave a copy pointing at it
+            if handle.derived_from == action.net_id:
+                handle.derived_from = f"{action.net_id} (closed)"
         # Its few-shot examples go too: a later network may reuse the id.
         self._examples = deque((e for e in self._examples if e[0] != action.net_id), maxlen=_MAX_EXAMPLES)
         if self.selection and self.selection["net_id"] == action.net_id:

@@ -7,7 +7,6 @@ its own id. Handlers run under the session lock, so ``Host`` methods are safe to
 
 from __future__ import annotations
 
-import copy
 from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -75,13 +74,11 @@ class Host:
     def selection(self) -> dict[str, Any] | None:
         """A copy of the shared selection payload (the same dict ``/api/state`` carries)."""
         # Not via ``state()``: that calls every plugin's ``state(host)``, which may read this property.
-        with self._session._lock:
-            return copy.deepcopy(self._session.selection)
+        return self._session.selection_copy()
 
     def network(self, net_id: str | None = None) -> NetworkHandle:
         """The handle for ``net_id`` (default: active). Read it; change it only via :meth:`mutate`."""
-        with self._session._lock:  # Host is the one sanctioned friend of Session
-            return self._session._handle(net_id)
+        return self._session.network(net_id)
 
     def mutate(self, net_id: str | None, edits: Sequence[Edit], *, note: str) -> list[EditResult]:
         """Apply corral edits all-or-nothing and return their results; lineage gets ``"<plugin id>: <note>"``.
@@ -100,7 +97,12 @@ class Host:
         return self._session.actions.has(action_type)
 
     def dispatch(self, action: BaseAction | dict[str, Any]) -> Any:
-        """Dispatch another Action (any plugin's or core's); it is recorded in history like any other."""
+        """Dispatch another Action (any plugin's or core's); it is recorded in history like any other.
+
+        From inside a handler it is recorded as nested (``parent_seq``) and rolls back with the handler.
+        A job Action (``open_network``, ``build_network``) can't be dispatched from a handler: it would
+        deadlock on the session lock. Use :meth:`submit_job` for slow work.
+        """
         return self._session.dispatch(action)
 
     def publish(self, name: str, payload: Any = None) -> None:

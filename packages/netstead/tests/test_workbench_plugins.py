@@ -850,3 +850,83 @@ def test_a_python_mutate_outside_an_action_is_recorded(make_session, rdu_source)
 def test_a_mutate_inside_an_action_adds_no_entry_of_its_own(wrecked):
     wrecked.dispatch(Wreck(then="ok"))
     assert [e.action["type"] for e in wrecked.history] == ["open_network", "wreck.all"]
+
+
+# ---------------------------------------------------------------------------- the Host surface
+
+
+@pytest.fixture
+def host_of(make_session, rdu_source):
+    """``(session, host)``: an opened session and the Host its plugin was given."""
+    hosts: list[Any] = []
+    session = make_session(make_hello(on_load=hosts.append))
+    session.dispatch(OpenNetwork(source=rdu_source))
+    return session, hosts[0]
+
+
+def test_host_network_defaults_to_the_active_one(host_of):
+    session, host = host_of
+    assert host.network() is session.network() is session.registry.get("rdu-i40")
+    assert host.network("rdu-i40") is session.network("rdu-i40")
+    with pytest.raises(ActionError, match="unknown network"):
+        host.network("nope")
+
+
+def test_host_selection_is_a_deep_copy(host_of):
+    session, host = host_of
+    assert host.selection is None
+    first = int(session.network().links_df()["link_id"].iloc[0])
+    session.dispatch({"type": "select", "link_ids": [first]})
+    copied = host.selection
+    assert copied == session.selection and copied is not session.selection
+    copied["link_ids"].append(-1)
+    copied["net_id"] = "elsewhere"
+    assert session.selection["net_id"] == "rdu-i40" and -1 not in session.selection["link_ids"]
+    assert session.selection_copy() == session.selection
+
+
+def test_host_publish_sends_a_namespaced_plugin_event(host_of):
+    session, host = host_of
+    published: list[dict[str, Any]] = []
+    session.events.publish = published.append
+    host.publish("greeted", {"name": "Ada"})
+    host.publish("ping")
+    assert published == [
+        {"type": "plugin", "plugin": "hello", "name": "greeted", "payload": {"name": "Ada"}},
+        {"type": "plugin", "plugin": "hello", "name": "ping", "payload": None},
+    ]
+
+
+def test_host_writable_stays_inside_the_allowed_roots(host_of, tmp_path):
+    from netstead.workbench.errors import PathNotAllowed
+
+    _, host = host_of
+    assert host.writable(tmp_path / "out" / "cards.json") == (tmp_path / "out" / "cards.json").resolve()
+    with pytest.raises(PathNotAllowed):
+        host.writable(tmp_path.parent / "elsewhere.json")
+    with pytest.raises(PathNotAllowed):
+        host.writable(tmp_path / ".." / "escape.json")
+
+
+class Reopen(BaseAction):
+    type: Literal["wreck.reopen"] = "wreck.reopen"
+    source: str
+
+
+def test_a_handler_dispatching_a_job_action_is_told_to_use_submit_job(make_session, rdu_source):
+    def reopen(host, action: Reopen) -> Any:
+        return host.dispatch(OpenNetwork(source=action.source))
+
+    plugin = WorkbenchPlugin(
+        id="wreck", name="W", version="0", requires_api=HOST_API, actions=(ActionSpec(Reopen, reopen),)
+    )
+    entry = make_session(plugin).dispatch_recorded(Reopen(source=rdu_source))
+    assert not entry.ok and "open_network runs as a job" in entry.error and "host.submit_job" in entry.error
+
+
+def test_closing_a_base_network_marks_its_derived_copies(host_of):
+    session, host = host_of
+    preview = host.derive(None, label="Preview", note="preview")
+    session.dispatch({"type": "close_network", "net_id": "rdu-i40"})
+    derived_from = session.network(preview).derived_from
+    assert derived_from == "rdu-i40 (closed)" and derived_from not in session.registry.ids()
