@@ -1,0 +1,55 @@
+{
+  "_recorded": true,
+  "provider": "ollama",
+  "source": "Recorded from the live API by scripts/record_llm_fixtures.py (ollama).",
+  "model": "qwen2.5:7b",
+  "endpoint": "POST /api/chat",
+  "utterance": "I-40 EB between South Miami Boulevard and Airport Boulevard",
+  "request_keys": [
+    "messages",
+    "model",
+    "options",
+    "stream",
+    "tools"
+  ],
+  "response": {
+    "model": "qwen2.5:7b",
+    "created_at": "2026-10-05T19:37:08.930014Z",
+    "message": {
+      "role": "assistant",
+      "content": "",
+      "tool_calls": [
+        {
+          "id": "call_2tw1phxz",
+          "function": {
+            "index": 0,
+            "name": "emit_selection_intent",
+            "arguments": {
+              "from_anchor": "South Miami Boulevard",
+              "to_anchor": "Airport Boulevard",
+              "facility": {
+                "direction": "EB",
+                "ref": "I-40"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "done": true,
+    "done_reason": "stop",
+    "total_duration": 3474350208,
+    "load_duration": 55251166,
+    "prompt_eval_count": 815,
+    "prompt_eval_cached_count": 798,
+    "prompt_eval_duration": 236700000,
+    "eval_count": 50,
+    "eval_duration": 3114020000
+  },
+  "expected": {
+    "ref": "I-40",
+    "direction": "EB",
+    "from_anchor": "South Miami Boulevard",
+    "to_anchor": "Airport Boulevard"
+  }
+}

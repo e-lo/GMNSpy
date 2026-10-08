@@ -23,6 +23,9 @@ dev = [
     "pytest>=8",
     "pytest-cov>=5",
     "pytest-benchmark>=4",
+    "pytest-xdist>=3.6",
+    # starlette>=1.7 TestClient requires httpx2 (plain httpx is deprecated there).
+    "httpx2",
     "hypothesis>=6.100",
     "ruff>=0.5",
     "pyright>=1.1.370",
@@ -181,6 +184,14 @@ addopts = [
     "--ignore-glob=*/fixtures/*/build.py",
     "--ignore-glob=*/fixtures/*/build_fixture.py",
     "--ignore-glob=*/fixtures/*/scripts/*.py",
+    # Fast default tier. Full suite: add `-m ""` (a later -m overrides this one).
+    # See "Running tests" in CONTRIBUTING.md.
+    "-m",
+    "not slow and not perf",
+    # Under `-n auto` (pytest-xdist) keep each test file on one worker:
+    # test_documented_python_contract shares a namespace across the blocks of
+    # one doc page, so they must run in order in one process. No-op without -n.
+    "--dist=loadfile",
 ]
 filterwarnings = [
     "error",
@@ -192,11 +203,16 @@ filterwarnings = [
     # TODO(deps): drop when ibis-framework releases a duckdb backend that
     # uses to_arrow_table(); track at https://github.com/ibis-project/ibis
     "ignore:fetch_arrow_table.*:DeprecationWarning",
+    # pytest-benchmark warns (at configure time, so "error" would abort the run)
+    # that it disables itself under xdist. Expected with `-n auto`; the bench
+    # workflow runs serially.
+    "ignore:Benchmarks are automatically disabled because xdist plugin is active",
 ]
 markers = [
-    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
-    "perf: performance regression bench",
+    "slow: end-to-end / multi-second tests; skipped by default, run with -m \"\" (full) or -m slow",
+    "perf: performance regression bench; skipped by default, run with -m \"\" (full) or -m perf",
     "integration: cross-package integration",
+    "live_llm: calls real LLM provider APIs; skipped unless NETSTEAD_LIVE_LLM=anthropic,openai,gemini,ollama (any subset)",
 ]
 
 # ---------------------------------------------------------------------------

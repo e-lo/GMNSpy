@@ -158,7 +158,7 @@ def _assert_connectors_present(
                 raise ValueError(
                     f"segment {segment.get('id')!r} references connector {cid!r} "
                     f"which is not in the connectors dict ({len(connectors)} connectors given); "
-                    "widen the connector fetch bbox so edge connectors are included."
+                    "the connector read must cover every connector the segments reference."
                 )
 
 

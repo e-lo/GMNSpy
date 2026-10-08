@@ -65,7 +65,10 @@ graph = [
     "pandas>=2.0",
 ]
 server = [
-    "fastapi>=0.110",
+    # 0.132.0 is the first release whose routes default strict_content_type=True
+    # (rejects a JSON POST with no/invalid Content-Type) — one of the signals
+    # our own local CSRF guard in workbench/server.py relies on being available.
+    "fastapi>=0.132.0",
     "uvicorn[standard]>=0.29",
     "pydantic-settings>=2.2",
     "httpx>=0.27",  # required by fastapi.testclient + nice-to-have client
@@ -74,11 +77,14 @@ mcp = [
     "mcp>=1.0,<2",  # v2 removed mcp.server.fastmcp (renamed MCPServer); our servers use the v1 API
 ]
 nl = [
-    # Natural-language selection (netstead.select): jsonschema validates the
-    # emitted selection fragment; anthropic powers the ClaudeParser (the
-    # StubParser + resolver need neither). Requires [graph] for path search.
+    # Natural-language features (netstead.select, netstead.llm). httpx drives the
+    # hand-rolled provider adapters (Anthropic, OpenAI and compatible, Gemini,
+    # Ollama; no vendor SDKs); jsonschema validates tool-call output and the
+    # emitted selection fragment; keyring stores API keys in the OS keychain.
+    # The StubParser + resolver need none of these. Requires [graph] for path search.
     "jsonschema>=4.0",
-    "anthropic>=0.40",
+    "httpx>=0.27",
+    "keyring>=24",
 ]
 bench = [
     # Benchmark harness (netstead.bench): wall/CPU time + Python-heap peak come
@@ -144,10 +150,18 @@ include = [
     "netstead/spec/**/*.json",
     "netstead/spec/**/VERSION",
     "netstead/spec/**/README.md",
-    # GMNS selection profile schema (netstead.select.emit) + web-app template.
+    # GMNS selection profile schema (netstead.select.emit).
     "netstead/select/schema/*.json",
-    "netstead/select/templates/*.html",
-    "netstead/viz/templates/*.html",
+    # Netstead Workbench static front end (netstead.workbench; served by `netstead app`).
+    "netstead/workbench/static/*.html",
+    "netstead/workbench/static/*.css",
+    "netstead/workbench/static/js/*.js",
+    # Maintained LLM provider/model catalog (netstead.llm).
+    "netstead/llm/*.toml",
+    # Shipped assistant context sent with NL prompts (netstead.llm.context).
+    "netstead/llm/context/*.md",
+    # Maintained build-cost coefficients for the Open / Import wizard's estimate.
+    "netstead/workbench/data/*.toml",
     # Maintained OSM->GMNS tag-mapping + network-filter data (netstead.osm).
     "netstead/osm/mappings/*.yaml",
     # Maintained Overture->GMNS property-mapping + network-filter data

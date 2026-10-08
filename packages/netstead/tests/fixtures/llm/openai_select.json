@@ -1,0 +1,37 @@
+{
+  "_recorded": false,
+  "provider": "openai",
+  "source": "Hand-authored from the Chat Completions reference (function calling) and the gpt-6-luna model page (https://developers.openai.com/api/docs/models/gpt-6-luna, checked 2026-10-05: reasoning model, max_completion_tokens, no temperature, reasoning_effort=none required for Chat Completions function calling), not a real recording. Re-record: uv run --all-extras python scripts/record_llm_fixtures.py openai",
+  "model": "gpt-6-luna",
+  "endpoint": "POST /v1/chat/completions",
+  "utterance": "I-40 EB between South Miami Boulevard and Airport Boulevard",
+  "request_keys": ["max_completion_tokens", "messages", "model", "reasoning_effort", "tool_choice", "tools"],
+  "response": {
+    "id": "chatcmpl-abc123",
+    "object": "chat.completion",
+    "created": 1759400000,
+    "model": "gpt-6-luna",
+    "choices": [
+      {
+        "index": 0,
+        "message": {
+          "role": "assistant",
+          "content": null,
+          "tool_calls": [
+            {
+              "id": "call_abc123",
+              "type": "function",
+              "function": {
+                "name": "emit_selection_intent",
+                "arguments": "{\"facility\": {\"ref\": \"I 40\", \"direction\": \"EB\"}, \"from_anchor\": \"South Miami Boulevard\", \"to_anchor\": \"Airport Boulevard\"}"
+              }
+            }
+          ]
+        },
+        "finish_reason": "stop"
+      }
+    ],
+    "usage": {"prompt_tokens": 512, "completion_tokens": 41, "total_tokens": 553}
+  },
+  "expected": {"ref": "I 40", "direction": "EB", "from_anchor": "South Miami Boulevard", "to_anchor": "Airport Boulevard"}
+}

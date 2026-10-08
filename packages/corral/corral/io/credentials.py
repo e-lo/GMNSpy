@@ -28,9 +28,9 @@ from __future__ import annotations
 import logging
 import netrc
 import os
-from typing import Final
+from typing import Any, Final
 
-__all__ = ["resolve_credentials"]
+__all__ = ["credential_source", "resolve_credentials", "system_keyring"]
 
 _logger: Final = logging.getLogger(__name__)
 
@@ -101,6 +101,85 @@ def resolve_credentials(host: str, *, explicit: dict | None = None) -> dict:
 
     # Layer 5: nothing.
     return {}
+
+
+def credential_source(host: str) -> str:
+    """Name the cascade layer that would supply credentials for ``host``, never the values.
+
+    Walks the same env → keyring → netrc order as :func:`resolve_credentials`
+    (there is no ``explicit`` layer: callers that pass one already know).
+    Safe to show in a UI ("credentials from: env").
+
+    Args:
+        host: Network host (port suffixes are ignored, as in the resolver).
+
+    Returns:
+        ``"env"``, ``"keyring"``, ``"netrc"``, or ``"none"``.
+
+    Examples:
+        >>> credential_source("no.such.host.example")
+        'none'
+    """
+    if _lookup_env(_sanitize_host(host)):
+        return "env"
+    if _lookup_keyring(host):
+        return "keyring"
+    if _lookup_netrc(host):
+        return "netrc"
+    return "none"
+
+
+#: Modules of the real OS-backed keyring backends this function trusts. Anything else —
+#: notably ``keyrings.alt.*`` (plaintext/obfuscated file backends, e.g.
+#: ``keyrings.alt.file.PlaintextKeyring`` at priority 0.5) — is rejected even if a hostile
+#: ``PYTHON_KEYRING_BACKEND`` env var or ``keyringrc.cfg`` selects it and gives it a
+#: priority above the fail backend's.
+_REAL_BACKEND_MODULES: Final = frozenset(
+    {
+        "keyring.backends.macOS",
+        "keyring.backends.Windows",
+        "keyring.backends.SecretService",
+        "keyring.backends.libsecret",
+        "keyring.backends.kwallet",
+    }
+)
+_CHAINER_MODULE: Final = "keyring.backends.chainer"
+
+
+def _is_real_os_backend(backend: Any) -> bool:
+    """Whether ``backend`` (or, for a chainer, at least one of its sub-backends) is OS-trusted."""
+    module = type(backend).__module__
+    if module == _CHAINER_MODULE:
+        return any(_is_real_os_backend(b) for b in getattr(backend, "backends", ()))
+    return module in _REAL_BACKEND_MODULES
+
+
+def system_keyring() -> Any | None:
+    """Return the ``keyring`` module when a real OS keyring backend is active, else ``None``.
+
+    ``None`` when the optional ``keyring`` package is missing (or disabled with
+    ``sys.modules['keyring'] = None``), when its active backend is the fail/null backend
+    (priority <= 0: headless CI, containers, WSL without a secret service), or when the
+    active backend is not one of the trusted OS-native backends (:data:`_REAL_BACKEND_MODULES`) —
+    this rejects plaintext/file-based backends such as ``keyrings.alt.file.PlaintextKeyring``
+    even though their priority (0.5) clears the fail-backend check. Callers use this one
+    answer to decide whether secrets can be stored in a keyring at all.
+    """
+    try:
+        import keyring  # type: ignore[import-not-found]
+    except ImportError:
+        return None
+    if keyring is None:  # type: ignore[unreachable]
+        return None
+    try:
+        backend = keyring.get_keyring()
+    except Exception:  # boundary: a broken backend configuration means "no usable keyring", never a crash
+        return None
+    if getattr(backend, "priority", 0) <= 0:
+        return None
+    if not _is_real_os_backend(backend):
+        return None
+    return keyring
 
 
 # ---------------------------------------------------------------------------

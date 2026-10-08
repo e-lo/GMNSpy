@@ -83,6 +83,7 @@ _KNOWN_FICTIONAL = {
     "netstead.__file__",  # python builtin, just a doc example
     "netstead.symbols",  # generic prose
     "netstead.utils",  # generic prose; no such submodule
+    "netstead.toml",  # the project config FILENAME (netstead.toml), not a Python attribute path
     "corral.utils",  # generic prose; no such submodule
     "corral.package",  # lowercase — refers to the Package class, not a submodule
     # Setuptools entry-point GROUP NAME (not a Python attribute path).

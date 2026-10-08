@@ -20,6 +20,7 @@ for every API consumer. These tests pin:
 from __future__ import annotations
 
 import re
+import shutil
 
 import pytest
 from corral.engines.ibis_engine import IbisEngine
@@ -40,6 +41,17 @@ from corral.io.duckdb_adapter import DuckdbAdapter
 from netstead.fixtures import leavenworth
 
 LEAVENWORTH_DUCKDB = leavenworth.duckdb_path()
+
+
+@pytest.fixture
+def private_db(tmp_path) -> str:
+    """A private copy of the Leavenworth .duckdb for tests that read through an engine.
+
+    The engine opens the file read-write, which takes an exclusive cross-process lock; on the
+    committed file that would block other xdist workers. ``scan()`` opens read-only and is fine.
+    """
+    return str(shutil.copyfile(LEAVENWORTH_DUCKDB, tmp_path / "leavenworth.duckdb"))
+
 
 # All nine tables the Leavenworth fixture is documented to carry (see
 # packages/netstead/netstead/fixtures/leavenworth/README.md). Set semantics so
@@ -192,12 +204,12 @@ def test_read_requires_table_kwarg() -> None:
 
 
 @pytest.mark.parametrize("engine_name,engine_cls", ENGINE_PARAMS)
-def test_read_specific_table_delegates_to_engine(engine_name, engine_cls) -> None:
+def test_read_specific_table_delegates_to_engine(engine_name, engine_cls, private_db) -> None:
     """read(..., table='node') returns the engine's native expression type."""
     a = DuckdbAdapter()
     engine = engine_cls()
     try:
-        expr = a.read(str(LEAVENWORTH_DUCKDB), engine=engine, table="node")
+        expr = a.read(private_db, engine=engine, table="node")
         # Common interface: every engine implements to_pandas. Use that to
         # verify we got a real, usable expression for the right table.
         df = engine.to_pandas(expr)
@@ -211,7 +223,7 @@ def test_read_specific_table_delegates_to_engine(engine_name, engine_cls) -> Non
 
 
 @pytest.mark.parametrize("engine_name,engine_cls", ENGINE_PARAMS)
-def test_read_strips_table_kwarg_before_forwarding(engine_name, engine_cls) -> None:
+def test_read_strips_table_kwarg_before_forwarding(engine_name, engine_cls, private_db) -> None:
     """Adapter must consume ``table=`` so engines don't see it as a double arg.
 
     Regression: a buggy adapter that forgot to ``kwargs.pop('table')`` would
@@ -225,7 +237,7 @@ def test_read_strips_table_kwarg_before_forwarding(engine_name, engine_cls) -> N
         # If the kwarg leaked through, an engine using **kwargs would either
         # raise TypeError or fail to find the right table. The fact that
         # this works is the assertion.
-        expr = a.read(str(LEAVENWORTH_DUCKDB), engine=engine, table="link")
+        expr = a.read(private_db, engine=engine, table="link")
         df = engine.to_pandas(expr)
         assert "link_id" in df.columns
     finally:
@@ -239,7 +251,7 @@ def test_read_strips_table_kwarg_before_forwarding(engine_name, engine_cls) -> N
 
 
 @pytest.mark.parametrize("engine_name,engine_cls", ENGINE_PARAMS)
-def test_write_specific_table_roundtrip(engine_name, engine_cls, tmp_path) -> None:
+def test_write_specific_table_roundtrip(engine_name, engine_cls, tmp_path, private_db) -> None:
     """scan → read(table) → write(table) → scan → equal table content.
 
     The polars engine intentionally does NOT support duckdb writes
@@ -257,7 +269,7 @@ def test_write_specific_table_roundtrip(engine_name, engine_cls, tmp_path) -> No
     out_path = tmp_path / f"out_{engine_name}.duckdb"
     try:
         # Source: read 'node' from leavenworth via the adapter.
-        expr = a.read(str(LEAVENWORTH_DUCKDB), engine=engine, table="node")
+        expr = a.read(private_db, engine=engine, table="node")
         df_in = engine.to_pandas(expr)
 
         if engine_name == "polars":

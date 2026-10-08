@@ -16,6 +16,47 @@ pre-opened backend (``IbisEngine(con=ibis.duckdb.connect("net.duckdb"))``)
 to point at a file or share a connection. The engine owns one duckdb
 connection for its lifetime; call ``close()`` to release it.
 
+Thread safety
+-------------
+
+A duckdb connection is not safe to use from several threads at once: two
+threads interleaving queries on it fail with "Attempting to execute an
+unsuccessful or closed pending query result". Every ibis backend this module
+creates or adopts is therefore *serialized*: each of its methods runs under one
+re-entrant lock stored on the backend (see :func:`serialize_backend`). Locking
+the backend, not just this class's methods, also covers code that executes an
+expression directly (``expr.execute()``, ``expr.to_pandas()``), since those
+calls go through the same backend object.
+
+Per-thread ``con.cursor()`` connections are *not* an option: ibis's
+``read_csv``/``read_parquet`` register temp views and :meth:`IbisEngine.materialize`
+/ :meth:`IbisEngine.from_records` create temp tables, and duckdb temp objects
+are private to the connection that created them, so another thread's cursor
+cannot see them. Serializing costs little: duckdb already parallelizes a single
+query across cores.
+
+Remaining gaps (the lock wraps *method calls*, so anything that reaches the
+duckdb connection outside one is not covered):
+
+- batch readers returned by ``to_pyarrow_batches``/``to_pandas_batches`` are
+  consumed after the call, and so the lock, has returned;
+- ``_safe_raw_sql`` is a context manager: only entering it is locked, not the
+  ``with`` body that uses its cursor; likewise the connection ``raw_sql``
+  returns is used unlocked once the call returns (``backend.con`` itself, too:
+  hold :func:`backend_lock` around direct use);
+- properties that run queries (``current_database``, ``current_catalog``,
+  ``version``, ``tables``) are not methods and are not wrapped;
+- expressions bound to ibis's process-wide *default* backend (a plain
+  ``ibis.memtable(...)`` with no engine) are not covered at all.
+
+Corral's own code stays inside these lines (internal uses of the first three
+happen inside an already-locked method); callers that step outside them should
+take :func:`backend_lock`.
+
+:meth:`IbisEngine.to_pandas` deliberately holds the lock only for the query: it fetches Arrow
+(as ``Backend.execute`` does) and converts to pandas after the lock is released, so a large conversion never
+stalls other threads' queries.
+
 Dispatch model (post-issue-#134 inversion)
 ------------------------------------------
 
@@ -37,6 +78,10 @@ handing the rest off to ``dispatch``.
 from __future__ import annotations
 
 import contextlib
+import functools
+import inspect
+import threading
+from collections.abc import Callable
 from itertools import count
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -142,6 +187,7 @@ class IbisEngine:
         else:
             self.con = con
             self._owns_con = False
+        serialize_backend(self.con)
 
     # ------------------------------------------------------------------
     # Read primitives — adapters call these directly
@@ -252,7 +298,7 @@ class IbisEngine:
         del kwargs  # reserved for future backend-specific options
         if not table:
             raise InvalidEngineCallError("ibis engine: read_duckdb_table requires a non-empty table= argument")
-        backend = ibis.duckdb.connect(_as_path_str(source))
+        backend = serialize_backend(ibis.duckdb.connect(_as_path_str(source)))
         expr = backend.table(table)
         return self.cast_schema(expr, schema) if schema is not None else expr
 
@@ -540,6 +586,8 @@ class IbisEngine:
         :meth:`pandas.DataFrame.convert_dtypes` — ibis's native
         ``to_pandas`` returns numpy dtypes (``int64``, ``object``,
         ``float64``) which would diverge from polars/pandas engines.
+        Only the query runs under the backend lock; the conversion runs
+        after it is released (see the module docstring).
 
         Examples:
             >>> import tempfile, pathlib
@@ -553,12 +601,21 @@ class IbisEngine:
             >>> engine.close()
         """
         try:
-            df = expr.to_pandas()
+            import pandas  # noqa: F401  (fail with the install hint, not deep inside ibis)
         except ImportError as exc:  # pragma: no cover - pandas is an ibis dep
             raise EngineNotAvailableError(
                 "pandas is required for IbisEngine.to_pandas; install with `pip install dbcorral[pandas]`"
             ) from exc
-        return df.convert_dtypes()
+        if not _is_duckdb(expr):
+            return expr.to_pandas().convert_dtypes()
+        # Only the query holds the backend lock; the Arrow -> pandas conversion, which can cost as
+        # much as the query, runs after it is released. The Arrow table is fetched the way
+        # ``Backend.execute`` fetches it (the duckdb relation's own ``to_arrow_table``, not
+        # ``to_pyarrow``, which re-maps types), so the conversion below sees exactly what it sees.
+        backend = expr._find_backend()
+        with backend_lock(backend):
+            arrow = backend._to_duckdb_relation(expr).to_arrow_table()
+        return _arrow_to_pandas(arrow, expr.as_table().schema()).convert_dtypes()
 
     def to_polars(self, expr: ir.Table) -> pl.DataFrame:
         """Materialize ``expr`` and return a ``polars.DataFrame``.
@@ -742,6 +799,119 @@ def _coerce_all_null_columns_to_string(arrow_table: Any) -> Any:
     return arrow_table.cast(new_schema)
 
 
+def _is_duckdb(expr: Any) -> bool:
+    """Whether ``expr`` is bound to a duckdb backend (the only one whose conversion we replicate)."""
+    try:
+        return expr._find_backend().name == "duckdb"
+    except Exception:  # an unbound memtable has no backend: use ibis's own path
+        return False
+
+
+def _arrow_to_pandas(table: pa.Table, schema: Any) -> pd.DataFrame:
+    """Arrow -> pandas exactly as ibis 12's duckdb ``Backend.execute`` converts it, without its lock.
+
+    Mirrors ``ibis.backends.duckdb.Backend.execute``: nested, dictionary and null-bearing columns go
+    through ``to_pylist`` (Arrow's own ``to_pandas`` would turn null ints into floats), the rest
+    through ``to_pandas``, then ibis's ``DuckDBPandasData`` coerces to the ibis schema.
+    ``test_to_pandas_matches_ibis_execute_for_every_leavenworth_table`` pins the equivalence.
+    """
+    import pandas as pd
+    import pyarrow.types as pat
+    from ibis.backends.duckdb.converter import DuckDBPandasData
+
+    columns = {
+        name: (
+            col.to_pylist()
+            if pat.is_nested(col.type) or pat.is_dictionary(col.type) or col.null_count
+            else col.to_pandas()
+        )
+        for name, col in zip(table.column_names, table.columns, strict=True)
+    }
+    return DuckDBPandasData.convert_table(pd.DataFrame(columns), schema)
+
+
+_LOCK_ATTR = "_corral_lock"
+
+
+def _locked(method: Callable[..., Any], lock: threading.RLock) -> Callable[..., Any]:
+    @functools.wraps(method)
+    def call(*args: Any, **kwargs: Any) -> Any:
+        with lock:
+            return method(*args, **kwargs)
+
+    return call
+
+
+#: How long a memtable finalizer waits for the backend lock at interpreter exit before giving up.
+_FINALIZER_WAIT_S = 1.0
+
+
+def _locked_finalizer_factory(make: Callable[..., Any], lock: threading.RLock) -> Callable[..., Any]:
+    """Wrap ``_make_memtable_finalizer`` so the finalizer it returns also takes ``lock``, briefly.
+
+    ibis 12 registers each memtable's finalizer with :mod:`atexit` (duckdb's own backend returns
+    none, but a SQL backend handed to :class:`IbisEngine` may); it drops the table through
+    ``con.cursor()``, which must not race a query another (daemon) thread may still be running on
+    the same duckdb connection. At exit the drop is pointless anyway (the in-memory database goes
+    away with the process), so the finalizer waits at most :data:`_FINALIZER_WAIT_S` for the lock
+    and skips the drop if it is still held: Ctrl-C never hangs behind an in-flight job query.
+    """
+
+    def run_if_free(finalizer: Callable[..., Any]) -> Callable[..., Any]:
+        @functools.wraps(finalizer)
+        def call(*args: Any, **kwargs: Any) -> Any:
+            if not lock.acquire(timeout=_FINALIZER_WAIT_S):
+                return None
+            try:
+                return finalizer(*args, **kwargs)
+            finally:
+                lock.release()
+
+        return call
+
+    @functools.wraps(make)
+    def factory(*args: Any, **kwargs: Any) -> Any:
+        finalizer = make(*args, **kwargs)
+        return None if finalizer is None else run_if_free(finalizer)
+
+    return factory
+
+
+def backend_lock(backend: Any) -> contextlib.AbstractContextManager[Any]:
+    """The lock :func:`serialize_backend` put on ``backend`` (a no-op context if it has none).
+
+    Hold it around any direct use of the raw duckdb connection (``backend.con``), which the
+    method wrappers cannot see.
+    """
+    lock = getattr(backend, _LOCK_ATTR, None)
+    return lock if lock is not None else contextlib.nullcontext()
+
+
+def serialize_backend(backend: BaseBackend) -> BaseBackend:
+    """Make ``backend`` safe to share between threads by running each of its methods under one lock.
+
+    Every method defined on the backend's class (public and private: ``execute``,
+    ``to_pyarrow``, ``create_table``, ``read_parquet``, ``raw_sql``, ...) is replaced on the
+    *instance* by a wrapper holding a re-entrant lock, so nested calls (``execute`` ->
+    ``_to_duckdb_relation`` -> ``raw_sql``) re-enter freely while a second thread waits for the
+    whole call. Idempotent: the lock lives on the backend, so wrapping it again (two engines
+    sharing one ``con``) is a no-op. Returns ``backend`` for chaining.
+    """
+    if getattr(backend, _LOCK_ATTR, None) is not None:
+        return backend
+    lock = threading.RLock()
+    # Look the methods up on the class: inspecting the instance would evaluate its properties,
+    # some of which (``version``, ``current_database``) run queries.
+    for name, _ in inspect.getmembers(type(backend), inspect.isfunction):
+        if name.startswith("__"):
+            continue
+        method = getattr(backend, name)
+        wrap = _locked_finalizer_factory if name == "_make_memtable_finalizer" else _locked
+        setattr(backend, name, wrap(method, lock))
+    setattr(backend, _LOCK_ATTR, lock)
+    return backend
+
+
 _TEMP_COUNTER = count()
 
 
@@ -757,4 +927,4 @@ def _temp_table_name(prefix: str) -> str:
     return f"_corral_{prefix}_{next(_TEMP_COUNTER)}"
 
 
-__all__ = ["IbisEngine"]
+__all__ = ["IbisEngine", "backend_lock", "serialize_backend"]

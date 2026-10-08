@@ -1,0 +1,157 @@
+# Maintained catalog of the LLM providers and models the Workbench offers for its
+# natural-language features. Edit freely. A user overlay at
+# <user config dir>/llm_models.toml (same shape) may add or relabel models and change
+# a provider's label/default_model; it can NOT change base_url, key_env or kind
+# (those decide where API keys are sent).
+#
+# Per provider:
+#   label          display name
+#   kind           "remote" (needs an API key) | "local" (no key; Ollama)
+#   base_url       the official endpoint; a key is only ever sent to the endpoint it was entered for
+#   key_env        env vars checked, in order, before the OS keyring (official endpoint only)
+#   default_model  used when select.model is unset. Defaults are each provider's small, fast tier:
+#                  one forced tool call per utterance doesn't need a large model (design: "Tiny models").
+# Per model: id (sent to the API), label, tier (fast | balanced | best), tools (tool calling),
+#   thinking (optional, Ollama only: the model emits hidden reasoning output, so the adapter sends
+#   "think": false to keep it from exhausting the output budget), size_gb (optional, Ollama only:
+#   approximate download size shown before a pull).
+#
+# OpenAI, Gemini and Ollama model ids were checked against official vendor docs on 2026-10-05 (see
+# the per-model comments below for sources and caveats — this landscape moves fast, so re-verify
+# before each release). `netstead llm test <provider>` also lists every catalog id the live endpoint
+# does not serve.
+
+[anthropic]
+label = "Anthropic"
+kind = "remote"
+base_url = "https://api.anthropic.com"
+key_env = ["NETSTEAD_ANTHROPIC_API_KEY", "ANTHROPIC_API_KEY"]
+default_model = "claude-haiku-4-5-20251001"
+
+[[anthropic.models]]
+id = "claude-haiku-4-5-20251001"
+label = "Haiku 4.5"
+tier = "fast"
+tools = true
+
+[[anthropic.models]]
+id = "claude-sonnet-5"
+label = "Sonnet 5"
+tier = "balanced"
+tools = true
+
+[[anthropic.models]]
+id = "claude-opus-5-5"
+label = "Opus 5.5"
+tier = "best"
+tools = true
+
+[openai]
+label = "OpenAI"
+kind = "remote"
+base_url = "https://api.openai.com/v1"
+key_env = ["NETSTEAD_OPENAI_API_KEY", "OPENAI_API_KEY"]
+default_model = "gpt-6-luna"
+
+# Verified 2026-10-05 against https://developers.openai.com/api/docs/models (platform.openai.com/docs/models
+# redirects there). gpt-4.1-mini/gpt-4.1/gpt-5 no longer appear anywhere on that page (checked verbatim,
+# including any "legacy"/"previous generation" section) and are superseded by the GPT-6 generation listed
+# below; https://developers.openai.com/api/docs/deprecations also lists dated GPT-5 snapshots as deprecated
+# (shutdown dates through 2026-12-11). GPT-6 Luna is described there as "most efficient for high-volume tasks".
+[[openai.models]]
+id = "gpt-6-luna"
+label = "GPT-6 Luna"
+tier = "fast"
+tools = true
+
+# Verified 2026-10-05, same source. GPT-6.1 Sol: "balances intelligence and cost". Checked
+# 2026-10-05 against https://developers.openai.com/api/docs/models/gpt-6.1-sol: "Chat Completions
+# is supported without tool calling." and its reasoning.effort values don't include "none" (so the
+# gpt-6-luna "force none to get tool calling" trick doesn't apply either) -- tool/function calling
+# isn't available for this model on Chat Completions at all. Go straight to JSON mode.
+[[openai.models]]
+id = "gpt-6.1-sol"
+label = "GPT-6.1 Sol"
+tier = "balanced"
+tools = false
+
+# Verified 2026-10-05, same source. GPT-6 Astra: flagship, most capable model.
+[[openai.models]]
+id = "gpt-6-astra"
+label = "GPT-6 Astra"
+tier = "best"
+tools = true
+
+[gemini]
+label = "Gemini"
+kind = "remote"
+base_url = "https://generativelanguage.googleapis.com/v1beta"
+key_env = ["NETSTEAD_GEMINI_API_KEY", "GEMINI_API_KEY"]
+default_model = "gemini-2.5-flash-lite"
+
+# Verified 2026-10-05 against https://ai.google.dev/gemini-api/docs/models: the id is correct and the page
+# states the 2.5 models "are not deprecated and will continue to be served until further notice through the
+# API" — but access is now limited to projects that have used them before, and Google recommends 3.5
+# Flash-Lite or 3.8 Flash for new projects. Kept as the catalog default (a key already configured for this
+# endpoint has very likely used 2.5 before); VERIFY again before a new key's first run if `netstead llm test`
+# reports it missing.
+[[gemini.models]]
+id = "gemini-2.5-flash-lite"
+label = "Gemini 2.5 Flash-Lite"
+tier = "fast"
+tools = true
+
+# Verified 2026-10-05, same source and same access caveat as gemini-2.5-flash-lite above.
+[[gemini.models]]
+id = "gemini-2.5-flash"
+label = "Gemini 2.5 Flash"
+tier = "balanced"
+tools = true
+
+# Verified 2026-10-05, same source and same access caveat as gemini-2.5-flash-lite above.
+[[gemini.models]]
+id = "gemini-2.5-pro"
+label = "Gemini 2.5 Pro"
+tier = "best"
+tools = true
+
+[ollama]
+label = "Ollama (local)"
+kind = "local"
+base_url = "http://localhost:11434"
+key_env = []
+default_model = "qwen3:4b"
+
+# Ollama's installed models are discovered at run time (GET /api/tags). These entries
+# only label known tags, power the "ollama pull <id>" hint, and are the Workbench's Pull choices.
+# size_gb: the library's listed download size, shown before a pull (approximate; tags get re-uploaded).
+# Verified 2026-10-05 against https://ollama.com/library/qwen3: both tags are listed (qwen3:4b, 2.5GB,
+# 256K context; qwen3:8b, 5.2GB, 40K context, tagged "latest"). The library lists tags from 0.6b to 235b.
+# The qwen3 library page carries the "tools" and "thinking" capability badges.
+[[ollama.models]]
+id = "qwen3:4b"
+label = "Qwen 3 4B"
+tier = "fast"
+tools = true
+thinking = true
+size_gb = 2.5
+
+[[ollama.models]]
+id = "qwen3:8b"
+label = "Qwen 3 8B"
+tier = "balanced"
+tools = true
+thinking = true
+size_gb = 5.2
+
+# Verified 2026-10-05 against https://ollama.com/library/qwen2.5: qwen2.5:7b (the "latest" tag) is
+# 4.7GB with a 32K context window; the page carries only the "tools" capability badge (no "thinking").
+# A local Ollama 0.35.1 reports 4683087332 bytes and capabilities ["completion", "tools"] for it.
+# Live-tested for selection (see docs/cookbook/local-llm-ollama.md): reliable at temperature 0.
+[[ollama.models]]
+id = "qwen2.5:7b"
+label = "Qwen 2.5 7B"
+tier = "balanced"
+tools = true
+thinking = false
+size_gb = 4.7

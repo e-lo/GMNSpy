@@ -40,21 +40,40 @@ def _node_coords(nodes):
 
 
 def _facility_links(links, facility):
-    """Links whose normalized ref or name matches the facility (any road class).
+    """Links whose normalized ref or name matches the facility (any road class), plus fallback notes.
 
-    ``ref``/``name`` may each be a single value or a list (OR-matched).
+    ``ref``/``name`` may each be a single value or a list (OR-matched). A value that matches
+    nothing in its own column is tried against the other one (small models put "Capital Blvd" in
+    ``ref`` or "US 1" in ``name``), with the same normalization; each such fallback that hits adds
+    a note for the result's diagnostics. A value that matches its own column never falls back.
+    ``ref`` and ``name`` are optional GMNS fields; a missing column matches nothing.
     """
+    blank = pd.Series(None, index=links.index, dtype="object")
+    ref_sets = links.get("ref", blank).apply(norm_ref)
+    names = links.get("name", blank).fillna("").astype("string").str.lower().str.replace(r"[^a-z0-9]", "", regex=True)
+
+    def by_ref(value):
+        want = norm_ref(value)
+        return ref_sets.apply(lambda have: bool(want & have)).astype(bool)
+
+    def by_name(value):
+        want = norm_name(value)  # a blank/symbols-only name must match nothing, not blank links
+        return (names == want).fillna(False).astype(bool) if want else pd.Series(False, index=links.index)
+
     hit = pd.Series(False, index=links.index)
-    refs = facility.refs()
-    if refs:
-        want = set().union(*(norm_ref(r) for r in refs))
-        hit = hit | links["ref"].apply(lambda r: bool(want & norm_ref(r)))
-    names = facility.names()
-    if names:
-        wantn = {norm_name(n) for n in names}
-        nm = links["name"].fillna("").astype("string").str.lower().str.replace(r"[^a-z0-9]", "", regex=True)
-        hit = hit | nm.isin(wantn)
-    return links[hit.fillna(False)]
+    notes = []
+    for field, values, own, other, as_other in (
+        ("ref", facility.refs(), by_ref, by_name, "a street name"),
+        ("name", facility.names(), by_name, by_ref, "a route number"),
+    ):
+        for value in values:
+            match = own(value)
+            if not match.any():
+                match = other(value)
+                if match.any():
+                    notes.append(f"treated {field} {value!r} as {as_other}")
+            hit = hit | match
+    return links[hit], notes
 
 
 def _filter_direction(mainline, direction, nx, ny):
@@ -96,13 +115,13 @@ def _apply_modes(base, modes):
 
 
 def _base_selection(intent, links):
+    """``(links, source label, notes)`` for the primary selector; notes record any ref/name fallback."""
     if intent.link_ids:
-        return links[links["link_id"].isin(list(intent.link_ids))], "explicit link_ids"
+        return links[links["link_id"].isin(list(intent.link_ids))], "explicit link_ids", []
     if intent.select_all:
-        return links, "all links"
-    return _facility_links(links, intent.facility), "facility " + repr(
-        list(intent.facility.refs()) + list(intent.facility.names())
-    )
+        return links, "all links", []
+    base, notes = _facility_links(links, intent.facility)
+    return base, "facility " + repr(list(intent.facility.refs()) + list(intent.facility.names())), notes
 
 
 def _whole(intent, base, diags):
@@ -138,7 +157,7 @@ def _result_from_path(intent, base, from_m, to_m, path, diags, *, cand_note):
 
 def _freeway_segment(intent, base, links, nx, ny, diags):
     """Gore/merge anchors + shortest directed path along the carriageway."""
-    facility_all = _facility_links(links, intent.facility) if intent.facility else base
+    facility_all = _facility_links(links, intent.facility)[0] if intent.facility else base
     directed_nodes = set(base["from_node_id"]) | set(base["to_node_id"])
     mainline_nodes = set(facility_all["from_node_id"]) | set(facility_all["to_node_id"])
     interchanges = _anchors.classify_interchanges(links, directed_nodes, mainline_nodes)
@@ -190,7 +209,7 @@ def resolve_frames(intent: SelectionIntent, links, nodes) -> SelectionResult:
     nx, ny = _node_coords(nodes)
 
     # 1. base selection
-    base, source = _base_selection(intent, links)
+    base, source, notes = _base_selection(intent, links)
     if base.empty:
         return SelectionResult("not_found", intent, diagnostics=[f"{source}: no links matched"])
 
@@ -200,13 +219,13 @@ def resolve_frames(intent: SelectionIntent, links, nodes) -> SelectionResult:
         base = _filter_direction(base, direction, nx, ny)
         if base.empty:
             return SelectionResult(
-                "not_found", intent, diagnostics=[f"facility found but no links in direction {direction!r}"]
+                "not_found", intent, diagnostics=[*notes, f"facility found but no links in direction {direction!r}"]
             )
 
     # 3. modes + attribute conditions (AND)
     base, missing_cols = _apply_conditions(base, intent.conditions)
     base, _mode_applied = _apply_modes(base, intent.modes)
-    diags = [f"{source}: {len(base)} link(s)"]
+    diags = [*notes, f"{source}: {len(base)} link(s)"]
     if missing_cols:
         diags.append(f"ignored conditions on unknown column(s): {missing_cols}")
     if base.empty:

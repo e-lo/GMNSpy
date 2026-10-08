@@ -238,7 +238,10 @@ class DuckdbAdapter:
         # duckdb because table enumeration is a metadata-only op.
         del engine
         path_str = _coerce_path(source)
-        return [ResourceRef(name=t, path=f"{path_str}::{t}", format=self.name) for t in _list_tables(path_str)]
+        return [
+            ResourceRef(name=t, path=f"{path_str}::{t}", format=self.name, container_adapter=self.name, member=t)
+            for t in _list_tables(path_str)
+        ]
 
     # ------------------------------------------------------------------
     # read

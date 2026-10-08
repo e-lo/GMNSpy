@@ -9,13 +9,15 @@ that point at the deferred-adapter tasks, and registry/protocol wiring.
 from __future__ import annotations
 
 import re
+import shutil
+import threading
 from pathlib import Path
 
 import ibis
 import pytest
 from corral.engines import Engine, get_engine
 from corral.engines.base import EngineNotAvailableError
-from corral.engines.ibis_engine import IbisEngine
+from corral.engines.ibis_engine import IbisEngine, backend_lock, serialize_backend
 from corral.spec.loader import load_schema
 from netstead.fixtures import leavenworth
 
@@ -43,8 +45,10 @@ def link_parquet() -> Path:
 
 
 @pytest.fixture
-def duckdb_path() -> Path:
-    return leavenworth.duckdb_path()
+def duckdb_path(tmp_path: Path) -> Path:
+    # A private copy: the engine opens .duckdb read-write, which takes an exclusive
+    # cross-process lock that would block other xdist workers reading the committed file.
+    return Path(shutil.copyfile(leavenworth.duckdb_path(), tmp_path / "leavenworth.duckdb"))
 
 
 @pytest.fixture
@@ -347,3 +351,156 @@ def test_close_is_idempotent():
     e = IbisEngine()
     e.close()
     e.close()  # second call must not raise
+
+
+# ---------------------------------------------------------------------------
+# Thread safety: one shared connection, many threads
+# ---------------------------------------------------------------------------
+
+
+def _hammer(engine: IbisEngine, link_parquet: Path, link_csv: Path, rounds: int = 15) -> list[BaseException]:
+    """Scan, materialize and execute on ``engine`` from several threads at once; return any errors."""
+    errors: list[BaseException] = []
+    start = threading.Barrier(4)
+
+    def work(i: int) -> None:
+        start.wait()
+        try:
+            for _ in range(rounds):
+                if i % 2:
+                    expr = engine.scan(link_parquet)
+                    assert engine.count(expr) > 0
+                    engine.to_pandas(expr.head(50))
+                else:
+                    expr = engine.materialize(engine.scan(link_csv))
+                    expr.count().execute()  # direct ibis execution, bypassing the engine's methods
+                    engine.from_records({"a": [1, 2, 3]}).to_pyarrow()
+        except BaseException as exc:  # collected and asserted on by the caller
+            errors.append(exc)
+
+    threads = [threading.Thread(target=work, args=(i,)) for i in range(4)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    return errors
+
+
+def test_shared_engine_is_safe_across_threads(engine: IbisEngine, link_parquet: Path, link_csv: Path):
+    assert _hammer(engine, link_parquet, link_csv) == []
+
+
+def test_adopted_backend_is_serialized_too(link_parquet: Path, link_csv: Path):
+    con = ibis.duckdb.connect()
+    engine = IbisEngine(con=con)
+    try:
+        assert _hammer(engine, link_parquet, link_csv) == []
+    finally:
+        con.disconnect()
+
+
+def test_serialize_backend_is_idempotent_and_exposes_its_lock():
+    con = serialize_backend(ibis.duckdb.connect())
+    try:
+        lock = con._corral_lock
+        wrapped = con.execute
+        assert serialize_backend(con) is con and con._corral_lock is lock and con.execute is wrapped
+        with backend_lock(con):  # re-entrant: the holder can still call the backend
+            assert con.list_tables() == []
+        assert backend_lock(object()).__enter__() is None  # no lock: a no-op context
+    finally:
+        con.disconnect()
+
+
+def test_memtable_finalizer_skips_its_drop_while_a_query_holds_the_lock(monkeypatch):
+    import corral.engines.ibis_engine as ie
+
+    monkeypatch.setattr(ie, "_FINALIZER_WAIT_S", 0.05)
+    con = ibis.duckdb.connect()
+    dropped: list[str] = []
+    # duckdb's own backend returns no finalizer; SQL backends that do return a "DROP" callable.
+    con._make_memtable_finalizer = lambda name: lambda: dropped.append(name)
+    serialize_backend(con)
+    try:
+        finalizer = con._make_memtable_finalizer("t")
+        held, release = threading.Event(), threading.Event()
+
+        def busy():  # stands in for a job thread mid-query when the interpreter exits
+            with backend_lock(con):
+                held.set()
+                release.wait(5)
+
+        worker = threading.Thread(target=busy)
+        worker.start()
+        assert held.wait(5)
+        finalizer()  # gives up after the short wait instead of hanging
+        release.set()
+        worker.join()
+        assert dropped == []
+        finalizer()  # lock free: the drop runs
+        assert dropped == ["t"]
+    finally:
+        con.disconnect()
+
+
+@pytest.mark.parametrize("fmt", ["csv", "parquet"])
+def test_to_pandas_matches_ibis_execute_for_every_leavenworth_table(engine: IbisEngine, fmt: str):
+    import pandas as pd
+
+    folder = leavenworth.csv_dir() if fmt == "csv" else leavenworth.parquet_dir()
+    for path in sorted(folder.glob(f"*.{fmt}")):
+        expr = engine.scan(path)
+        pd.testing.assert_frame_equal(engine.to_pandas(expr), expr.execute().convert_dtypes(), obj=path.name)
+
+
+def test_to_pandas_matches_ibis_execute_for_awkward_types(engine: IbisEngine):
+    """Decimals, tz-aware timestamps, uuid / json values and nullable ints convert as ``execute`` does."""
+    import datetime as dt
+    import decimal
+
+    import pandas as pd
+    import pyarrow as pa
+
+    utc = dt.UTC
+    uid = "00000000-0000-0000-0000-000000000001"
+    arrow = pa.table(
+        {
+            "dec": pa.array([decimal.Decimal("1.25"), None, decimal.Decimal("-3.50")], pa.decimal128(9, 2)),
+            "ts": pa.array(
+                [dt.datetime(2026, 1, 1, tzinfo=utc), None, dt.datetime(2026, 6, 1, 12, tzinfo=utc)],
+                pa.timestamp("us", tz="UTC"),
+            ),
+            "n": pa.array([1, None, 3], pa.int64()),
+            "n_full": pa.array([1, 2, 3], pa.int32()),
+            "uid_text": pa.array([uid, None, uid]),
+            "doc_text": pa.array(['{"a": 1}', None, "[1, 2]"]),
+            "flag": pa.array([True, None, False]),
+        }
+    )
+    expr = engine.from_arrow(arrow)
+    expr = expr.mutate(uid=expr.uid_text.cast("uuid"), doc=expr.doc_text.cast("json"))
+    pd.testing.assert_frame_equal(engine.to_pandas(expr), expr.execute().convert_dtypes())
+
+
+def test_to_pandas_converts_after_releasing_the_backend_lock(engine: IbisEngine, link_parquet: Path, monkeypatch):
+    from corral.engines import ibis_engine
+
+    lock = backend_lock(engine.con)
+    seen: list[bool] = []
+    real = ibis_engine._arrow_to_pandas
+
+    def probe(*args, **kwargs):
+        def try_lock() -> None:  # another thread: can it take the lock right now?
+            got = lock.acquire(blocking=False)
+            if got:
+                lock.release()
+            seen.append(got)
+
+        t = threading.Thread(target=try_lock)
+        t.start()
+        t.join()
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(ibis_engine, "_arrow_to_pandas", probe)
+    engine.to_pandas(engine.scan(link_parquet))
+    assert seen == [True]

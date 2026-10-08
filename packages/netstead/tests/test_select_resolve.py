@@ -79,3 +79,77 @@ def test_unknown_anchor_is_not_resolved(rdu):
     r = resolve_frames(_intent("EB", "Nonexistent Street XYZ", "Airport Boulevard"), links, nodes)
     assert r.status in {"not_found", "ambiguous"}
     assert r.from_match is None or r.from_match.node_id is None
+
+
+def test_blank_facility_name_matches_nothing(rdu):
+    """A whitespace-only name normalizes to "" and must not match blank-named links."""
+    links, nodes = rdu
+    assert (links["name"].fillna("").astype(str).str.strip() == "").any(), "fixture must have a blank-named link"
+    r = resolve_frames(SelectionIntent(facility=Facility(name="  ")), links, nodes)
+    assert r.status == "not_found"
+    assert r.link_ids == []
+
+
+def test_network_without_a_ref_column_still_resolves_by_name(rdu):
+    """``ref`` is optional in GMNS: a network without it resolves names and treats refs as unmatched."""
+    links, nodes = rdu
+    no_ref = links.drop(columns=["ref"])
+    by_name = resolve_frames(SelectionIntent(facility=Facility(name="Page Road")), no_ref, nodes)
+    assert by_name.link_ids
+    by_ref = resolve_frames(SelectionIntent(facility=Facility(ref="I 40")), no_ref, nodes)
+    assert by_ref.status == "not_found"
+
+
+# --- ref <-> name fallback (a small model puts a street name in ``ref``, or a route in ``name``) ---
+
+
+def test_street_name_in_ref_falls_back_to_name(rdu):
+    links, nodes = rdu
+    by_name = resolve_frames(SelectionIntent(facility=Facility(name="Airport Boulevard")), links, nodes)
+    by_ref = resolve_frames(SelectionIntent(facility=Facility(ref="airport boulevard")), links, nodes)
+    assert by_ref.status == "resolved"
+    assert by_ref.link_ids == by_name.link_ids != []
+    assert "treated ref 'airport boulevard' as a street name" in by_ref.diagnostics
+    assert not any("treated" in d for d in by_name.diagnostics)
+
+
+def test_route_number_in_name_falls_back_to_ref(rdu):
+    links, nodes = rdu
+    by_ref = resolve_frames(SelectionIntent(facility=Facility(ref="I 40")), links, nodes)
+    by_name = resolve_frames(SelectionIntent(facility=Facility(name="I-40")), links, nodes)
+    assert by_name.status == "resolved"
+    assert by_name.link_ids == by_ref.link_ids != []
+    assert "treated name 'I-40' as a route number" in by_name.diagnostics
+    assert not any("treated" in d for d in by_ref.diagnostics)
+
+
+def test_fallback_is_per_value_and_never_when_the_ref_matched(rdu):
+    """In a ref list, only the value that missed the ref column is tried as a name."""
+    links, nodes = rdu
+    r = resolve_frames(SelectionIntent(facility=Facility(ref=["I 40", "Page Road"])), links, nodes)
+    selected = links[links.link_id.isin(r.link_ids)]
+    assert set(selected["name"].dropna()) >= {"Page Road"}
+    assert selected["ref"].eq("I 40").any()
+    assert [d for d in r.diagnostics if "treated" in d] == ["treated ref 'Page Road' as a street name"]
+
+
+def test_fallback_that_matches_nothing_stays_not_found(rdu):
+    links, nodes = rdu
+    r = resolve_frames(SelectionIntent(facility=Facility(ref="Nowhere Lane", name="US 999")), links, nodes)
+    assert r.status == "not_found"
+    assert not any("treated" in d for d in r.diagnostics)
+
+
+def test_fallback_note_survives_the_segment_path(rdu):
+    """The note reaches the result when the facility came from a fallback and anchors cut a segment."""
+    links, nodes = rdu
+    intent = SelectionIntent(
+        facility=Facility(name="I 40", direction="EB"),
+        from_anchor="South Miami Boulevard",
+        to_anchor="Airport Boulevard",
+    )
+    r = resolve_frames(intent, links, nodes)
+    golden = resolve_frames(_intent("EB", "South Miami Boulevard", "Airport Boulevard"), links, nodes)
+    assert r.status == "resolved"
+    assert r.link_ids == golden.link_ids
+    assert "treated name 'I 40' as a route number" in r.diagnostics

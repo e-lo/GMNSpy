@@ -9,9 +9,25 @@ from corral.io import ResourceListing, ResourceRef
 def test_resource_ref_round_trip() -> None:
     ref = ResourceRef(name="link", path="net/link.parquet", format="parquet")
     payload = ref.model_dump()
-    assert payload == {"name": "link", "path": "net/link.parquet", "format": "parquet"}
+    assert payload == {
+        "name": "link",
+        "path": "net/link.parquet",
+        "format": "parquet",
+        "container_adapter": None,
+        "member": None,
+    }
     parsed = ResourceRef.model_validate(payload)
     assert parsed == ref
+    assert parsed.container is None
+
+
+def test_resource_ref_container_member_round_trip() -> None:
+    ref = ResourceRef(
+        name="link", path="net.zip::link.csv", format="csv", container_adapter="zipcsv", member="link.csv"
+    )
+    parsed = ResourceRef.model_validate(ref.model_dump())
+    assert parsed == ref
+    assert parsed.container == "net.zip"
 
 
 def test_resource_ref_json_round_trip() -> None:

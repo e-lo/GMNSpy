@@ -249,22 +249,24 @@ class Network(Package):
         """Persist the network, encoding geometry per container (geometry ADR).
 
         In memory geometry is canonical **WKB** bytes. Binary containers
-        (Parquet, DuckDB) store it as-is; a **CSV** target must carry **WKT**
-        text, so the geometry-bearing tables are decoded WKB→WKT first — on a
-        throwaway proxy, leaving this network's in-memory tables WKB. Delegates
-        to :meth:`corral.dataset.Package.write` for the actual I/O.
+        (Parquet, DuckDB) store it as-is; a **CSV** target — a csv directory
+        or a CSV-in-zip package (``format="zip"`` / ``.zip``) — must carry
+        **WKT** text, so the geometry-bearing tables are decoded WKB→WKT
+        first — on a throwaway proxy, leaving this network's in-memory tables
+        WKB. Delegates to :meth:`corral.dataset.Package.write` for the
+        actual I/O.
         """
         from dataclasses import replace
 
-        from corral.dataset.package import _infer_write_format
+        from corral.dataset.package import _resolve_write_format
 
         from netstead._geometry import decode_geometry_to_wkt
 
         try:
-            target_format = format or _infer_write_format(Path(dest))
+            target_format = _resolve_write_format(Path(dest), format)
         except Exception:
             target_format = None  # let Package.write raise the canonical error
-        if target_format == "csv":
+        if target_format in {"csv", "zipcsv"}:
             proxy = replace(self, tables=dict(self.tables))
             decode_geometry_to_wkt(proxy)
             Package.write(proxy, dest, format=format, overwrite=overwrite, strict_sync=strict_sync)

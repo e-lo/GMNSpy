@@ -135,12 +135,19 @@ def test_get_spec_returns_resolved_datapackage():
     assert "resources" in body
 
 
-def test_validate_returns_issues_document():
-    """`/packages/{id}/validate` returns ``{issues: [...], spec_version}``."""
+def test_validate_package_api_returns_canonical_to_dict_shape():
+    """`POST /packages/{id}/validate` returns the full ValidationReport.to_dict shape.
+
+    Canonical shape (was ``{issues, spec_version}`` before; now the full
+    ``ValidationReport.to_dict()`` document) — the wire shape is shared
+    across api + mcp + netstead (F1, schema parity).
+    """
     client = TestClient(build_app(_settings()))
     r = client.post("/packages/demo/validate")
     body = r.json()
-    assert "issues" in body and isinstance(body["issues"], list)
+    assert {"report_version", "spec_version", "source", "created_at", "metadata", "summary", "issues"} <= body.keys()
+    assert isinstance(body["issues"], list)
+    assert body["report_version"] == "1"
 
 
 # ---------------------------------------------------------------------------
@@ -193,3 +200,63 @@ def test_generate_dev_token_returns_url_safe_string():
     """Dev token helper returns a 40+ char URL-safe string."""
     t = generate_dev_token()
     assert isinstance(t, str) and len(t) >= 40
+
+
+# ---------------------------------------------------------------------------
+# PackageRegistry: require, source_for, loader injection (F2, F4) — replaces
+# three duplicate _safe_get-style helpers that had drifted across callers.
+# ---------------------------------------------------------------------------
+
+
+def test_registry_require_returns_package_for_known_id():
+    """`registry.require(id)` returns the loaded package — public version of _safe_get."""
+    from corral.api import PackageRegistry
+
+    settings = _settings()
+    registry = PackageRegistry(settings)
+    pkg = registry.require("demo")
+    assert pkg.tables  # non-empty load
+
+
+def test_registry_require_raises_http_404_for_unknown_id():
+    """`registry.require(missing)` raises fastapi.HTTPException(404)."""
+    from corral.api import PackageRegistry
+    from fastapi import HTTPException
+
+    settings = ServerSettings(packages=[])
+    registry = PackageRegistry(settings)
+    with pytest.raises(HTTPException) as exc_info:
+        registry.require("nope")
+    assert exc_info.value.status_code == 404
+    assert "'nope'" in exc_info.value.detail
+
+
+def test_registry_source_for_returns_string_without_loading():
+    """`registry.source_for(id)` returns the configured source path without materialising."""
+    from corral.api import PackageRegistry
+
+    settings = ServerSettings(packages=[PackageRef(id="demo", source="/tmp/some/path/")])
+    registry = PackageRegistry(settings)
+    assert registry.source_for("demo") == "/tmp/some/path/"
+
+
+def test_registry_source_for_raises_keyerror_for_unknown_id():
+    from corral.api import PackageRegistry
+
+    settings = ServerSettings(packages=[])
+    registry = PackageRegistry(settings)
+    with pytest.raises(KeyError):
+        registry.source_for("nope")
+
+
+def test_registry_package_loader_injection_caches_subclass_instances():
+    """Passing a custom loader makes the cache hold the domain-typed instance."""
+    from corral.api import PackageRegistry
+    from netstead import Network
+
+    settings = _settings()
+    registry = PackageRegistry(settings, loader=Network.from_source)
+    loaded = registry.require("demo")
+    # The cache now holds a Network (subclass of Package), not a bare Package.
+    assert isinstance(loaded, Network)
+    assert loaded.spec_version  # GMNS-specific attribute available directly

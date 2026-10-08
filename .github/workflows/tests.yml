@@ -93,6 +93,11 @@ jobs:
         include:
           - os: macos-latest
             python-version: '3.13'
+          # One leg also measures coverage. It does so inside its single
+          # test run per package (no separate coverage re-runs).
+          - os: ubuntu-latest
+            python-version: '3.13'
+            coverage: true
     steps:
       - uses: actions/checkout@v6
       - uses: astral-sh/setup-uv@v7
@@ -108,28 +113,27 @@ jobs:
         # file. Tests with `pytest.importorskip("…")` still skip cleanly
         # when an extra is genuinely missing.
         run: uv sync --all-packages --all-extras
+      # CI always runs the FULL suite: `-m ""` overrides the default
+      # `not slow and not perf` filter in pyproject addopts. `-n auto` is
+      # pytest-xdist (dev dep); addopts pins --dist=loadfile.
+      #
+      # Each package runs exactly once. On the coverage leg that same run
+      # also enforces a per-package coverage gate (so a regression in one
+      # package can't be masked by the other) and writes the XML for
+      # codecov. Gates sit about one point below the measured coverage.
       - name: Test corral
-        run: uv run pytest packages/corral/tests --doctest-modules packages/corral/corral
+        run: >-
+          uv run pytest -m "" -n auto packages/corral/tests
+          --doctest-modules packages/corral/corral
+          ${{ matrix.coverage && '--cov=corral --cov-fail-under=86 --cov-report=term --cov-report=xml:coverage-corral.xml' || '' }}
       - name: Test netstead
-        run: uv run pytest packages/netstead/tests --doctest-modules packages/netstead/netstead
-      # Coverage gates are per-package so a regression in one package
-       # can't be masked by overshoot in the other. Baseline measured
-       # 2026-05-26: corral 87%, netstead 85%. Gates set one point
-       # below current to flag regressions without flaking on noise.
-       # Per-package run is also more accurate — pytest --cov needs
-       # the package source mapped to test paths, and the workspace-
-       # wide run conflates the two.
-      - name: Coverage gate — corral ≥86%
-        if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.13'
-        run: uv run pytest packages/corral/tests --cov=corral --cov-fail-under=86 --cov-report=term
-      - name: Coverage gate — netstead ≥84%
-        if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.13'
-        run: uv run pytest packages/netstead/tests --cov=netstead --cov-fail-under=84 --cov-report=term
-      - name: Combined coverage XML for codecov upload
-        if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.13'
-        run: uv run pytest --cov --cov-report=xml --cov-report=term
+        run: >-
+          uv run pytest -m "" -n auto packages/netstead/tests
+          --doctest-modules packages/netstead/netstead
+          ${{ matrix.coverage && '--cov=netstead --cov-fail-under=84 --cov-report=term --cov-report=xml:coverage-netstead.xml' || '' }}
       - name: Upload coverage
-        if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.13'
+        if: matrix.coverage
         uses: codecov/codecov-action@v5
         with:
+          files: coverage-corral.xml,coverage-netstead.xml
           fail_ci_if_error: false

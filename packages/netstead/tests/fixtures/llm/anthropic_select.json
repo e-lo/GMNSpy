@@ -1,0 +1,31 @@
+{
+  "_recorded": false,
+  "provider": "anthropic",
+  "source": "Hand-authored from the Messages API reference (tool use), not a real recording. Re-record: uv run --all-extras python scripts/record_llm_fixtures.py anthropic",
+  "model": "claude-haiku-4-5-20251001",
+  "endpoint": "POST /v1/messages",
+  "utterance": "I-40 EB between South Miami Boulevard and Airport Boulevard",
+  "request_keys": ["max_tokens", "messages", "model", "system", "tool_choice", "tools"],
+  "response": {
+    "id": "msg_01XFDUDYJgAACzvnptvVoYEL",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-haiku-4-5-20251001",
+    "content": [
+      {
+        "type": "tool_use",
+        "id": "toolu_01A09q90qw90lq917835lq9",
+        "name": "emit_selection_intent",
+        "input": {
+          "facility": {"ref": "I 40", "direction": "EB"},
+          "from_anchor": "South Miami Boulevard",
+          "to_anchor": "Airport Boulevard"
+        }
+      }
+    ],
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "usage": {"input_tokens": 742, "output_tokens": 78}
+  },
+  "expected": {"ref": "I 40", "direction": "EB", "from_anchor": "South Miami Boulevard", "to_anchor": "Airport Boulevard"}
+}

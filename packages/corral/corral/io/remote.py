@@ -16,7 +16,7 @@ RemoteAdapter is the front for any URL-based source: ``http(s)://``,
 This means the credentials cascade is enforced in exactly one place even
 though every format (csv, parquet, duckdb, zipcsv) can live behind a URL.
 
-The full list of URL schemes claimed by this adapter is :data:`_REMOTE_SCHEMES`
+The full list of URL schemes claimed by this adapter is :data:`REMOTE_SCHEMES`
 — other modules (notably ``io/__init__.py``) point at that tuple rather than
 repeat the list.
 
@@ -42,7 +42,7 @@ from urllib.parse import urlparse
 
 import fsspec
 
-from corral.io import dispatch, register_adapter
+from corral.io import _scheme_of, dispatch, register_adapter
 from corral.io.base import (
     FormatAdapter,
     FormatNotDetected,
@@ -57,14 +57,14 @@ if TYPE_CHECKING:  # pragma: no cover - typing only
     from corral.engines.base import Engine, TableExpr
     from corral.spec.model import Schema
 
-__all__ = ["RemoteAdapter"]
+__all__ = ["REMOTE_SCHEMES", "RemoteAdapter"]
 
 _logger: Final = logging.getLogger(__name__)
 
 # Schemes RemoteAdapter claims. Order matches the architecture spec.
 # Other modules (io/__init__.py, docs) should reference this tuple
 # rather than repeat the list — N4 keeps the spelling in one place.
-_REMOTE_SCHEMES: Final[tuple[str, ...]] = (
+REMOTE_SCHEMES: Final[tuple[str, ...]] = (
     "http",
     "https",
     "s3",
@@ -79,6 +79,11 @@ _REMOTE_SCHEMES: Final[tuple[str, ...]] = (
 # do support writes through fsspec when credentials and the matching extra
 # (``s3fs``/``gcsfs``/``adlfs``) are installed.
 _READONLY_SCHEMES: Final[frozenset[str]] = frozenset({"http", "https"})
+
+# Inner adapters whose single file holds several tables and that can list
+# them over fsspec themselves. ``scan`` delegates to these so each member
+# becomes its own ResourceRef (a remote ``.duckdb`` file is not supported).
+_REMOTE_CONTAINER_ADAPTERS: Final[frozenset[str]] = frozenset({"zipcsv"})
 
 
 # ---------------------------------------------------------------------------
@@ -98,7 +103,7 @@ class _ParsedUrl:
 
     raw: str
     scheme: str  # lowercase, no trailing ``://``; ``""`` if absent
-    host: str  # ``netloc`` or ``""``
+    host: str  # bare ``hostname`` (no ``user:pw@`` userinfo, no port) or ``""``
     path: str  # URL path component (the part after scheme://host/)
     stripped: str  # ``raw`` with ``scheme://netloc/`` removed (best-effort)
 
@@ -107,7 +112,9 @@ def _parse(url_str: str) -> _ParsedUrl:
     """Parse ``url_str`` once into the local cache shape."""
     parsed = urlparse(url_str)
     scheme = (parsed.scheme or "").lower()
-    host = parsed.netloc or ""
+    # ``hostname``, not ``netloc``: userinfo (``user:secret@``) must never reach the credential
+    # lookups or logs, and the cascade keys on the bare host.
+    host = parsed.hostname or ""
     path = parsed.path or ""
     # urlparse already strips ``scheme://netloc`` from ``path``; leading
     # ``/`` is part of the path, which we drop for the "use this as the
@@ -129,7 +136,7 @@ class RemoteAdapter:
 
     name: str = "remote"
     extensions: tuple[str, ...] = ()
-    schemes: tuple[str, ...] = _REMOTE_SCHEMES
+    schemes: tuple[str, ...] = REMOTE_SCHEMES
 
     # ----- probe -----------------------------------------------------------
 
@@ -142,10 +149,10 @@ class RemoteAdapter:
         if not isinstance(source, str):
             return False
         try:
-            scheme = urlparse(source).scheme.lower()
+            scheme = _scheme_of(source)  # None unless literally ``scheme://...`` (same rule as dispatch)
         except (ValueError, AttributeError):
             return False
-        return bool(scheme) and scheme in _REMOTE_SCHEMES
+        return scheme in REMOTE_SCHEMES
 
     # ----- read ------------------------------------------------------------
 
@@ -261,8 +268,11 @@ class RemoteAdapter:
     def scan(self, source: SourceRef, engine: Engine | None = None) -> ResourceListing:
         """List one-or-more resources at ``source``.
 
-        For a URL pointing at a single file the listing has one entry.
-        For a URL pointing at a directory-like prefix (``s3://b/p/``),
+        For a URL pointing at a single file the listing has one entry,
+        except a zip of csvs, whose members are listed by the zipcsv
+        adapter (refs carry ``container_adapter``/``member``; read each
+        back with ``read(ref.container, format=ref.container_adapter,
+        table=ref.member)``). For a URL pointing at a directory-like prefix (``s3://b/p/``),
         ``fsspec.filesystem(scheme).ls(...)`` is consulted. Each child
         that has a recognised extension contributes one
         :class:`ResourceRef`.
@@ -302,6 +312,13 @@ class RemoteAdapter:
                 if is_dir:
                     entries = fs.ls(parsed.stripped)
                     return [_resource_ref_for(entry) for entry in entries if _has_known_extension(str(entry))]
+
+        try:
+            inner = self._inner_adapter(parsed)
+        except FormatNotDetected:
+            inner = None
+        if inner is not None and inner.name in _REMOTE_CONTAINER_ADAPTERS:
+            return inner.scan(url_str, engine)
 
         # Single-resource fallback (also the path for non-dir URLs).
         return [_resource_ref_for(url_str)]

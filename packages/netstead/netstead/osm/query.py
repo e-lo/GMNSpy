@@ -23,7 +23,7 @@ from __future__ import annotations
 import math
 import time
 from collections.abc import Callable, Mapping, Sequence
-from typing import Any
+from typing import Any, Literal
 
 import requests
 
@@ -37,6 +37,7 @@ __all__ = [
     "fetch_network_elements",
     "fetch_osm",
     "geocode_area",
+    "geocode_candidates",
     "parse_overpass_elements",
     "point_buffer_bbox",
     "resolve_area",
@@ -122,20 +123,24 @@ def build_overpass_query(
     polygon: Sequence[tuple[float, float]] | None = None,
     network_type: str = "drive",
     timeout: int = 180,
+    out: Literal["body", "count"] = "body",
 ) -> str:
     """Build an Overpass QL query for ``highway`` ways within an area.
 
     Exactly one of ``bbox`` or ``polygon`` must be supplied. The way filter is
     derived from the ``network_type`` allow-list (see
     :func:`netstead.osm.tags.allowed_highways`); ``all`` applies no class filter.
-    The query recurses to member nodes (``(._;>;)``) so whole ways are
-    returned.
+    With ``out="body"`` the query recurses to member nodes (``(._;>;)``) so
+    whole ways are returned; ``out="count"`` asks only for the number of
+    matching ways (one ``count`` element), the cheap pre-query a build
+    estimate uses.
 
     Args:
         bbox: ``(west, south, east, north)`` bounding box.
         polygon: Boundary as a sequence of ``(lat, lon)`` vertices.
         network_type: One of ``drive``/``walk``/``bike``/``all``.
         timeout: Overpass server-side timeout, seconds.
+        out: ``"body"`` for the full ways + nodes, ``"count"`` for the way count only.
 
     Returns:
         The Overpass QL query string.
@@ -161,6 +166,8 @@ def build_overpass_query(
         west, south, east, north = bbox  # type: ignore[misc]
         area_filter = f"({south},{west},{north},{east})"
 
+    if out == "count":
+        return f"[out:json][timeout:{timeout}];way{way_filter}{area_filter};out count;"
     return f"[out:json][timeout:{timeout}];way{way_filter}{area_filter};(._;>;);out body;"
 
 
@@ -276,6 +283,69 @@ def geocode_area(
     if geojson:
         polygon = _geojson_to_latlon(geojson)
     return {"bbox": (west, south, east, north), "polygon": polygon}
+
+
+def geocode_candidates(
+    q: str,
+    *,
+    limit: int = 8,
+    base_url: str = NOMINATIM_URL,
+    session: Any = None,
+    user_agent: str = USER_AGENT,
+    timeout: int = 30,
+    retries: int = 3,
+    sleep: Callable[[float], None] = time.sleep,
+    polygon_threshold: float = 0.001,
+) -> list[dict[str, Any]]:
+    """Search Nominatim and return up to ``limit`` candidate areas for the user to choose from.
+
+    Unlike :func:`geocode_area` (first hit only, raises on a miss), this returns every hit that has a
+    bounding box, in Nominatim's ranking order, and an empty list on a miss. Outlines are simplified
+    server-side (``polygon_threshold``, in degrees) so they stay small enough to preview and to store
+    on a recorded action.
+
+    Args:
+        q: Free-text place query.
+        limit: Maximum number of candidates (Nominatim caps this at 40).
+        base_url: Nominatim search endpoint.
+        session: An object exposing ``get(url, params, headers, timeout)``. Defaults to :mod:`requests`.
+        user_agent: ``User-Agent`` header value (required by Nominatim policy).
+        timeout: Per-request timeout, seconds.
+        retries: Number of retries on transient status codes.
+        sleep: Sleep function used between retries (injectable for tests).
+        polygon_threshold: Outline simplification tolerance, degrees (``0.001`` is roughly 100 m).
+
+    Returns:
+        ``[{"display_name", "type", "bbox": (west, south, east, north), "polygon": [(lat, lon), ...] | None}]``.
+    """
+    http = session or requests
+    params = {
+        "q": q,
+        "format": "json",
+        "polygon_geojson": 1,
+        "polygon_threshold": polygon_threshold,
+        "limit": limit,
+    }
+    response = _with_retry(
+        lambda: http.get(base_url, params=params, headers={"User-Agent": user_agent}, timeout=timeout),
+        retries=retries,
+        sleep=sleep,
+    )
+    candidates = []
+    for hit in response.json():
+        if "boundingbox" not in hit:
+            continue
+        south, north, west, east = (float(v) for v in hit["boundingbox"])
+        geojson = hit.get("geojson")
+        candidates.append(
+            {
+                "display_name": hit.get("display_name", ""),
+                "type": hit.get("type", ""),
+                "bbox": (west, south, east, north),
+                "polygon": _geojson_to_latlon(geojson) if geojson else None,
+            }
+        )
+    return candidates
 
 
 def resolve_area(

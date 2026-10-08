@@ -8,19 +8,35 @@ diagnostics). Selection only — no edit is applied.
 from __future__ import annotations
 
 import json
-from pathlib import Path
+from typing import Any
 
 import typer
 from corral.cli.render import render_dict
 
 from netstead import Network
 
+from ...config import SettingsError, load_settings
+from ...llm import LLMError, build_registry
 from ...select.emit import to_fragment
-from ...select.parse import ClaudeParser, StubParser
+from ...select.parse import make_parser
 from ...select.resolve import resolve
 from .._helpers import resolve_engine
 
 __all__ = ["register"]
+
+
+def _make_parser(provider: str | None, model: str | None) -> Any:
+    """The parser for ``--provider``/``--model`` over the layered settings (exit 2: bad settings; 1: no key)."""
+    overrides = {k: v for k, v in {"select.provider": provider, "select.model": model}.items() if v is not None}
+    try:
+        settings = load_settings(overrides=overrides).settings
+        return make_parser(settings.select, build_registry(settings))
+    except SettingsError as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(2) from None
+    except LLMError as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(1) from None
 
 
 def register(app: typer.Typer) -> None:
@@ -29,8 +45,14 @@ def register(app: typer.Typer) -> None:
     @app.command(name="select")
     def select(
         utterance: str = typer.Argument(..., help='e.g. "I-40 EB between Harrison Ave and NC 54".'),
-        source: Path = typer.Argument(..., help="Path/URL to a GMNS network."),
-        provider: str = typer.Option("stub", "--provider", help="Parser: stub | claude."),
+        # str, not Path: a Path argument collapses "https://host/x" to "https:/host/x".
+        source: str = typer.Argument(..., help="Path/URL to a GMNS network."),
+        provider: str = typer.Option(
+            None, "--provider", help="Parser: stub | anthropic | openai | gemini | ollama (default: settings)."
+        ),
+        model: str = typer.Option(
+            None, "--model", help="Model id (default: settings, else the provider default; see `netstead llm status`)."
+        ),
         engine: str = typer.Option(
             None, "--engine", help="Compute engine (DuckDB is the only one; kept for compatibility)."
         ),
@@ -42,8 +64,12 @@ def register(app: typer.Typer) -> None:
         result it prints the fragment plus candidate notes; on not-found it
         prints diagnostics and exits non-zero.
         """
-        parser = ClaudeParser() if provider == "claude" else StubParser()
-        intent = parser.parse(utterance)
+        parser = _make_parser(provider, model)
+        try:
+            intent = parser.parse(utterance)
+        except LLMError as exc:
+            typer.echo(f"error: {exc}", err=True)
+            raise typer.Exit(1) from None
 
         net = Network.from_source(source, engine=resolve_engine(engine))
         result = resolve(intent, net)
@@ -61,29 +87,23 @@ def register(app: typer.Typer) -> None:
 
     @app.command(name="select-serve")
     def select_serve(
-        source: Path = typer.Argument(..., help="Path/URL to a GMNS network."),
-        provider: str = typer.Option("stub", "--provider", help="Parser: stub | claude."),
-        engine: str = typer.Option(
-            None, "--engine", help="Compute engine (DuckDB is the only one; kept for compatibility)."
+        # str, not Path: a Path argument collapses "https://host/x" to "https:/host/x".
+        source: str = typer.Argument(..., help="Path/URL to a GMNS network."),
+        provider: str = typer.Option(
+            None, "--provider", help="NL parser: stub | anthropic | openai | gemini | ollama (default: settings)."
         ),
-        host: str = typer.Option("127.0.0.1", "--host", help="Bind host."),
-        port: int = typer.Option(8848, "--port", help="Bind port."),
+        engine: str = typer.Option(
+            None, "--engine", help="Ignored: DuckDB is the only engine (kept for compatibility)."
+        ),
+        host: str = typer.Option(None, "--host", help="Bind host."),
+        port: int = typer.Option(None, "--port", help="Bind port."),
     ) -> None:
-        """Serve the interactive selection map: type an utterance, see it on the network.
+        """Serve the interactive selection map: now an alias of ``netstead app SOURCE``."""
+        from .workbench import run_workbench
 
-        Loads the network once, then runs a local MapLibre web app where each
-        utterance is parsed, resolved, and drawn (selection highlighted, gore/
-        merge anchors marked) over a basemap. Requires the ``[server]`` extra.
-        """
-        import uvicorn
-
-        from ...select.webapp import build_app
-
-        net = Network.from_source(source, engine=resolve_engine(engine))
-        links = net.links.to_pandas() if hasattr(net.links, "to_pandas") else net.links.execute()
-        nodes = net.nodes.to_pandas() if hasattr(net.nodes, "to_pandas") else net.nodes.execute()
-        typer.echo(f"netstead select map on http://{host}:{port}  ({len(links)} links, provider={provider})")
-        uvicorn.run(build_app(links, nodes, provider=provider), host=host, port=port)
+        del engine  # accepted for backward compatibility only
+        typer.echo("note: `netstead select-serve` is now `netstead app`", err=True)
+        run_workbench([str(source)], provider=provider, host=host, port=port)
 
 
 def _emit(payload: dict, json_out: bool) -> None:

@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Netstead Workbench</title>
+<link href="https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet" />
+<link href="/static/app.css" rel="stylesheet" />
+<script src="https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/deck.gl@9.0.38/dist.min.js"></script>
+<script type="module" src="/static/js/main.js"></script>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="hrow">
+      <h1>Netstead Workbench</h1>
+      <select id="net-select" aria-label="Active network"></select>
+      <button id="open-wizard" class="mini">Open / Import…</button>
+      <select id="recent" aria-label="Recent networks"></select>
+      <div id="viewmode">
+        <button data-mode="map" class="on">Map</button>
+        <button data-mode="split">Split</button>
+        <button data-mode="table">Table</button>
+      </div>
+      <span id="count"></span>
+      <span class="spacer"></span>
+      <button id="jobs-btn" class="mini ghost" aria-label="Background jobs">Jobs <span id="jobs-count" class="pcount">0</span></button>
+      <button id="settings-btn" class="mini ghost">Settings…</button>
+    </div>
+    <div class="hrow" id="nl-row">
+      <input id="utterance" placeholder='e.g. "I-40 EB between South Miami Boulevard and Airport Boulevard"' aria-label="Selection utterance" />
+      <span id="nl-picker">
+        <span id="nl-dot" class="dot off" aria-hidden="true"></span>
+        <select id="nl-provider" aria-label="Language model provider (this session)"></select>
+        <select id="nl-model" aria-label="Language model (this session)"></select>
+        <button id="nl-default" class="mini ghost" title="Save this provider and model as your default" disabled>Make default</button>
+        <button id="nl-manage" class="mini ghost" aria-label="Manage language models">Models…</button>
+      </span>
+      <button id="go">Select</button>
+    </div>
+  </header>
+  <div id="stage" data-mode="map">
+    <div id="map">
+      <div id="map-btns">
+        <button class="iconbtn" id="btn-highlight" data-tip="Highlight links (click; shift-drag box)" aria-label="Highlight links">&#9647;</button>
+        <button class="iconbtn" id="btn-fitnet" data-tip="Zoom to full network" aria-label="Zoom to full network">&#9974;</button>
+        <button class="iconbtn" id="btn-fitsel" data-tip="Zoom to selection" aria-label="Zoom to selection">&#9673;</button>
+        <button class="iconbtn" id="btn-layers" data-tip="Layers" aria-label="Layers">&#9635;</button>
+        <button class="iconbtn" id="btn-settings" data-tip="Map display" aria-label="Map display">&#9881;</button>
+      </div>
+      <div class="panel" id="layers-panel">
+        <h4>Layers</h4>
+        <div class="row"><label class="sw"><input type="checkbox" id="tg-links"><span></span></label>
+          <span class="lbl">Links</span><input type="color" class="swatch" id="col-links"></div>
+        <div class="row"><label class="sw"><input type="checkbox" id="tg-nodes"><span></span></label>
+          <span class="lbl">Nodes</span><input type="color" class="swatch" id="col-nodes"></div>
+        <div class="row"><label class="sw"><input type="checkbox" id="tg-selection"><span></span></label>
+          <span class="lbl">Selection</span><input type="color" class="swatch" id="col-selection"></div>
+        <div class="row"><label class="sw"><input type="checkbox" id="tg-labels"><span></span></label>
+          <span class="lbl">Basemap labels</span></div>
+        <h4 style="margin-top:14px">Color links by</h4>
+        <div class="row"><select id="colorby"><option value="none">None (single color)</option></select></div>
+        <div class="row" id="ramp-row" style="display:none"><span class="lbl">Ramp</span>
+          <select id="ramp"><option>YlOrRd</option><option>Blues</option><option>Viridis</option></select></div>
+      </div>
+      <div class="panel" id="settings-panel">
+        <h4>Map display</h4>
+        <div class="row"><span class="lbl">Offset directions</span>
+          <label class="sw"><input type="checkbox" id="tg-offset"><span></span></label></div>
+        <div class="row"><span class="lbl">Show direction</span>
+          <label class="sw"><input type="checkbox" id="tg-direction"><span></span></label></div>
+        <div class="row"><span class="lbl">Show legend</span>
+          <label class="sw"><input type="checkbox" id="tg-legend"><span></span></label></div>
+      </div>
+      <div id="legend"></div>
+      <div id="boxsel"></div>
+    </div>
+    <div id="tablepane">
+      <div id="tbl-rail"></div>
+      <div id="tbl-main">
+        <div id="tbl-bar"><span class="tname" id="tbl-name">—</span><span id="tbl-total"></span>
+          <span id="tbl-hint" class="empty"></span>
+          <label for="tbl-scope" style="margin-left:auto">Show</label>
+          <select id="tbl-scope" aria-label="Which rows to show">
+            <option value="all">All rows</option>
+            <option value="selection">Selection</option>
+            <option value="highlighted">Highlighted</option>
+            <option value="related">Related</option>
+          </select>
+          <button class="mini ghost" id="tbl-hops" title="Follow keys one more step">Expand a hop</button></div>
+        <div id="tbl-grid-wrap"><table id="tbl-grid"></table></div>
+        <div id="tbl-pager"><button id="tbl-prev">&#8592; Prev</button>
+          <span id="tbl-range">—</span><button id="tbl-next">Next &#8594;</button></div>
+      </div>
+    </div>
+  </div>
+  <aside id="side">
+    <div id="status-wrap"></div>
+    <div class="label">Highlighted links <span id="hl-count" class="pcount">0</span></div>
+    <div id="hl-wrap">
+      <span class="empty" id="hl-hint">Turn on <b>Highlight links</b> (&#9647;), then click links or shift-drag a box.</span>
+      <div id="hl-actions" style="display:none">
+        <button class="mini" id="hl-set">Set as selection</button>
+        <button class="mini ghost" id="hl-clear">Clear highlights</button>
+      </div>
+    </div>
+    <div class="label">Details</div>
+    <div id="details"><span class="empty">Click a link or node on the map, or a row in the table.</span></div>
+    <div class="label">Anchors</div>
+    <div id="anchors"><span class="empty">—</span></div>
+    <div class="label">Fragment</div>
+    <pre id="fragment">—</pre>
+    <div class="label">Diagnostics</div>
+    <div id="diag"><span class="empty">—</span></div>
+  </aside>
+  <footer id="history">
+    <span id="hist-seq">—</span>
+    <code id="hist-py">No actions yet.</code>
+    <button class="mini ghost" id="hist-copy">Copy</button>
+    <button class="mini ghost" id="hist-all">Session as Python</button>
+  </footer>
+</div>
+<div class="panel" id="hist-panel">
+  <h4>Session as Python</h4>
+  <pre id="hist-script"></pre>
+  <div class="row"><button class="mini" id="hist-copy-all">Copy all</button></div>
+</div>
+<div class="panel" id="jobs-panel">
+  <h4>Jobs</h4>
+  <div id="jobs-list"><span class="empty">No jobs yet.</span></div>
+</div>
+<div id="wizard" class="modal" role="dialog" aria-modal="true" aria-labelledby="wz-title" hidden>
+  <div class="modal-card">
+    <div class="modal-head">
+      <h3 id="wz-title">Open / Import</h3>
+      <button class="mini ghost" id="wz-close" aria-label="Close">&#10005;</button>
+    </div>
+    <div class="modal-body">
+      <section class="wz-step" data-step="source">
+        <button class="wz-choice" data-src="local"><b>GMNS on this machine</b><span>A folder, .zip, .duckdb, or datapackage.json</span></button>
+        <button class="wz-choice" data-src="url"><b>GMNS at a URL</b><span>s3://, gs://, az://, or https://</span></button>
+        <button class="wz-choice" data-src="osm"><b>Build from OpenStreetMap</b><span>Draw an area, search a place, or use a local .osm / Overpass .json file</span></button>
+        <button class="wz-choice" data-src="overture"><b>Build from Overture</b><span>Draw an area, search a place, or use a local snapshot folder</span></button>
+      </section>
+      <section class="wz-step" data-step="local" hidden>
+        <p class="wz-note">Pick a GMNS folder, .zip, .duckdb, or datapackage.json. It opens in place; nothing is uploaded.</p>
+        <div class="fb" id="wz-local-fb"></div>
+      </section>
+      <section class="wz-step" data-step="url" hidden>
+        <div class="row">
+          <input id="wz-url" class="grow" placeholder="s3://bucket/network/" aria-label="Network URL" />
+          <button class="mini" id="wz-check">Check</button>
+        </div>
+        <div id="wz-url-result" class="wz-note"></div>
+      </section>
+      <section class="wz-step" data-step="area" hidden>
+        <div class="tabs" id="ap-tabs">
+          <button data-tab="draw" class="on">Draw</button><button data-tab="coords">Coordinates</button><button
+            data-tab="place">Place</button><button data-tab="file">Local file</button>
+        </div>
+        <div class="ap-pane" data-pane="draw">
+          <button class="mini" id="ap-draw">Draw</button>
+          <span class="wz-note">then drag a rectangle on the map; drag a corner to adjust it.</span>
+        </div>
+        <div class="ap-pane" data-pane="coords" hidden>
+          <div class="row"><label for="ap-bbox">W,S,E,N</label>
+            <input id="ap-bbox" class="grow" placeholder="-78.95,35.95,-78.85,36.05" /></div>
+          <div class="row"><label for="ap-point">or lat,lon</label>
+            <input id="ap-point" class="grow" placeholder="35.99,-78.90" />
+            <input id="ap-buffer" type="number" min="1" step="100" aria-label="Buffer in metres" /> m</div>
+          <button class="mini" id="ap-apply">Preview</button>
+        </div>
+        <div class="ap-pane" data-pane="place" hidden>
+          <div class="row"><input id="ap-q" class="grow" placeholder="Durham, North Carolina" aria-label="Place" />
+            <button class="mini" id="ap-search">Search</button></div>
+          <div id="ap-cands"></div>
+        </div>
+        <div class="ap-pane" data-pane="file" hidden>
+          <p class="wz-note" id="ap-file-note"></p>
+          <div class="fb" id="ap-file-fb"></div>
+        </div>
+        <div id="ap-map"></div>
+        <div id="ap-summary" class="wz-note"></div>
+      </section>
+      <section class="wz-step" data-step="options" hidden>
+        <div class="form">
+          <label for="opt-network-type">Network type</label>
+          <select id="opt-network-type"><option>drive</option><option>walk</option><option>bike</option><option>all</option></select>
+          <label for="opt-extra-tags">Extra tags</label><input id="opt-extra-tags" placeholder="surface, maxheight" />
+          <label for="opt-spec">GMNS spec version</label><input id="opt-spec" />
+          <label for="opt-release" class="ovt-only">Overture release</label><input id="opt-release" class="ovt-only" />
+          <label for="opt-name">Output name</label><input id="opt-name" placeholder="durham-osm" />
+          <label for="opt-format">Output format</label>
+          <select id="opt-format"><option value="parquet">Parquet folder</option><option value="csv">CSV folder</option>
+            <option value="duckdb">DuckDB file</option><option value="zip">Zip</option></select>
+          <label>Output folder</label><code id="opt-outdir">choose below</code>
+        </div>
+        <div id="opt-name-err" class="wz-note err" role="alert"></div>
+        <div class="fb" id="opt-out-fb"></div>
+      </section>
+      <section class="wz-step" data-step="run" hidden>
+        <div id="wz-estimate" class="wz-note"></div>
+      </section>
+    </div>
+    <div class="modal-foot">
+      <button class="mini ghost" id="wz-back">Back</button>
+      <button class="mini" id="wz-next">Next</button>
+    </div>
+  </div>
+</div>
+<div id="settings" class="modal" role="dialog" aria-modal="true" aria-labelledby="set-title" hidden>
+  <div class="modal-card set-card">
+    <div class="modal-head">
+      <h3 id="set-title">Settings</h3>
+      <label for="set-scope" class="set-scope-lbl">Save to</label>
+      <select id="set-scope">
+        <option value="user">User (all projects)</option>
+        <option value="project">This project</option>
+        <option value="session">This session only</option>
+      </select>
+      <button class="mini ghost" id="set-close" aria-label="Close">&#10005;</button>
+    </div>
+    <div class="set-layout">
+      <nav id="set-nav" aria-label="Settings sections"></nav>
+      <div class="modal-body">
+        <p class="llm-note" id="set-paths"></p>
+        <div id="set-form"></div>
+        <section id="llm-panel" aria-label="Language models" hidden>
+          <p class="llm-note" id="llm-privacy" aria-live="polite"></p>
+          <p class="llm-note" id="llm-storage"></p>
+          <table id="llm-providers"></table>
+          <h4>Quality &amp; context</h4>
+          <div id="llm-quality"></div>
+          <h4>Ollama server</h4>
+          <div class="row"><input id="llm-ollama-url" class="grow" aria-label="Ollama URL" spellcheck="false" placeholder="http://localhost:11434" />
+            <button class="mini" id="llm-ollama-save">Save</button></div>
+          <h4>Model catalog</h4>
+          <div class="row"><select id="llm-catalog-provider" aria-label="Catalog provider"></select></div>
+          <table id="llm-catalog"></table>
+          <p class="llm-note" id="llm-catalog-hint"></p>
+        </section>
+      </div>
+    </div>
+  </div>
+</div>
+<!-- /settings -->
+<div id="toast" role="status"></div>
+</body>
+</html>

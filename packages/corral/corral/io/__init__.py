@@ -261,12 +261,16 @@ def _scheme_of(source_str: str) -> str | None:
     """Extract a URL scheme from ``source_str``, if any.
 
     Returns the scheme lowercase (without ``://``), or ``None`` if the
-    source has no scheme or only a single-letter scheme (which is most
-    likely a Windows drive letter like ``C:\\path``).
+    source has no scheme, only a single-letter scheme (which is most
+    likely a Windows drive letter like ``C:\\path``), or is not literally
+    ``scheme://...`` (``s3:../x`` is a relative local path to every
+    inner adapter, so it must never be routed by scheme).
     """
     parsed = urlparse(source_str)
     scheme = parsed.scheme.lower()
     if not scheme or len(scheme) == 1:
+        return None
+    if not source_str.lower().startswith(f"{scheme}://"):
         return None
     return scheme
 
@@ -414,5 +418,5 @@ __all__ = [
 from . import csv_adapter as _csv_adapter  # noqa: E402,F401  -- self-registers
 from . import duckdb_adapter as _duckdb_adapter  # noqa: E402,F401  -- self-registers
 from . import parquet_adapter as _parquet_adapter  # noqa: E402,F401  -- self-registers
-from . import remote as _remote  # noqa: E402,F401  -- self-registers; claims URL schemes per remote._REMOTE_SCHEMES
+from . import remote as _remote  # noqa: E402,F401  -- self-registers; claims URL schemes per remote.REMOTE_SCHEMES
 from . import zipcsv_adapter as _zipcsv_adapter  # noqa: E402,F401  -- self-registers

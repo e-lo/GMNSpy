@@ -506,3 +506,39 @@ def test_credentials_not_leaked_into_error(remote_registry, monkeypatch) -> None
         remote.read("s3://leak.host/data.csv", engine=engine)
     assert sentinel not in str(exc.value)
     assert sentinel not in repr(exc.value)
+
+
+def test_credentials_keyed_by_bare_hostname_not_netloc(remote_registry, monkeypatch) -> None:
+    """``user:pw@host:port`` looks up credentials for ``host`` only; the userinfo never reaches the lookup."""
+    from corral.io import remote as remote_mod
+
+    seen: list[str] = []
+    real = remote_mod.resolve_credentials
+
+    def spy(host, *, explicit=None):
+        seen.append(host)
+        return real(host, explicit=explicit)
+
+    monkeypatch.setattr(remote_mod, "resolve_credentials", spy)
+    monkeypatch.setenv("CORRAL_CRED_BUCKET_SERVER_TOKEN", "env-bearer")
+
+    remote_registry["remote"].read("https://user:pw@bucket.server:9000/data.csv", engine=MagicMock(name="engine"))
+
+    assert seen == ["bucket.server"]
+    assert type(remote_registry["csv"]).last_kwargs.get("storage_options") == {"token": "env-bearer"}
+
+
+@pytest.mark.parametrize("source", ["s3:../x", "https:x", "http:/abs", "S3:..//x"])
+def test_scheme_without_slashes_is_never_routed_as_remote(remote_registry, source) -> None:
+    """``s3:../x`` is a relative local path to every inner adapter, so neither dispatch nor probe calls it remote."""
+    from corral.io import _scheme_of
+
+    assert _scheme_of(source) is None
+    assert remote_registry["remote"].probe(source) is False
+
+
+def test_scheme_with_slashes_is_still_remote(remote_registry) -> None:
+    from corral.io import _scheme_of
+
+    assert _scheme_of("S3://b/k.csv") == "s3"
+    assert remote_registry["remote"].probe("S3://b/k.csv") is True

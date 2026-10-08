@@ -7,10 +7,12 @@ from typing import Any
 import pytest
 from corral import engines as eng
 from corral.engines import (
+    Engine,
     EngineNotAvailableError,
     get_engine,
     list_engines,
     register_engine,
+    resolve_engine,
     set_default_engine,
 )
 
@@ -191,3 +193,28 @@ def test_register_engine_with_empty_name_raises_valueerror():
     bad = FakeEngine(name="")
     with pytest.raises(ValueError):
         register_engine(bad)
+
+
+# ---------------------------------------------------------------------------
+# resolve_engine — replaces two duplicate _resolve_engine helpers in the
+# netstead CLI / server (S1)
+# ---------------------------------------------------------------------------
+
+
+def test_resolve_engine_none_returns_default():
+    """`resolve_engine(None)` returns the registered default engine."""
+    assert isinstance(resolve_engine(None), Engine)
+    # Same instance contract as get_engine() — default lookup.
+    assert type(resolve_engine(None)) is type(get_engine())
+
+
+def test_resolve_engine_names_are_case_insensitive():
+    """`resolve_engine` accepts lower/upper/mixed case for the one engine."""
+    for spelling in ("ibis", "IBIS", "DuckDB", "duckdb"):
+        assert type(resolve_engine(spelling)).__name__ == "IbisEngine"
+
+
+def test_resolve_engine_unknown_raises_value_error_with_known_engines():
+    """Unknown engine name raises ValueError that lists the known options."""
+    with pytest.raises(ValueError, match="unknown engine 'bogus'"):
+        resolve_engine("bogus")

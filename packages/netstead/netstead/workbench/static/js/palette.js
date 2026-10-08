@@ -1,0 +1,48 @@
+// Color palettes, ramps, and per-vertex link colors for color-by.
+export const FT_PALETTE = {
+  motorway: [214, 69, 65], motorway_link: [242, 150, 120], trunk: [232, 119, 34], trunk_link: [245, 182, 132],
+  primary: [236, 160, 20], primary_link: [249, 214, 120], secondary: [86, 158, 70], secondary_link: [160, 200, 130],
+  tertiary: [56, 150, 140], tertiary_link: [150, 202, 196], residential: [120, 130, 160],
+  service: [176, 184, 196], unclassified: [150, 150, 165], living_street: [150, 150, 165], road: [150, 150, 165],
+};
+export const CAT_PALETTE = [[228, 66, 62], [57, 126, 184], [77, 175, 74], [152, 78, 163], [255, 140, 40],
+  [212, 190, 40], [166, 86, 40], [247, 129, 191], [120, 130, 160], [60, 170, 160]];
+export const RAMPS = {
+  YlOrRd: [[255, 237, 160], [254, 178, 76], [240, 59, 32]],
+  Blues: [[222, 235, 247], [107, 174, 214], [8, 81, 156]],
+  Viridis: [[68, 1, 84], [33, 145, 140], [253, 231, 37]],
+};
+const NULL_COLOR = [205, 208, 214];
+
+export const rgb = c => `rgb(${c[0]},${c[1]},${c[2]})`;
+export const hex2rgb = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
+export const rgb2hex = c => "#" + c.map(x => x.toString(16).padStart(2, "0")).join("");
+export const fmt = v => (Math.abs(v) >= 100 ? Math.round(v) : Math.round(v * 10) / 10);
+
+export function ramp(name, t) {
+  const s = RAMPS[name] || RAMPS.YlOrRd, x = Math.max(0, Math.min(1, t)) * (s.length - 1);
+  const i = Math.min(s.length - 2, Math.floor(x)), f = x - i, a = s[i], b = s[i + 1];
+  return [0, 1, 2].map(k => Math.round(a[k] + (b[k] - a[k]) * f));
+}
+
+export function catColor(prop, cat, i) {
+  return (prop && prop.name === "facility_type" && FT_PALETTE[cat]) || CAT_PALETTE[i % CAT_PALETTE.length];
+}
+
+function linkColor(i, style, prop) {
+  if (!prop) return style.colors.links;
+  const v = prop.values[i];
+  if (v === null || v === undefined) return NULL_COLOR;
+  if (prop.kind === "continuous") return ramp(style.ramp, prop.max > prop.min ? (v - prop.min) / (prop.max - prop.min) : 0.5);
+  return catColor(prop, v, prop.categories.indexOf(v));
+}
+
+export function buildLinkColors(net, style, prop) {
+  const p = prop && style.color_by !== "none" && prop.name === style.color_by ? prop : null;
+  const c = new Uint8Array(net.linkStart[net.L.count] * 4);
+  for (let i = 0; i < net.L.count; i++) {
+    const [r, g, b] = linkColor(i, style, p);
+    for (let v = net.linkStart[i]; v < net.linkStart[i + 1]; v++) { c[v * 4] = r; c[v * 4 + 1] = g; c[v * 4 + 2] = b; c[v * 4 + 3] = 222; }
+  }
+  return c;
+}

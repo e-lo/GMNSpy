@@ -40,6 +40,13 @@ def test_gmns_server_adds_network_aware_tools():
     assert {"describe_network", "quality_check", "connected_components", "scope_from_nodes"} <= tools
 
 
+def test_gmns_server_forwards_state_kwarg():
+    """netstead's build_server forwards `state=` to the generic corral factory (F5)."""
+    shared: dict[str, object] = {}
+    server = build_server(state=shared)
+    assert server.corral_state is shared
+
+
 # ---------------------------------------------------------------------------
 # describe_network
 # ---------------------------------------------------------------------------
@@ -67,6 +74,19 @@ def test_quality_check_returns_issues_with_data_quality_category():
     # Leavenworth fires the high-speed-residential rule.
     codes = {i["code"] for i in r["issues"]}
     assert "quality.high_speed_residential" in codes
+
+
+def test_quality_check_returns_canonical_to_dict_shape():
+    """quality_check returns the canonical ValidationReport.to_dict shape too (F1, schema parity).
+
+    Every issue carries the canonical issue dict (including ``extra``) — the
+    same wire shape used by the api + generic mcp validate_package tool.
+    """
+    server = build_server()
+    result = _call_tool(server, "quality_check", source=str(leavenworth.csv_dir()))
+    assert {"report_version", "summary", "issues"} <= result.keys()
+    if result["issues"]:
+        assert "extra" in result["issues"][0]
 
 
 # ---------------------------------------------------------------------------

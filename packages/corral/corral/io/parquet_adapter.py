@@ -41,11 +41,12 @@ Examples:
 
 from __future__ import annotations
 
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, Any
+from urllib.parse import urlsplit
 
-from corral.io import register_adapter
-from corral.io._paths import normalize_to_path
+from corral.io import _scheme_of, register_adapter
+from corral.io._paths import normalize_to_path, normalize_to_str
 from corral.io.base import ResourceListing, ResourceRef, SourceRef
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
@@ -259,7 +260,13 @@ class ParquetAdapter:
             't'
         """
         del engine  # protocol parity; we don't need it for scan
-        path = _as_path(source)
+        src = normalize_to_str(source, adapter="ParquetAdapter")
+        if _scheme_of(src) is not None:
+            # A URL (reached via RemoteAdapter): never wrap it in Path(), which collapses "//" and
+            # turns "https://h/x.parquet" into the local relative path "https:/h/x.parquet".
+            name = PurePosixPath(urlsplit(src).path).stem
+            return [ResourceRef(name=name or "parquet", path=src, format=self.name)]
+        path = Path(src)
         # Single file: use the stem (strip ``.parquet``). Directory: use the
         # basename so the dataset's logical name matches the folder name.
         # ``Path("dataset/").name`` is ``""``; fall back to ``parent.name``
@@ -298,15 +305,18 @@ class ParquetAdapter:
         Returns:
             An engine-native lazy table expression.
         """
-        path = _as_path(source)
+        src = normalize_to_str(source, adapter="ParquetAdapter")
+        # A URL (reached via RemoteAdapter) goes to the engine verbatim: Path() would collapse "//"
+        # and make "https://h/x.parquet" the local relative path "https:/h/x.parquet".
+        remote = _scheme_of(src) is not None
         # Caller's explicit hive_partitioning kwarg wins; otherwise we
-        # detect "is this a partitioned dir" once here so the engine
-        # primitive doesn't have to re-walk the filesystem.
+        # detect "is this a partitioned dir" once here (local paths only)
+        # so the engine primitive doesn't have to re-walk the filesystem.
         is_partitioned = kwargs.pop("hive_partitioning", None)
         if is_partitioned is None:
-            is_partitioned = _looks_partitioned(path)
+            is_partitioned = False if remote else _looks_partitioned(Path(src))
         return engine.read_parquet(
-            str(path),
+            src if remote else str(Path(src)),
             schema=schema,
             hive_partitioning=bool(is_partitioned),
             **kwargs,

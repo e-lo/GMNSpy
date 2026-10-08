@@ -27,6 +27,7 @@ from .commands import (
     doctor,
     index,
     info,
+    llm,
     mcp,
     quality,
     scope,
@@ -35,6 +36,7 @@ from .commands import (
     spec,
     validate,
     viz,
+    workbench,
 )
 
 __all__ = ["app"]
@@ -72,7 +74,9 @@ def _build_netstead_app() -> typer.Typer:
     index.register(netstead_app)
     build.register(netstead_app)
     select.register(netstead_app)
+    llm.register(netstead_app)
     viz.register(netstead_app)
+    workbench.register(netstead_app)
     return netstead_app
 
 

@@ -1,0 +1,72 @@
+# Utterances for scripts/eval_nl_selection.py, with the SelectionIntent fields a correct parse has.
+#
+# Keys (all optional except `utterance`); only the keys given are checked:
+#   ref, name      facility.ref / facility.name must contain this value (spaces and dashes ignored)
+#   direction      facility.direction ("EB", "WB", "NB", "SB")
+#   from, to       the normalized value must appear inside from_anchor / to_anchor
+#   select_all     intent.select_all is true
+#   condition      this column is a key of intent.conditions
+#   link_ids       intent.link_ids, in order
+#   mode           this mode is in intent.modes
+#   absent         fields that must be empty: any of "direction", "from", "to"
+#
+# Keep it small and varied: it is run by hand after prompt or guide changes, against a real model.
+
+[[case]]
+utterance = "I-40 EB between South Miami Boulevard and Airport Boulevard"
+ref = "I 40"
+direction = "EB"
+from = "South Miami Boulevard"
+to = "Airport Boulevard"
+
+[[case]]
+utterance = "US 1 northbound from Tryon Road to Gorman Street"
+ref = "US 1"
+direction = "NB"
+from = "Tryon Road"
+to = "Gorman Street"
+
+[[case]]
+utterance = "Main Street"
+name = "Main Street"
+absent = ["direction", "from", "to"]
+
+[[case]]
+utterance = "Hillsborough Street westbound"
+name = "Hillsborough Street"
+direction = "WB"
+absent = ["from", "to"]
+
+[[case]]
+utterance = "all links where lanes >= 3"
+select_all = true
+condition = "lanes"
+absent = ["from", "to"]
+
+[[case]]
+utterance = "NC 54 between Davis Drive and NC 55"
+ref = "NC 54"
+from = "Davis Drive"
+to = "NC 55"
+
+[[case]]
+utterance = "links 101, 102 and 205"
+link_ids = [101, 102, 205]
+
+[[case]]
+utterance = "bike lanes on Glenwood Avenue"
+name = "Glenwood Avenue"
+mode = "bike"
+absent = ["from", "to"]
+
+[[case]]
+utterance = "I-440 SB"
+ref = "I 440"
+direction = "SB"
+absent = ["from", "to"]
+
+[[case]]
+utterance = "Capital Blvd from I-440 to Spring Forest Rd"
+name = "Capital Blvd"
+from = "I-440"
+to = "Spring Forest Rd"

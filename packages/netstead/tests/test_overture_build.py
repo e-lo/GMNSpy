@@ -79,3 +79,50 @@ class TestEdgeCases:
             build.build_network_from_overture(
                 (10.0, 10.0, 11.0, 11.0), network_type="drive", data_root=FIXTURE_ROOT, engine=engine
             )
+
+
+class TestEdgeCrossingSegment:
+    """A segment that crosses the bbox edge may end at a connector far outside the bbox."""
+
+    BBOX = (0.0, 0.0, 0.01, 0.01)
+    FAR_LON = 0.05  # 0.04 deg east of the bbox: well beyond any fixed connector-read padding
+
+    @pytest.fixture
+    def snapshot(self, tmp_path):
+        import pyarrow as pa
+        import pyarrow.parquet as pq
+        import shapely.wkb as swkb
+        from shapely.geometry import LineString, Point
+
+        connectors = {"c_in": (0.005, 0.005), "c_far": (self.FAR_LON, 0.005)}
+        coords = [connectors["c_in"], connectors["c_far"]]
+        segment = {
+            "id": "s_long",
+            "subtype": "road",
+            "class": "residential",
+            "connectors": [{"connector_id": "c_in", "at": 0.0}, {"connector_id": "c_far", "at": 1.0}],
+            "bbox": {"xmin": 0.005, "xmax": self.FAR_LON, "ymin": 0.005, "ymax": 0.005},
+            "geometry": swkb.dumps(LineString(coords)),
+        }
+        pq.write_table(pa.Table.from_pylist([segment]), tmp_path / "segment.parquet")
+        pq.write_table(
+            pa.Table.from_pylist(
+                [
+                    {
+                        "id": cid,
+                        "bbox": {"xmin": x, "xmax": x, "ymin": y, "ymax": y},
+                        "geometry": swkb.dumps(Point(x, y)),
+                    }
+                    for cid, (x, y) in connectors.items()
+                ]
+            ),
+            tmp_path / "connector.parquet",
+        )
+        return str(tmp_path)
+
+    def test_far_endpoint_connector_becomes_a_node(self, engine, snapshot):
+        net = build.build_network_from_overture(self.BBOX, data_root=snapshot, engine=engine)
+        nodes = net.nodes.to_pandas()
+        assert set(nodes["overture_connector_id"]) == {"c_in", "c_far"}
+        assert nodes.set_index("overture_connector_id").loc["c_far", "x_coord"] == pytest.approx(self.FAR_LON)
+        assert len(_links_df(net)) == 2  # one two-way residential segment

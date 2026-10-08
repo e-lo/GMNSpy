@@ -45,6 +45,19 @@ def test_build_server_uses_configured_name():
     assert build_server(name="my-grove").name == "my-grove"
 
 
+def test_build_server_accepts_state_kwarg():
+    """`build_server(state=...)` stores the dict on `server.corral_state` (F5 seam)."""
+    shared: dict[str, object] = {"some_key": "value"}
+    server = build_server(state=shared)
+    assert server.corral_state is shared
+
+
+def test_build_server_state_defaults_to_empty_dict():
+    """No `state=` → the seam holds an empty dict so callers can setdefault freely."""
+    server = build_server()
+    assert server.corral_state == {}
+
+
 # ---------------------------------------------------------------------------
 # describe_package
 # ---------------------------------------------------------------------------

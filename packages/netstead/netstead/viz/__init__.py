@@ -1,1 +1,1 @@
-"""Interactive GMNS network viewer (deck.gl + MapLibre; binary from Parquet)."""
+"""Map and table helpers the Netstead Workbench serves: binary network buffers, styling, paged tables."""

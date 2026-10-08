@@ -60,12 +60,31 @@ class ResourceRef(BaseModel):
             or a sub-locator within a container (e.g., ``"my.duckdb::link"``
             for a duckdb table). Always a string for serializability.
         format: Short identifier of the format adapter that produced this
-            ref (e.g., ``"csv"``, ``"parquet"``, ``"duckdb"``).
+            ref (e.g., ``"csv"``, ``"parquet"``, ``"duckdb"``). For a member
+            of a container this is the *member's* format (a zip member is
+            ``"csv"``).
+        container_adapter: Set only by multi-table container adapters
+            (duckdb, zipcsv): the name of the adapter that owns the
+            container and must read the member back. ``None`` for plain
+            single-file refs, so a filename that merely contains ``"::"``
+            is never mistaken for a sub-locator.
+        member: The selector to pass as ``table=`` to
+            ``container_adapter``. When set, ``path`` is exactly
+            ``f"{container}::{member}"``.
     """
 
     name: str = Field(..., description="Logical resource name (table name).")
     path: str = Field(..., description="Concrete locator for the resource.")
     format: str = Field(..., description="Short adapter identifier.")
+    container_adapter: str | None = Field(default=None, description="Adapter owning the container, if any.")
+    member: str | None = Field(default=None, description="Member selector within the container, if any.")
+
+    @property
+    def container(self) -> str | None:
+        """Path of the owning container, or ``None`` for a plain single-file ref."""
+        if self.member is None:
+            return None
+        return self.path.removesuffix(f"::{self.member}")
 
     model_config = {"frozen": True}
 

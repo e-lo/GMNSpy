@@ -33,6 +33,8 @@ For bbox / polygon (non-GMNS-specific) spatial scope, see [corral cookbook: spat
 
 ## Surfaces
 
+* [Explore networks in the Netstead Workbench](workbench.md) — linked map + tables, NL selection, replayable actions.
+* [Run language models locally with Ollama](local-llm-ollama.md) — install Ollama, pull `qwen3:4b`, select in plain English with nothing leaving your machine.
 * [Self-host the HTTP server](serve-http.md) — config file, bearer auth, deploying behind a proxy.
 * [Wire the MCP server to Claude Code / Claude Desktop](serve-mcp.md) — stdio transport, tool list, agent prompts.
 * [Run the bundled benchmarks](run-bench.md) — `netstead bench`, what to expect on Leavenworth vs regional networks.
