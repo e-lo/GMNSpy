@@ -1,8 +1,9 @@
 // Settings form model: /api/settings (JSON schema + values + sources + readonly/restart/notes) -> field
 // descriptors, and input parsing. Import-free and DOM-free: unit-tested under node (tests/test_workbench_js.py).
 
-// Sections another Settings section owns (the Language models panel), hidden from the generated form.
-export const FOLDED = new Set(["llm", "select"]);
+// Sections another Settings section owns, hidden from the generated form: the Language models panel
+// (llm, select) and the plugins' own tables (free-form; each plugin validates its own).
+export const FOLDED = new Set(["llm", "select", "plugins"]);
 
 const TITLES = {
   io: "Input & output", engine: "Engine", osm: "OpenStreetMap", overture: "Overture", build: "Build defaults",

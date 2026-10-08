@@ -269,6 +269,7 @@ class AppSettings(_Section):
     port: int = 8850
     console: bool = False
     approve_above_s: float = Field(default=90.0, ge=0)
+    disabled_plugins: list[str] = Field(default_factory=list)  # plugin ids not to load (see netstead.workbench.plugins)
 
 
 class CredentialSettings(_Section):
@@ -291,6 +292,8 @@ class Settings(_Section):
     viz: VizSettings = Field(default_factory=VizSettings)
     app: AppSettings = Field(default_factory=AppSettings)
     credentials: CredentialSettings = Field(default_factory=CredentialSettings)
+    #: One free-form table per Workbench plugin (``[plugins.<id>]``), validated by that plugin's own model.
+    plugins: dict[str, dict[str, Any]] = Field(default_factory=dict)
 
 
 @dataclass(frozen=True)

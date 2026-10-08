@@ -260,3 +260,10 @@ def test_a_row_click_never_changes_the_recorded_selection():
     body = re.search(r"function rowClick\(pkVal\) \{.*?\n\}", table, re.S)
     assert body, "table.js must define rowClick(pkVal)"
     assert "dispatch(" not in body.group(0) and "focus" in body.group(0)
+
+
+def test_sections_skip_the_free_form_plugins_table(node_module):
+    schema = {**SCHEMA, "properties": {**SCHEMA["properties"], "plugins": {"type": "object", "title": "Plugins"}}}
+    payload = {**PAYLOAD, "schema": schema, "values": {**PAYLOAD["values"], "plugins": {"hello": {"count": 3}}}}
+    secs = node_module("settingsform.js", ["sectionsFrom"], f"sectionsFrom({json.dumps(payload)})")
+    assert "plugins" not in [s["name"] for s in secs]

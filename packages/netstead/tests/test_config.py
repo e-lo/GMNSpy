@@ -237,3 +237,16 @@ def test_settings_error_carries_no_input_or_context(tmp_path, isolated_env):
         load_settings(project_dir=tmp_path, environ=isolated_env, overrides={"select.model": ["MARKERtok"]})
     assert "MARKER" not in str(info.value)
     assert info.value.__cause__ is None and info.value.__context__ is None
+
+
+def test_plugin_tables_are_free_form_and_layered(tmp_path):
+    env = {"NETSTEAD_CONFIG_DIR": str(tmp_path / "cfg"), "NETSTEAD_PLUGINS__HELLO__PREFIX": "Hi"}
+    (tmp_path / "netstead.toml").write_text("[plugins.hello]\ncount = 3\n", encoding="utf-8")
+    loaded = load_settings(project_dir=tmp_path, environ=env)
+    assert loaded.settings.plugins == {"hello": {"count": 3, "prefix": "Hi"}}
+    assert loaded.sources["plugins.hello.prefix"] == "env" and loaded.sources["plugins.hello.count"] == "project"
+
+
+def test_disabled_plugins_defaults_empty(tmp_path):
+    loaded = load_settings(project_dir=tmp_path, environ={"NETSTEAD_CONFIG_DIR": str(tmp_path / "cfg")})
+    assert loaded.settings.app.disabled_plugins == []
