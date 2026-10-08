@@ -21,10 +21,21 @@ is taken). Version bumped in lockstep with `netstead` v1.0.0-beta.2.
   pandas / polars / pyarrow are I/O formats: frames come in through
   `from_arrow` / `from_records` and go out through `to_pandas()` / `to_polars()`.
   Rationale: [engine strategy ADR](../../docs/design/2026-10-01-engine-strategy-reevaluation.md).
-- **Dependency floors raised** (#198): `ibis-framework[duckdb]>=10`,
-  `duckdb>=1.1`, `pyarrow>=17` (the old `ibis<10` pin is gone).
+- **Dependency floors raised** (#198): `ibis-framework[duckdb]>=10,<13`,
+  `duckdb>=1.1`, `pyarrow>=17` (the old `ibis<10` pin is gone; `<13` added in #212).
 - **Geometry is WKB in memory** (#201); CSV reads/writes WKT, Parquet stores WKB.
   [Geometry encoding ADR](../../docs/design/2026-10-01-geometry-encoding-adr.md).
+
+### Fixed
+
+- **Remote zips open through fsspec** (#216). A `.csv.zip` URL used to be
+  opened as a local path relative to the working directory, so remote zips
+  never worked and a URL containing `..` could read local files.
+- **Local `.csv.zip` packages load** through `Package.from_source` (#211);
+  members were mis-dispatched to the plain CSV adapter.
+- **The shared DuckDB connection is serialized behind an engine lock** (#211),
+  since it isn't thread-safe; `to_pandas` converts outside the lock (#212).
+- Remote Parquet URLs are no longer mangled into local paths (#211).
 
 ### Added
 
