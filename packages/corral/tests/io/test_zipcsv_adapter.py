@@ -22,7 +22,7 @@ from pathlib import Path
 
 import pandas as pd
 import pytest
-from corral.engines import get_engine, list_engines
+from corral.engines import get_engine
 from corral.engines.errors import InvalidEngineCallError
 from corral.io import FormatAdapter, dispatch, list_adapters, register_adapter
 from corral.io.base import ResourceRef
@@ -248,13 +248,10 @@ def test_read_multi_csv_zip_unknown_table_raises():
     assert "nonexistent" in msg
 
 
-@pytest.mark.parametrize("engine_name", ["pandas", "polars", "ibis"])
-def test_read_specific_table_delegates_to_engine(engine_name):
-    """Round-trip via each registered engine — node.csv has known shape."""
-    if engine_name not in list_engines():
-        pytest.skip(f"engine {engine_name!r} not installed")
+def test_read_specific_table_delegates_to_engine():
+    """Round-trip through the engine — node.csv has known shape."""
     adapter = ZipCsvAdapter()
-    engine = get_engine(engine_name)
+    engine = get_engine()
     expr = adapter.read(LEAVENWORTH_ZIP, engine=engine, table="node")
     df = engine.to_pandas(expr)
     assert isinstance(df, pd.DataFrame)

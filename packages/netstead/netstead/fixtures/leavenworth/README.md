@@ -104,7 +104,7 @@ nodes = pd.read_csv(leavenworth.csv_dir() / "node.csv")
 links = pd.read_csv(leavenworth.csv_dir() / "link.csv")
 ```
 
-Once `netstead.read()` and the `Network` class land in Phase 3 a `leavenworth.load()` shortcut will return a `Network` directly.
+To get a `Network` directly instead, use `leavenworth.load()` (CSV by default; `"parquet"` and `"duckdb"` also accepted).
 
 ## License / attribution
 

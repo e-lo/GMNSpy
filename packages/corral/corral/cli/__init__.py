@@ -1,10 +1,8 @@
 """Generic CLI for working with any Frictionless data package.
 
-Phase 4 task 4.1a (this module) ships the foundation: the
-:func:`build_app` factory + an ``app`` singleton wired to the
-``corral`` console-script entry point + two commands (``validate``,
-``info``) that prove the pattern. Subsequent Phase 4 tasks layer on
-``convert`` / ``scope`` / ``describe``.
+Provides the :func:`build_app` factory and an ``app`` singleton wired
+to the ``corral`` console-script entry point, with the generic
+commands ``validate``, ``info``, and ``convert``.
 
 Every command honours ``--json`` (machine-readable single-document
 stdout for agents) and ``--yes/-y`` (auto-approve gated ops; same as

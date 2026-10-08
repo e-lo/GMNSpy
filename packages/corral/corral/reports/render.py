@@ -349,7 +349,7 @@ def render_html(
     public CDN at view time. Everything else — data, filtering, expand,
     export — works fully offline. Inlining Vega-Lite's ~250KB into every
     emailed report was rejected as too heavy; the rest of the report is
-    self-contained. Tracked in a follow-up issue (``TODO(offline-map)``).
+    self-contained. For fully offline viewing, pass ``include_map=False``.
 
     Args:
         report: The :class:`ValidationReport` to render.
