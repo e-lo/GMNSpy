@@ -16,21 +16,46 @@ on 2026-10-05; `import gmnspy` → `import netstead`, `gmnspy <cmd>` →
 `netstead <cmd>`. The `gmnspy` name on PyPI stays frozen at the v0.3.x line
 (the 1.0.0b1 preview below was yanked).
 
-Second public preview. The big theme: an **interactive map viewer** with
-an integrated **edit log** so you can triage findings in a browser, apply
-the fixes deterministically in Python, and save.
+Second public preview. The big theme: the **Workbench** (`netstead app`), one
+local front end to open or build a network, select parts of it in plain
+language, and inspect it on a linked map and table. Also new: an embeddable
+map with an **edit log** for triaging findings and replaying the fixes in Python.
 
 ### Added
 
+- **Workbench — `netstead app`** (#211, #212). A local web app over one typed
+  Action bus (`Session.dispatch`) with history and "copy as Python", live
+  updates over SSE, background jobs and a network registry. Front end is
+  no-build ES modules on MapLibre + deck.gl.
+  - **Open / Import wizard:** open local or remote networks, or build one from
+    OSM or Overture by drawn or typed bbox or place search. A server-side file
+    browser is confined to `io.allowed_roots`; builds estimated over 90 s ask
+    for approval.
+  - **Settings dialog** generated from the settings schema; each value shows
+    its source (default / user / project / env / session) and saves to the
+    layer you pick. Settings themselves are layered (`netstead.config`).
+  - **Linked map and table:** a map click scrolls to the row, a row click
+    flies the map, an FK cell jumps to the referenced row. Scope menu: All /
+    Selection / Highlighted / Related.
+  - **FK related records** from the spec's foreign keys, computed in DuckDB and
+    tinted on the map and in other tables.
+  - Cookbook: `workbench.md`.
+- **Multi-provider natural-language selection** (`[nl]` extra, #211).
+  Anthropic, OpenAI, Gemini or a local Ollama model through hand-rolled
+  `httpx` adapters (no vendor SDKs). API keys come only from environment
+  variables or the OS keyring and never appear in settings, history, logs or
+  responses. Network vocabulary goes only to local endpoints unless you opt
+  in. Local Ollama works with no configuration. New `netstead llm`
+  commands: `status`, `set-key`, `remove-key`, `test`, `models`, `pull`.
+  Cookbook: `local-llm-ollama.md`.
 - **`netstead.select` — natural-language selection** (#194). Turns an utterance
   like *"I-40 EB between Harrison Ave and NC 54"* into a validated, repeatable
   set of GMNS `link_id`s via in-network topological traversal (no geocoding).
-  `netstead select` CLI; `netstead select-serve` is a prototype UI that the
-  Workbench will replace.
-- **`netstead.viz` — interactive network viewer** (#194). `netstead viz <network>`:
-  deck.gl + MapLibre fed by binary buffers from Parquet, layer toggles,
-  attribute styling, link detail panel, and a paged/sorted/filtered table view
-  backed by DuckDB.
+  `netstead select` CLI. Selection falls back between a facility's `ref` and
+  `name` when one misses.
+- **`netstead.viz` — binary render buffers, styling and paged DuckDB table
+  access** (#194) used by the Workbench: deck.gl layers fed from Parquet without
+  GeoJSON, attribute styling, and paged / sorted / filtered table reads.
 - **`netstead.overture` + `netstead build --source overture`** (#196) — build a
   GMNS network from Overture Maps, mirroring the OSM pipeline. Behind the
   `[overture]` extra.
@@ -92,6 +117,10 @@ the fixes deterministically in Python, and save.
 
 ### Changed
 
+- **`netstead viz` and `netstead select-serve` open the Workbench** (#212). The
+  standalone viewer and selection prototype apps they used to start are removed.
+- **`[server]` requires `fastapi>=0.132`**, whose strict JSON content-type
+  handling the Workbench's request guard relies on.
 - **Geometry is WKB in memory** (#201). CSV stays WKT on disk; Parquet stores
   WKB with GeoParquet `geo` metadata (#202).
 - **DuckDB is the only compute engine** (via corral, #195). `engine="pandas"` /
@@ -112,7 +141,15 @@ the fixes deterministically in Python, and save.
   emit a `DeprecationWarning`. `netstead.reports.write_findings_csv` /
   `write_findings_xlsx` stay put.
 
-### Known limitations (Phase 2)
+### Known limitations
+
+- `netstead app --host 0.0.0.0` with an empty `io.allowed_roots` lets anyone on
+  the network browse your home directory. Keep the default loopback host, or
+  set `io.allowed_roots`.
+- The default local model (`qwen3:4b`) has not been tested live; `qwen2.5:7b`
+  has.
+
+### Known limitations (edit log)
 
 - Edit log only supports `kind: fix` (per-cell value changes). Row
   additions, row deletions, and schema changes are deferred. The YAML
