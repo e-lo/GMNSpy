@@ -79,6 +79,88 @@ def test_problems_reports_each_violation(overrides, taken, match):
     assert any(match in p for p in found), found
 
 
+class NamedSelect(BaseAction):
+    type: Literal["hello.select"] = "hello.select"
+
+
+class NamedSession(BaseAction):
+    type: Literal["hello.session"] = "hello.session"
+
+
+# Named like the core ``Select`` and the ``Session`` a replayed script constructs: importing either would rebind it.
+NamedSelect.__name__ = NamedSelect.__qualname__ = "Select"
+NamedSession.__name__ = NamedSession.__qualname__ = "Session"
+
+
+class EmptySuffix(BaseAction):
+    type: Literal["hello."] = "hello."
+
+
+class Greet2(BaseAction):
+    type: Literal["hello.greet"] = "hello.greet"
+
+
+def _nested_action() -> type[BaseAction]:
+    class Nested(BaseAction):
+        type: Literal["hello.nested"] = "hello.nested"
+
+    return Nested
+
+
+def _main_action() -> type[BaseAction]:
+    class Main(BaseAction):
+        type: Literal["hello.main"] = "hello.main"
+
+    Main.__qualname__, Main.__module__ = "Main", "__main__"
+    return Main
+
+
+class StrTyped(BaseAction):
+    type: str = "hello.str"
+
+
+class MultiTyped(BaseAction):
+    type: Literal["hello.a", "hello.b"] = "hello.a"
+
+
+def _spec(model: Any) -> ActionSpec:
+    return ActionSpec(model, lambda h, a: None)
+
+
+@pytest.mark.parametrize(
+    ("overrides", "match"),
+    [
+        ({"id": "hello\n"}, "must match"),
+        ({"actions": (_spec(EmptySuffix),)}, "then name the action"),
+        ({"actions": (_spec(Greet), _spec(Greet))}, "declared twice"),
+        ({"actions": (_spec(Greet), _spec(Greet2))}, "declared twice"),
+        ({"actions": (_spec(NamedSelect),)}, "class name 'Select'"),
+        ({"actions": (_spec(NamedSession),)}, "class name 'Session'"),
+        ({"actions": (_spec(_nested_action()),)}, "top level of an importable module"),
+        ({"actions": (_spec(_main_action()),)}, "top level of an importable module"),
+        ({"actions": (_spec(StrTyped),)}, "one value"),
+        ({"actions": (_spec(MultiTyped),)}, "one value"),
+    ],
+)
+def test_problems_reports_what_would_break_parsing_or_replay(overrides, match):
+    found = problems(make_hello(**overrides), ActionRegistry(), taken=())
+    assert any(match in p for p in found), found
+
+
+class OtherGreet(BaseAction):
+    type: Literal["other.greet"] = "other.greet"
+
+
+OtherGreet.__name__ = OtherGreet.__qualname__ = "Greet"  # another plugin's class with the same name
+
+
+def test_problems_reports_a_class_name_another_plugin_registered():
+    registry = ActionRegistry()
+    registry.register(Greet)
+    other = WorkbenchPlugin(id="other", name="O", version="0", requires_api=HOST_API, actions=(_spec(OtherGreet),))
+    assert any("class name 'Greet'" in p for p in problems(other, registry, taken=()))
+
+
 def test_problems_reports_a_type_already_registered():
     registry = ActionRegistry()
     registry.register(Greet)
@@ -359,3 +441,66 @@ def test_installed_entry_point_is_discovered_by_default(tmp_path, isolated_env, 
     assert _status(session, "fake").state == "loaded"
     assert session.dispatch({"type": "fake.ping"}) == "pong"
     assert session.history[-1].imports == "from netstead_fake_plugin import Ping"
+
+
+# ---------------------------------------------------------------------------- install is all-or-nothing
+
+
+class Wave(BaseAction):
+    type: Literal["hello.wave"] = "hello.wave"
+
+
+def test_a_plugin_declaring_a_type_twice_is_an_error_not_an_exception(make_session):
+    session = make_session(make_hello(actions=(_spec(Wave), _spec(Greet), _spec(Greet))))
+    assert _status(session, "hello").state == "error" and "declared twice" in _status(session, "hello").error
+    assert not session.actions.has("hello.wave") and not session.actions.has("hello.greet")
+
+
+def test_a_registration_failure_rolls_back_the_plugins_earlier_actions(make_session, monkeypatch):
+    import netstead.workbench.session as session_module
+
+    monkeypatch.setattr(session_module, "problems", lambda *args: [])  # as if a check were missed
+    session = make_session(make_hello(actions=(_spec(Wave), _spec(Greet), _spec(StrTyped))))
+    assert _status(session, "hello").state == "error" and "one value" in _status(session, "hello").error
+    assert not session.actions.has("hello.wave") and not session.actions.has("hello.greet")
+    assert "hello.wave" not in session._handlers and "hello" not in session.plugins
+    assert session.dispatch({"type": "clear_selection"}) is None  # parsing still works for core Actions
+
+
+def test_session_script_with_plugin_and_failed_entries_replays(make_session, rdu_source):
+    """ "Copy session as Python" for a mixed core + plugin session, with a failed plugin entry, runs as is."""
+    from fastapi.testclient import TestClient
+    from netstead.workbench import build_app
+    from netstead.workbench.actions import OpenNetwork, Style
+
+    def hello_with_failures(**overrides: Any) -> WorkbenchPlugin:
+        plugin = make_hello(**overrides)
+        greet = plugin.actions[0].handler
+
+        def picky(host, action: Greet) -> str:
+            if action.name == "nobody":
+                raise ActionError("nobody to greet")
+            return greet(host, action)
+
+        return make_hello(actions=(ActionSpec(Greet, picky),), **overrides)
+
+    session = make_session(hello_with_failures())
+    session.dispatch(OpenNetwork(source=rdu_source))
+    session.dispatch(Greet(name="Ada"))
+    with pytest.raises(ActionError):
+        session.dispatch(Greet(name="nobody"))
+    session.dispatch(Style(offset=False))
+    history = TestClient(build_app(session)).get("/api/history").json()
+
+    # The same assembly as ``sessionScript`` in static/js/history.js.
+    lines = [*history["imports"], "", "app = Session()  # or reuse a live session"]
+    lines += [e["python"] if e["ok"] else f"# failed: {e['python']}  # {e['error']}" for e in history["entries"]]
+    script = "\n".join(lines)
+    assert history["imports"][1:] == [f"from {Greet.__module__} import Greet"]
+    assert "# failed: app.do(Greet(name='nobody'))" in script
+
+    replay = make_session(hello_with_failures())
+    namespace: dict[str, Any] = {}
+    exec(script.replace("app = Session()", "app = replay"), {"replay": replay}, namespace)
+    assert namespace["Session"].__module__ == "netstead.workbench.session"  # never rebound by a plugin import
+    assert replay.state() == session.state()
