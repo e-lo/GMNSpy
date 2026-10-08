@@ -11,8 +11,10 @@ the ``to_python`` replay snippet.
 
 from __future__ import annotations
 
+import functools
+import operator
 import re
-from collections.abc import Iterator, Mapping
+from collections.abc import Iterable, Iterator, Mapping
 from pathlib import PurePath
 from typing import Annotated, Any, ClassVar, Literal
 
@@ -24,7 +26,10 @@ from .area import Area
 from .registry import Component, default_label
 
 __all__ = [
+    "CORE_ACTIONS",
     "Action",
+    "ActionRegistry",
+    "BaseAction",
     "BuildNetwork",
     "ClearSelection",
     "CloseNetwork",
@@ -35,6 +40,7 @@ __all__ = [
     "SetSetting",
     "Style",
     "action_json_schema",
+    "import_line",
     "is_secret_name",
     "parse_action",
     "to_python",
@@ -43,18 +49,33 @@ __all__ = [
 RGB = Annotated[list[Annotated[int, Field(ge=0, le=255)]], Field(min_length=3, max_length=3)]
 
 
-class _Action(BaseModel):
+class BaseAction(BaseModel):
+    """Base class for every Workbench Action, core and plugin.
+
+    A subclass declares ``type: Literal["<type>"] = "<type>"`` (plugins: ``"<plugin id>.<name>"``)
+    and its fields. ``mutates`` marks actions the assistant must draft before applying;
+    ``runs_as_job`` (core only) runs the slow work on a background job thread; ``replay_overrides``
+    are fields forced in the ``to_python`` replay snippet.
+    """
+
     model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)  # errors never echo a value (keys)
     mutates: ClassVar[bool] = False
     runs_as_job: ClassVar[bool] = False
     replay_overrides: ClassVar[dict[str, Any]] = {}
+
+    @classmethod
+    def action_type(cls) -> str | None:
+        """The ``type`` discriminator this class carries (``None`` when it declares none)."""
+        field_info = cls.model_fields.get("type")
+        default = field_info.default if field_info is not None else None
+        return default if isinstance(default, str) and default else None
 
     def job_label(self) -> str:
         """The label a ``runs_as_job`` action's background job shows in the jobs panel."""
         return self.type.replace("_", " ")
 
 
-class OpenNetwork(_Action):
+class OpenNetwork(BaseAction):
     """Load a GMNS network from a local path (inside ``io.allowed_roots``) or URL and make it active."""
 
     type: Literal["open_network"] = "open_network"
@@ -68,21 +89,21 @@ class OpenNetwork(_Action):
         return f"open {default_label(self.source)}"
 
 
-class CloseNetwork(_Action):
+class CloseNetwork(BaseAction):
     """Close an open network."""
 
     type: Literal["close_network"] = "close_network"
     net_id: str
 
 
-class SetActiveNetwork(_Action):
+class SetActiveNetwork(BaseAction):
     """Switch which open network the map and tables show."""
 
     type: Literal["set_active_network"] = "set_active_network"
     net_id: str
 
 
-class Select(_Action):
+class Select(BaseAction):
     """Select features by natural-language utterance or explicit ids (``net_id`` defaults to active)."""
 
     type: Literal["select"] = "select"
@@ -98,13 +119,13 @@ class Select(_Action):
         return self
 
 
-class ClearSelection(_Action):
+class ClearSelection(BaseAction):
     """Clear the current selection."""
 
     type: Literal["clear_selection"] = "clear_selection"
 
 
-class Style(_Action):
+class Style(BaseAction):
     """Partially update the map style; omitted fields are unchanged."""
 
     type: Literal["style"] = "style"
@@ -117,7 +138,7 @@ class Style(_Action):
     show_legend: bool | None = None
 
 
-class Navigate(_Action):
+class Navigate(BaseAction):
     """Move the map camera to a bbox, the active network, or the selection."""
 
     type: Literal["navigate"] = "navigate"
@@ -132,7 +153,7 @@ class Navigate(_Action):
         return self
 
 
-class SetSetting(_Action):
+class SetSetting(BaseAction):
     """Change a setting (dotted key) for this session, or persist it to the user/project file.
 
     Refuses API-key-shaped values *at validation*, before anything is recorded: keys are set
@@ -229,7 +250,7 @@ def _values_under(value: Any, name: str) -> Iterator[Any]:
 _OUTPUT_SUFFIXES = frozenset({".zip", ".duckdb", ".csv", ".parquet"})
 
 
-class BuildNetwork(_Action):
+class BuildNetwork(BaseAction):
     """Build a GMNS network from OSM or Overture, write it to ``output_dir``, then open it from disk.
 
     Give exactly one of ``area`` (fetch from the service) or ``input_file`` (a local ``.osm`` /
@@ -284,20 +305,93 @@ Action = Annotated[
     | SetSetting,
     Field(discriminator="type"),
 ]
-_ADAPTER: TypeAdapter[Action] = TypeAdapter(Action, config=ConfigDict(hide_input_in_errors=True))
+#: The Actions every session understands, in registry order (``to_python`` imports them from ``netstead.workbench``).
+CORE_ACTIONS: tuple[type[BaseAction], ...] = (
+    OpenNetwork,
+    BuildNetwork,
+    CloseNetwork,
+    SetActiveNetwork,
+    Select,
+    ClearSelection,
+    Style,
+    Navigate,
+    SetSetting,
+)
+
+
+class ActionRegistry:
+    """The Action types one session understands: the core ones plus any its plugins register."""
+
+    def __init__(self, models: Iterable[type[BaseAction]] = CORE_ACTIONS) -> None:
+        """Start with ``models`` registered (default: :data:`CORE_ACTIONS`)."""
+        self._models: dict[str, type[BaseAction]] = {}
+        self._adapter: TypeAdapter[Any] | None = None
+        for model in models:
+            self.register(model)
+
+    def register(self, model: type[BaseAction]) -> None:
+        """Add ``model``; raises ``TypeError`` for a non-Action, ``ValueError`` for a missing or taken ``type``."""
+        if not (isinstance(model, type) and issubclass(model, BaseAction)):
+            raise TypeError(f"{model!r} is not a BaseAction subclass")
+        action_type = model.action_type()
+        if action_type is None:
+            raise ValueError(f"{model.__name__} needs a `type: Literal[...]` field with a default")
+        if action_type in self._models:
+            raise ValueError(f"action type {action_type!r} is already registered")
+        self._models[action_type] = model
+        self._adapter = None
+
+    def has(self, action_type: str) -> bool:
+        """Whether ``action_type`` is registered."""
+        return action_type in self._models
+
+    def types(self) -> list[str]:
+        """Registered types, in registration order."""
+        return list(self._models)
+
+    def model(self, action_type: str) -> type[BaseAction]:
+        """The class registered for ``action_type`` (``KeyError`` if none)."""
+        return self._models[action_type]
+
+    def parse(self, data: Mapping[str, Any]) -> BaseAction:
+        """Validate a JSON dict into a registered Action (raises ``pydantic.ValidationError``)."""
+        return self._get_adapter().validate_python(data)
+
+    def json_schema(self) -> dict[str, Any]:
+        """JSON schema of every registered Action (the assistant's tool vocabulary)."""
+        return self._get_adapter().json_schema()
+
+    def _get_adapter(self) -> TypeAdapter[Any]:
+        if self._adapter is None:
+            union = functools.reduce(operator.or_, self._models.values())
+            self._adapter = TypeAdapter(
+                Annotated[union, Field(discriminator="type")], config=ConfigDict(hide_input_in_errors=True)
+            )
+        return self._adapter
+
+
+#: The core-only registry behind the module-level helpers (a session has its own, see ``Session.actions``).
+_CORE_REGISTRY = ActionRegistry()
 
 
 def parse_action(data: dict[str, Any]) -> Action:
-    """Validate a JSON dict into an Action (raises ``pydantic.ValidationError``)."""
-    return _ADAPTER.validate_python(data)
+    """Validate a JSON dict into a core Action (raises ``pydantic.ValidationError``)."""
+    return _CORE_REGISTRY.parse(data)  # type: ignore[return-value]  # core registry: always a core Action
 
 
 def action_json_schema() -> dict[str, Any]:
-    """JSON schema of the Action union (the assistant's tool vocabulary)."""
-    return _ADAPTER.json_schema()
+    """JSON schema of the core Action union (the assistant's tool vocabulary)."""
+    return _CORE_REGISTRY.json_schema()
 
 
-def to_python(action: _Action) -> str:
+def import_line(action: BaseAction) -> str:
+    """The ``from ... import ...`` line a replayed ``to_python`` snippet needs for ``action``."""
+    cls = type(action)
+    module = "netstead.workbench" if cls in CORE_ACTIONS else cls.__module__
+    return f"from {module} import {cls.__name__}"
+
+
+def to_python(action: BaseAction) -> str:
     """The Python call that replays ``action`` against a live workbench handle named ``app``.
 
     Top-level fields equal to their default are omitted; nested models (an ``area``) are written
