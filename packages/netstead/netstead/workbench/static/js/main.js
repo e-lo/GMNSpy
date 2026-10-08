@@ -4,13 +4,15 @@ import { $, toast } from "./dom.js";
 import { rememberRecent, renderHeader, renderRecent, wireHeader } from "./header.js";
 import { showEntry, wireHistory } from "./history.js";
 import { loadJobs, onJob, wireJobs } from "./jobs.js";
-import { onHistoryEntry, onLLMEvent, onLLMJob, refreshLLM, wireLLM } from "./llm.js";
-import { fitBbox, fitLinks, fitNetwork, initMap, render } from "./map.js";
+import { onHistoryEntry, onLLMEvent, onLLMJob, refreshLLM, renderLLMPanel, wireLLM } from "./llm.js";
+import { fitBbox, fitLinks, fitNetwork, flyToNode, initMap, render, setBasemap } from "./map.js";
 import { decodeNetwork } from "./netbuf.js";
 import { populateColorby, renderLegend, syncControls, wirePanels } from "./panels.js";
-import { clearDetails, renderHighlights, renderSelection, showLinkDetails, wireSide } from "./side.js";
+import { clearDetails, renderHighlights, renderSelection, showDetails, wireSide } from "./side.js";
+import { cancelRelated, renderRelatedBadges, scheduleRelated } from "./related.js";
+import { onSettingsHistory, registerSection, wireSettings } from "./settings.js";
 import { activeSelection, store } from "./store.js";
-import { onNetworkChanged, onSelectionChanged, restoreViewMode, wireTable } from "./table.js";
+import { onFocusChanged, onNetworkChanged, refreshRows, restoreViewMode, syncScopeControls, tableVisible, wireTable } from "./table.js";
 import { onWizardJob, wireWizard } from "./wizard.js";
 
 const netKeyFor = server => {
@@ -32,7 +34,7 @@ async function loadActiveNetwork() {
     if (netKeyFor(store.get().server).key !== key) return; // superseded while fetching
     const switched = !netKey || !netKey.startsWith(`${h.id}@`);
     store.set({ netKey: key, net: decodeNetwork(buf), attrs, properties: props.properties, prop: null, marker: null });
-    if (switched) fitNetwork();
+    if (switched) fitNetwork({ animate: false });
   } finally {
     inFlight.delete(key);
   }
@@ -60,10 +62,41 @@ function onNavigate(ev) {
 
 function onLinkClick(linkId) {
   const s = store.get();
-  if (!s.highlightMode) { showLinkDetails(linkId); return; }
+  if (!s.highlightMode) { store.set({ focus: { table: "link", id: linkId, from: "map" } }); return; }
   const highlights = new Set(s.highlights);
   if (highlights.has(linkId)) highlights.delete(linkId); else highlights.add(linkId);
   store.set({ highlights });
+}
+
+function onNodeClick(nodeId) {
+  if (!store.get().highlightMode) store.set({ focus: { table: "node", id: nodeId, from: "map" } });
+}
+
+// A box-select fills the highlights; with the table visible, it also becomes the table's filter.
+function onBoxSelect() { if (tableVisible()) store.set({ tableScope: "highlighted" }); }
+
+// The focused record: details, its map feature (fly only when the click came from the table), its row.
+function onFocus(s) {
+  const f = s.focus;
+  store.set({ marker: null });
+  if (f) {
+    showDetails(f.table, f.id);
+    if (f.table === "link" && f.from === "table") fitLinks([f.id]);
+    if (f.table === "node") flyToNode(f.id, { fly: f.from === "table" });
+  } else {
+    clearDetails();
+  }
+  onFocusChanged();
+}
+
+// A viz.* setting (from the Settings dialog, Python, or the assistant) may change the basemap: swap it in place.
+async function onSettingChanged(entry) {
+  const a = entry.action;
+  if (!entry.ok || a.type !== "set_setting" || !/^viz(\.|$)/.test(a.key)) return;
+  const cfg = await getJSON("/api/config");
+  if (JSON.stringify(cfg.style) === JSON.stringify(store.get().basemap)) return;
+  store.set({ basemap: cfg.style });
+  setBasemap(cfg.style);
 }
 
 function wireMapButtons() {
@@ -72,20 +105,38 @@ function wireMapButtons() {
   $("btn-highlight").onclick = () => store.set({ highlightMode: !store.get().highlightMode });
 }
 
+// Server state arrives for any change (style too); the grid reloads only when the selection did.
+let lastSelKey = null;
+function onSelectionMaybeChanged(sel) {
+  const key = JSON.stringify(sel ? [sel.net_id, sel.link_ids] : null);
+  if (key === lastSelKey) return;
+  lastSelKey = key;
+  refreshRows({ restart: true });
+}
+
 function wireStore() {
-  store.subscribe(["server", "net", "prop", "highlights", "marker"], () => render());
+  store.subscribe(["server", "net", "prop", "highlights", "marker", "focus", "related"], () => render());
   store.subscribe(["server"], s => {
-    renderHeader(s.server); syncControls(s.server.style); renderSelection(activeSelection(s)); onSelectionChanged();
+    renderHeader(s.server); syncControls(s.server.style); renderSelection(activeSelection(s));
+    onSelectionMaybeChanged(activeSelection(s));
   });
   store.subscribe(["server", "prop"], s => renderLegend(s.server.style, s.prop));
   store.subscribe(["properties"], s => { populateColorby(s.properties); syncControls(s.server.style); });
-  store.subscribe(["netKey"], () => { onNetworkChanged(); store.set({ highlights: new Set() }); clearDetails(); });
+  store.subscribe(["netKey"], () => { cancelRelated(); onNetworkChanged(); store.set({ highlights: new Set(), focus: null, related: null }); clearDetails(); });
+  store.subscribe(["focus"], s => onFocus(s));
+  // New highlights change the rows of every scope but All (back to the first page); a focus only re-tints.
+  store.subscribe(["highlights"], s => refreshRows({ restart: s.tableScope !== "all" }));
+  store.subscribe(["focus"], () => refreshRows());
+  store.subscribe(["tableScope", "relHops"], s => { syncScopeControls(s); refreshRows({ restart: true }); });
   store.subscribe(["highlights"], s => renderHighlights(s.highlights));
+  store.subscribe(["focus", "highlights", "relHops"], () => scheduleRelated());
+  store.subscribe(["related"], s => renderRelatedBadges(s.related));
   store.subscribe(["highlightMode"], s => { $("btn-highlight").classList.toggle("on", s.highlightMode); $("map").classList.toggle("highlighting", s.highlightMode); });
 }
 
 async function boot() {
-  wireStore(); wirePanels(); wireSide(); wireTable(); wireHeader(); wireHistory(); wireMapButtons(); wireJobs(); wireWizard(); wireLLM();
+  wireStore(); wirePanels(); wireSide(); wireTable(); wireHeader(); wireHistory(); wireMapButtons(); wireJobs(); wireWizard(); wireLLM(); wireSettings();
+  registerSection("llm", "Language models", "llm-panel", () => renderLLMPanel());
   renderRecent();
   const [cfg, server, history] = await Promise.all([getJSON("/api/config"), getJSON("/api/state"), getJSON("/api/history")]);
   store.set({ server, basemap: cfg.style });
@@ -100,13 +151,15 @@ async function boot() {
   let mapReady = false;
   subscribe({
     state: e => { if (mapReady) onState(e.state); else store.set({ server: e.state }); },
-    history: e => { showEntry(e.entry); rememberRecent(e.entry); onHistoryEntry(e.entry); },
+    history: e => { showEntry(e.entry); rememberRecent(e.entry); onHistoryEntry(e.entry); onSettingsHistory(e.entry);
+      onSettingChanged(e.entry).catch(err => toast(err.message));
+    },
     navigate: e => { if (mapReady) onNavigate(e); },
     job: e => { onJob(e.job); onWizardJob(e.job); onLLMJob(e.job); },
     llm: onLLMEvent,
   });
   initMap(cfg.style, {
-    onLinkClick,
+    onLinkClick, onNodeClick, onBoxSelect,
     onReady: () => { mapReady = true; return onState(store.get().server); },
   });
 }

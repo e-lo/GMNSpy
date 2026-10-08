@@ -151,3 +151,53 @@ def test_ollama_setup_links_point_at_the_published_guide():
     src = (JS_DIR / "llm.js").read_text()
     assert f'const OLLAMA_GUIDE = "{SETUP_DOCS_URL}"' in src
     assert '"/api/llm/ollama/pull", { model }, SECRETS' in src  # the pull carries the write-guard header
+
+
+def test_settings_dialog_hosts_the_language_models_section():
+    html = (STATIC_DIR / "index.html").read_text()
+    start, end = html.index('id="settings"'), html.index("<!-- /settings -->")
+    dialog = html[start:end]
+    for element_id in ("set-nav", "set-scope", "set-form", "set-close", "llm-panel", "llm-providers", "llm-quality"):
+        assert f'id="{element_id}"' in dialog
+    assert 'id="settings-btn"' in html and 'id="llm-close"' not in html
+
+
+def test_settings_module_is_wired_from_main():
+    main = (JS_DIR / "main.js").read_text()
+    assert 'from "./settings.js"' in main and "registerSection(" in main and "wireSettings()" in main
+
+
+def test_header_puts_the_utterance_and_picker_on_their_own_row():
+    html = (STATIC_DIR / "index.html").read_text()
+    row = html[html.index('id="nl-row"') : html.index("</header>")]
+    for element_id in ("utterance", "nl-picker", "go"):
+        assert f'id="{element_id}"' in row
+    main_row = html[html.index("<header>") : html.index('id="nl-row"')]
+    for element_id in ("net-select", "open-wizard", "recent", "viewmode", "jobs-btn", "settings-btn"):
+        assert f'id="{element_id}"' in main_row
+
+
+def test_basemap_swaps_in_place_on_a_viz_setting():
+    assert "export function setBasemap(" in (JS_DIR / "map.js").read_text()
+    main = (JS_DIR / "main.js").read_text()
+    assert "setBasemap(" in main and "viz" in main
+
+
+def test_table_bar_has_a_scope_menu_not_the_old_checkbox():
+    html = (STATIC_DIR / "index.html").read_text()
+    assert 'id="tbl-scope"' in html and 'id="tbl-hint"' in html and 'id="tbl-tosel"' not in html
+    for scope in ("all", "selection", "highlighted", "related"):
+        assert f'<option value="{scope}"' in html
+
+
+def test_fk_cells_link_to_their_target():
+    table = (JS_DIR / "table.js").read_text()
+    assert 'class="fk"' in table and "jumpTo(" in table and "stopPropagation" in table  # an FK click is not a row click
+
+
+def test_related_module_feeds_the_map_and_the_rail():
+    related = (JS_DIR / "related.js").read_text()
+    assert '"related"' in related and "rel-badge" in related
+    assert "relatedLayers(" in (JS_DIR / "map.js").read_text()
+    main = (JS_DIR / "main.js").read_text()
+    assert 'from "./related.js"' in main and "scheduleRelated" in main

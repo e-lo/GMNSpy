@@ -6,7 +6,7 @@ import pandas as pd
 import pyarrow as pa
 import pytest
 from corral.engines.ibis_engine import IbisEngine
-from netstead.viz.tables import MAX_LIMIT, FilterError, page_table, primary_key, table_schema
+from netstead.viz.tables import MAX_LIMIT, FilterError, locate_row, page_table, primary_key, table_schema
 
 
 @pytest.fixture
@@ -127,3 +127,25 @@ def test_table_schema_on_lazy_table():
     kinds = {c["name"]: c["kind"] for c in sch["columns"]}
     assert kinds["lanes"] == "num" and kinds["facility_type"] == "str"
     assert sch["primary_key"] == "link_id" and sch["rows"] > 50
+
+
+def test_locate_row_follows_filter_and_sort():
+    df = pd.DataFrame({"link_id": [5, 3, 9, 1], "name": ["a", "b", "a", "c"]})
+    assert locate_row(df, 9, pk="link_id") == 2
+    assert locate_row(df, 9, pk="link_id", sort="link_id", direction="desc") == 0
+    assert locate_row(df, 9, pk="link_id", filter_spec=[{"col": "name", "op": "eq", "val": "a"}]) == 1
+    assert locate_row(df, 3, pk="link_id", filter_spec=[{"col": "name", "op": "eq", "val": "a"}]) is None
+    assert locate_row(df, 1, pk="link_id", ids=[1, 9]) == 1  # ids keep table order: 9, then 1
+    assert locate_row(df, 9, pk="link_id", ids=[]) is None  # an explicit empty id list holds no rows
+
+
+def test_locate_row_is_none_for_lazy_tables_and_missing_keys(tmp_path):
+    df = pd.DataFrame({"link_id": [1, 2]})
+    assert locate_row(df, 1, pk="nope") is None
+    path = tmp_path / "t.parquet"
+    df.to_parquet(path)
+    engine = IbisEngine()
+    from corral.dataset.table import Table
+
+    assert locate_row(Table(name="link", expr=engine.scan(path), engine=engine), 1, pk="link_id") is None
+    engine.close()

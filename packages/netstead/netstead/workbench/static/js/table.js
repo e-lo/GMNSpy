@@ -1,38 +1,57 @@
-// Data-table view: server-paged/sorted/filtered grid linked to the map selection.
-import { dispatch, getJSON, netPath } from "./api.js";
+// Data-table view: a server-paged/sorted/filtered grid linked both ways to the map. A row click focuses
+// the record (never a recorded selection: see linking.js); the scope menu filters to the selection, the
+// highlights, or the records related to them; related rows are tinted; FK cells jump to their target.
+import { getJSON, netPath, postJSON } from "./api.js";
 import { $, esc, toast } from "./dom.js";
-import { fitLinks, flyToNode, resizeSoon } from "./map.js";
-import { showLinkDetails } from "./side.js";
+import { clampOffset, coerceId, pageOffset, rowMarks, rowsRequest, scopeHint } from "./linking.js";
+import { resizeSoon } from "./map.js";
+import { renderRelatedBadges } from "./related.js";
 import { activeSelection, store } from "./store.js";
 
-const TBL = { loaded: false, name: null, schema: null, offset: 0, limit: 100, sort: null, dir: "asc",
-  filters: {}, total: 0, toSel: false };
+const TBL = { loaded: false, name: null, schema: null, offset: 0, limit: 100, sort: null, dir: "asc", filters: {},
+  total: 0, seq: 0 };
 const VIEW_KEY = "netstead.viewmode";
-let filterTimer = null, lastSelKey = null;
+let filterTimer = null, located = null;
+// Row reloads are coalesced (a box-select changes highlights, focus and related in one burst), and skipped
+// while the table is hidden: `dirty` makes the next showing reload.
+let rowsTimer = null, pendingRestart = false, dirty = false;
 
 const activeId = () => { const s = store.get().server; return s && s.active; };
 const fail = e => toast(e.message);
+const tablePath = rest => netPath(activeId(), `table/${encodeURIComponent(TBL.name)}/${rest}`);
+
+export const tableVisible = () => $("stage").dataset.mode !== "map";
+export const tableShowing = name => tableVisible() && TBL.name === name;
 
 export function setViewMode(mode) {
   $("stage").dataset.mode = mode;
   for (const b of document.querySelectorAll("#viewmode button")) b.classList.toggle("on", b.dataset.mode === mode);
   try { localStorage.setItem(VIEW_KEY, mode); } catch (e) { /* storage unavailable: mode just isn't remembered */ }
   if (mode !== "map" && !TBL.loaded) loadTables().catch(fail);
+  else if (mode !== "map" && dirty) refreshRows();
   resizeSoon();
 }
 
 export function onNetworkChanged() {
   Object.assign(TBL, { loaded: false, name: null, schema: null });
+  TBL.seq++; clearTimeout(rowsTimer); // drop pages still loading for the old network
   $("tbl-rail").innerHTML = ""; $("tbl-grid").innerHTML = ""; $("tbl-name").textContent = "—";
-  if ($("stage").dataset.mode !== "map") loadTables().catch(fail);
+  if (tableVisible()) loadTables().catch(fail);
 }
 
-export function onSelectionChanged() {
-  const sel = activeSelection(store.get());
-  const key = JSON.stringify(sel ? [sel.link_ids, sel.anchors.map(a => a.node_id)] : null);
-  if (key === lastSelKey) return;
-  lastSelKey = key;
-  if (TBL.schema) loadRows().catch(fail);
+// Anything a page depends on changed (selection, highlights, focus, scope, hops, related): reload from the first page
+// when the set of rows may differ, else in place.
+export function refreshRows({ restart = false } = {}) {
+  if (!TBL.schema) return;
+  pendingRestart ||= restart;
+  if (!tableVisible()) { dirty = true; return; }
+  clearTimeout(rowsTimer);
+  rowsTimer = setTimeout(() => {
+    if (!TBL.schema) return; // the network changed meanwhile
+    if (pendingRestart) TBL.offset = 0;
+    pendingRestart = false; dirty = false;
+    loadRows().catch(fail);
+  }, 100);
 }
 
 async function loadTables() {
@@ -45,15 +64,17 @@ async function loadTables() {
   for (const t of j.tables) {
     const el = document.createElement("div");
     el.className = "tbl-item"; el.dataset.name = t.name;
-    el.innerHTML = `<span>${esc(t.name)}</span><span class="rc">${t.rows.toLocaleString()}</span>`;
+    el.innerHTML = `<span>${esc(t.name)}</span><span class="rc">${t.rows.toLocaleString()}</span><span class="rel-badge"></span>`;
     el.onclick = () => selectTable(t.name).catch(fail);
     rail.appendChild(el);
   }
+  renderRelatedBadges(store.get().related);
   if (j.tables.length) await selectTable(TBL.name || j.tables[0].name);
 }
 
-async function selectTable(name) {
+export async function selectTable(name) {
   Object.assign(TBL, { name, offset: 0, sort: null, dir: "asc", filters: {} });
+  located = null;
   for (const el of document.querySelectorAll(".tbl-item")) el.classList.toggle("on", el.dataset.name === name);
   TBL.schema = await getJSON(netPath(activeId(), `table/${encodeURIComponent(name)}/schema`));
   $("tbl-name").textContent = name;
@@ -74,69 +95,117 @@ function buildGridHeader() {
     filterTimer = setTimeout(() => {
       const v = el.value.trim();
       if (v) TBL.filters[el.dataset.fcol] = v; else delete TBL.filters[el.dataset.fcol];
-      TBL.offset = 0; loadRows().catch(fail);
+      refreshRows({ restart: true });
     }, 250);
   };
 }
 
 function toggleSort(col) {
   if (TBL.sort === col) TBL.dir = TBL.dir === "asc" ? "desc" : "asc"; else { TBL.sort = col; TBL.dir = "asc"; }
-  TBL.offset = 0; buildGridHeader(); loadRows().catch(fail);
+  buildGridHeader(); refreshRows({ restart: true });
 }
 
-function selIdsForTable() {
-  const pk = TBL.schema && TBL.schema.primary_key, sel = activeSelection(store.get());
-  if (!pk || !sel) return null;
-  if (pk === "link_id") return sel.link_ids;
-  if (pk === "node_id") return sel.anchors.map(a => a.node_id);
-  return null;
+function query() {
+  const s = store.get();
+  const filter = Object.entries(TBL.filters).map(([col, val]) => ({ col, op: "contains", val }));
+  return { offset: TBL.offset, limit: TBL.limit, sort: TBL.sort, dir: TBL.dir, filter: filter.length ? filter : null,
+    ...rowsRequest({ scope: s.tableScope, table: TBL.name, selection: activeSelection(s), highlights: s.highlights,
+      focus: s.focus, hops: s.relHops }) };
 }
 
 async function loadRows() {
-  const p = new URLSearchParams({ offset: TBL.offset, limit: TBL.limit });
-  if (TBL.sort) { p.set("sort", TBL.sort); p.set("dir", TBL.dir); }
-  const spec = Object.entries(TBL.filters).map(([col, val]) => ({ col, op: "contains", val }));
-  if (spec.length) p.set("filter", JSON.stringify(spec));
-  if (TBL.toSel) { const ids = selIdsForTable(); if (ids && ids.length) p.set("ids", ids.join(",")); }
-  const j = await getJSON(netPath(activeId(), `table/${encodeURIComponent(TBL.name)}/rows?${p}`));
+  const seq = ++TBL.seq;
+  const j = await postJSON(tablePath("rows"), query());
+  if (seq !== TBL.seq) return; // superseded by a newer request
+  const offset = clampOffset(TBL.offset, TBL.limit, j.total);
+  if (offset !== TBL.offset) { TBL.offset = offset; return loadRows(); } // the set shrank under this page
   TBL.total = j.total;
-  renderRows(j.columns, j.rows);
+  renderRows(j.columns, j.rows, j.related || []);
   const to = Math.min(TBL.offset + TBL.limit, j.total);
   $("tbl-total").textContent = `· ${j.total.toLocaleString()} row(s)`;
   $("tbl-range").textContent = j.total ? `${TBL.offset + 1}–${to} of ${j.total.toLocaleString()}` : "0";
+  $("tbl-hint").textContent = scopeHint(store.get().tableScope, j.total);
   $("tbl-prev").disabled = TBL.offset <= 0;
   $("tbl-next").disabled = to >= j.total;
+  await revealFocus();
 }
 
-function renderRows(cols, rows) {
-  const pkIdx = cols.indexOf(TBL.schema.primary_key);
-  const selIds = new Set((selIdsForTable() || []).map(String));
-  const body = $("tbl-grid").tBodies[0];
-  body.innerHTML = rows.map(r => {
-    const pv = pkIdx >= 0 ? r[pkIdx] : null;
-    const sel = pv != null && selIds.has(String(pv)) ? " sel" : "";
-    const tds = r.map(v => `<td>${v === null ? '<span class="empty">·</span>' : esc(v)}</td>`).join("");
-    return `<tr class="data${sel}" data-pk="${pv == null ? "" : esc(pv)}">${tds}</tr>`;
-  }).join("");
-  for (const tr of body.querySelectorAll("tr.data")) tr.onclick = () => tableRowClick(tr.dataset.pk);
-}
-
-async function tableRowClick(pkVal) {
-  if (pkVal === "" || !TBL.schema) return;
-  const n = Number(pkVal), id = Number.isNaN(n) ? pkVal : n;
-  const pk = TBL.schema.primary_key, net = store.get().net;
-  if (pk === "link_id" && net && net.id2idx.has(id)) {
-    try { await dispatch({ type: "select", link_ids: [id] }); fitLinks([id]); showLinkDetails(id); } catch (e) { fail(e); }
-  } else if (pk === "node_id") {
-    flyToNode(id);
+function cellHTML(value, fk) {
+  if (value === null) return '<span class="empty">·</span>';
+  if (fk && fk.navigable) {
+    return `<a class="fk" href="#" data-ref="${esc(fk.ref_table)}" data-id="${esc(value)}" data-num="${typeof value === "number" ? 1 : ""}" ` +
+      `title="Go to ${esc(fk.ref_table)} ${esc(value)}">${esc(value)}</a>`;
   }
+  return esc(value);
+}
+
+function renderRows(cols, rows, vias) {
+  const s = store.get(), pk = TBL.schema.primary_key, pkIdx = cols.indexOf(pk);
+  const fks = new Map((TBL.schema.foreign_keys || []).map(f => [f.column, f]));
+  const selection = activeSelection(s);
+  const body = $("tbl-grid").tBodies[0];
+  body.innerHTML = rows.map((r, i) => {
+    const pv = pkIdx >= 0 ? r[pkIdx] : null;
+    const marks = rowMarks({ table: TBL.name, id: pv, selection, highlights: s.highlights, focus: s.focus, via: vias[i] });
+    const title = vias[i] ? ` title="related via ${esc(vias[i])}"` : "";
+    const tds = r.map((v, c) => `<td>${cellHTML(v, fks.get(cols[c]))}</td>`).join("");
+    return `<tr class="data ${marks.join(" ")}" data-pk="${pv == null ? "" : esc(pv)}"${title}>${tds}</tr>`;
+  }).join("");
+  for (const tr of body.querySelectorAll("tr.data")) tr.onclick = () => rowClick(tr.dataset.pk);
+  for (const a of body.querySelectorAll("a.fk")) a.onclick = e => {
+    e.preventDefault(); e.stopPropagation();
+    jumpTo(a.dataset.ref, coerceId(a.dataset.id, Boolean(a.dataset.num))).catch(fail);
+  };
+}
+
+// A row click focuses that record. It never dispatches an action, so the recorded selection (and a
+// "Selection" scope built on it) is never collapsed to one row.
+function rowClick(pkVal) {
+  if (pkVal === "" || !TBL.schema || !TBL.schema.primary_key) return;
+  store.set({ focus: { table: TBL.name, id: coerceId(pkVal, pkNumeric()), from: "table" } });
+}
+
+// FK navigation: open the referenced table and focus the referenced row (its map feature flies into view).
+export async function jumpTo(table, id) {
+  if (!document.querySelector(`.tbl-item[data-name="${CSS.escape(table)}"]`)) { toast(`${table} is not in this network`); return; }
+  if (TBL.name !== table) await selectTable(table);
+  store.set({ focus: { table, id, from: "table" } });
+}
+
+const pkNumeric = () => TBL.schema.columns.some(c => c.name === TBL.schema.primary_key && c.kind === "num");
+const rowFor = id => [...$("tbl-grid").tBodies[0].querySelectorAll("tr.data")]
+  .find(tr => coerceId(tr.dataset.pk, pkNumeric()) === id);
+
+export function onFocusChanged() { located = null; revealFocus().catch(fail); }
+
+// Bring the focused row into view: mark it on this page, or locate its page once and load it.
+async function revealFocus() {
+  const f = store.get().focus;
+  for (const tr of $("tbl-grid").querySelectorAll("tr.focus")) tr.classList.remove("focus");
+  if (!f || !tableShowing(f.table) || !TBL.schema) return;
+  const tr = rowFor(f.id);
+  if (tr) { tr.classList.add("focus"); tr.scrollIntoView({ block: "nearest" }); return; }
+  const key = `${f.table}:${f.id}`;
+  if (located === key) return; // already moved to its page once: it is filtered out of this view
+  located = key;
+  const { index } = await postJSON(tablePath("locate"), { ...query(), id: f.id });
+  if (index == null) { $("tbl-hint").textContent = `${f.table} ${f.id} is not in this view.`; return; }
+  TBL.offset = pageOffset(index, TBL.limit);
+  await loadRows();
 }
 
 export function wireTable() {
   for (const b of document.querySelectorAll("#viewmode button")) b.onclick = () => setViewMode(b.dataset.mode);
-  $("tbl-prev").onclick = () => { if (TBL.offset > 0) { TBL.offset = Math.max(0, TBL.offset - TBL.limit); loadRows().catch(fail); } };
-  $("tbl-next").onclick = () => { if (TBL.offset + TBL.limit < TBL.total) { TBL.offset += TBL.limit; loadRows().catch(fail); } };
-  $("tbl-tosel").onchange = e => { TBL.toSel = e.target.checked; TBL.offset = 0; loadRows().catch(fail); };
+  $("tbl-prev").onclick = () => { if (TBL.offset > 0) { TBL.offset = Math.max(0, TBL.offset - TBL.limit); refreshRows(); } };
+  $("tbl-next").onclick = () => { if (TBL.offset + TBL.limit < TBL.total) { TBL.offset += TBL.limit; refreshRows(); } };
+  $("tbl-scope").onchange = e => store.set({ tableScope: e.target.value });
+  $("tbl-hops").onclick = () => store.set({ relHops: store.get().relHops === 1 ? 2 : 1 });
+}
+
+export function syncScopeControls(s) {
+  $("tbl-scope").value = s.tableScope;
+  $("tbl-hops").textContent = s.relHops === 1 ? "Expand a hop" : "One hop";
+  $("tbl-hops").classList.toggle("on", s.relHops > 1);
 }
 
 export function restoreViewMode() {

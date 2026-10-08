@@ -890,7 +890,7 @@ requires-dist = [
     { name = "duckdb", specifier = ">=1.1" },
     { name = "fsspec", specifier = ">=2024.3" },
     { name = "gcsfs", marker = "extra == 'gcs'", specifier = ">=2024.3" },
-    { name = "ibis-framework", extras = ["duckdb"], specifier = ">=10" },
+    { name = "ibis-framework", extras = ["duckdb"], specifier = ">=10,<13" },
     { name = "jinja2", specifier = ">=3.1" },
     { name = "keyring", marker = "extra == 'keyring'", specifier = ">=24" },
     { name = "mcp", marker = "extra == 'mcp'", specifier = ">=1.0,<2" },

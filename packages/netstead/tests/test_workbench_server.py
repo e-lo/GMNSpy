@@ -174,3 +174,11 @@ def test_secret_named_settings_never_recorded(client, action):
 def test_estimate_422_never_echoes_values(client):
     r = client.post("/api/estimate", json={"source": "osm", "output_dir": "d", "output_format": "ECHOMARKER"})
     assert r.status_code == 422 and "ECHOMARKER" not in r.text
+
+
+def test_config_follows_a_basemap_change_without_a_restart(client):
+    before = client.get("/api/config").json()["style"]
+    r = client.post("/api/actions", json={"type": "set_setting", "key": "viz.basemap", "value": "esri"})
+    assert r.status_code == 200
+    after = client.get("/api/config").json()["style"]
+    assert after != before and after["sources"]["basemap"]["type"] == "raster"

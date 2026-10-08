@@ -4,8 +4,10 @@
   html,body { margin:0; height:100%; font:14px/1.45 ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
               color:var(--ink); background:var(--bg); }
   #app { display:grid; grid-template-columns:1fr 330px; grid-template-rows:auto 1fr; height:100%; }
-  header { grid-column:1 / -1; display:flex; gap:10px; align-items:center; padding:12px 16px;
+  header { grid-column:1 / -1; display:flex; flex-direction:column; gap:8px; padding:10px 16px;
            background:var(--panel); border-bottom:1px solid var(--edge); }
+  .hrow { display:flex; gap:10px; align-items:center; flex-wrap:wrap; min-width:0; }
+  .hrow .spacer { flex:1; }
   header h1 { font-size:14px; font-weight:600; margin:0 12px 0 0; color:var(--muted); }
 
   /* view-mode segmented control */
@@ -31,7 +33,7 @@
   .tbl-item.on { background:#20242e; color:var(--accent); border-left:2px solid var(--accent); padding-left:10px; }
   .tbl-item .rc { color:var(--muted); font-size:11px; }
   #tbl-main { flex:1; display:flex; flex-direction:column; min-width:0; min-height:0; }
-  #tbl-bar { display:flex; align-items:center; gap:10px; padding:8px 12px; border-bottom:1px solid var(--edge);
+  #tbl-bar { display:flex; flex-wrap:wrap; align-items:center; gap:6px 10px; padding:8px 12px; border-bottom:1px solid var(--edge);
              font-size:12.5px; color:var(--muted); }
   #tbl-bar .tname { color:var(--ink); font-weight:600; }
   #tbl-grid-wrap { flex:1; overflow:auto; }
@@ -56,7 +58,7 @@
   button { padding:9px 16px; border:0; border-radius:8px; background:var(--accent); color:#11151a;
            font-weight:600; cursor:pointer; }
   button:disabled, button:disabled:hover { opacity:.4; filter:grayscale(1); cursor:not-allowed; }
-  #count { color:var(--muted); font-size:12px; margin-left:auto; }
+  #count { color:var(--muted); font-size:12px; }
   #map { position:relative; width:100%; height:100%; }
   #side { background:var(--panel); border-left:1px solid var(--edge); padding:16px; overflow:auto; }
 
@@ -204,8 +206,7 @@
   .dot.warn { background:var(--accent); }
   .dot.off { background:#3a4150; }
   /* --header-h is the header's live height (set by llm.js): the header wraps, so floating panels sit below it. */
-  #llm-panel { position:fixed; top:calc(var(--header-h, 52px) + 8px); right:12px; width:min(580px, calc(100vw - 24px));
-               max-height:calc(100vh - var(--header-h, 52px) - 60px); overflow:auto; z-index:6; }
+  #llm-panel h4 { margin:14px 0 8px; font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); }
   #jobs-panel { top:calc(var(--header-h, 52px) + 4px); }
   #llm-panel table { width:100%; border-collapse:collapse; margin:4px 0 8px; }
   #llm-panel th { text-align:left; color:var(--muted); font-weight:600; font-size:11px; padding:4px 6px; }
@@ -224,11 +225,42 @@
   .ollama-help a { color:var(--hl); }
   #llm-quality .row input[type=number] { width:90px; flex:none; }
   #llm-quality .row select { flex:none; max-width:230px; }
-  /* The header is crowded: it wraps to a second row rather than overflow or squeeze the utterance box. */
-  header { flex-wrap:wrap; row-gap:8px; }
-  #utterance { flex:1 1 280px; min-width:0; }
+  /* Two header rows: network controls, then the selection bar (utterance + model picker). */
+  #nl-row #utterance { flex:1 1 240px; min-width:0; }
+  @media (max-width: 800px) {
+    header h1, #count { display:none; }
+  }
   @media (max-width: 640px) {
     #nl-picker { flex-wrap:wrap; }
-    #nl-picker select { max-width:120px; }
-    #llm-panel { top:auto; bottom:44px; }
+    #nl-picker select { max-width:110px; }
+    #nl-default { display:none; } /* also in Settings → Language models */
   }
+  /* ---- settings dialog ---- */
+  .set-card { width:min(920px, calc(100vw - 32px)); }
+  .set-scope-lbl { color:var(--muted); font-size:12px; }
+  .set-layout { display:grid; grid-template-columns:170px 1fr; min-height:0; flex:1; overflow:hidden; }
+  #set-nav { display:flex; flex-direction:column; gap:2px; padding:10px 8px; border-right:1px solid var(--edge); overflow:auto; }
+  #set-nav button { text-align:left; background:none; border:0; color:var(--muted); padding:7px 10px; border-radius:6px; cursor:pointer; }
+  #set-nav button.on { background:#20242e; color:var(--ink); }
+  .set-field { display:grid; grid-template-columns:minmax(140px, 220px) 1fr auto auto; gap:6px 10px; align-items:center;
+               padding:8px 0; border-bottom:1px solid var(--edge); }
+  .set-field input:not([type=checkbox]), .set-field select, .set-field textarea { background:#0c0e12; color:var(--ink);
+               border:1px solid var(--edge); border-radius:6px; padding:5px 8px; min-width:0; font:inherit; }
+  .set-field textarea { font-family:ui-monospace,monospace; font-size:12px; }
+  .set-why { grid-column:1 / -1; color:var(--muted); font-size:12px; }
+  .set-note { color:var(--accent); font-size:12px; margin:0 0 8px; }
+  .src { font-size:10.5px; padding:1px 7px; border-radius:999px; background:#20242e; color:var(--muted); }
+  .src-user, .src-project { color:var(--hl); }
+  .src-env, .src-session { color:var(--accent); }
+  @media (max-width: 640px) {
+    .set-layout { grid-template-columns:1fr; }
+    #set-nav { flex-direction:row; flex-wrap:wrap; border-right:0; border-bottom:1px solid var(--edge); }
+    .set-field { grid-template-columns:1fr auto; }
+  }
+  /* ---- linked rows ---- */
+  #tbl-grid tr.hl td { background:rgba(45,210,230,.16); }
+  #tbl-grid tr.rel td { background:rgba(45,210,230,.07); }
+  #tbl-grid tr.focus td { box-shadow:inset 0 1px 0 var(--accent), inset 0 -1px 0 var(--accent); }
+  #tbl-grid a.fk { color:var(--hl); text-decoration:none; border-bottom:1px dotted var(--hl); }
+  .tbl-item .rel-badge { font-size:10.5px; color:var(--hl); margin-left:6px; }
+  #tbl-hint { margin-left:10px; font-size:12px; }

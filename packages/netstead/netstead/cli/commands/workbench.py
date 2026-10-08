@@ -1,7 +1,7 @@
 """``netstead app`` — the Netstead Workbench: map + tables + selection over one live session.
 
 Requires the ``[server]`` extra. ``netstead viz`` and ``netstead select-serve`` are
-aliases that call :func:`run_workbench`.
+aliases that call :func:`run_workbench` (the old standalone apps were removed in P1b).
 """
 
 from __future__ import annotations

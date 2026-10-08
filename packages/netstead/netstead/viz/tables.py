@@ -14,14 +14,21 @@ materialized frames.
 
 from __future__ import annotations
 
+import re
+from collections.abc import Iterable
 from typing import Any
 
+import numpy as np
 import pandas as pd
 
 __all__ = [
     "GEOM_COLS",
     "MAX_LIMIT",
     "FilterError",
+    "KeyTypeError",
+    "coerce_keys",
+    "column_dtype",
+    "locate_row",
     "page_table",
     "parse_ids",
     "table_list_entry",
@@ -92,6 +99,49 @@ def parse_ids(ids: str | None) -> list | None:
         except ValueError:
             out.append(tok)
     return out or None
+
+
+class KeyTypeError(ValueError):
+    """An id that cannot be compared with its key column (``"abc"`` for an integer key)."""
+
+
+_INT_TEXT = re.compile(r"[+-]?\d+")
+
+
+def _as_int(value: Any) -> int:
+    if isinstance(value, int) and not isinstance(value, bool):
+        return value
+    if isinstance(value, str) and _INT_TEXT.fullmatch(value.strip()):
+        return int(value)
+    raise KeyTypeError(f"{str(value)[:40]!r} is not an integer id")
+
+
+def coerce_keys(values: Iterable[Any], dtype: Any) -> list[Any]:
+    """``values`` as the key column's type, so an eager mask and a DuckDB ``IN`` agree.
+
+    An integer key takes ints and digit strings (``"1"`` is ``1``); a string key takes text and
+    ints (``1`` is ``"1"``). Any other key type (``object``, floats) passes the values through.
+
+    Raises:
+        KeyTypeError: a value that cannot be an integer id.
+
+    >>> coerce_keys(["1", 2, " -3"], pd.Int64Dtype())
+    [1, 2, -3]
+    >>> coerce_keys([7, "a"], pd.StringDtype())
+    ['7', 'a']
+    """
+    if pd.api.types.is_bool_dtype(dtype):
+        return list(values)
+    if pd.api.types.is_integer_dtype(dtype):
+        return [_as_int(v) for v in values]
+    if isinstance(dtype, pd.StringDtype):
+        return [v if isinstance(v, str) else str(v) for v in values]
+    return list(values)
+
+
+def column_dtype(src: Any, column: str) -> Any:
+    """The pandas dtype ``column`` materialises as (one row sampled from a lazy table)."""
+    return _schema_frame(src)[column].dtype
 
 
 def _is_frame(src: Any) -> bool:
@@ -191,6 +241,43 @@ def page_table(
         df = df.sort_values(sort, ascending=(direction != "desc"), kind="stable")
     offset, limit = _clamp(offset, limit)
     return _rows_payload(df.iloc[offset : offset + limit], total, offset, limit)
+
+
+def locate_row(
+    source: Any,
+    key: Any,
+    *,
+    pk: str,
+    sort: str | None = None,
+    direction: str = "asc",
+    filter_spec: list[dict] | None = None,
+    ids: list | None = None,
+) -> int | None:
+    """Index of the row whose ``pk`` is ``key``, in the order :func:`page_table` pages ``source``.
+
+    Only eager frames are located (the map-linked ``link``/``node`` tables); a lazy table, an
+    unknown key column, or a row filtered out answers ``None``. Unlike ``page_table``, an empty
+    ``ids`` list means "no rows".
+
+    Raises:
+        FilterError: unknown filter column/operator, or unknown sort column.
+
+    >>> locate_row(pd.DataFrame({"id": [4, 2, 7]}), 7, pk="id", sort="id", direction="desc")
+    0
+    """
+    if not _is_frame(source) or pk not in source.columns:
+        return None
+    df = source
+    if ids is not None:
+        df = df[df[pk].isin(ids)]
+    if filter_spec:
+        df = _apply_filter(df, filter_spec)
+    if sort:
+        if sort not in df.columns:
+            raise FilterError(f"unknown sort column {sort!r}")
+        df = df.sort_values(sort, ascending=(direction != "desc"), kind="stable")
+    hits = np.flatnonzero((df[pk] == key).to_numpy(dtype=bool, na_value=False))
+    return int(hits[0]) if len(hits) else None
 
 
 def _page_lazy(

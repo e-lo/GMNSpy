@@ -17,7 +17,7 @@ from netstead.workbench.actions import (
     SetSetting,
     Style,
 )
-from netstead.workbench.session import ActionError, NotSupportedYet, Session
+from netstead.workbench.session import ActionError, NotSupportedYet, Session, refusal_reason
 
 UTTERANCE = "I-40 EB between South Miami Boulevard and Airport Boulevard"
 
@@ -56,6 +56,19 @@ def test_select_utterance_resolves_with_anchors(opened):
     assert sel["link_ids"] and {a["role"] for a in sel["anchors"]} == {"from", "to"}
     assert sel["fragment"] is not None
     assert opened.state()["selection"] == sel
+
+
+def test_select_picked_link_ids_carries_a_fragment(opened):
+    """Picked ids (a box-select, the old viz ``/api/fragment``) resolve to a selection with a fragment."""
+    ids = opened.dispatch(Select(utterance=UTTERANCE))["link_ids"][:3]
+    sel = opened.dispatch(Select(link_ids=ids))
+    assert sel["status"] == "resolved" and sorted(sel["link_ids"]) == sorted(ids)
+    assert sel["fragment"] is not None
+
+
+def test_select_unknown_link_ids_is_not_found(opened):
+    sel = opened.dispatch(Select(link_ids=[999_999_999]))
+    assert sel["status"] == "not_found" and sel["fragment"] is None
 
 
 def test_select_unparseable_is_not_found_not_error(opened):
@@ -685,3 +698,27 @@ def test_auto_privacy_follows_the_endpoint_the_parser_actually_calls(
     assert fake_api.requests[-1].url.host == "ollama.example.com"
     assert "in the active network:" not in system and "Code 7" not in system
     assert len(fake_api.requests) == 1  # nor an auto close-match retry
+
+
+def test_settings_payload_marks_readonly_restart_and_unused_sections(opened):
+    p = opened.settings_payload()
+    assert set(p["readonly"]) == {"io.allowed_roots"}
+    assert "config file" in p["readonly"]["io.allowed_roots"]
+    assert set(p["restart"]) == {"app.host", "app.port", "app.console"}
+    assert set(p["notes"]) == {"engine", "validation", "credentials"}
+
+
+@pytest.mark.parametrize(
+    ("key", "refused"),
+    [
+        ("io.allowed_roots", True),
+        ("io", True),
+        ("IO.Allowed_Roots", True),
+        ("io.spec_version", False),
+        ("llm.openai.api_key", True),
+        ("credentials.keyring_hosts", False),
+        ("viz.basemap", False),
+    ],
+)
+def test_refusal_reason(key, refused):
+    assert (refusal_reason(key) is not None) is refused

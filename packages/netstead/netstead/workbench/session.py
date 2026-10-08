@@ -68,6 +68,7 @@ from .actions import (
     SetActiveNetwork,
     SetSetting,
     Style,
+    is_secret_name,
     parse_action,
     to_python,
 )
@@ -80,7 +81,15 @@ from .redact import scrub
 from .registry import NetworkHandle, NetworkRegistry, as_pandas
 from .selection import selection_payload, unparsed_payload
 
-__all__ = ["DEFAULT_STYLE", "ActionError", "ApprovalRequired", "HistoryEntry", "NotSupportedYet", "Session"]
+__all__ = [
+    "DEFAULT_STYLE",
+    "ActionError",
+    "ApprovalRequired",
+    "HistoryEntry",
+    "NotSupportedYet",
+    "Session",
+    "refusal_reason",
+]
 
 logger = logging.getLogger(__name__)
 
@@ -404,12 +413,20 @@ class Session:
             }
 
     def settings_payload(self) -> dict[str, Any]:
-        """Settings values, per-key sources, JSON schema, and file paths (for the Settings UI)."""
+        """Settings values, per-key sources, JSON schema, and file paths, for the Settings UI.
+
+        ``readonly`` maps each key the action API refuses to the reason shown beside it; ``restart``
+        lists keys read only at launch; ``notes`` explains sections nothing reads yet.
+        """
+        sources = dict(self.loaded.sources)
         return {
             "values": self.settings.model_dump(mode="json"),
-            "sources": dict(self.loaded.sources),
+            "sources": sources,
             "schema": Settings.model_json_schema(),
             "paths": {"user": str(self.loaded.user_path), "project": str(self.loaded.project_path)},
+            "readonly": {k: reason for k in sources if (reason := refusal_reason(k))},
+            "restart": list(_RESTART_KEYS),
+            "notes": dict(_SECTION_NOTES),
         }
 
     # ------------------------------------------------------------------ handlers (run under the lock)
@@ -659,7 +676,7 @@ class Session:
 
     def _do_set_setting(self, action: SetSetting) -> dict[str, Any]:
         key = action.key.strip().lower()
-        if any(key == k or k.startswith(f"{key}.") for k in _CONFIG_ONLY_KEYS):  # "io" would replace it too
+        if _is_config_only(key):  # "io" would replace io.allowed_roots too
             raise ActionError(
                 f"{action.key} cannot be changed here: io.allowed_roots can only be set in config files, env, "
                 "or on the command line"
@@ -687,6 +704,40 @@ class Session:
 #: read and write; if an action (a browser click, a replayed script, the NL assistant) could widen it,
 #: the sandbox would protect nothing.
 _CONFIG_ONLY_KEYS = ("io.allowed_roots",)
+#: Shown beside a key :func:`refusal_reason` refuses as config-only.
+_CONFIG_ONLY_REASON = (
+    "The folders the app may read and write. Set them in a config file, a NETSTEAD_IO__ALLOWED_ROOTS "
+    "env var, or on the command line: if an action could widen them, the sandbox would protect nothing."
+)
+#: Shown beside a secret-named key (none exist today; keys live in the OS keyring).
+_SECRET_REASON = "Credentials are never settings. Set API keys in Settings → Language models."
+#: Keys the server reads only at launch: a change applies the next time `netstead app` starts.
+_RESTART_KEYS = ("app.host", "app.port", "app.console")
+#: Sections in the schema that nothing reads yet (see the P1b plan, open question 8).
+_SECTION_NOTES = {
+    "engine": "Not used by the workbench yet: networks open with DuckDB's own defaults.",
+    "validation": "Not used by the workbench yet: validation in the app arrives in phase P2.",
+    "credentials": "Not used by the workbench yet: credential sources are shown by the URL check only.",
+}
+
+
+def _is_config_only(key: str) -> bool:
+    k = key.strip().lower()
+    return any(k == c or c.startswith(f"{k}.") or k.startswith(f"{c}.") for c in _CONFIG_ONLY_KEYS)
+
+
+def refusal_reason(key: str) -> str | None:
+    """Why the action API refuses to change setting ``key`` at every scope, or ``None`` if it may.
+
+    >>> refusal_reason("io.allowed_roots") is not None, refusal_reason("viz.basemap")
+    (True, None)
+    """
+    if _is_config_only(key):
+        return _CONFIG_ONLY_REASON
+    if is_secret_name(key.strip().rsplit(".", 1)[-1]):
+        return _SECRET_REASON
+    return None
+
 
 #: Recorded ``error_type`` -> the exception :meth:`Session.dispatch` re-raises (anything else: ActionError).
 _ERROR_TYPES: dict[str, type[ActionError]] = {

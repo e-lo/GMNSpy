@@ -150,10 +150,8 @@ include = [
     "netstead/spec/**/*.json",
     "netstead/spec/**/VERSION",
     "netstead/spec/**/README.md",
-    # GMNS selection profile schema (netstead.select.emit) + web-app template.
+    # GMNS selection profile schema (netstead.select.emit).
     "netstead/select/schema/*.json",
-    "netstead/select/templates/*.html",
-    "netstead/viz/templates/*.html",
     # Netstead Workbench static front end (netstead.workbench; served by `netstead app`).
     "netstead/workbench/static/*.html",
     "netstead/workbench/static/*.css",

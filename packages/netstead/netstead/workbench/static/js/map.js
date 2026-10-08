@@ -7,26 +7,34 @@ import { activeSelection, store } from "./store.js";
 const OFFSET_EXT = typeof deck.PathStyleExtension === "function" ? new deck.PathStyleExtension({ offset: true }) : null;
 const OFFSET_AMT = 0.8, ARROW_ZOOM = 13;
 const HIGHLIGHT_COLOR = [45, 210, 230];
+const FOCUS_COLOR = [255, 255, 255, 235];
+const RELATED_COLOR = [45, 210, 230, 110]; // the highlight hue, lighter
 const ARROW_SVG = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(
   '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><polygon points="12,3 20,21 12,16 4,21" fill="white"/></svg>');
 const TOOLTIP_STYLE = { background: "#11151a", color: "#e6e8ec", fontSize: "12px", padding: "6px 8px",
   borderRadius: "6px", border: "1px solid #2a2f3a" };
 
-let map = null, overlay = null, onLinkClick = () => {};
+let map = null, overlay = null, handlers = { onLinkClick() {}, onNodeClick() {}, onBoxSelect() {} };
 let colorCache = { key: null, colors: null };
 let labelsShown = true;
+// Whether the current style's layers exist (style.load fired). Not map.isStyleLoaded(): that also waits for
+// every tile source, so a label toggle right after a basemap swap would be dropped.
+let styleReady = false;
 
 export const hasOffset = () => OFFSET_EXT !== null;
 
-export function initMap(style, handlers) {
-  onLinkClick = handlers.onLinkClick;
+export function initMap(style, hooks) {
+  handlers = { ...handlers, ...hooks };
   map = new maplibregl.Map({ container: "map", style, center: [-98.5, 39.8], zoom: 3 });
   map.addControl(new maplibregl.NavigationControl(), "top-left");
   overlay = new deck.MapboxOverlay({ interleaved: false, layers: [], getTooltip });
   map.addControl(overlay);
   new ResizeObserver(() => map.resize()).observe($("map"));
   map.on("zoomend", () => { const s = store.get(); if (s.server && s.server.style.show_direction) render(); });
-  map.on("load", handlers.onReady);
+  // Ready once the style is parsed, not on "load": that waits for every basemap tile of the opening
+  // (continental) view, so the network would be drawn and fitted seconds late, or never offline.
+  map.on("style.load", () => { styleReady = true; });
+  map.once("style.load", hooks.onReady);
   wireBoxSelect();
 }
 
@@ -41,10 +49,6 @@ function linkColors(s) {
 
 function baseLayers(net, style, colors) {
   const layers = [];
-  if (style.show.nodes) layers.push(new deck.ScatterplotLayer({ id: "nodes",
-    data: { length: net.N.count, attributes: { getPosition: { value: net.nodePositions, size: 2 } } },
-    getRadius: 1.8, radiusUnits: "pixels", radiusMinPixels: 1,
-    getFillColor: [...style.colors.nodes, 150], pickable: false }));
   if (style.show.links) {
     const props = { id: "links", _pathType: "open",
       data: { length: net.L.count, startIndices: net.linkStart,
@@ -52,7 +56,7 @@ function baseLayers(net, style, colors) {
                       getColor: { value: colors, size: 4 } } },
       widthUnits: "pixels", widthMinPixels: 1, capRounded: true, jointRounded: true,
       pickable: true, autoHighlight: true, highlightColor: [255, 140, 59, 235],
-      onClick: info => { if (info && info.index >= 0) onLinkClick(store.get().attrs.link_id[info.index]); } };
+      onClick: info => { if (info && info.index >= 0) handlers.onLinkClick(store.get().attrs.link_id[info.index]); } };
     if (OFFSET_EXT) { props.extensions = [OFFSET_EXT]; props.getOffset = style.offset ? OFFSET_AMT : 0; }
     layers.push(new deck.PathLayer(props));
     if (style.show_direction && map.getZoom() >= ARROW_ZOOM) layers.push(new deck.IconLayer({ id: "arrows",
@@ -60,6 +64,12 @@ function baseLayers(net, style, colors) {
       getPosition: d => d.position, getAngle: d => d.angle, getSize: 13, sizeUnits: "pixels",
       getColor: [40, 52, 78, 230], pickable: false }));
   }
+  // Nodes draw above links, and are pickable, so a map click can focus a node.
+  if (style.show.nodes) layers.push(new deck.ScatterplotLayer({ id: "nodes",
+    data: { length: net.N.count, attributes: { getPosition: { value: net.nodePositions, size: 2 } } },
+    getRadius: 1.8, radiusUnits: "pixels", radiusMinPixels: 2,
+    getFillColor: [...style.colors.nodes, 150], pickable: true, autoHighlight: true, highlightColor: [255, 140, 59, 235],
+    onClick: info => { if (info && info.index >= 0) handlers.onNodeClick(net.nodeIds[info.index]); } }));
   return layers;
 }
 
@@ -94,6 +104,22 @@ function selectionLayers(net, style, sel) {
   return layers;
 }
 
+// Records a foreign key away from the focus/highlights: lighter links, and rings on nodes.
+function relatedLayers(net, related) {
+  const layers = [], links = related.map.link, nodes = related.map.node;
+  if (links && links.ids.length) {
+    const l = idPathLayer(net, "related-links", links.ids, RELATED_COLOR, 1.5);
+    if (l) layers.push(l);
+  }
+  if (nodes && nodes.ids.length) {
+    const idx = nodes.ids.map(id => net.nodeId2idx.get(id)).filter(i => i != null);
+    layers.push(new deck.ScatterplotLayer({ id: "related-nodes", data: idx,
+      getPosition: i => [net.nodePositions[i * 2], net.nodePositions[i * 2 + 1]], getRadius: 5, radiusUnits: "pixels",
+      stroked: true, filled: false, getLineColor: RELATED_COLOR, lineWidthMinPixels: 2, parameters: { depthTest: false } }));
+  }
+  return layers;
+}
+
 function markerLayer(marker) {
   return new deck.ScatterplotLayer({ id: "marker", data: [marker], getPosition: m => [m.lon, m.lat],
     getRadius: 7, radiusUnits: "pixels", getFillColor: [45, 210, 230], getLineColor: [17, 21, 26],
@@ -101,7 +127,7 @@ function markerLayer(marker) {
 }
 
 function setLabels(show) {
-  if (show === labelsShown || !map.isStyleLoaded()) return;
+  if (show === labelsShown || !styleReady) return;
   labelsShown = show;
   for (const l of map.getStyle().layers || [])
     if (l.type === "symbol" || l.id === "labels") map.setLayoutProperty(l.id, "visibility", show ? "visible" : "none");
@@ -114,7 +140,9 @@ export function render() {
   const style = s.server.style, sel = activeSelection(s);
   const layers = baseLayers(s.net, style, linkColors(s));
   if (style.show.selection && sel) layers.push(...selectionLayers(s.net, style, sel));
+  if (s.related) layers.push(...relatedLayers(s.net, s.related));
   if (s.highlights.size) { const l = idPathLayer(s.net, "highlighted", s.highlights, [...HIGHLIGHT_COLOR, 255], 2.5); if (l) layers.push(l); }
+  if (s.focus && s.focus.table === "link") { const l = idPathLayer(s.net, "focus", [s.focus.id], FOCUS_COLOR, 4); if (l) layers.push(l); }
   if (s.marker) layers.push(markerLayer(s.marker));
   overlay.setProps({ layers });
   setLabels(style.show.labels);
@@ -128,24 +156,25 @@ function getTooltip({ layer, index }) {
     `<br><span style="color:#8a93a3">${ft ? esc(ft) : ""}</span>`, style: TOOLTIP_STYLE };
 }
 
-function fit(bounds, padding, retried) {
+function fit(bounds, padding, retried, duration = 500) {
   if (bounds.isEmpty()) return;
   const el = map.getContainer(), w = el.clientWidth, h = el.clientHeight;
   if (!retried && (w <= padding * 2 || h <= padding * 2)) {
     map.resize();
-    requestAnimationFrame(() => fit(bounds, padding, true));
+    requestAnimationFrame(() => fit(bounds, padding, true, duration));
     return;
   }
   const p = Math.min(padding, Math.floor(Math.min(w, h) / 4));
-  map.fitBounds(bounds, { padding: p, maxZoom: 15, duration: 500 });
+  map.fitBounds(bounds, { padding: p, maxZoom: 15, duration });
 }
 
-export function fitNetwork() {
+// `animate: false` jumps (a network just opened: no flight from the continental opening view).
+export function fitNetwork({ animate = true } = {}) {
   const net = store.get().net;
   if (!map || !net) return;
   const b = new maplibregl.LngLatBounds();
   for (let i = 0; i < net.nodePositions.length; i += 2) b.extend([net.nodePositions[i], net.nodePositions[i + 1]]);
-  fit(b, 60);
+  fit(b, 60, false, animate ? 500 : 0);
 }
 
 export function fitLinks(ids) {
@@ -162,12 +191,12 @@ export function fitLinks(ids) {
 
 export function fitBbox(bbox) { if (map) map.fitBounds([[bbox[0], bbox[1]], [bbox[2], bbox[3]]], { padding: 40, duration: 500 }); }
 
-export function flyToNode(nodeId) {
+export function flyToNode(nodeId, { fly = true } = {}) {
   const net = store.get().net, i = net && net.nodeId2idx.get(nodeId);
   if (i == null) return;
   const lon = net.nodePositions[i * 2], lat = net.nodePositions[i * 2 + 1];
   store.set({ marker: { lon, lat } });
-  map.flyTo({ center: [lon, lat], zoom: Math.max(map.getZoom(), 15), duration: 500 });
+  if (fly) map.flyTo({ center: [lon, lat], zoom: Math.max(map.getZoom(), 15), duration: 500 });
 }
 
 // shift-drag box select over the links layer (deck region picking) adds to highlights
@@ -199,7 +228,19 @@ function wireBoxSelect() {
     for (const p of dk.pickObjects({ x: x0, y: y0, width: w, height: h, layerIds: ["links"] }))
       if (p.index != null && p.index >= 0) highlights.add(s.net.linkIds[p.index]);
     store.set({ highlights });
+    handlers.onBoxSelect();
   };
   mapEl.addEventListener("pointerup", finish);
   mapEl.addEventListener("pointerleave", e => { if (start) finish(e); });
+}
+
+// Swap the basemap in place. The deck.gl overlay is a non-interleaved control and survives setStyle;
+// label visibility belongs to the old style's layers, so it is re-applied once the new style loads.
+export function setBasemap(style) {
+  if (!map) return;
+  // A new style shows its labels: reset before the swap, so render() re-applies a "labels off" once it loads.
+  // diff:false makes MapLibre load the style afresh, which fires style.load (a diffed swap may not).
+  labelsShown = true; styleReady = false;
+  map.once("style.load", () => render());
+  map.setStyle(style, { diff: false });
 }

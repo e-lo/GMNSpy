@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import shutil
 import subprocess
 from importlib import resources
@@ -194,5 +195,33 @@ def run_node():
         node = shutil.which("node")
         assert node, "node not installed"
         return subprocess.run([node, *args], stdin=subprocess.DEVNULL, capture_output=True, text=True, close_fds=False)
+
+    return run
+
+
+#: The workbench's ES modules (resolved without importing the FastAPI app).
+WORKBENCH_JS = _FIXTURES_ROOT.resolve().parent / "workbench" / "static" / "js"
+
+
+@pytest.fixture
+def node_module(tmp_path: Path, run_node):
+    """Evaluate a JS expression against a pure workbench module under node; return its JSON value.
+
+    ``node_module("linking.js", ["pageOffset"], "pageOffset(250, 100)")`` -> ``200``. Only
+    import-free modules qualify (they are copied alone, as ``.mjs``, so node treats them as ES
+    modules without a package.json); importing one with ``import`` statements fails loudly.
+    """
+    counter = iter(range(1_000_000))
+
+    def run(module: str, names: list[str], expr: str) -> Any:
+        source = (WORKBENCH_JS / module).read_text(encoding="utf-8")
+        assert not re.search(r"^\s*import\s", source, re.M), f"{module} must stay import-free to be unit-tested"
+        n = next(counter)
+        (tmp_path / f"m{n}.mjs").write_text(source, encoding="utf-8")
+        script = tmp_path / f"probe{n}.mjs"
+        script.write_text(f'import {{ {", ".join(names)} }} from "./m{n}.mjs";\nconsole.log(JSON.stringify({expr}));\n')
+        proc = run_node([str(script)])
+        assert proc.returncode == 0, proc.stderr
+        return json.loads(proc.stdout)
 
     return run

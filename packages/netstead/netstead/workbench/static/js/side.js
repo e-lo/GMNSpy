@@ -3,8 +3,8 @@ import { dispatch, getJSON, netPath } from "./api.js";
 import { $, esc, toast } from "./dom.js";
 import { store } from "./store.js";
 
-const HINT = '<span class="empty">Click a link for details; hover to inspect; type an utterance to select.</span>';
-const DETAILS_HINT = '<span class="empty">Click a link on the map.</span>';
+const HINT = '<span class="empty">Click a feature or row for details; type an utterance to select.</span>';
+const DETAILS_HINT = '<span class="empty">Click a link or node on the map, or a row in the table.</span>';
 
 export function clearDetails() { $("details").innerHTML = DETAILS_HINT; }
 
@@ -23,12 +23,12 @@ export function renderSelection(sel) {
   $("diag").innerHTML = diags.length ? diags.map(d => `<div class="diag">• ${esc(d)}</div>`).join("") : '<span class="empty">—</span>';
 }
 
-export async function showLinkDetails(linkId) {
-  const el = $("details"), head = `<div class="lid">link ${esc(linkId)}</div>`;
+export async function showDetails(table, id) {
+  const el = $("details"), head = `<div class="lid">${esc(table)} ${esc(id)}</div>`;
   el.innerHTML = `${head}<span class="empty">loading…</span>`;
   try {
-    const j = await getJSON(netPath(store.get().server.active, `feature/link/${encodeURIComponent(linkId)}`));
-    const rows = Object.entries(j.attributes).filter(([k, v]) => k !== "link_id" && v !== null && v !== "")
+    const j = await getJSON(netPath(store.get().server.active, `feature/${encodeURIComponent(table)}/${encodeURIComponent(id)}`));
+    const rows = Object.entries(j.attributes).filter(([k, v]) => k !== j.pk && v !== null && v !== "")
       .map(([k, v]) => `<tr><td class="k">${esc(k)}</td><td class="v">${esc(v)}</td></tr>`).join("");
     el.innerHTML = `${head}<table>${rows}</table>`;
   } catch (e) {

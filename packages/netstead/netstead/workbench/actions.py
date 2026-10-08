@@ -35,6 +35,7 @@ __all__ = [
     "SetSetting",
     "Style",
     "action_json_schema",
+    "is_secret_name",
     "parse_action",
     "to_python",
 ]
@@ -153,7 +154,7 @@ class SetSetting(_Action):
                 "that value looks like an API key; set keys in Settings → Language models (they are never settings)"
             )
         names = [self.key.rsplit(".", 1)[-1], *_nested_keys(self.value)]
-        if any(_SECRET_NAME.search(n) and n.lower() not in _SECRET_NAME_ALLOWED for n in names):
+        if any(is_secret_name(n) for n in names):
             raise ValueError(
                 "keys, tokens and passwords are never settings; set API keys in Settings → Language models"
             )
@@ -173,6 +174,17 @@ _SECRET_NAME = re.compile(
 #: Legitimate names that match :data:`_SECRET_NAME`: ``credentials`` only names keyring hosts;
 #: ``key_env`` names env vars.
 _SECRET_NAME_ALLOWED = frozenset({"credentials", "key_env"})
+
+
+def is_secret_name(name: str) -> bool:
+    """Whether a setting named ``name`` could only hold a credential (``api_key``, ``token``, ...).
+
+    >>> is_secret_name("api_key"), is_secret_name("credentials"), is_secret_name("basemap")
+    (True, False, False)
+    """
+    return bool(_SECRET_NAME.search(name)) and name.lower() not in _SECRET_NAME_ALLOWED
+
+
 #: ``scheme://user[:pass]@`` at the start of a string: a URL carrying credentials.
 _URL_USERINFO = re.compile(r"^\s*[A-Za-z][A-Za-z0-9+.-]*://[^/?#@]*@")
 

@@ -21,6 +21,10 @@ export const store = createStore({
   netKey: null,               // "<id>@<version>" of the decoded active network
   net: null, attrs: null, properties: [], prop: null,
   highlightMode: false, highlights: new Set(), marker: null,
+  focus: null,                // {table, id, from: "map" | "table"}: the one record last clicked (per tab, never recorded)
+  related: null,              // last /related answer for focus + highlights (related.js)
+  tableScope: "all",          // all | selection | highlighted | related
+  relHops: 1,                 // related-records depth ("Expand a hop" toggles 1 <-> 2)
 });
 
 export function activeSelection(s) {

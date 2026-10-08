@@ -1,10 +1,11 @@
 // Language models: the header provider/model picker and the "Language models" panel.
 // Keys are write-only. The browser sends a key once (PUT) and only ever reads back status:
 // {provider, configured, source}. Key text never enters the store, browser storage, or a lasting DOM node.
-// P1b's Settings workspace can mount #llm-panel as a section; until then it floats from "Models…".
+// The panel is a section of the Settings dialog (settings.js); "Models…" opens Settings there.
 import { dispatch, getJSON, sendJSON } from "./api.js";
 import { $, esc, toast } from "./dom.js";
 import { openJobsPanel } from "./jobs.js";
+import { openSettings } from "./settings.js";
 
 const SECRETS = { "X-Netstead-Secrets": "1" };
 // The published setup guide (docs/cookbook/local-llm-ollama.md) and Ollama's own download page.
@@ -39,7 +40,7 @@ const pulling = new Set(); // Ollama models this tab asked to pull, until that m
 const PULL_JOB_LABEL = /^Pull (.+) \(Ollama\)$/;
 
 const providerRow = name => (name === "stub" ? STUB : llm ? llm.providers.find(p => p.provider === name) : null);
-const panelOpen = () => $("llm-panel").classList.contains("open");
+const panelOpen = () => !$("settings").hidden && !$("llm-panel").hidden;
 const report = e => toast(e.message);
 
 // The model a provider uses when none is chosen: the server's resolved default (for Ollama, an installed
@@ -83,7 +84,7 @@ export async function refreshLLM() {
 
 async function renderAll() {
   await renderPicker();
-  if (panelOpen()) await renderPanel();
+  if (panelOpen()) await renderLLMPanel();
 }
 
 // Status-only snapshot (SSE `llm` event, or a key route's reply). It supersedes any refresh in flight.
@@ -101,7 +102,7 @@ export function onLLMJob(job) {
   if (job.kind !== "ollama_pull" || job.status === "running") return;
   const model = PULL_JOB_LABEL.exec(job.label)?.[1];
   if (model) pulling.delete(model);
-  if (model && panelOpen()) renderPanel().catch(report);
+  if (model && panelOpen()) renderLLMPanel().catch(report);
 }
 
 // A project file or NETSTEAD_SELECT__* env var outranks the user file, so a saved default would not take effect.
@@ -428,7 +429,7 @@ function renderProviders() {
   }
 }
 
-async function renderPanel() {
+export async function renderLLMPanel() {
   if (!llm || !settings) return;
   $("llm-privacy").textContent = privacyNote(providerRow(llm.selected.provider));
   $("llm-storage").textContent = storageNote();
@@ -515,7 +516,7 @@ function openKeyForm(tr) {
   cell.querySelector(".kcancel").onclick = close;
   input.onkeydown = e => {
     if (e.key === "Enter") save();
-    else if (e.key === "Escape") close();
+    else if (e.key === "Escape") { e.stopPropagation(); close(); } // close the key form, not the Settings dialog
   };
   input.focus();
 }
@@ -562,10 +563,7 @@ export function wireLLM() {
   $("nl-provider").onchange = e => onProviderChange(e.target.value);
   $("nl-model").onchange = e => onModelChange(e.target.value);
   $("nl-default").onclick = () => makeDefault();
-  $("nl-manage").onclick = () => {
-    if ($("llm-panel").classList.toggle("open")) renderPanel().catch(report);
-  };
-  $("llm-close").onclick = () => $("llm-panel").classList.remove("open");
+  $("nl-manage").onclick = () => openSettings("llm").catch(report);
   $("llm-providers").onclick = e => {
     const button = e.target.closest("button[data-act]");
     if (!button) return;
