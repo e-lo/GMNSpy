@@ -224,8 +224,8 @@ def test_indexes_build_under_ibis_engine() -> None:
         pandas_spatial.query_bbox(-120.69, 47.58, -120.64, 47.61)
     )
 
-    # Graph slot is a GMNSGraph (scipy); its full engine-parity is covered by
-    # tests/test_osm_bench.test_build_is_engine_agnostic. Here we just confirm
+    # Graph slot is a GMNSGraph (scipy); OSM-build correctness is covered by
+    # tests/test_osm_bench.test_osm_build_from_synthetic_grid. Here we just confirm
     # the build_indexes plumbing produces equivalent shapes from either engine.
     _, ibis_graph = build_indexes(links=ibis_links, nodes=ibis_nodes, spatial=False, graph=True)
     _, pandas_graph = build_indexes(links=pandas_links, nodes=pandas_nodes, spatial=False, graph=True)

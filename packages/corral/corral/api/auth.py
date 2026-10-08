@@ -6,8 +6,9 @@ for ``fastapi.Depends``. The factory closes over the configured
 to which auth mode is active.
 
 Token comparison uses :func:`hmac.compare_digest` to avoid timing
-attacks even though our tokens are bearer-style (Phase 5 hardening
-could move to OAuth2 / mTLS; the dependency contract stays the same).
+attacks even though our tokens are bearer-style. Stronger schemes
+(OAuth2 / mTLS) could be added later behind the same dependency
+contract.
 """
 
 from __future__ import annotations

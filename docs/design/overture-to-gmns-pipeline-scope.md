@@ -1,6 +1,6 @@
 # Overture Maps → GMNS network pipeline — scoping doc
 
-Status: design only (no code). Author: design pass, 2026-09-30.
+Status: **implemented** (#196, `netstead.overture` / `build_network_from_overture`). Author: design pass, 2026-09-30.
 
 Adds an **Overture Maps** transportation source to netstead alongside the existing
 OpenStreetMap (Overpass) source, exposing a `build_network_from_overture(...)`

@@ -1,6 +1,12 @@
 # Engine strategy re-evaluation — corral / netstead
 
-Status: **proposal / for decision** · Date: 2026-10-01 · Owner: corral core
+Status: **accepted — Option B (DuckDB-only, stay on ibis); Option C (drop ibis) rejected** ·
+Implemented: #195 (consolidation), #198 (ibis pin lifted) · Date: 2026-10-01 · Owner: corral core
+
+> **Resolved since writing:** the `ibis>=9,<10` pin discussed below was lifted in #198
+> (`ibis-framework[duckdb]>=10`). The one-release deprecation shim for
+> `engine="pandas"|"polars"` was *not* kept — the library is pre-release, so #195 removed
+> those engines outright. See the [implementation plan](2026-10-01-engine-consolidation-plan.md).
 
 ## Why now
 

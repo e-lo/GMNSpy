@@ -1,6 +1,11 @@
 # Data-table exploration view — scoping doc
 
-Status: **Phase 0 + Phase 1 BUILT** (+ early Phase-2 cross-linking) · Date: 2026-09-30 · Owner: viz
+Status: **Phase 0 + Phase 1 BUILT** (#194; + early Phase-2 cross-linking) · Date: 2026-09-30 · Owner: viz
+
+> **Engine note (2026-10-05):** written before the DuckDB-only consolidation
+> ([ADR](2026-10-01-engine-strategy-reevaluation.md), #195). Where this doc says
+> "all engines", "pandas fallback" or "pandas / polars engine", read: DuckDB (via
+> ibis) is the only compute engine; pandas / polars / Arrow are I/O formats.
 
 > **Implemented (2026-10-01).** Server-side paged/sorted/filtered table access
 > (`netstead/viz/tables.py`, no raw SQL — passes `lint_no_sql`) behind new endpoints

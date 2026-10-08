@@ -6,11 +6,12 @@ indeterminate ops. Both auto-disable under pytest (so test logs stay
 clean) and render inline when invoked from a Jupyter kernel.
 
 Design notes:
-    * No cost-model integration here — the CLI (Phase 4) wires the
-      cost-model gate from task 3.1 to ``disable=`` on these helpers.
+    * No cost-model integration here — callers decide whether to show
+      progress and pass ``disable=`` accordingly (e.g. from the
+      :mod:`corral.operations.gating` cost-model gate).
     * No raw SQL, no pandas, no engine deps — pure UX helper.
-    * Notebook detection is intentionally a one-liner heuristic; the
-      ipywidget path is deferred to Phase 4 notebook polish.
+    * Notebook detection is intentionally a one-liner heuristic; in a
+      notebook the bar renders inline via rich (no ipywidget path).
 """
 
 from __future__ import annotations

@@ -3,7 +3,7 @@
 Implements the three spatial scope constructors the architecture
 (``docs/architecture.md`` §6.2) places in :mod:`corral.dataset` —
 the engine-agnostic, network-unaware ones. Network-aware scopes
-(BFS, network-distance buffers) live in :mod:`netstead.scope` (Phase 3)
+(BFS, network-distance buffers) live in :mod:`netstead.scope`
 and compose on top of these by feeding their seed geometries through
 :func:`from_polygon` / :func:`from_geometry_buffer`.
 
@@ -30,8 +30,8 @@ install hint when called without it. WKT strings are accepted as the
 shapely-free escape hatch.
 
 Cross-references: architecture §6.1/§6.2, validators in
-:mod:`corral.validation.schema_check` (same pattern), Phase 3
-``netstead.scope``, issue https://github.com/e-lo/netstead/issues/67.
+:mod:`corral.validation.schema_check` (same pattern),
+:mod:`netstead.scope`, issue https://github.com/e-lo/netstead/issues/67.
 """
 
 from __future__ import annotations
@@ -356,8 +356,9 @@ def from_geometry_buffer(
     The buffer is computed inside duckdb via ``ST_Buffer`` — the Python
     side never materialises the buffered polygon. ``distance_m`` is in
     the **CRS units of the geometry column** (EPSG:4326 → degrees). The
-    name matches the Phase 3 ``netstead.scope`` signature; metric-aware
-    projection belongs in that higher-level layer.
+    parameter name matches ``NetworkScope.buffer_spatial`` in
+    :mod:`netstead.scope`; metric-aware projection belongs in that
+    higher-level layer.
 
     Args:
         table: Source lazy :class:`Table`.

@@ -1,8 +1,8 @@
-# Changelog — gmnspy
+# Changelog — netstead
 
-All notable changes to the `gmnspy` package. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning is [Semver](https://semver.org/).
+All notable changes to the `netstead` package. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning is [Semver](https://semver.org/).
 
-This file is for the **gmnspy** package only. The underlying generic engine `datagrove` keeps its own CHANGELOG at [`packages/datagrove/CHANGELOG.md`](../datagrove/CHANGELOG.md).
+This file is for the **netstead** package only. The underlying generic engine `corral` keeps its own CHANGELOG at [`packages/corral/CHANGELOG.md`](../corral/CHANGELOG.md).
 
 ## [Unreleased]
 
@@ -10,13 +10,34 @@ This file is for the **gmnspy** package only. The underlying generic engine `dat
 
 ## [1.0.0-beta.2] — TBD
 
+First release under the **netstead** name. The package was renamed from
+`gmnspy` (and its engine from `datagrove` to `corral`, PyPI dist `dbcorral`)
+on 2026-10-05; `import gmnspy` → `import netstead`, `gmnspy <cmd>` →
+`netstead <cmd>`. The `gmnspy` name on PyPI stays frozen at the v0.3.x line
+(the 1.0.0b1 preview below was yanked).
+
 Second public preview. The big theme: an **interactive map viewer** with
 an integrated **edit log** so you can triage findings in a browser, apply
 the fixes deterministically in Python, and save.
 
 ### Added
 
-- **`gmnspy.map` module** — embeddable interactive network viewer.
+- **`netstead.select` — natural-language selection** (#194). Turns an utterance
+  like *"I-40 EB between Harrison Ave and NC 54"* into a validated, repeatable
+  set of GMNS `link_id`s via in-network topological traversal (no geocoding).
+  `netstead select` CLI; `netstead select-serve` is a prototype UI that the
+  Workbench will replace.
+- **`netstead.viz` — interactive network viewer** (#194). `netstead viz <network>`:
+  deck.gl + MapLibre fed by binary buffers from Parquet, layer toggles,
+  attribute styling, link detail panel, and a paged/sorted/filtered table view
+  backed by DuckDB.
+- **`netstead.overture` + `netstead build --source overture`** (#196) — build a
+  GMNS network from Overture Maps, mirroring the OSM pipeline. Behind the
+  `[overture]` extra.
+- **`netstead.bench` benchmark harness** (#197) — time + peak memory for
+  network build, selection and viz packing, with a programmatic API alongside
+  the CLI.
+- **`netstead.map` module** — embeddable interactive network viewer.
   - `NetworkMap` — reusable component class. Any host page (validation
     report, notebook, custom dashboard) can include shared head assets
     (`NetworkMap.head_assets()`) once and drop in one or more per-instance
@@ -24,16 +45,16 @@ the fixes deterministically in Python, and save.
     UID so multiple maps coexist on one page.
   - `NetworkMap.to_html()` — full standalone HTML doc.
   - `NetworkMap._repr_html_()` — iframe-isolated Jupyter render.
-  - `gmnspy.map.render_network_html(net, issues=None, ...)` — thin
+  - `netstead.map.render_network_html(net, issues=None, ...)` — thin
     convenience over `NetworkMap.to_html()`.
-  - `gmnspy.map.render_validation_html(net, report, ...)` — full
+  - `netstead.map.render_validation_html(net, report, ...)` — full
     validation report page composing a NetworkMap with the findings
     table.
   - Toggleable layers (links, nodes; extensible for zones / segments /
     movements). Hover tooltips on every element show its GMNS row
     columns. Popups on findings carry `Fix locally` / `Fix upstream
     (OSM) →` / `Show error in table`.
-- **Edit log Phase 1** — `gmnspy.map.edits`:
+- **Edit log Phase 1** — `netstead.map.edits`:
   - `Edit`, `EditLog`, `AppliedEdit`, `SkippedEdit`, `ApplyResult`
     dataclasses.
   - `load_edit_log(path)` / `dump_edit_log(log, path)` — YAML round-trip.
@@ -45,19 +66,19 @@ the fixes deterministically in Python, and save.
     `roadway_property_change` entries. GMNS `link_id` maps to
     `model_link_id` in the facility selector; per-cell values live under
     `property_changes.<column>.{existing, set}`. Node property changes
-    emit with the same shape via `model_node_id` (gmnspy extension —
+    emit with the same shape via `model_node_id` (netstead extension —
     standard ProjectCard has no first-class node-property-change type).
-- **CLI output flags** on `gmnspy validate`:
+- **CLI output flags** on `netstead validate`:
   - `--html` writes the new map+table viewer (gracefully falls back to
-    the datagrove table-only HTML when `[reports]` is missing, so
+    the corral table-only HTML when `[reports]` is missing, so
     `--html` always produces a file).
   - `--csv` writes a flat findings table.
   - `--xlsx` writes a single-sheet workbook (requires `[reports]`).
-- **`gmnspy.osm` deep-link helpers** — `osm_edit_url(osm_id, *, kind,
+- **`netstead.osm` deep-link helpers** — `osm_edit_url(osm_id, *, kind,
   editor)`, `issue_osm_edit_url(issue, network, *, editor)`. Now
   detection is column-based (`osm_way_id` on link, `osm_node_id` on
   node), so ANY network carrying those columns gets Edit-in-OSM
-  links — regardless of whether it was built via `gmnspy.osm.build`.
+  links — regardless of whether it was built via `netstead.osm.build`.
 - **Bundled Leavenworth fixture rebuilt.** Built from the full OSM city
   polygon via `osmnx.graph_from_place("Leavenworth, Washington, USA")`
   instead of a 600m centroid buffer. Every link row now carries
@@ -71,7 +92,11 @@ the fixes deterministically in Python, and save.
 
 ### Changed
 
-- **`gmnspy.osm.__init__` is now lazy.** Importing the package no longer
+- **Geometry is WKB in memory** (#201). CSV stays WKT on disk; Parquet stores
+  WKB with GeoParquet `geo` metadata (#202).
+- **DuckDB is the only compute engine** (via corral, #195). `engine="pandas"` /
+  `engine="polars"` are gone; pandas / polars / Arrow are I/O formats.
+- **`netstead.osm.__init__` is now lazy.** Importing the package no longer
   eagerly requires the `[osm]` extra. `osm_edit_url` /
   `issue_osm_edit_url` are dep-free helpers and load without
   `requests` / `pyyaml`. `build_network_from_osm` /
@@ -82,9 +107,9 @@ the fixes deterministically in Python, and save.
 
 ### Deprecated
 
-- `gmnspy.reports.render_network_html` / `render_validation_html` —
-  moved to `gmnspy.map`. The old imports still work via re-export but
-  emit a `DeprecationWarning`. `gmnspy.reports.write_findings_csv` /
+- `netstead.reports.render_network_html` / `render_validation_html` —
+  moved to `netstead.map`. The old imports still work via re-export but
+  emit a `DeprecationWarning`. `netstead.reports.write_findings_csv` /
   `write_findings_xlsx` stay put.
 
 ### Known limitations (Phase 2)
@@ -97,15 +122,15 @@ the fixes deterministically in Python, and save.
 - The map's marker layer has no clustering; past ~5k markers Leaflet
   will slow.
 
-## [1.0.0-beta.1] — TBD
+## [1.0.0-beta.1] — 2026-06-29
 
-First public preview of GMNSpy v1.0. The entire codebase is a rewrite from v0.3.5 — there is no in-place upgrade path; see the [migration guide](docs/migration/v0.3-to-v1.0.md).
+First public preview of GMNSpy v1.0, published to PyPI as `gmnspy==1.0.0b1` (pre-rename, since yanked; names in this section are as shipped). The entire codebase is a rewrite from v0.3.5 — there is no in-place upgrade path; see the [migration guide](docs/migration/v0.3-to-v1.0.md).
 
 This is a **beta**: API surface is stable enough to build against and most user-facing rough edges have been smoothed, but we expect bug reports + small breaking changes before 1.0.0 GA.
 
 ### Headline changes vs v0.3.x
 
-- **New architecture.** GMNS-specific code now sits on top of a generic Frictionless engine ([`datagrove`](https://github.com/e-lo/GMNSpy/tree/main/packages/datagrove)) shipped as a separate PyPI package. The intent: future spec toolkits (GTFSpy, etc.) reuse the engine.
+- **New architecture.** GMNS-specific code now sits on top of a generic Frictionless engine ([`datagrove`](https://github.com/e-lo/netstead/tree/main/packages/corral) (now `corral`)) shipped as a separate PyPI package. The intent: future spec toolkits (GTFSpy, etc.) reuse the engine.
 - **Multi-version GMNS support out of the box.** Spec versions `0.95`, `0.96`, `0.97` ship side-by-side. `DEFAULT_SPEC = "0.97"`. Override per call: `gmnspy.read(..., spec_version="0.96")`.
 - **Regional-scale performance.** Lazy ibis + DuckDB by default. Predicates push down to SQL. Validation and scope operations stream rather than materialising the whole network.
 - **Three usage modes, one core.** CLI (`gmnspy <command>`), notebook (`Network._repr_html_`), and programmatic (`gmnspy.read`, `gmnspy.validate`) all share the same underlying objects.
@@ -125,7 +150,7 @@ This is a **beta**: API surface is stable enough to build against and most user-
 - **`gmnspy[notebook]` extra** — interactive scope-builder ipywidget. (Basic `_repr_html_` ships in core.)
 - **`gmnspy doctor`** — install diagnostic: Python version, extras installed, vendored specs, fixture loads, env vars.
 - **`gmnspy bench`** — read/validate/connectivity timing.
-- **Bundled Leavenworth, WA fixture** in four storage variants (CSV / parquet / DuckDB / zip-CSV) — see [`packages/gmnspy/gmnspy/fixtures/leavenworth/README.md`](gmnspy/fixtures/leavenworth/README.md) for provenance.
+- **Bundled Leavenworth, WA fixture** in four storage variants (CSV / parquet / DuckDB / zip-CSV) — see [`fixtures/leavenworth/README.md`](netstead/fixtures/leavenworth/README.md) for provenance.
 
 ### AI surface
 
@@ -164,5 +189,5 @@ This is a **beta**: API surface is stable enough to build against and most user-
 - macOS + Linux (Windows community-supported only; CI doesn't cover it).
 - Optional extras: `osm`, `graph`, `clean`, `server`, `mcp`, `notebook`, `all`.
 
-[Unreleased]: https://github.com/e-lo/GMNSpy/compare/gmnspy-v1.0.0-beta.1...HEAD
-[1.0.0-beta.1]: https://github.com/e-lo/GMNSpy/releases/tag/gmnspy-v1.0.0-beta.1
+[Unreleased]: https://github.com/e-lo/netstead/compare/gmnspy-v1.0.0-beta.1...HEAD
+[1.0.0-beta.1]: https://github.com/e-lo/netstead/releases/tag/gmnspy-v1.0.0-beta.1

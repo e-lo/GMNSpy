@@ -152,7 +152,7 @@ nav:
       - API: reference/api.md
   - Concepts:
       - Frictionless data packages: concepts/frictionless.md
-      - When to use ibis vs pandas vs polars: concepts/engines.md
+      - Compute engine & dataframe formats: concepts/engines.md
   - AI surface:
       - ai/index.md
       - Drive the CLI from an agent: ai/json-cli.md

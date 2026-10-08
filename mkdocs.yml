@@ -48,7 +48,6 @@ markdown_extensions:
       emoji_generator: !!python/name:material.extensions.emoji.to_svg
 
 exclude_docs: |
-  _release-drafts/
   design/
 
 nav:

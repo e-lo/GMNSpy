@@ -70,16 +70,15 @@ Get assigned. If you are working on issue, please tag yourself as the assignee (
 
 Generally:
 
-- Try to be backwards compatible to Python 3.10.
-- Be compatible with Numpy 2+, Pandas 2.x and 3.x, OSMNX 1+, PyProj 3.3+
-- Use PEP8 and autoformat with `black`
-- Use Google-style docstrings for all classes and methods
-- Test formatting and autoformat using `pre-commit`
+- Support Python 3.11+.
+- DuckDB (via ibis) is the only compute engine; pandas / polars / Arrow are I/O formats at the edges. No raw SQL outside `corral.engines.ibis_engine` (`scripts/lint_no_sql.py`).
+- Lint and format with `ruff` (`uv run ruff check`, `uv run ruff format`); `pre-commit` runs both.
+- Use Google-style docstrings for public classes and functions
 - Use logging
 - All code should have an associated test
-- [Documentation](#documentation) is in the `docs` folder and is built using `mkdocs`
-- Additions to public API should be documented in `docs/api.md`
-- Changes to architecture should be documented in `docs/architecture.md`
+- [Documentation](#documentation) lives in each package's `docs/` folder (`packages/*/docs`) and is built with `mkdocs`
+- Public API is documented from docstrings in each package's `docs/reference/api.md`
+- Architecture lives in [`packages/corral/docs/architecture.md`](https://github.com/e-lo/netstead/blob/main/packages/corral/docs/architecture.md). Decisions, PRDs, designs and implementation plans go in [`docs/design/`](https://github.com/e-lo/netstead/blob/main/docs/design/README.md) — see its README for the conventions and the index of every record.
 - Right now, this repo prioritizes Legibility/Simplicity >> Efficiency. That might change later.
 
 *Contributions which do not meet these requirements may not be approved*
@@ -116,15 +115,15 @@ uv run mkdocs serve -f packages/corral/mkdocs.yml    # corral docs
 
 General settings for documentation can be found in `mkdocs.yml`
 
-Code associated with including files and auto-generation of spec-related documentation can be found in `main.py`
+Each package site's mkdocs-macros hooks (spec tables, live nav) are in `packages/<pkg>/main.py`
 
-PRs and releases will have a documentation version generated using a github workflow `.github/workflows/documentation.yml` using the versioning of `mkdocs` using `mike` package.
+`.github/workflows/documentation.yml` builds the umbrella and both package sites and deploys them to GitHub Pages.
 
 ## Pull Requests
 
 Use the following guidance in creating and responding to pull requests
 
-- Generally, submit PRs to the `develop` branch.
+- Submit PRs to `main` (the trunk). Branch as `<type>/<slug>`, e.g. `feat/scope-zones`.
 - Keep pull requests small and focused. One issue is best.
 - Link Pull Requests to Issues as appropriate.
 - Complete the pull request template as best you can.

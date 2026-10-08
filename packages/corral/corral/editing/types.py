@@ -1,7 +1,7 @@
 """Value types for the editing framework — Edit, Diff, EditResult.
 
 Generic — no domain semantics (no ``links``/``simplify_geometry``;
-those live in ``netstead.clean`` in Phase 3). The four supported ops
+those live in :mod:`netstead.clean`). The four supported ops
 (``add_rows`` / ``update_rows`` / ``delete_rows`` / ``replace_table``)
 are interpreted by :mod:`corral.editing.apply`; the value types
 here just carry the request + the result.

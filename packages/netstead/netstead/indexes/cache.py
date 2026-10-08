@@ -3,7 +3,7 @@
 Cache layout — ``{source.parent}/_netstead_indexes/{network.stem}.{kind}.{hash[:8]}.parquet``.
 Indexes are content-addressed: a single-byte edit to the source link/node
 tables produces a new content hash, a new cache filename, and a fresh
-re-build. Stale sidecars linger until ``netstead index drop`` (Phase 4).
+re-build. Stale sidecars linger until removed with ``netstead index drop``.
 
 Format: a single-row pyarrow table with a ``payload`` binary column
 holding the pickled index. Parquet (not raw pickle) so the sidecar fits

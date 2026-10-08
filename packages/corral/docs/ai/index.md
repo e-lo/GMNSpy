@@ -50,7 +50,7 @@ The two variants serve different agent loops:
 
 ## 2. `ai/api-index.json` — public-API surface
 
-[`ai/api-index.json`](api-index.json) is a structured snapshot of every public symbol in `corral` + `corral.reports` (and, in v1.1, `netstead`). Schema:
+[`ai/api-index.json`](api-index.json) is a structured snapshot of every public symbol in `corral` + `corral.reports`. The netstead docs site emits its own `ai/api-index.json` covering `netstead`. Schema:
 
 ```json
 {
@@ -156,7 +156,7 @@ Tools shipped (full reference: [MCP tools](https://e-lo.github.io/netstead/netst
 * **Generic (inherited from `corral.mcp`)** — `describe_package`, `validate_package`, `list_tables`.
 * **GMNS-aware** — `describe_network`, `quality_check`, `connected_components`, `scope_from_nodes`.
 
-Stateful tools (`edit_session` with rollback, `convert`) deferred to a follow-up; see [the deferred-tools issue](https://github.com/e-lo/netstead/issues/164) for the open design questions.
+Stateful tools (`edit_session` with rollback, `convert`) are deferred to a follow-up (not yet tracked in an issue).
 
 ## The `--json` CLI contract
 

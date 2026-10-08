@@ -7,12 +7,11 @@ name: Bench
 # the most recent main-branch baseline (fetched from prior runs of
 # this workflow). Fails if any benchmark regresses >2x vs baseline.
 #
-# Task 5.2 future-proofs this workflow: as of 2026-05-27 the repo has
-# no benchmark tests yet (no `@pytest.mark.benchmark` fixtures and no
-# `tests/bench/`). The bench-run step is a no-op until they appear,
+# Discovers bench tests (`@pytest.mark.perf`, `tests/bench/`, or
+# `test_bench_*.py`); if none are found the bench-run step is a no-op,
 # which is reported clearly in the job log.
 #
-# TODO(v1.1): post comparison as a PR comment via actions/github-script.
+# TODO(#100): post comparison as a PR comment via actions/github-script.
 
 on:
   pull_request:
@@ -60,7 +59,7 @@ jobs:
             echo "found=true"  >> "$GITHUB_OUTPUT"
           else
             echo "found=false" >> "$GITHUB_OUTPUT"
-            echo "no bench tests found — task 5.2 future-proofs the workflow"
+            echo "no bench tests found — skipping the bench run"
           fi
 
       - name: Download baseline (most recent main-branch run)
