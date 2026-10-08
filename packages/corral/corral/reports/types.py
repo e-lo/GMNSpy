@@ -1,11 +1,10 @@
 """Foundational value types for the corral validation framework.
 
-Every validation path in corral — schema (task 2.3), foreign-key
-(2.4), structural (2.5), sync-state (2.6), and the domain quality
-plugins discovered via entry points (Phase 3) — returns the *same*
-:class:`ValidationReport` object. A single report can be rendered to
-rich-console, JSON, or HTML (task 2.2) without changing the producer
-side.
+Every validation path in corral — schema, foreign-key, structural,
+sync-state, and the domain quality plugins discovered via entry
+points — returns the *same* :class:`ValidationReport` object. A single
+report can be rendered to rich-console, JSON, or HTML
+(:mod:`corral.reports.render`) without changing the producer side.
 
 The contract is deliberately narrow:
 
@@ -119,20 +118,19 @@ class Category(StrEnum):
 
     Attributes:
         SCHEMA: Field-level constraints — type, required, enum, regex,
-            min/max. Produced by :mod:`corral.validation.schema`
-            (task 2.3).
+            min/max. Produced by :mod:`corral.validation.schema_check`.
         STRUCTURAL: Package-level structure — missing required table,
             extra unknown table, missing file on disk. Produced by
-            :mod:`corral.validation.structural` (task 2.5).
+            :mod:`corral.validation.structural`.
         FOREIGN_KEY: Cross-table referential integrity. Produced by
-            :mod:`corral.validation.foreign_keys` (task 2.4).
+            :mod:`corral.validation.foreign_keys`.
         SYNC_STATE: A previously validated FK is now stale because one
             side has been mutated since the last check. Produced by
-            :mod:`corral.validation.sync_state` (task 2.6).
+            :mod:`corral.validation.sync_state`.
         DATA_QUALITY: A configurable quality rule (e.g. ``high-speed
             on residential road``). Produced by quality plugins
             registered under the ``corral.quality.rules`` entry
-            point — see :mod:`corral.quality` (Phase 3).
+            point — see :mod:`corral.quality`.
 
     Examples:
         >>> Category("foreign_key") is Category.FOREIGN_KEY
@@ -245,8 +243,8 @@ class ValidationReport:
     data_quality) build it up over a single run by calling
     :meth:`add_issue` or :meth:`add`. When the run is complete, hand it
     to a renderer (:func:`~corral.validation.render_rich`,
-    :func:`~corral.validation.render_json`, or the HTML renderer
-    from task 2.2).
+    :func:`~corral.validation.render_json`, or the HTML renderer in
+    :mod:`corral.reports.render`).
 
     The report carries the spec version and source identifier so the
     rendered output is self-describing — a saved JSON or HTML report
@@ -502,7 +500,7 @@ class ValidationReport:
 
         ``Enum`` values flatten to their ``.value`` strings; ``datetime``
         flattens via :meth:`datetime.isoformat`. The key set is stable;
-        downstream consumers (the HTML renderer in task 2.2, the MCP
+        downstream consumers (the HTML renderer, the MCP
         server, the FastAPI server) rely on it.
 
         Examples:

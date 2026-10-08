@@ -1,8 +1,8 @@
-# Software architecture — Netstead v1.0 + corral v0.1
+# Software architecture — Netstead + corral v1.0
 
-This document is the **single source of truth** for the software design of the v1.0 refactor. It exists so that any contributor — human or AI sub-agent — landing in the repo can pick up cold and make decisions consistent with the rest of the work.
+This document is the **single source of truth** for the *current* software design of netstead and corral. It exists so that any contributor — human or AI sub-agent — landing in the repo can pick up cold and make decisions consistent with the rest of the work.
 
-For the **GMNS data model** (link/node/lane/etc. ER diagrams), see [gmns-data-model.md](https://e-lo.github.io/netstead/netstead/gmns-data-model/). The full PRD with personas, requirements traceability, and roadmap will land in Phase 4 task 4.15 (tracked in the [v1.0 epic](https://github.com/e-lo/netstead/issues/115)).
+For the **GMNS data model** (link/node/lane/etc. ER diagrams), see [gmns-data-model.md](https://e-lo.github.io/netstead/netstead/gmns-data-model/). Decisions (ADRs), PRDs, feature designs and implementation plans live in [`docs/design/`](https://github.com/e-lo/netstead/tree/main/docs/design); start at its [README](https://github.com/e-lo/netstead/blob/main/docs/design/README.md), which indexes every record with its status.
 
 ---
 
@@ -60,7 +60,7 @@ Netstead/                                       # git repo
 | Quality | `quality/` (Rule base class, plugin discovery; **no domain rules**) | `quality/` (GMNS rule pack via entry point) |
 | Notebook | `notebook/` (`_repr_html_` for Package/Table/ValidationReport/EditResult) | `notebook/` (Network repr + scope widgets) |
 | Validation | `validation/` (schema, structural, FK, sync-state) | (uses corral validation as-is) |
-| Engines | `engines/` (Engine ABC + ibis/polars/pandas) | (uses) |
+| Engines | `engines/` (Engine protocol + the one DuckDB-via-ibis engine) | (uses) |
 | I/O | `io/` (FormatAdapter ABC + csv/parquet/duckdb/zipcsv/remote) | (uses) |
 | Dataset | `dataset/` (lazy `Package`, `Table`, `View`) | `network.py` (`Network` = `Package` + GMNS accessors) |
 | Spec | `spec/` (Pydantic Frictionless models, multi-version loader) | `spec/<version>/` (vendored GMNS schemas) |
@@ -74,7 +74,7 @@ Promotion criterion to extract `corral` to a separate repo: a second consumer (e
 ```
 corral/
 ├── spec/         # Pydantic v2 models for Frictionless DataPackage/Resource/Schema/Field/ForeignKey/MissingValues/SharedCategory + loader (resolves $ref, shared_categories) + multi-version
-├── engines/      # Engine ABC + ibis (default, duckdb backend) / polars / pandas adapters
+├── engines/      # Engine protocol + IbisEngine (DuckDB backend) — the only compute engine; pandas/polars/arrow are I/O formats
 ├── io/           # FormatAdapter ABC + csv / parquet (partitioned) / duckdb / zipcsv / remote (fsspec) + credentials cascade
 ├── validation/   # ValidationReport + Issue (Error/Warning/Info/DataQuality) + schema_check + foreign_keys + structural + sync_state (DirtyTracker)
 ├── operations/   # cost_model + gating (>30s estimate, >3min approval) + pool/batch + progress (rich, notebook-aware)
@@ -86,8 +86,7 @@ corral/
 ├── mcp/          # MCP server primitives (tool decorators, server scaffold)
 ├── cli/          # generic typer CLI: validate / convert / info / scope (bbox|polygon|geometry-buffer) / describe
 ├── quality/      # generic rule framework (Rule base class, threshold config, entry-point plugin discovery)
-├── notebook/     # generic _repr_html_ for Package/Table/ValidationReport/EditResult
-└── utils/        # logging / paths / hashing (blake3 for content fingerprints)
+└── notebook/     # generic _repr_html_ for Package/Table/ValidationReport/EditResult
 ```
 
 ## 5. Module map — netstead
@@ -98,13 +97,21 @@ netstead/
 ├── network.py         # Network = corral.Package + GMNS-aware accessors (.links, .nodes, .segments, …) + add_*/update_* routed through DirtyTracker
 ├── semantics/         # connectivity, geometry assembly from geometry_id, TOD resolution
 ├── scope/             # network-aware scope ops: from_nodes, from_node, from_link, from_point, connected_component, from_zone
-├── indexes/           # spatial (shapely STRtree) + graph (igraph adjacency) build/cache/load; sidecar parquet keyed on content hash
+├── indexes/           # spatial (shapely STRtree) + graph (via netstead.graph) build/cache/load; sidecar parquet keyed on content hash
+├── graph/             # OPTIONAL [graph] — scipy-CSR routing: components, shortest paths, isochrones, nearest-node snap
 ├── quality/           # GMNS rule pack: high-speed-on-residential, disconnected components, lane-count mismatch, …
 ├── clean/             # OPTIONAL [clean] — simplify_geometry, merge_close_nodes, snap_to_reference, …; uses corral.editing for rollback
 ├── server/            # OPTIONAL [server] — assembled FastAPI app on top of corral.api primitives
 ├── mcp/               # OPTIONAL [mcp] — assembled MCP server on top of corral.mcp primitives
 ├── cli/               # GMNS commands registered onto the corral typer app
 ├── notebook/          # Network._repr_html_ + scope-builder ipywidget; extends corral.notebook
+├── osm/               # OPTIONAL [osm] — build GMNS from OpenStreetMap (Overpass/Nominatim, maintained tag mappings)
+├── overture/          # OPTIONAL [overture] — build GMNS from Overture Maps (mirrors osm/)
+├── select/            # natural-language selection → validated GMNS link_id set (2026-09-23 design)
+├── viz/               # interactive viewer: deck.gl + MapLibre fed by binary buffers; DuckDB-backed table API
+├── map/               # embeddable Leaflet map component + edit log (ProjectCard-shaped YAML)
+├── reports/           # findings CSV/XLSX writers
+├── bench/             # benchmark harness (time + peak memory) behind `netstead bench`
 └── fixtures/leavenworth/  # bundled tiny GMNS network for tests + docs
 ```
 
@@ -112,15 +119,15 @@ netstead/
 
 ### 6.1 Engine + I/O
 
-- **Default engine: ibis (duckdb backend).** Lazy expressions throughout. `.to_pandas()` / `.to_polars()` are cheap converters. Per-call override: `netstead.read(..., engine="polars")`.
+- **One compute engine: DuckDB, driven through ibis.** Lazy expressions throughout. pandas / polars / Arrow are I/O formats only — frames come in via `from_arrow` / `from_records` and go out via `.to_pandas()` / `.to_polars()`. There is no per-call engine switch. Decision record: [engine strategy ADR](https://github.com/e-lo/netstead/blob/main/docs/design/2026-10-01-engine-strategy-reevaluation.md) (pandas and polars engines removed in #195).
 
-    *Why ibis vs alternatives?* Writing SQL directly couples query intent to one dialect and makes lint-based composition checks brittle; agents would have to parse SQL strings to reason about intent. SQLModel is ORM-shaped — fine for transactional row work, wrong shape for analytic column work over millions of rows. Pandas-only forces eager materialisation, which kills the regional-scale story (Bay-Area links don't fit RAM-comfortably on a laptop). Polars-only gives lazy evaluation but locks us into one backend and one expression language. Ibis is the only option that gives lazy expressions, multi-backend pushdown (DuckDB today, Snowflake/BigQuery/Spark tomorrow without code changes), and a clean escape valve via `.to_pandas()` / `.to_polars()` when the consumer wants a familiar frame.
+    *Why ibis vs alternatives?* Writing SQL directly couples query intent to one dialect and makes lint-based composition checks brittle; agents would have to parse SQL strings to reason about intent. SQLModel is ORM-shaped — fine for transactional row work, wrong shape for analytic column work over millions of rows. Pandas-only forces eager materialisation, which kills the regional-scale story (Bay-Area links don't fit RAM-comfortably on a laptop). Polars-only gives lazy evaluation but locks us into one backend and one expression language. Ibis is the only option that gives lazy expressions, lazy pushdown into DuckDB, and a clean escape valve via `.to_pandas()` / `.to_polars()` when the consumer wants a familiar frame.
 
     *Why DuckDB as the default ibis backend?* SQLite is single-table-write-locked and has no spatial pushdown — fine for a config store, wrong for a network. A PostgreSQL backend would force every user to stand up a server, which kills the laptop-friendly story. In-memory pandas misses the whole point of lazy evaluation. DuckDB is single-file, embeddable, has native Parquet reads (with predicate pushdown), a working spatial extension, no server to run, and is RAM-resident at regional scale — exactly the laptop-to-server gradient the toolkit targets.
 
 - **No raw SQL strings** anywhere except inside `corral.engines.ibis_engine`. Lint-enforced by `scripts/lint_no_sql.py`.
 
-    *Why this rule?* Once a SQL string leaks into business logic, the composition contract breaks — a future backend swap (DuckDB → Spark) suddenly requires a dialect audit across the whole codebase. Keeping SQL inside one module future-proofs the engine layer and lets AI agents reason about query intent through ibis expressions rather than string-parsing SQL. The lint script is cheap; the long-term churn it prevents is not.
+    *Why this rule?* Once a SQL string leaks into business logic, the composition contract breaks — any backend change (or ibis upgrade) suddenly requires a dialect audit across the whole codebase. Keeping SQL inside one module future-proofs the engine layer and lets AI agents reason about query intent through ibis expressions rather than string-parsing SQL. The lint script is cheap; the long-term churn it prevents is not.
 
 - **I/O front door:** `corral.read(source, *, format=None, credentials=None, engine=None, scope=None, spec=None)`. `netstead.read(...)` wraps with `spec=GMNS_DEFAULT`.
 - **Format detection:** explicit `format=` overrides; else extension sniff (`.parquet`, `.csv`, `.csv.zip`, `.zip`, `.duckdb`); else `FormatAdapter.probe()` chain.
@@ -186,11 +193,14 @@ if/elif inside it.
 
     *Why ~50k nodes as the auto-build threshold?* Empirically calibrated against the Leavenworth (75 nodes) and synthetic regional (~500k nodes) fixtures: below ~50k, the first scope op runs faster than the index build, so building eagerly is a net loss. Above ~50k, the second scope op pays back the build cost, and by the third the user is clearly going to repeat-query. Setting the threshold low (e.g. 1k) burns CPU on networks that don't need it; setting it high (e.g. 1M) makes regional networks feel slow on the second scope op. The number is empirical, not load-bearing — configurable via `NETSTEAD_AUTO_INDEX_THRESHOLD` env var for users with atypical workloads.
 - **Predicate pushdown** to all other tables by FK chain (links → TOD tables, nodes → zone references, etc.). For partitioned parquet, bbox scope becomes true partition prune via duckdb pushdown — verified via `EXPLAIN` snapshot tests.
+- **Geometry encoding:** geometry is WKB in memory; CSV stores WKT and Parquet stores WKB with GeoParquet `geo` metadata + bbox. See the [geometry encoding ADR](https://github.com/e-lo/netstead/blob/main/docs/design/2026-10-01-geometry-encoding-adr.md).
 - **Partial loads:** `net.tables(["link", "node"])`. FK validation degrades gracefully with warnings on unverifiable FKs.
 
 ### 6.3 Validation + sync state
 
 `ValidationReport` is the single object returned by all validation paths (schema + structural + FK + sync + data-quality). Severity levels: Error / Warning / Info / DataQuality. `category` field discriminates rule families. Renderers: rich console / JSON / **interactive single-file HTML** (Jinja2 + DataTables + Vega-Lite map view for geo-located issues; severity ranking; filter by table/severity/rule/category; click-to-expand row context).
+
+**Integrity is reported, not enforced.** PK / FK / NOT NULL / enum checks run as pushed-down aggregates and anti-joins and become findings; tables never carry native DuckDB constraints (measured ~46–120× slower to load, and all-or-nothing on the first bad row). See the [FK constraints ADR](https://github.com/e-lo/netstead/blob/main/docs/design/2026-10-01-fk-constraints-adr.md).
 
 **Sync state model:**
 - `DirtyTracker` (in `corral.validation.sync_state`) records content hashes per table.
@@ -285,7 +295,7 @@ Pluggable auth: none / bearer-token / OAuth2 (config-driven). Default download f
 
 - **Coverage targets (gated at Phase 5):** corral ≥85%, netstead ≥75%.
 - **Test pyramid:** unit (per-module) → contract (engine/adapter conformance) → fixture (Leavenworth) → perf (synthetic regional fixture, `pytest-benchmark`).
-- **CI matrix:** Python 3.11 / 3.12 / 3.13 × Linux + macOS smoke. Engines tested per-engine.
+- **CI matrix:** Python 3.11 / 3.12 / 3.13 × Linux + macOS smoke. I/O formats (pandas / polars / Arrow in and out) pinned by `test_format_interop.py`.
 - **No raw SQL, no `pandas` in corral core paths** (allowed via `to_pandas()` converter at the edge only).
 - **Doctests run in CI** — public-API examples must execute.
 
@@ -299,7 +309,9 @@ Pluggable auth: none / bearer-token / OAuth2 (config-driven). Default download f
 - **Backwards compat:** v0.3.x is a clean break — no shims. Migration guide ([docs/migration/v0.3-to-v1.0.md](https://e-lo.github.io/netstead/netstead/migration/v0.3-to-v1.0/), Phase 4 task 4.14) explains old → new mappings.
 - **Per-package semver.** `corral` and `netstead` version independently. Tags: `corral-vX.Y.Z`, `netstead-vX.Y.Z`.
 
-## 10. Phase plan summary
+## 10. Phase plan summary (historical)
+
+> The phase plan below is how the v1.0 rewrite was staged (May–June 2026); phases 0–4 have shipped. Current and future work is tracked in [`docs/design/README.md`](https://github.com/e-lo/netstead/blob/main/docs/design/README.md) and GitHub issues.
 
 Five phases, ~14–16 weeks to v1.0 GA. Full task tree in the [GitHub issue tree](https://github.com/e-lo/netstead/issues/115) (Epic).
 
@@ -327,4 +339,4 @@ Full contributor workflow: [CONTRIBUTING.md](https://github.com/e-lo/netstead/bl
 
 ---
 
-*This document is updated as architectural decisions evolve. When updating, also update the [GitHub issue tree](https://github.com/e-lo/netstead/issues/115) and (post-Phase-4) the PRD. Authoritative source for any conflict: this file > PRD > issue body > inline code comments.*
+*This document is updated as architectural decisions evolve. When a decision changes, record it as an ADR in `docs/design/`, update this file, and update the [design index](https://github.com/e-lo/netstead/blob/main/docs/design/README.md). Authoritative source for any conflict: this file > accepted ADRs > PRDs / designs > plans > issue bodies > inline code comments.*

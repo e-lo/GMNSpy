@@ -161,11 +161,6 @@ def test_duckdb_engine_parity():
 # -- guards -----------------------------------------------------------------
 
 
-def test_edge_mode_not_implemented():
-    with pytest.raises(NotImplementedError):
-        GMNSGraph.build(clean_network(), cost="weight", mode="edge")
-
-
 def test_negative_cost_rejected():
     net = clean_network()
     net["link"].loc[0, "weight"] = -1.0

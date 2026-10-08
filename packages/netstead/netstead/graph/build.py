@@ -109,7 +109,6 @@ class GMNSGraph:
         cost: str,
         barrier: str | None = None,
         directed: None | bool | str = None,
-        mode: str = "node",
         *,
         node_id_col: str = "node_id",
         from_col: str = "from_node_id",
@@ -133,8 +132,6 @@ class GMNSGraph:
             directed: ``None`` uses a per-link ``directed`` column if present else
                 treats every link row as a one-way edge; ``True``/``False`` forces
                 all links one-way/two-way; a string names a boolean column.
-            mode: ``"node"`` (default). ``"edge"`` (movement expansion for turn
-                penalties) is reserved for a later release.
             node_id_col: Column name on the node table holding the node id.
             from_col: Column name on the link table holding the from-node id.
             to_col: Column name on the link table holding the to-node id.
@@ -147,13 +144,6 @@ class GMNSGraph:
                 missing. Routing callers should leave this ``False``.
         """
         _require_extras()
-        if mode == "edge":
-            raise NotImplementedError(
-                "mode='edge' (movement/turn-penalty expansion) is planned but not yet implemented; use mode='node'."
-            )
-        if mode != "node":
-            raise ValueError(f"Unknown mode {mode!r}; expected 'node' or 'edge'.")
-
         src = as_source(source)
 
         # Pull only the link columns the build actually needs (column pruning).
@@ -237,7 +227,6 @@ class GMNSGraph:
         csr, edge_link_id = cls._assemble_csr(U, V, W, LID, n)
 
         meta = {
-            "mode": mode,
             "cost": cost,
             "barrier": barrier,
             "directed": directed,
@@ -245,7 +234,7 @@ class GMNSGraph:
             "n_edges": int(csr.nnz),
             "nodes_only_in_links": list(nodes_only_in_links),
         }
-        logger.info("Built GMNSGraph: %d nodes, %d edges (mode=%s)", n, csr.nnz, mode)
+        logger.info("Built GMNSGraph: %d nodes, %d edges", n, csr.nnz)
         graph = cls(node_index=node_index, coords=coords, csr=csr, edge_link_id=edge_link_id, meta=meta)
         graph._source = src
         return graph
@@ -485,7 +474,7 @@ class GMNSGraph:
 
     def __repr__(self) -> str:
         """Return a compact representation for shell + log output."""
-        return f"GMNSGraph(nodes={self.meta['n_nodes']}, edges={self.meta['n_edges']}, mode={self.meta['mode']!r})"
+        return f"GMNSGraph(nodes={self.meta['n_nodes']}, edges={self.meta['n_edges']})"
 
 
 def _is_bare_column(expr: str, df: pd.DataFrame) -> bool:

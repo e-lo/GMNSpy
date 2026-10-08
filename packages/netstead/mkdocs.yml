@@ -141,6 +141,7 @@ nav:
   - Cookbook:
       - cookbook/index.md
       - Validate a network: cookbook/validate-network.md
+      - Build from OpenStreetMap: cookbook/build-from-osm.md
       - View a network on a map: cookbook/view-your-network.md
       - Explore in the Workbench: cookbook/workbench.md
       - Local language models (Ollama): cookbook/local-llm-ollama.md

@@ -1,8 +1,8 @@
-# Changelog — datagrove
+# Changelog — corral
 
-All notable changes to the `datagrove` package. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning is [Semver](https://semver.org/).
+All notable changes to the `corral` package. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning is [Semver](https://semver.org/).
 
-This file is for the **datagrove** package only. `gmnspy` (which depends on datagrove) keeps its own CHANGELOG at [`packages/gmnspy/CHANGELOG.md`](../gmnspy/CHANGELOG.md).
+This file is for the **corral** package only. `netstead` (which depends on corral) keeps its own CHANGELOG at [`packages/netstead/CHANGELOG.md`](../netstead/CHANGELOG.md).
 
 ## [Unreleased]
 
@@ -10,15 +10,33 @@ This file is for the **datagrove** package only. `gmnspy` (which depends on data
 
 ## [1.0.0-beta.2] — TBD
 
-Version bumped in lockstep with `gmnspy` v1.0.0-beta.2. No
-user-visible datagrove changes in this release; the only edits are
-test-side adjustments to accommodate the rebuilt Leavenworth fixture
-(row counts changed as `gmnspy.fixtures.leavenworth` now covers the
-whole city polygon instead of a 600m centroid buffer).
+First release under the **corral** name (renamed from `datagrove` on
+2026-10-05; import `corral`, PyPI distribution `dbcorral` because `corral`
+is taken). Version bumped in lockstep with `netstead` v1.0.0-beta.2.
 
-## [0.1.0-beta.1] — TBD
+### Changed
 
-First public preview of datagrove. This is a **beta**: API surface is stable enough to build against but we expect bug reports + small breaking changes before 0.1.0 GA.
+- **BREAKING — DuckDB is the only compute engine** (#195). `PandasEngine` and
+  `PolarsEngine` are removed, along with per-call `engine="pandas"|"polars"`.
+  pandas / polars / pyarrow are I/O formats: frames come in through
+  `from_arrow` / `from_records` and go out through `to_pandas()` / `to_polars()`.
+  Rationale: [engine strategy ADR](../../docs/design/2026-10-01-engine-strategy-reevaluation.md).
+- **Dependency floors raised** (#198): `ibis-framework[duckdb]>=10`,
+  `duckdb>=1.1`, `pyarrow>=17` (the old `ibis<10` pin is gone).
+- **Geometry is WKB in memory** (#201); CSV reads/writes WKT, Parquet stores WKB.
+  [Geometry encoding ADR](../../docs/design/2026-10-01-geometry-encoding-adr.md).
+
+### Added
+
+- **GeoParquet `geo` metadata + bbox** on Parquet writes of WKB geometry
+  columns (#202).
+
+Test fixtures were also adjusted for the rebuilt Leavenworth fixture
+(`netstead.fixtures.leavenworth` now covers the whole city polygon).
+
+## [1.0.0-beta.1] — 2026-06-29
+
+First public preview, tagged `datagrove-v1.0.0-beta.1` (pre-rename; never published to PyPI — names in this section are as tagged). This is a **beta**: API surface is stable enough to build against but we expect bug reports + small breaking changes before 1.0.0 GA.
 
 ### What this release covers
 
@@ -56,7 +74,7 @@ First public preview of datagrove. This is a **beta**: API surface is stable eno
 
 ### Migration from pre-1.0 GMNSpy
 
-datagrove is a new package; nothing to migrate from. See [`packages/gmnspy/docs/migration/v0.3-to-v1.0.md`](../gmnspy/docs/migration/v0.3-to-v1.0.md) if you're moving from old GMNSpy.
+datagrove is a new package; nothing to migrate from. See [`packages/netstead/docs/migration/v0.3-to-v1.0.md`](../netstead/docs/migration/v0.3-to-v1.0.md) if you're moving from old GMNSpy.
 
-[Unreleased]: https://github.com/e-lo/GMNSpy/compare/datagrove-v0.1.0-beta.1...HEAD
-[0.1.0-beta.1]: https://github.com/e-lo/GMNSpy/releases/tag/datagrove-v0.1.0-beta.1
+[Unreleased]: https://github.com/e-lo/netstead/compare/datagrove-v1.0.0-beta.1...HEAD
+[1.0.0-beta.1]: https://github.com/e-lo/netstead/releases/tag/datagrove-v1.0.0-beta.1

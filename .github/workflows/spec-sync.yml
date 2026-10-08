@@ -35,12 +35,16 @@ jobs:
           set -euo pipefail
           # Upstream tags look like "v0.97". Strip the leading "v" so they
           # line up with our on-disk version directories (e.g. "0.97").
+          # Only stable releases (vX.Y, not pre-releases like v0.96-alpha) NEWER than
+          # the newest vendored version. Older upstream releases we chose not to
+          # vendor (e.g. v0.94) are never proposed.
           upstream=$(gh api "repos/${UPSTREAM}/releases" --paginate \
-            --jq '.[].tag_name' | sed 's/^v//' | sort -V)
-          vendored=$(ls "${SPEC_DIR}" | grep -E '^[0-9]+\.[0-9]+$' || true)
+            --jq '.[] | select(.prerelease | not) | .tag_name' | sed 's/^v//' \
+            | grep -E '^[0-9]+\.[0-9]+$' | sort -V || true)
+          newest=$(ls "${SPEC_DIR}" | grep -E '^[0-9]+\.[0-9]+$' | sort -V | tail -n1)
           # One new version per run — keeps each PR scoped and reviewable.
-          new=$(comm -23 <(echo "$upstream" | sort -u) <(echo "$vendored" | sort -u) \
-            | sort -V | head -n1)
+          new=$(printf '%s\n' "$newest" $upstream | sort -uV \
+            | awk -v n="$newest" 'f{print; exit} $0==n{f=1}')
           if [ -z "$new" ]; then
             echo "No new upstream releases. Exiting cleanly."
             echo "found=false" >> "$GITHUB_OUTPUT"

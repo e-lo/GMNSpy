@@ -20,8 +20,9 @@ The renderer covers the same surface the v0.3 generators produced:
 
 What is **not** generated here lives in sibling docgen modules:
 
-- ``llms.txt`` / ``ai/api-index.json`` → task 3.5.
-- Interactive HTML reports → :mod:`corral.reports.render` (Phase 2).
+- ``llms.txt`` / ``llms-full.txt`` / ``ai/api-index.json`` →
+  :mod:`corral.docgen.llms`.
+- Interactive HTML reports → :mod:`corral.reports.render`.
 
 Examples:
     Render the package overview and per-schema tables for a small

@@ -1,8 +1,8 @@
 """Heuristic cost model for corral operations (architecture §6.5).
 
 Provides :class:`OperationCost` plus a small table of per-op coefficients
-calibrated on the Leavenworth + synthetic regional fixtures. The Phase 5
-nightly bench job (issue #126) re-fits these per ibis/duckdb release.
+calibrated on the Leavenworth + synthetic regional fixtures. The planned
+nightly bench job (issue #100) is meant to re-fit these per ibis/duckdb release.
 ``est_seconds()`` is an order-of-magnitude hint for gating prompts —
 **not a performance guarantee**. One coefficient set covers the default
 ibis+duckdb path for v1.0; per-engine models are out of scope.

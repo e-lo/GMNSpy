@@ -74,7 +74,7 @@ server = [
     "httpx>=0.27",  # required by fastapi.testclient + nice-to-have client
 ]
 mcp = [
-    "mcp>=1.0",
+    "mcp>=1.0,<2",  # v2 removed mcp.server.fastmcp (renamed MCPServer); our servers use the v1 API
 ]
 nl = [
     # Natural-language features (netstead.select, netstead.llm). httpx drives the
