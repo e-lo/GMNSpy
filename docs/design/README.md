@@ -54,8 +54,9 @@ architecture.md and this index in the same PR.
 |---|---|---|---|---|---|
 | [NL selection](2026-09-23-nl-selection-design.md) | design | 09-23 | implemented | #194 | extended by NL providers |
 | [Network viewer (`netstead.viz`)](2026-09-30-network-viewer-prd.md) | PRD | 09-30 | accepted; P1–P2 implemented | #194 | P3 (diff) and P4 (multimodal / GTFS) roll up under the Workbench design |
-| [Workbench (`netstead app`)](2026-10-02-netstead-workbench-design.md) | design | 10-02 | accepted; P0, P1a, P1b implemented | #211, #212 | next: P2 validate + fix; its change-log part is amended by the plugins design (PR #217) |
+| [Workbench (`netstead app`)](2026-10-02-netstead-workbench-design.md) | design | 10-02 | accepted; P0, P1a, P1b implemented | #211, #212 | next: P2 validate + fix; its change-log part is amended by the plugins design |
 | [NL providers (Anthropic / OpenAI / Gemini / Ollama)](2026-10-02-nl-providers-design.md) | design | 10-02 | implemented | #211 | `qwen3:4b` default not yet tested live |
+| [Workbench plugins](2026-10-05-workbench-plugins-design.md) | design | 10-05 | accepted | — | entry-point plugins (`netstead.workbench.plugins`) behind a versioned `Host` API; amends the Workbench design: ProjectCard editing moves to an external plugin repo, core stays card-agnostic |
 
 ### Implementation plans
 
@@ -68,6 +69,7 @@ architecture.md and this index in the same PR.
 | [Workbench P1a: Open / Import wizard](2026-10-02-workbench-p1a-plan.md) | Workbench design | implemented | #211 |
 | [Workbench P1b: inspect + settings](2026-10-05-workbench-p1b-plan.md) | Workbench design | implemented | #212 |
 | [NL providers](2026-10-02-nl-providers-plan.md) | NL providers design | implemented | #211 |
+| [Workbench plugins Part 1: Python plugin core](2026-10-05-workbench-plugins-p1-plan.md) | Workbench plugins design | not started | — |
 
 ### Scopes
 
@@ -79,12 +81,7 @@ architecture.md and this index in the same PR.
 
 ## In flight (not on `main` yet)
 
-These records exist on branches. Add them to the tables above when they merge.
-
-| Record | Kind | Where | Status |
-|---|---|---|---|
-| `2026-10-05-workbench-plugins-design.md` — entry-point plugin API (`netstead.workbench.plugins`), core owns network nouns, ProjectCard editing moves to an external plugin repo | design | PR #217 | accepted. **Amends the Workbench design:** the in-core `changes/` package it planned is superseded; core stays card-agnostic |
-| `2026-10-05-workbench-plugins-p1-plan.md` — Part 1, Python plugin core | plan | PR #217 | not started; #211 and #212 have merged, so it can start |
+None. When a record lands on a branch before `main`, list it here with its PR.
 
 ## Gaps to close
 
