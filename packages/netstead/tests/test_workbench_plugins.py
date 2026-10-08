@@ -246,6 +246,27 @@ def _status(session: Session, plugin_id: str):
     return next(s for s in session.plugin_status if s.id == plugin_id)
 
 
+def session_script(session: Session) -> tuple[str, list[str]]:
+    """``(script, imports)``: "copy session as Python", assembled exactly as ``sessionScript`` in history.js does."""
+    from fastapi.testclient import TestClient
+    from netstead.workbench import build_app
+
+    history = TestClient(build_app(session)).get("/api/history").json()
+    return _script_lines(history), history["imports"]
+
+
+def _script_lines(history: dict[str, Any]) -> str:
+    by_seq = {e["seq"]: e for e in history["entries"]}
+    lines = [*history["imports"], "", "app = Session()  # or reuse a live session"]
+    for e in history["entries"]:
+        if e["parent_seq"] is not None:
+            failed = "" if e["ok"] else f"  # failed: {e['error']}"
+            lines.append(f"# via {by_seq[e['parent_seq']]['action']['type']}: {e['python']}{failed}")
+        else:
+            lines.append(e["python"] if e["ok"] else f"# failed: {e['python']}  # {e['error']}")
+    return "\n".join(lines)
+
+
 def test_plugin_action_dispatches_records_and_replays(make_session):
     session = make_session(make_hello())
     assert session.dispatch(Greet(name="Ada")) == "Hello, Ada!"
@@ -376,6 +397,15 @@ def test_plugins_call_each_other_through_actions(make_session):
     both = make_session(make_hello(), loud)
     assert both.dispatch(Shout(name="ada")) == "HELLO, ADA!"
     assert [e.action["type"] for e in both.history] == ["hello.greet", "loud.shout"]  # inner first
+    inner, outer = both.history
+    assert inner.parent_seq == outer.seq and outer.parent_seq is None
+
+    script, imports = session_script(both)
+    assert "# via loud.shout: app.do(Greet(name='ada'))" in script.splitlines()
+    assert imports[1:] == [f"from {Shout.__module__} import Shout"]  # the nested Greet needs no import
+    replay = make_session(make_hello(), loud)
+    exec(script.replace("app = Session()", "app = replay"), {"replay": replay}, {})
+    assert replay.state() == both.state()  # replay is idempotent: the nested Greet ran once, not twice
 
 
 class Widen(BaseAction):
@@ -470,8 +500,6 @@ def test_a_registration_failure_rolls_back_the_plugins_earlier_actions(make_sess
 
 def test_session_script_with_plugin_and_failed_entries_replays(make_session, rdu_source):
     """ "Copy session as Python" for a mixed core + plugin session, with a failed plugin entry, runs as is."""
-    from fastapi.testclient import TestClient
-    from netstead.workbench import build_app
     from netstead.workbench.actions import OpenNetwork, Style
 
     def hello_with_failures(**overrides: Any) -> WorkbenchPlugin:
@@ -491,13 +519,8 @@ def test_session_script_with_plugin_and_failed_entries_replays(make_session, rdu
     with pytest.raises(ActionError):
         session.dispatch(Greet(name="nobody"))
     session.dispatch(Style(offset=False))
-    history = TestClient(build_app(session)).get("/api/history").json()
-
-    # The same assembly as ``sessionScript`` in static/js/history.js.
-    lines = [*history["imports"], "", "app = Session()  # or reuse a live session"]
-    lines += [e["python"] if e["ok"] else f"# failed: {e['python']}  # {e['error']}" for e in history["entries"]]
-    script = "\n".join(lines)
-    assert history["imports"][1:] == [f"from {Greet.__module__} import Greet"]
+    script, imports = session_script(session)
+    assert imports[1:] == [f"from {Greet.__module__} import Greet"]
     assert "# failed: app.do(Greet(name='nobody'))" in script
 
     replay = make_session(hello_with_failures())
@@ -577,3 +600,174 @@ def test_installed_hello_example_is_discovered_through_its_entry_point(tmp_path,
     assert _status(session, "hello").state == "loaded"
     assert _status(session, "hello").frontend == "/plugins/hello/main.js"
     assert session.dispatch({"type": "hello.greet", "name": "Ada"}) == "Hello, Ada!"
+
+
+# ---------------------------------------------------------------------------- dispatch: nesting and rollback
+
+import contextlib  # noqa: E402
+
+from corral.editing import Edit  # noqa: E402
+from netstead.workbench.actions import OpenNetwork  # noqa: E402
+
+
+class Wreck(BaseAction):
+    type: Literal["wreck.all"] = "wreck.all"
+    then: str = "raise"  # "raise", "action_error", "read_then_raise" or "ok"
+
+
+class Preview(BaseAction):
+    type: Literal["wreck.preview"] = "wreck.preview"
+
+
+class Outer(BaseAction):
+    type: Literal["wreck.outer"] = "wreck.outer"
+    inner: str = "ok"  # how the nested Wreck ends
+    then: str = "ok"  # how this one ends after it
+
+
+def _delete_all_links() -> Edit:
+    return Edit(op="delete_rows", table="link", payload={"predicate": lambda t: t.link_id >= 0})
+
+
+def _wreck(host, action: Wreck) -> None:
+    host.mutate(None, [_delete_all_links()], note="delete every link")
+    if action.then == "raise":
+        raise RuntimeError("after mutate")
+    if action.then == "action_error":
+        raise ActionError("refused after mutate")
+    if action.then == "read_then_raise":
+        assert len(host.network().links_df()) == 0  # cached for the mutated version
+        raise RuntimeError("after reading")
+
+
+def _preview(host, action: Preview) -> None:
+    preview = host.derive(None, label="Preview", note="preview")
+    host.mutate(preview, [_delete_all_links()], note="preview delete")
+    raise RuntimeError("after derive")
+
+
+def _outer(host, action: Outer) -> str:
+    with contextlib.suppress(ActionError):  # a handler may carry on after a nested Action fails
+        host.dispatch(Wreck(then=action.inner))
+    host.dispatch({"type": "style", "offset": False})  # core state a nested Action changed
+    if action.then == "raise":
+        raise RuntimeError("outer failed")
+    return "done"
+
+
+def make_wreck() -> WorkbenchPlugin:
+    specs = (ActionSpec(Wreck, _wreck), ActionSpec(Preview, _preview), ActionSpec(Outer, _outer))
+    return WorkbenchPlugin(id="wreck", name="Wreck", version="0", requires_api=HOST_API, actions=specs)
+
+
+@pytest.fixture
+def wrecked(make_session, rdu_source):
+    session = make_session(make_wreck())
+    session.dispatch(OpenNetwork(source=rdu_source))
+    return session
+
+
+def _links(session: Session) -> int:
+    return len(session.registry.get("rdu-i40").links_df())
+
+
+@pytest.mark.parametrize("then", ["raise", "action_error"])
+def test_a_handler_that_mutates_then_fails_is_rolled_back(wrecked, then):
+    handle = wrecked.registry.get("rdu-i40")
+    links = _links(wrecked)
+    entry = wrecked.dispatch_recorded(Wreck(then=then))
+    assert not entry.ok
+    assert _links(wrecked) == links and handle.version == 0 and handle.lineage == []
+    assert not handle.roadway.links.dirty
+
+
+def test_a_handler_that_succeeds_keeps_its_mutation(wrecked):
+    assert wrecked.dispatch_recorded(Wreck(then="ok")).ok
+    assert _links(wrecked) == 0 and wrecked.registry.get("rdu-i40").lineage == ["wreck: delete every link"]
+
+
+def test_a_failed_handler_unregisters_the_networks_it_derived(wrecked):
+    assert not wrecked.dispatch_recorded(Preview()).ok
+    assert wrecked.registry.ids() == ["rdu-i40"] and wrecked.active == "rdu-i40"
+
+
+def test_a_failed_outer_action_rolls_back_its_nested_actions(wrecked):
+    links, style = _links(wrecked), dict(wrecked.style)
+    outer = wrecked.dispatch_recorded(Outer(inner="ok", then="raise"))
+    assert not outer.ok and _links(wrecked) == links and wrecked.style == style
+    nested = [e for e in wrecked.history if e.parent_seq == outer.seq]
+    assert [e.action["type"] for e in nested] == ["wreck.all", "style"]
+    assert all(not e.ok and e.error_type == "RolledBack" for e in nested)  # history never claims a rolled-back change
+
+
+def test_a_failed_nested_action_is_rolled_back_alone(wrecked):
+    links = _links(wrecked)
+    outer = wrecked.dispatch_recorded(Outer(inner="action_error", then="ok"))
+    assert outer.ok and _links(wrecked) == links and wrecked.style["offset"] is False
+    inner = next(e for e in wrecked.history if e.action["type"] == "wreck.all")
+    assert not inner.ok and inner.error == "refused after mutate" and inner.parent_seq == outer.seq
+
+
+def test_a_rollback_drops_caches_built_from_the_rolled_back_tables(wrecked):
+    links = _links(wrecked)
+    assert not wrecked.dispatch_recorded(Wreck(then="read_then_raise")).ok  # caches 0 links, then fails
+    assert _links(wrecked) == links
+
+
+def test_a_failed_mutate_leaves_the_network_and_its_caches_untouched(wrecked):
+    from corral.editing import UnsupportedEditOp
+    from corral.validation.sync_state import DirtyTracker
+
+    handle = wrecked.registry.get("rdu-i40")
+    tracker = handle.roadway.dirty_tracker = DirtyTracker()
+    stamp = tracker.stamp_table("link", handle.roadway.links.expr, handle.roadway.links.engine)
+    cached = handle.links_df()
+    with pytest.raises(UnsupportedEditOp):
+        wrecked.mutate(None, [_delete_all_links(), Edit(op="explode", table="link")], note="bad")
+    assert handle.links_df() is cached and len(cached) > 0  # the cache entry is still the valid one
+    assert handle.version == 0 and not handle.roadway.links.dirty and tracker.get_table_stamp("link") is stamp
+
+
+def test_a_rolled_back_mutate_restores_the_sync_stamp(wrecked):
+    from corral.validation.sync_state import DirtyTracker
+
+    handle = wrecked.registry.get("rdu-i40")
+    tracker = handle.roadway.dirty_tracker = DirtyTracker()
+    stamp = tracker.stamp_table("link", handle.roadway.links.expr, handle.roadway.links.engine)
+    assert not wrecked.dispatch_recorded(Wreck()).ok
+    assert tracker.get_table_stamp("link").content_hash == stamp.content_hash
+    assert wrecked.dispatch_recorded(Wreck(then="ok")).ok
+    assert tracker.get_table_stamp("link") is None  # a committed edit drops it, as corral's apply_edit does
+
+
+def _js_session_script(history: dict[str, Any], tmp_path, run_node) -> str:
+    """Run the real ``sessionScript`` from static/js/history.js on an ``/api/history`` payload."""
+    import json
+    import re
+
+    from netstead.workbench.server import STATIC_DIR
+
+    source = (STATIC_DIR / "js" / "history.js").read_text(encoding="utf-8")
+    (tmp_path / "history.mjs").write_text(re.sub(r"^import .*$", "", source, flags=re.M), encoding="utf-8")
+    probe = tmp_path / "probe.mjs"
+    probe.write_text(
+        'import { sessionScript } from "./history.mjs";\n'
+        f"process.stdout.write(JSON.stringify(sessionScript({json.dumps(history)})));\n"
+    )
+    proc = run_node([str(probe)])
+    assert proc.returncode == 0, proc.stderr
+    return json.loads(proc.stdout)
+
+
+@pytest.mark.skipif(__import__("shutil").which("node") is None, reason="node not installed")
+def test_history_js_writes_nested_entries_as_comments(wrecked, tmp_path, run_node):
+    from fastapi.testclient import TestClient
+    from netstead.workbench import build_app
+
+    wrecked.dispatch(Outer(inner="action_error"))
+    wrecked.dispatch_recorded(Outer(then="raise"))
+    history = TestClient(build_app(wrecked)).get("/api/history").json()
+    script = _js_session_script(history, tmp_path, run_node)
+    assert script == _script_lines(history)
+    assert "# via wreck.outer: app.do(Wreck(then='action_error'))  # failed: refused after mutate" in script
+    assert "# via wreck.outer: app.do(Style(offset=False))  # failed: rolled back: wreck.outer failed" in script

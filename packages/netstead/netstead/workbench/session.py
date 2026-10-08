@@ -137,10 +137,58 @@ class HistoryEntry:
     error_type: str | None
     result: Any
     ts: float
+    #: Set on an Action dispatched from inside another Action's handler (``host.dispatch``): the ``seq``
+    #: of the Action that dispatched it. Replaying the parent repeats it, so scripts show it as a comment.
+    parent_seq: int | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """JSON-safe copy."""
         return asdict(self)
+
+
+@dataclass
+class _Nested:
+    """An Action dispatched inside another, recorded after the outermost one finishes."""
+
+    entry: HistoryEntry
+    children: list[_Nested]
+
+
+@dataclass
+class _Running:
+    """An Action whose handler is running (innermost last in ``Session._running``)."""
+
+    action: BaseAction
+    undo_mark: int  # ``len(Session._undo)`` when it started: a failure undoes everything after it
+    view: tuple[str | None, dict[str, Any] | None, dict[str, Any]]  # active, selection, style before it ran
+    children: list[_Nested] = field(default_factory=list)
+
+
+@dataclass
+class _Mutated:
+    """Undo record for one :meth:`Session.mutate` inside an Action."""
+
+    handle: NetworkHandle
+    tables: dict[str, tuple[Any, bool]]  # name -> (expr, dirty) before
+    stamps: dict[str, Any]  # name -> its sync stamp before (``None``: unstamped)
+    version: int
+    lineage: int  # lineage length before
+
+    def undo(self, session: Session) -> None:
+        self.handle.restore(self.tables, self.version)
+        del self.handle.lineage[self.lineage :]
+        _restore_stamps(self.handle, self.stamps)
+
+
+@dataclass
+class _Derived:
+    """Undo record for one :meth:`Session.derive` inside an Action."""
+
+    net_id: str
+
+    def undo(self, session: Session) -> None:
+        if self.net_id in session.registry.ids():
+            session.registry.remove(self.net_id)
 
 
 class Session:
@@ -197,6 +245,11 @@ class Session:
         self.jobs = JobRunner(lambda event: self.events.publish(event))  # late-bound, like every other publish
         self._lock = threading.RLock()
         self._committed: dict[str, int] = {}  # job id -> history seq its ``_commit`` recorded
+        #: Actions whose handlers are running (more than one: nested ``host.dispatch``). Only the thread
+        #: holding the lock touches it, so "empty" means "not inside any Action" for that thread.
+        self._running: list[_Running] = []
+        #: What ``mutate``/``derive`` changed inside the running Actions, undone if one of them fails.
+        self._undo: list[_Mutated | _Derived] = []
         #: The Actions this session understands: the core ones, plus any its plugins register.
         self.actions = ActionRegistry()
         #: ``type`` -> handler run under the lock. Core handlers are this class's ``_do_<type>`` methods
@@ -382,7 +435,11 @@ class Session:
             # The job thread needs the lock (``_commit``/``_finish``) and we wait for it below, so a
             # caller already holding the lock (e.g. a handler) would deadlock: fail loudly instead.
             if self._lock._is_owned():  # type: ignore[attr-defined]  # RLock's owner check
-                raise RuntimeError("cannot run a job action while holding the session lock (it would deadlock)")
+                raise RuntimeError(
+                    f"{action.type} runs as a job, so it can't be dispatched from inside an Action handler "
+                    "(it would deadlock waiting for the session lock); a plugin does slow work with "
+                    "host.submit_job instead"
+                )
             job = self.submit(action)
             # Wait OUTSIDE the session lock: the job thread takes it in ``_commit`` and ``_finish``,
             # so waiting while holding it would deadlock. Never call this with the lock held.
@@ -404,6 +461,8 @@ class Session:
             except Exception as exc:  # boundary: recorded below, under the lock
                 failure = exc
         with self._lock:
+            running = _Running(action, len(self._undo), (self.active, self.selection, dict(self.style)))
+            self._running.append(running)
             try:
                 if failure is not None:
                     raise failure
@@ -415,7 +474,38 @@ class Session:
                 logger.exception("workbench action %s failed", action.type)
                 error = f"internal error: {type(exc).__name__}: {exc}"
                 result, ok, error_type = None, False, "InternalError"
-            return self._record(action, ok=ok, result=result, error=error, error_type=error_type)
+            except BaseException:  # SystemExit, KeyboardInterrupt: propagate, but never half-applied
+                self._running.pop()
+                self._roll_back(running)
+                raise
+            self._running.pop()
+            changed = len(self._undo) > running.undo_mark or bool(running.children)
+            if not ok:
+                self._roll_back(running)
+            elif not self._running:
+                self._undo.clear()  # the outermost Action succeeded: nothing left to undo
+            entry = self._entry(action, ok=ok, result=result, error=error, error_type=error_type)
+            if self._running:  # nested: recorded when the outermost Action is, pointing at its parent
+                self._running[-1].children.append(_Nested(entry, running.children))
+                return entry
+            self._record_tree(entry, running.children, state=ok or changed)
+            return entry
+
+    def _roll_back(self, running: _Running) -> None:
+        """Undo what ``running`` (and every Action nested in it) changed; mark its nested entries rolled back.
+
+        Restores the tables, version, lineage and sync stamps of each mutated network, unregisters
+        the networks it derived, and puts back the active network, selection and style. A plugin's
+        own state (its closure, files it wrote) is the plugin's to keep consistent.
+        """
+        while len(self._undo) > running.undo_mark:
+            self._undo.pop().undo(self)
+        active, selection, style = running.view
+        ids = self.registry.ids()
+        self.active = active if active in ids else (ids[0] if ids else None)
+        self.selection = selection if selection is None or selection.get("net_id") in ids else None
+        self.style = style
+        _mark_rolled_back(running.children, running.action.type)
 
     def _core_handler(self, action_type: str) -> Callable[..., Any]:
         """The handler-table entry for a core Action: calls ``_do_<type>``, looked up at call time.
@@ -484,14 +574,17 @@ class Session:
     def _record(
         self, action: BaseAction, *, ok: bool, result: Any, error: str | None, error_type: str | None
     ) -> HistoryEntry:
-        """Append and publish a history entry (then a ``state`` event on success). Call with the lock held.
+        """Append and publish a history entry (then a ``state`` event on success). Call with the lock held."""
+        entry = self._entry(action, ok=ok, result=result, error=error, error_type=error_type)
+        entry.seq = len(self.history) + 1
+        self._append(entry, state=ok)
+        return entry
 
-        Publishing is best-effort: once the entry is appended the action *happened*, so a failing
-        publish (or ``state()``) is logged, never raised. Raising here would make a job's
-        ``_finish`` record the same action a second time.
-        """
-        entry = HistoryEntry(
-            seq=len(self.history) + 1,
+    @staticmethod
+    def _entry(action: BaseAction, *, ok: bool, result: Any, error: str | None, error_type: str | None) -> HistoryEntry:
+        """A history entry for ``action``, not yet numbered or appended."""
+        return HistoryEntry(
+            seq=0,
             action=action.model_dump(mode="json"),
             python=to_python(action),
             imports=import_line(action),
@@ -501,14 +594,43 @@ class Session:
             result=copy.deepcopy(result),
             ts=time.time(),
         )
+
+    def _record_tree(self, entry: HistoryEntry, children: list[_Nested], *, state: bool) -> None:
+        """Record an outermost Action after the Actions nested in it (innermost first), linked by ``parent_seq``."""
+        ordered: list[HistoryEntry] = []
+
+        def walk(node: HistoryEntry, kids: list[_Nested]) -> None:
+            for kid in kids:
+                walk(kid.entry, kid.children)
+            ordered.append(node)
+
+        walk(entry, children)
+        for seq, item in enumerate(ordered, start=len(self.history) + 1):
+            item.seq = seq
+
+        def link(node: HistoryEntry, kids: list[_Nested]) -> None:
+            for kid in kids:
+                kid.entry.parent_seq = node.seq
+                link(kid.entry, kid.children)
+
+        link(entry, children)
+        for item in ordered:
+            self._append(item, state=state and item is entry)
+
+    def _append(self, entry: HistoryEntry, *, state: bool) -> None:
+        """Append a numbered entry and publish it (then a ``state`` event if asked). Call with the lock held.
+
+        Publishing is best-effort: once the entry is appended the action *happened*, so a failing
+        publish (or ``state()``) is logged, never raised. Raising here would make a job's
+        ``_finish`` record the same action a second time.
+        """
         self.history.append(entry)
         try:
             self.events.publish({"type": "history", "entry": entry.to_dict()})
-            if ok:
+            if state:
                 self.events.publish({"type": "state", "state": self.state()})
         except Exception:  # boundary: the browser misses one update; the history stays correct
             logger.exception("publishing history entry %d failed", entry.seq)
-        return entry
 
     def add_network(
         self, net: Network, *, source: str = "<python>", label: str | None = None, net_id: str | None = None
@@ -523,27 +645,32 @@ class Session:
     def mutate(self, net_id: str | None, edits: Sequence[Edit], *, note: str) -> list[EditResult]:
         """Apply corral ``edits`` to a network's roadway, in order and all-or-nothing; return their results.
 
-        A failing edit restores every table to what it was before the first edit and re-raises. On
-        success the network's ``version`` is bumped (dropping its caches), ``note`` is appended to its
-        lineage, and ``state`` is published. The returned :class:`~corral.editing.EditResult` objects
-        carry the rollback data :func:`corral.editing.apply.reverse_edit` needs, so a caller can undo
-        them later. Not an Action itself: the Action that calls it is what history records.
+        The edits run on a copy-on-write draft of the roadway, so the network itself never holds a
+        half-applied state: a failing edit discards the draft and re-raises, leaving the tables, their
+        sync stamps and the caches as they were. On success the changed tables are swapped in at once,
+        the ``version`` is bumped (dropping caches), ``note`` is appended to the lineage, and ``state``
+        is published. Inside an Action, the change is undone if that Action (or one it is nested in)
+        fails. The returned :class:`~corral.editing.EditResult` objects carry the rollback data
+        :func:`corral.editing.apply.reverse_edit` needs, so a caller can undo them later.
         """
         with self._lock:
             handle = self._handle(net_id)
             roadway = handle.roadway
-            # Table expressions are immutable, so restoring the old ones is an exact, null-safe rollback
-            # (corral's ``reverse_edit`` anti-joins with ``=``, which duplicates rows holding a NULL).
-            before = {name: (table.expr, table.dirty) for name, table in roadway.tables.items()}
-            applied: list[EditResult] = []
-            try:
-                for edit in edits:
-                    applied.append(apply_edit(roadway, edit))
-            except Exception:
-                for name, (expr, dirty) in before.items():
-                    roadway.tables[name].expr, roadway.tables[name].dirty = expr, dirty
-                raise
-            handle.bump()
+            draft = derived_copy(roadway)  # shares the immutable table expressions; copies the wrappers
+            applied = [apply_edit(draft, edit) for edit in edits]
+            changed = {name: (draft.tables[name].expr, draft.tables[name].dirty) for name in {e.table for e in edits}}
+            if self._running:
+                tracker = roadway.dirty_tracker
+                self._undo.append(
+                    _Mutated(
+                        handle,
+                        tables={name: (roadway.tables[name].expr, roadway.tables[name].dirty) for name in changed},
+                        stamps={name: tracker.get_table_stamp(name) for name in changed} if tracker else {},
+                        version=handle.version,
+                        lineage=len(handle.lineage),
+                    )
+                )
+            handle.replace_tables(changed)
             handle.lineage.append(note)
             self.events.publish({"type": "state", "state": self.state()})
         return applied
@@ -559,6 +686,8 @@ class Session:
             handle = self.registry.add(derived_copy(base.roadway), source=base.source, label=label)
             handle.derived_from = base.id
             handle.lineage = [*base.lineage, note]
+            if self._running:
+                self._undo.append(_Derived(handle.id))
             self.events.publish({"type": "state", "state": self.state()})
         return handle.id
 
@@ -933,6 +1062,34 @@ class _ParsedSelect:
     result: Any
     parsed_by: dict[str, Any] | None
     error: Exception | None = None  # the parser could not read the utterance (a "could not parse" selection)
+
+
+def _mark_rolled_back(children: list[_Nested], parent_type: str) -> None:
+    """Nested entries that succeeded but were undone with their parent: history must not call them applied."""
+    for child in children:
+        if child.entry.ok:
+            child.entry.ok, child.entry.error_type = False, "RolledBack"
+            child.entry.error = f"rolled back: {parent_type} failed"
+        _mark_rolled_back(child.children, parent_type)
+
+
+def _restore_stamps(handle: NetworkHandle, stamps: Mapping[str, Any]) -> None:
+    """Put back the sync stamps a rolled-back mutate dropped (the tables are back to what they described).
+
+    corral's ``DirtyTracker`` has no public "restore a stamp" method, and re-stamping can't stand in
+    for one (``hash_table`` is not stable across reads of some sources), so the saved stamp object is
+    written back into the tracker's table map. A tracker without that map leaves the table unstamped,
+    which corral treats as "unknown".
+    """
+    tracker = handle.roadway.dirty_tracker
+    if tracker is None:
+        return
+    stamped = getattr(tracker, "_tables", None)
+    for name, stamp in stamps.items():
+        if stamp is not None and isinstance(stamped, dict):
+            stamped[name] = stamp
+        else:
+            tracker.mark_dirty(name)
 
 
 def _value_or_unset(settings: Settings, key: str) -> Any:

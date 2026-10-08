@@ -41,11 +41,15 @@ def core_router(session: Session) -> APIRouter:
 
     @router.get("/history")
     def history() -> dict[str, Any]:
-        """Every entry, plus the import lines that head them as a script ("copy session as Python")."""
+        """Every entry, plus the import lines that head them as a script ("copy session as Python").
+
+        A nested entry (``parent_seq`` set) is written as a comment, since replaying its parent repeats
+        it, so it needs no import.
+        """
         entries = list(session.history)
         return {
             "entries": [e.to_dict() for e in entries],
-            "imports": script_imports(e.imports for e in entries if e.ok),
+            "imports": script_imports(e.imports for e in entries if e.ok and e.parent_seq is None),
         }
 
     @router.post("/actions")

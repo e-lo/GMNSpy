@@ -428,7 +428,7 @@ def script_imports(lines: Iterable[str]) -> list[str]:
     """
     core = {_import_line(model) for model in CORE_ACTIONS}
     head = ", ".join(["Session", *(model.__name__ for model in CORE_ACTIONS)])
-    return [f"from netstead.workbench import {head}", *dict.fromkeys(ln for ln in lines if ln not in core)]
+    return [f"from netstead.workbench import {head}", *dict.fromkeys(ln for ln in lines if ln and ln not in core)]
 
 
 def to_python(action: BaseAction) -> str:
