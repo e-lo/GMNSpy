@@ -305,7 +305,9 @@ class Session:
                     plugin.on_load(host)
             except PluginSettingsError as exc:
                 errors.append(str(exc))
-            except Exception as exc:  # boundary: third-party code must not stop the session
+            # boundary: third-party code must not stop the session, not even with ``sys.exit``
+            # (KeyboardInterrupt still propagates: the user asked to stop).
+            except (Exception, SystemExit) as exc:
                 logger.exception("workbench plugin %r failed to load", plugin.id)
                 errors.append(f"{type(exc).__name__}: {exc}")
         if not errors:

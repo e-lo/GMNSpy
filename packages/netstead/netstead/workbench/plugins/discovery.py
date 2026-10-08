@@ -61,7 +61,9 @@ def discover(
                 raise TypeError(f"entry point {ep.name!r} returned {type(plugin).__name__}, not a WorkbenchPlugin")
             if plugin.id != ep.name:
                 raise ValueError(f"entry point name {ep.name!r} must equal the plugin id {plugin.id!r}")
-        except Exception as exc:  # boundary: third-party code; one bad plugin must not stop the app
+        # boundary: third-party code; one bad plugin must not stop the app (not even a stray ``sys.exit``).
+        # KeyboardInterrupt still propagates: the user asked to stop.
+        except (Exception, SystemExit) as exc:
             logger.exception("loading workbench plugin %r failed", ep.name)
             statuses.append(PluginStatus(ep.name, ep.name, "", None, "error", f"{type(exc).__name__}: {exc}"))
             continue

@@ -512,3 +512,33 @@ def test_settings_payload_redacts_plugin_values(make_session):
     session.settings.plugins["hello"]["token"] = "MARKER"  # in place: no validator runs
     values = session.settings_payload()["values"]["plugins"]
     assert values == {"hello": {"prefix": "Hi", "token": "[redacted]"}}
+
+
+# ---------------------------------------------------------------------------- SystemExit vs KeyboardInterrupt
+
+
+def _raise(exc: BaseException):
+    def factory(*args: Any) -> Any:
+        raise exc
+
+    return factory
+
+
+def test_discover_records_a_factory_calling_sys_exit():
+    plugins, statuses = discover(eps=[FakeEntryPoint("quits", _raise(SystemExit(3)))])
+    assert plugins == [] and statuses[0].state == "error" and "SystemExit" in statuses[0].error
+
+
+def test_discover_lets_keyboard_interrupt_through():
+    with pytest.raises(KeyboardInterrupt):
+        discover(eps=[FakeEntryPoint("stop", _raise(KeyboardInterrupt()))])
+
+
+def test_on_load_calling_sys_exit_marks_the_plugin_error(make_session):
+    session = make_session(make_hello(on_load=_raise(SystemExit(1))))
+    assert _status(session, "hello").state == "error" and "SystemExit" in _status(session, "hello").error
+
+
+def test_on_load_keyboard_interrupt_propagates(make_session):
+    with pytest.raises(KeyboardInterrupt):
+        make_session(make_hello(on_load=_raise(KeyboardInterrupt())))
