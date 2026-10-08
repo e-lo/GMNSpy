@@ -13,6 +13,7 @@ from dataclasses import asdict, dataclass
 from importlib.metadata import entry_points
 from typing import Any, Literal
 
+from ..redact import describe_error
 from .spec import WorkbenchPlugin
 
 __all__ = ["ENTRY_POINT_GROUP", "PluginState", "PluginStatus", "discover"]
@@ -65,7 +66,7 @@ def discover(
         # KeyboardInterrupt still propagates: the user asked to stop.
         except (Exception, SystemExit) as exc:
             logger.exception("loading workbench plugin %r failed", ep.name)
-            statuses.append(PluginStatus(ep.name, ep.name, "", None, "error", f"{type(exc).__name__}: {exc}"))
+            statuses.append(PluginStatus(ep.name, ep.name, "", None, "error", describe_error(exc)))
             continue
         found.append(plugin)
     return found, statuses

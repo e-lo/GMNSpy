@@ -85,7 +85,7 @@ from .paths import allowed_roots, open_locator
 from .plugins.discovery import PluginStatus, discover
 from .plugins.host import Host, PluginSettingsError, validate_plugin_settings
 from .plugins.spec import HOST_API, WorkbenchPlugin, api_compatible, problems
-from .redact import scrub
+from .redact import describe_error, scrub
 from .registry import NetworkHandle, NetworkRegistry, as_pandas, derived_copy
 from .selection import selection_payload, unparsed_payload
 
@@ -369,14 +369,14 @@ class Session:
             # (KeyboardInterrupt still propagates: the user asked to stop).
             except (Exception, SystemExit) as exc:
                 logger.exception("workbench plugin %r failed to load", plugin.id)
-                errors.append(f"{type(exc).__name__}: {exc}")
+                errors.append(describe_error(exc))
         mount: tuple[Any, Path | None] = (None, None)
         if not errors:
             try:
                 mount = _build_mount(plugin, host)
             except (Exception, SystemExit) as exc:  # boundary: third-party code, as for ``on_load``
                 logger.exception("workbench plugin %r failed to build its routes", plugin.id)
-                errors.append(f"{type(exc).__name__}: {exc}")
+                errors.append(describe_error(exc))
         if not errors:
             errors = self._register_actions(plugin, host)
         if errors:
@@ -433,7 +433,7 @@ class Session:
                 out[plugin_id] = copy.deepcopy(plugin.state(self._hosts[plugin_id]))
             except Exception as exc:  # boundary: third-party code
                 logger.exception("workbench plugin %r state() failed", plugin_id)
-                out[plugin_id] = {"error": f"{type(exc).__name__}: {exc}"}
+                out[plugin_id] = {"error": describe_error(exc)}
         return out
 
     def _check_plugin_settings(self, settings: Settings) -> None:

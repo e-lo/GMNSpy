@@ -930,3 +930,46 @@ def test_closing_a_base_network_marks_its_derived_copies(host_of):
     session.dispatch({"type": "close_network", "net_id": "rdu-i40"})
     derived_from = session.network(preview).derived_from
     assert derived_from == "rdu-i40 (closed)" and derived_from not in session.registry.ids()
+
+
+# ---------------------------------------------------------------------------- plugin errors never echo values (N-2)
+
+
+class _Secretive(BaseModel):
+    count: int
+
+
+def _validation_error() -> Exception:
+    try:
+        _Secretive(count="hunter2-SECRET")  # type: ignore[arg-type]
+    except ValidationError as exc:
+        return exc
+    raise AssertionError("expected a ValidationError")
+
+
+SIGNED = "https://bucket.example/net.parquet?X-Amz-Signature=SECRET"
+
+
+@pytest.mark.parametrize("exc", [_validation_error(), RuntimeError(f"could not fetch {SIGNED}")])
+def test_on_load_errors_are_shown_without_values(make_session, exc):
+    session = make_session(make_hello(on_load=_raise(exc)))
+    error = _status(session, "hello").error
+    assert _status(session, "hello").state == "error" and type(exc).__name__ in error and "SECRET" not in error
+
+
+def test_a_validation_error_keeps_where_and_what(make_session):
+    session = make_session(make_hello(on_load=_raise(_validation_error())))
+    assert "count" in _status(session, "hello").error and "integer" in _status(session, "hello").error
+
+
+def test_state_errors_are_shown_without_values(make_session):
+    session = make_session(make_hello(state=_raise(_validation_error())))
+    error = session.state()["plugins"]["hello"]["error"]
+    assert error.startswith("ValidationError") and "SECRET" not in error
+
+
+def test_router_and_discovery_errors_are_shown_without_values(make_session):
+    session = make_session(make_hello(router=_raise(RuntimeError(f"no {SIGNED}"))))
+    assert "SECRET" not in _status(session, "hello").error and "bucket.example" in _status(session, "hello").error
+    _, statuses = discover(eps=[FakeEntryPoint("leaky", _raise(_validation_error()))])
+    assert statuses[0].state == "error" and "SECRET" not in statuses[0].error

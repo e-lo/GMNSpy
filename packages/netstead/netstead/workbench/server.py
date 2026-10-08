@@ -13,6 +13,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 
 from .plugins import HOST_API
+from .redact import describe_error
 from .routes.core import core_router
 from .routes.io import io_router
 from .routes.llm import llm_router
@@ -149,7 +150,7 @@ def _mount_plugins(app: FastAPI, session: Session) -> None:
         # boundary: third-party code must not stop the app (not even with ``sys.exit``)
         except (Exception, SystemExit) as exc:
             logger.exception("mounting workbench plugin %r failed", plugin_id)
-            session.unload_plugin(plugin_id, f"{type(exc).__name__}: {exc}")
+            session.unload_plugin(plugin_id, describe_error(exc))
             continue
         app.include_router(staged)
         if static is not None:

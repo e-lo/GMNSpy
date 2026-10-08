@@ -118,8 +118,9 @@ class Greet(BaseAction):
 ```
 
 Each Action is paired with its handler in a `netstead.workbench.plugins.ActionSpec`. The handler
-signature is `handler(host, action) -> result`. It runs under the session lock, and its return
-value is what `session.dispatch` (and `POST /api/actions`) returns. Set `mutates: ClassVar[bool] = True`
+signature is `handler(host, action) -> result`. It runs under the session lock. Its return value
+is what `session.dispatch` returns, and over HTTP it is the `result` field of the `POST /api/actions`
+response, next to `ok`, `error` and the recorded history `entry`. Set `mutates: ClassVar[bool] = True`
 on an Action that changes a network in place, so the assistant drafts it for the user to confirm
 instead of applying it. Plugin Actions can't be `runs_as_job`. For slow work, call `host.submit_job`
 from the handler.
@@ -184,7 +185,7 @@ def plugin() -> WorkbenchPlugin:
 | `state(host)` | Returns a JSON-safe dict merged into `/api/state` under `plugins.<id>`. Keep it cheap, because it runs on every state push. |
 | `router(host)` | Returns a FastAPI `APIRouter`, mounted at `/api/plugins/<id>`. Called once, at install. |
 | `static_dir` / `frontend` | A directory served at `/plugins/<id>/`, and the ES module in it the browser loads (default `main.js`). |
-| `on_load(host)` | Runs once at install, before the Actions register. If it raises, the plugin isn't installed. |
+| `on_load(host)` | Runs once at install, before the router is built and the Actions register. If it raises, the plugin isn't installed, but whatever it did before raising (files written, threads started) is not undone. The same holds if the router or static dir then fails. |
 
 The factory runs once per session, so state kept in its closure belongs to that session.
 
