@@ -107,8 +107,11 @@ netstead/
 ├── notebook/          # Network._repr_html_ + scope-builder ipywidget; extends corral.notebook
 ├── osm/               # OPTIONAL [osm] — build GMNS from OpenStreetMap (Overpass/Nominatim, maintained tag mappings)
 ├── overture/          # OPTIONAL [overture] — build GMNS from Overture Maps (mirrors osm/)
+├── config.py          # layered settings (default / user / project / env / session)
+├── workbench/         # `netstead app`: Session + typed Action bus, registry, jobs, SSE, FastAPI server, ES-module front end
+├── llm/               # OPTIONAL [nl] — provider adapters (Anthropic / OpenAI / Gemini / Ollama over httpx), model catalog, keyring
 ├── select/            # natural-language selection → validated GMNS link_id set (2026-09-23 design)
-├── viz/               # interactive viewer: deck.gl + MapLibre fed by binary buffers; DuckDB-backed table API
+├── viz/               # binary render buffers, styling and paged DuckDB table reads used by the Workbench
 ├── map/               # embeddable Leaflet map component + edit log (ProjectCard-shaped YAML)
 ├── reports/           # findings CSV/XLSX writers
 ├── bench/             # benchmark harness (time + peak memory) behind `netstead bench`

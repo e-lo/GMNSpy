@@ -52,8 +52,10 @@ architecture.md and this index in the same PR.
 
 | Record | Kind | Date | Status | Implemented in | Notes |
 |---|---|---|---|---|---|
-| [NL selection](2026-09-23-nl-selection-design.md) | design | 09-23 | implemented | #194 | multi-provider LLM parsing extends it (PR #211) |
+| [NL selection](2026-09-23-nl-selection-design.md) | design | 09-23 | implemented | #194 | extended by NL providers |
 | [Network viewer (`netstead.viz`)](2026-09-30-network-viewer-prd.md) | PRD | 09-30 | accepted; P1–P2 implemented | #194 | P3 (diff) and P4 (multimodal / GTFS) roll up under the Workbench design |
+| [Workbench (`netstead app`)](2026-10-02-netstead-workbench-design.md) | design | 10-02 | accepted; P0, P1a, P1b implemented | #211, #212 | next: P2 validate + fix; its change-log part is amended by the plugins design (PR #217) |
+| [NL providers (Anthropic / OpenAI / Gemini / Ollama)](2026-10-02-nl-providers-design.md) | design | 10-02 | implemented | #211 | `qwen3:4b` default not yet tested live |
 
 ### Implementation plans
 
@@ -62,6 +64,10 @@ architecture.md and this index in the same PR.
 | [Viewer P1: core render path](2026-09-30-viz-p1-plan.md) | viewer PRD | implemented | #194 |
 | [Viewer P2: inspect & style](2026-09-30-viz-p2-plan.md) | viewer PRD | implemented | #194 |
 | [DuckDB-only engine consolidation](2026-10-01-engine-consolidation-plan.md) | engine ADR | implemented | #195 |
+| [Workbench P0: foundations](2026-10-02-workbench-p0-plan.md) | Workbench design | implemented | #211 |
+| [Workbench P1a: Open / Import wizard](2026-10-02-workbench-p1a-plan.md) | Workbench design | implemented | #211 |
+| [Workbench P1b: inspect + settings](2026-10-05-workbench-p1b-plan.md) | Workbench design | implemented | #212 |
+| [NL providers](2026-10-02-nl-providers-plan.md) | NL providers design | implemented | #211 |
 
 ### Scopes
 
@@ -77,20 +83,15 @@ These records exist on branches. Add them to the tables above when they merge.
 
 | Record | Kind | Where | Status |
 |---|---|---|---|
-| `2026-10-02-netstead-workbench-design.md` — one front end (`netstead app`) for open / select / inspect / edit; umbrella for the viewer PRD's later phases | design | PR #211 (`feat/nl-providers`) | accepted; P0 + P1a built in the PR |
-| `2026-10-02-workbench-p0-plan.md`, `2026-10-02-workbench-p1a-plan.md` | plans | PR #211 | implemented in the PR; mark `implemented` when it merges |
-| `2026-10-02-nl-providers-design.md` + `-plan.md` — multi-provider (Anthropic / OpenAI / Gemini / Ollama) NL parsing | design + plan | PR #211 | accepted; implemented in the PR |
-| `2026-10-05-workbench-p1b-plan.md` — Settings dialog, two-way map/table linking, FK related records | plan | PR #212 (`feat/workbench-p1b`, stacked on #211) | implemented in the PR |
-| `2026-10-05-workbench-plugins-design.md` — entry-point plugin API (`netstead.workbench.plugins`), core owns network nouns, ProjectCard editing moves to an external plugin repo | design | `docs/workbench-plugins` PR | accepted. **Amends the Workbench design:** the in-core `changes/` package it planned is superseded; core stays card-agnostic |
-| `2026-10-05-workbench-plugins-p1-plan.md` — Part 1, Python plugin core | plan | `docs/workbench-plugins` PR | not started; stacks on #211 + #212 |
+| `2026-10-05-workbench-plugins-design.md` — entry-point plugin API (`netstead.workbench.plugins`), core owns network nouns, ProjectCard editing moves to an external plugin repo | design | PR #217 | accepted. **Amends the Workbench design:** the in-core `changes/` package it planned is superseded; core stays card-agnostic |
+| `2026-10-05-workbench-plugins-p1-plan.md` — Part 1, Python plugin core | plan | PR #217 | not started; #211 and #212 have merged, so it can start |
 
 ## Gaps to close
 
-- **No product-level PRD.** Issue [#98](https://github.com/e-lo/netstead/issues/98) planned one for the
-  v1.0 rewrite; architecture.md §1 (mission) plus the feature designs above have covered the need so
-  far. Either write `YYYY-MM-DD-netstead-prd.md` (personas, roadmap to GA and past it) or close #98.
-- **Zip-CSV packages don't load on `main`:** `Network.from_source("x.csv.zip")` mis-dispatches each
-  member to the CSV adapter, so `leavenworth.load("zip")` raises `NotImplementedError`. Fixed in
-  PR #211 (`4b743fb`), which also removes the guard.
-- **Pre-v1 issues** (#1–#8, #25–#29) predate the rewrite and need triage against v1. Open
-  tracking issues #98, #103, #104, #106–#108, #113–#115 still use the old `gmnspy` / `datagrove` names.
+- **No product-level PRD.** #98 was closed in favour of this index plus architecture.md §1. If a
+  roadmap to GA and past it is wanted, add it here as `YYYY-MM-DD-netstead-prd.md`.
+- **Workbench LAN exposure:** `netstead app --host 0.0.0.0` with an empty `io.allowed_roots` lets
+  anyone on the network browse the home directory. Documented, not blocked; consider refusing a
+  non-loopback host without explicit roots.
+- **Quality-rule backlog** from pre-v1 issues: partially overlapping segments (#5) and unique
+  natural-key combinations such as `link_id` + `time_day` (#7).

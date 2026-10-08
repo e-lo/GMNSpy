@@ -1,6 +1,6 @@
 # Multi-provider LLM support for the Workbench's natural-language features
 
-Status: **accepted (revised with the user's decisions)** · Date: 2026-10-02 · Owner: netstead · Phase: after P1a, before P3
+Status: **implemented** (#211; accepted with the user's decisions) · Date: 2026-10-02 · Owner: netstead · Phase: after P1a, before P3
 
 Related: [Workbench design](2026-10-02-netstead-workbench-design.md) (core Action bus, §e assistant, §g settings) · [network-viewer PRD §15](2026-09-30-network-viewer-prd.md) (NL action schema) · [NL selection design](2026-09-23-nl-selection-design.md) · [P1a plan](2026-10-02-workbench-p1a-plan.md) · Plan: [2026-10-02-nl-providers-plan.md](2026-10-02-nl-providers-plan.md)
 

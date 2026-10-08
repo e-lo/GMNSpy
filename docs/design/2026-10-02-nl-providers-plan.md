@@ -1,5 +1,7 @@
 # NL Providers (multi-provider LLM) Implementation Plan
 
+Status: **implemented** (#211) · Parent: [NL providers design](2026-10-02-nl-providers-design.md)
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Natural-language selection in the Workbench (and in `netstead select`) gains four providers: local Ollama (Qwen), Anthropic, OpenAI and Gemini. You pick a provider and model per session in the UI, and **Make default** saves the choice. API keys come from environment variables or the OS keyring. They are managed through write-only UI and CLI paths and never appear in settings, API responses, history, SSE or logs. A group of `llm.quality` settings, all visible in the UI and the privacy note, improves parsing and matching:

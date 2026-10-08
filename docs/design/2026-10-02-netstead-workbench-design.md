@@ -1,6 +1,10 @@
 # Netstead Workbench — unified front-end UX design
 
-Status: **accepted, P0 next** · Date: 2026-10-02 · Owner: netstead
+Status: **accepted; P0, P1a, P1b implemented** (#211, #212); P2 next · Date: 2026-10-02 · Owner: netstead
+
+> **Amended by the [Workbench plugins design](2026-10-05-workbench-plugins-design.md) (PR #217):**
+> P2's `netstead.changes` package (NetworkChange, DraftCard, ProjectCard export) moves out of core into
+> an external ProjectCard plugin. Core keeps `mutate` and `derive`; it stays card-agnostic.
 
 Related: [network-viewer PRD](2026-09-30-network-viewer-prd.md) · [data-table scope](data-table-exploration-scope.md) · [NL selection design](2026-09-23-nl-selection-design.md) · [ProjectCard](https://github.com/network-wrangler/projectcard) · [network_wrangler](https://github.com/network-wrangler/network_wrangler)
 
@@ -328,7 +332,7 @@ Sections:
 
 This also fixes the stale `NETSTEAD_AUTO_APPROVE` vs `CORRAL_AUTO_APPROVE` docstrings.
 
-## Phasing (each phase gets its own spec → plan → PR off `refactor/v1.0`)
+## Phasing (each phase gets its own spec → plan → PR off `main`)
 
 | Phase | Scope | Builds |
 |---|---|---|

@@ -1,5 +1,7 @@
 # Workbench P1b (Inspect + Settings) Implementation Plan
 
+Status: **implemented** (#212) · Parent: [Workbench design](2026-10-02-netstead-workbench-design.md)
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Make the map and the data table one linked view, and give every setting a home in the UI.

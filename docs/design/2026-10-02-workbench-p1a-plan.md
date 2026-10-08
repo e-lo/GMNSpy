@@ -1,5 +1,7 @@
 # Workbench P1a (Open / Import wizard) Implementation Plan
 
+Status: **implemented** (#211) · Parent: [Workbench design](2026-10-02-netstead-workbench-design.md)
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Replace the header's path box with an **Open / Import…** wizard. It opens GMNS networks from a
