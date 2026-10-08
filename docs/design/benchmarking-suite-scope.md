@@ -2,13 +2,18 @@
 title: Benchmarking suite — scope
 audience: maintainers
 kind: design
-status: draft
+status: implemented (#197, netstead.bench; DuckDB-only after #195)
 date: 2026-09-30
 summary: >
-  An advertisable + internal-regression performance suite for netstead across the
-  three corral engines (pandas / polars / ibis-duckdb), covering network
+  An advertisable + internal-regression performance suite for netstead
+  (originally scoped across three engines; shipped DuckDB-only after #195), covering network
   creation, selection queries, and visualization packing.
 ---
+
+> **Engine note (2026-10-05):** written before the DuckDB-only consolidation
+> ([ADR](2026-10-01-engine-strategy-reevaluation.md), #195). Where this doc says
+> "all engines", "pandas fallback" or "pandas / polars engine", read: DuckDB (via
+> ibis) is the only compute engine; pandas / polars / Arrow are I/O formats.
 
 # Benchmarking suite — scope
 

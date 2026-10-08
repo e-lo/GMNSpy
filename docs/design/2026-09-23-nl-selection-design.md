@@ -1,5 +1,12 @@
 # Natural-language network *selection* → validated GMNS selection fragment (v1)
 
+Status: **implemented** (#194, `netstead.select`) · Date: 2026-09-23 · Owner: netstead
+
+> **Engine note (2026-10-05):** written before the DuckDB-only consolidation
+> ([ADR](2026-10-01-engine-strategy-reevaluation.md), #195). Where this doc says
+> "all engines", "pandas fallback" or "pandas / polars engine", read: DuckDB (via
+> ibis) is the only compute engine; pandas / polars / Arrow are I/O formats.
+
 **Scope:** selection only (no edit, no map UI). Turn an utterance like
 *"I-40 EB between Harrison Avenue and NC 54 exits"* into a validated, repeatable
 set of GMNS `link_id`s emitted as a selection fragment.

@@ -1,6 +1,7 @@
 # ADR — Geometry encoding: WKT on-disk-CSV, binary in-memory + GeoParquet at rest
 
-Status: **accepted, implementing** · Date: 2026-10-01 · Owner: corral/netstead
+Status: **accepted, implemented** (#201 WKB canonical in memory; #202 GeoParquet `geo` metadata + bbox) ·
+Open follow-up: regenerate committed fixtures with GeoParquet metadata · Date: 2026-10-01 · Owner: corral/netstead
 
 ## Context
 

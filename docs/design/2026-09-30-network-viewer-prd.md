@@ -1,6 +1,8 @@
 # PRD — GMNS network viewer (`netstead.viz`)
 
-**Status:** Draft for review. Capability-first; tech is "considerations," not locked.
+**Status:** Accepted. P1 + P2 implemented (#194, `netstead.viz`). P3 (diff) and P4
+(multimodal / GTFS) are not started and now roll up under the
+Workbench design (2026-10-02, PR #211), which is the umbrella for the interactive front end.
 **Author:** Elizabeth Sall (easall@gmail.com) with Claude.
 **Related:** [[netstead.select]] (NL selection), existing `netstead.map` (static Leaflet report
 viewer — this supersedes it for interactive use), the `netstead select-serve` prototype.
