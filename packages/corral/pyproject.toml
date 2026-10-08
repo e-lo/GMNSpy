@@ -52,7 +52,7 @@ s3 = ["s3fs>=2024.3"]
 gcs = ["gcsfs>=2024.3"]
 azure = ["adlfs>=2024.3"]
 keyring = ["keyring>=24"]
-mcp = ["mcp>=1.0"]
+mcp = ["mcp>=1.0,<2"]  # v2 removed mcp.server.fastmcp; our server uses the v1 API
 
 [project.urls]
 Homepage = "https://e-lo.github.io/netstead"
