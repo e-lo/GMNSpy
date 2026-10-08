@@ -423,6 +423,7 @@ def plugin():
 """
 
 
+@pytest.mark.plugin_discovery
 def test_installed_entry_point_is_discovered_by_default(tmp_path, isolated_env, monkeypatch):
     site = tmp_path / "site"
     dist = site / "netstead_fake_plugin-0.1.dist-info"
@@ -563,6 +564,7 @@ def test_hello_example_plugin_works(tmp_path, isolated_env, monkeypatch):
     assert (netstead_hello.plugin().static_dir / "main.js").is_file()
 
 
+@pytest.mark.plugin_discovery
 def test_installed_hello_example_is_discovered_through_its_entry_point(tmp_path, isolated_env):
     """CI installs ``examples/workbench-plugin-hello``, so its real packaging metadata is exercised here."""
     from importlib.metadata import PackageNotFoundError, distribution
