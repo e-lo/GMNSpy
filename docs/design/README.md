@@ -54,7 +54,8 @@ architecture.md and this index in the same PR.
 |---|---|---|---|---|---|
 | [NL selection](2026-09-23-nl-selection-design.md) | design | 09-23 | implemented | #194 | extended by NL providers |
 | [Network viewer (`netstead.viz`)](2026-09-30-network-viewer-prd.md) | PRD | 09-30 | accepted; P1–P2 implemented | #194 | P3 (diff) and P4 (multimodal / GTFS) roll up under the Workbench design |
-| [Workbench (`netstead app`)](2026-10-02-netstead-workbench-design.md) | design | 10-02 | accepted; P0, P1a, P1b implemented | #211, #212 | next: P2 validate + fix; its change-log part is amended by the plugins design (PR #217) |
+| [Workbench (`netstead app`)](2026-10-02-netstead-workbench-design.md) | design | 10-02 | accepted; P0, P1a, P1b implemented | #211, #212 | next: plugins Part 1, then P2 validate + edit (core only; plan in flight). Its change-log part is superseded by the plugins design: ProjectCards move to the cards plugin |
+| [Workbench plugins](2026-10-05-workbench-plugins-design.md) | design | 10-05 | accepted | — (recorded in #217) | entry-point plugin API (`netstead.workbench.plugins`); core owns the network nouns; the in-core `changes/` package is superseded |
 | [NL providers (Anthropic / OpenAI / Gemini / Ollama)](2026-10-02-nl-providers-design.md) | design | 10-02 | implemented | #211 | `qwen3:4b` default not yet tested live |
 
 ### Implementation plans
@@ -68,6 +69,7 @@ architecture.md and this index in the same PR.
 | [Workbench P1a: Open / Import wizard](2026-10-02-workbench-p1a-plan.md) | Workbench design | implemented | #211 |
 | [Workbench P1b: inspect + settings](2026-10-05-workbench-p1b-plan.md) | Workbench design | implemented | #212 |
 | [NL providers](2026-10-02-nl-providers-plan.md) | NL providers design | implemented | #211 |
+| [Workbench plugins Part 1: Python plugin core](2026-10-05-workbench-plugins-p1-plan.md) | plugins design | accepted; not started | — |
 
 ### Scopes
 
@@ -86,6 +88,8 @@ These records exist on branches. Add them to the tables above when they merge.
 | `2026-10-05-workbench-plugins-design.md` — entry-point plugin API (`netstead.workbench.plugins`), core owns network nouns, ProjectCard editing moves to an external plugin repo | design | #222 (Part 1); Part 2 PR pending | accepted; Parts 1 and 2 implemented. **Amends the Workbench design:** the in-core `changes/` package it planned is superseded; core stays card-agnostic |
 | `2026-10-05-workbench-plugins-p1-plan.md` — Part 1, Python plugin core | plan | #222 | implemented (#222) |
 | `2026-10-08-workbench-plugins-p2-plan.md` — Part 2, front-end slots: the `activate(wb)` loader, workspace tabs, the dock (today's right drawer), commands (palette, map feature, table row, selection), the map layer registry, `wb.schemaForm`, Settings → Plugins | plan | branch `feat/workbench-plugins-p2` | implemented (PR pending); its 10 open questions decided 2026-10-10. Builds on Part 1 (#222); P2's drawer tabs register into its dock |
+| `2026-10-07-workbench-p2-plan.md` — Workbench P2: validate + edit, **core only** (validation job and Issues tab; cell edits and the fix editor through `Session.mutate`; live, non-blocking schema warnings; cascading deletes; undo; Save a copy; Host API 1.1) | plan | branch `feat/workbench-p2` | proposed; open questions all decided 2026-10-08. **Depends on plugins Part 1** (Part 1 first, then P2) |
+| `2026-10-07-cards-plugin-scope.md` — the external ProjectCard "cards" plugin: Host API requirements, the user's decisions (required `projectcard` dependency, schema change-type names, value rules, provenance in notes), schema facts, lowering onto core edits, undo, the GMNS ↔ Wrangler mapping | scope | branch `feat/workbench-p2` | proposed; `ignore_missing` defaults and importing the offline report's edit log are pending with the user |
 
 ## Gaps to close
 
