@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from pathlib import Path
+from typing import Any
 
 import typer
 
@@ -25,7 +26,7 @@ def run_workbench(
 ) -> None:
     """Build a session from settings + flag overrides, open ``sources``, and serve it (blocks)."""
     from netstead import workbench
-    from netstead.config import SettingsError
+    from netstead.config import SettingsError, load_settings
     from netstead.workbench.actions import OpenNetwork
     from netstead.workbench.errors import PathNotAllowed
     from netstead.workbench.paths import allowed_roots, is_allowed, local_locator, split_source
@@ -37,7 +38,7 @@ def run_workbench(
         "app.host": host,
         "app.port": port,
     }
-    overrides = {k: v for k, v in flags.items() if v is not None}
+    overrides: dict[str, Any] = {k: v for k, v in flags.items() if v is not None}
     to_open: list[str] = []
     trusted: list[str] = []  # local paths named on the command line (candidates for io.allowed_roots)
     for source in map(str, sources):
@@ -52,13 +53,14 @@ def run_workbench(
         trusted.append(path)
         to_open.append(local_locator(source, path))  # keeps a duckdb:// format hint
     try:
-        session = workbench.Session(overrides=overrides)
         # Sources named on the command line are trusted: allow exactly those paths for this session.
-        extra = [p for p in trusted if not is_allowed(p, session.settings)]
+        # Widen the roots *before* building the one Session, so plugins are discovered and loaded once.
+        settings = load_settings(overrides=overrides).settings
+        extra = [p for p in trusted if not is_allowed(p, settings)]
         if extra:
-            roots = [str(r) for r in allowed_roots(session.settings)] + extra
-            session = workbench.Session(overrides={**overrides, "io.allowed_roots": roots})
+            overrides["io.allowed_roots"] = [str(r) for r in allowed_roots(settings)] + extra
             typer.echo(f"note: allowing {', '.join(extra)} for this session (io.allowed_roots)", err=True)
+        session = workbench.Session(overrides=overrides)
     except SettingsError as exc:
         typer.echo(f"error: {exc}", err=True)
         raise typer.Exit(2) from exc
