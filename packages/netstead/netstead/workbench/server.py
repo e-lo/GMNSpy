@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+from dataclasses import replace
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -11,6 +13,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 
+from .plugins import HOST_API
 from .routes.core import core_router
 from .routes.io import io_router
 from .routes.llm import llm_router
@@ -18,6 +21,8 @@ from .routes.network import network_router
 from .session import Session
 
 __all__ = ["STATIC_DIR", "build_app", "is_loopback_host"]
+
+logger = logging.getLogger(__name__)
 
 STATIC_DIR = Path(__file__).parent / "static"
 
@@ -115,9 +120,43 @@ def build_app(session: Session) -> FastAPI:
     app.include_router(network_router(session))
     # Key writes are refused on an exposed bind: there is no auth beyond the loopback guard (design T10).
     app.include_router(llm_router(session, allow_key_writes=is_loopback_host(session.settings.app.host)))
+    _mount_plugins(app, session)
+
+    @app.get("/api/plugins")
+    def plugins() -> dict:
+        return {"host_api": HOST_API, "plugins": [s.to_dict() for s in session.plugin_status]}
 
     @app.get("/", response_class=HTMLResponse)
     def index() -> str:
         return (STATIC_DIR / "index.html").read_text(encoding="utf-8")
 
     return app
+
+
+def _mount_plugins(app: FastAPI, session: Session) -> None:
+    """Mount each loaded plugin's router (``/api/plugins/<id>``) and static dir (``/plugins/<id>``).
+
+    Both sit behind the same Host-header and Origin guards as every core route (the middleware wraps
+    the whole app). Both are built before either is attached, so a plugin is mounted whole or not at
+    all: a router factory that raises, or a ``static_dir`` that isn't a directory, marks that plugin
+    ``error`` in ``session.plugin_status``. Its Actions stay registered (Python and replays still
+    work), but the browser won't load its front end.
+    """
+    for index, status in enumerate(session.plugin_status):
+        plugin = session.plugins.get(status.id)
+        if plugin is None or status.state != "loaded":
+            continue
+        try:
+            static = StaticFiles(directory=plugin.static_dir) if plugin.static_dir is not None else None
+            router = plugin.router(session._hosts[plugin.id]) if plugin.router is not None else None
+        # boundary: third-party code must not stop the app (not even with ``sys.exit``)
+        except (Exception, SystemExit) as exc:
+            logger.exception("mounting workbench plugin %r failed", plugin.id)
+            session.plugin_status[index] = replace(
+                status, state="error", error=f"{type(exc).__name__}: {exc}", frontend=None
+            )
+            continue
+        if router is not None:
+            app.include_router(router, prefix=f"/api/plugins/{plugin.id}")
+        if static is not None:
+            app.mount(f"/plugins/{plugin.id}", static, name=f"plugin-{plugin.id}")
