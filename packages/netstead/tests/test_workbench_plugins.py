@@ -322,3 +322,40 @@ def test_a_plugin_previews_an_edit_on_a_derived_network(make_session, rdu_source
     summary = next(n for n in session.state()["networks"] if n["id"] == preview)
     assert summary["derived_from"] == "rdu-i40" and summary["lineage"] == ["edit: preview", f"edit: widen {first}"]
     assert session.registry.get("rdu-i40").version == 0
+
+
+# ---------------------------------------------------------------------------- a real entry point
+
+_FAKE_PLUGIN = """
+from typing import Literal
+from netstead.workbench.plugins import HOST_API, ActionSpec, BaseAction, WorkbenchPlugin
+
+
+class Ping(BaseAction):
+    type: Literal["fake.ping"] = "fake.ping"
+
+
+def plugin():
+    return WorkbenchPlugin(id="fake", name="Fake", version="0.1", requires_api=HOST_API,
+                           actions=(ActionSpec(Ping, lambda host, action: "pong"),))
+"""
+
+
+def test_installed_entry_point_is_discovered_by_default(tmp_path, isolated_env, monkeypatch):
+    site = tmp_path / "site"
+    dist = site / "netstead_fake_plugin-0.1.dist-info"
+    dist.mkdir(parents=True)
+    (site / "netstead_fake_plugin.py").write_text(_FAKE_PLUGIN, encoding="utf-8")
+    (dist / "METADATA").write_text(
+        "Metadata-Version: 2.1\nName: netstead-fake-plugin\nVersion: 0.1\n", encoding="utf-8"
+    )
+    (dist / "entry_points.txt").write_text(
+        "[netstead.workbench.plugins]\nfake = netstead_fake_plugin:plugin\n", encoding="utf-8"
+    )
+    monkeypatch.syspath_prepend(str(site))
+    monkeypatch.delitem(__import__("sys").modules, "netstead_fake_plugin", raising=False)
+
+    session = Session(project_dir=tmp_path, environ=isolated_env, parser=StubParser())  # plugins=None: discover
+    assert _status(session, "fake").state == "loaded"
+    assert session.dispatch({"type": "fake.ping"}) == "pong"
+    assert session.history[-1].imports == "from netstead_fake_plugin import Ping"
