@@ -1237,3 +1237,38 @@ def test_a_failing_command_toasts_every_run_but_is_listed_once(node_module, tmp_
             {"phase": "command hello.c", "message": "w"},
         ]
     }
+
+
+# Final review (I-3): while a project file or NETSTEAD_* variable sets app.disabled_plugins, the switches (which save
+# the user value it outranks) are disabled and the note says where to change it.
+def test_plugin_switches_are_disabled_while_a_higher_layer_sets_the_list(node_module, tmp_path):
+    paths = {"user": "/home/u/.config/netstead/config.toml", "project": "/work/netstead.toml"}
+    got = node_module(
+        "pluginlist.js",
+        ["pluginsLock", "pluginRows", "pluginRowHTML"],
+        f"""(() => {{
+          const paths = {json.dumps(paths)};
+          const notes = ["default", "user", "project", "env", "session"].map(s => pluginsLock(s, paths));
+          const statuses = [{{id: "hello", name: "<b>Hi</b>", version: "1", requires_api: null, state: "loaded"}}];
+          const locked = pluginRows({{statuses, hostApi: "1.1", disabled: [], locked: true}});
+          const open = pluginRows({{statuses, hostApi: "1.1", disabled: []}});
+          return {{notes, locked: [locked[0].locked, pluginRowHTML(locked[0])],
+                   open: [open[0].locked, pluginRowHTML(open[0])]}};
+        }})()""",
+    )
+    assert got["notes"][:2] == [None, None]
+    assert got["notes"][2] == (
+        "Which plugins load is set by the project file /work/netstead.toml (app.disabled_plugins): change it there."
+        " The switches are off while it is set."
+    )
+    assert got["notes"][3] == (
+        "Which plugins load is set by the NETSTEAD_APP__DISABLED_PLUGINS environment variable: change it there."
+        " The switches are off while it is set."
+    )
+    assert "set for this session" in got["notes"][4]
+    locked, html = got["locked"]
+    assert locked is True
+    assert ' disabled aria-describedby="plugins-note"' in html
+    assert "&lt;b&gt;Hi&lt;/b&gt;" in html and "<b>Hi</b>" not in html  # plugin strings are escaped
+    assert got["open"][0] is False
+    assert "disabled" not in got["open"][1] and "aria-describedby" not in got["open"][1]

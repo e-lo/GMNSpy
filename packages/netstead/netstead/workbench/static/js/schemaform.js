@@ -3,8 +3,8 @@
 // Import-free and DOM-free: unit-tested under node (tests/test_workbench_slots_js.py).
 
 const ESC = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
-// dom.js's `esc`, repeated because a pure module can't import dom.js.
-const esc = v => String(v).replace(/[&<>"']/g, c => ESC[c]);
+// dom.js's `esc`, repeated because a pure module can't import dom.js (pluginlist.js uses this one).
+export const esc = v => String(v).replace(/[&<>"']/g, c => ESC[c]);
 
 // A `$ref` node -> its definition, with the node's own keys (a field's default, description, title) on top.
 export function resolveRef(schema, node) {

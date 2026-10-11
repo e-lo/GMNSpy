@@ -525,11 +525,11 @@ To turn a plugin off without uninstalling it:
 disabled_plugins = ["hello"]
 ```
 
-Or switch it off in **Settings → Plugins**, which saves `app.disabled_plugins` in your user config (the
-section says so when a project file or a `NETSTEAD_*` variable sets it instead, since that value wins).
-`app.disabled_plugins` is read at startup, so restart `netstead app` after changing it; the row says
-"restart to apply" until then. Dispatching
-an Action of a plugin that isn't loaded fails like any unknown Action type (HTTP 422).
+Or switch it off in **Settings → Plugins**, which saves `app.disabled_plugins` in your user config.
+When a project file or `NETSTEAD_APP__DISABLED_PLUGINS` sets it instead, that value wins: the switches
+are disabled and the section names the file or variable to change. `app.disabled_plugins` is read at
+startup, so restart `netstead app` after changing it; the row says "restart to apply" until then.
+Dispatching an Action of a plugin that isn't loaded fails like any unknown Action type (HTTP 422).
 
 ## Versioning
 
