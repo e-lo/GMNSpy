@@ -1,6 +1,6 @@
 # Workbench P2 (Validate + Edit) Implementation Plan
 
-Status: **proposed** (branch `feat/workbench-p2`) · Date: 2026-10-07 · Owner: Elizabeth Sall
+Status: **proposed** (branch `feat/workbench-p2`) · Date: 2026-10-07 · Refreshed: 2026-10-10 · Owner: Elizabeth Sall
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -12,25 +12,40 @@ Status: **proposed** (branch `feat/workbench-p2`) · Date: 2026-10-07 · Owner: 
 > The ProjectCard research is kept in [the cards plugin scope](2026-10-07-cards-plugin-scope.md); see
 > [Moved to the cards plugin](#moved-to-the-cards-plugin).
 
-## Depends on plugin Part 1 (read this first)
+> **Refreshed 2026-10-10 against Plugins Parts 1 and 2 as built.** Tasks 5 onward were first written against the
+> Part 1 *plan* and the pre-Part-2 front end. They are rewritten here against the code on
+> `feat/workbench-plugins-p2` (Part 1 is merged as #222; Part 2 is PR #223). What changed, in short:
+> - `Session.mutate` (as built) edits a copy-on-write draft and swaps it in; a failing Action rolls back through
+>   `Session._undo`. P2's pending-edit ledger joins that rollback, and P2 adds `Session.revert` (the swap run
+>   backwards) under `undo_last`. The ledger's `source` comes from Part 1's `origin` argument; no new `source=`.
+> - A `mutate` outside any Action is already recorded as a non-replayable entry; P2 records its pending edit as
+>   source `"python"`, and a revert outside an Action the same way (`python.revert`).
+> - The stored selection now follows an edit (new Task 6).
+> - Host additions move to their own task (Task 7) and bump `HOST_API` from Part 2's 1.1 to **1.2**.
+> - New core Actions keep "copy session as Python" byte-identical for old sessions: the script header line is frozen
+>   at the nine pre-P2 Actions, and each new core Action brings its own import line (Task 8).
+> - The front end registers through Part 2's slots: the Issues and Edits panels through `addPanel` with badges, issue
+>   markers through `addLayer`, Edit/Delete/Fix/Undo/Run validation/Save a copy through the commands registry and the
+>   palette, and the record editor through `schemaForm` (Tasks 13–17).
+> Tasks 1–4 are unchanged: nothing they touch changed in Parts 1–2 (re-run, see the honesty note).
 
-**Plugin Part 1 comes first, then P2** (decided 2026-10-08). P2 builds **on**
-[plugins Part 1](2026-10-05-workbench-plugins-p1-plan.md), which is not implemented yet. Start P2 only after Part 1
-has merged to `main`. P2's Actions register on Part 1's Action registry, and its edits go through `Session.mutate`
-(what `Host.mutate` calls); plugins preview through `Host.derive`. P2 uses these Part 1 pieces as written there:
+## Built on Plugins Parts 1 and 2 (read this first)
 
-| Part 1 piece (task) | What P2 does with it |
+**Plugin Part 1, then Part 2, then P2** (decided 2026-10-08 and 2026-10-10). P2 starts from Part 2's branch tip, or
+from `main` once #223 has merged. It uses these pieces, as built:
+
+| Piece (as built) | What P2 does with it |
 |---|---|
-| `BaseAction`, `CORE_ACTIONS`, per-session `ActionRegistry` (Task 1) | P2's six Actions subclass `BaseAction` and are **appended to `CORE_ACTIONS`**. Nothing is added to the closed `Action` union. |
-| Handler table `Session._handlers`, built from `_do_<type>` for core (Task 2) | P2's handlers are `_do_<type>` / `_job_<type>` methods, so the table picks them up with no registration code. |
-| `HistoryEntry.imports` and `history.js` building imports from entries (Tasks 2–3) | "Copy session as Python" covers the new Actions with no front-end change. |
-| `Session.mutate(net_id, edits, *, note)` (Task 8) | Every P2 edit goes through it. P2 extends it with a `source` and a pending-edits ledger (Task 5). |
-| `Session.derive` / `derived_copy` (Tasks 7–8) | Not used by P2 core edits (see Decision 3). |
-| `Host` (Task 9): `selection`, `mutate`, `derive`, `writable` | P2 adds the facility form to `host.selection` (Task 2), passes `source` through `host.mutate`, and adds `undo`, `edit_warnings` and `plan_*` (Task 5, `HOST_API` 1.0 → 1.1). |
-
-There is no "P2 first" path in this plan. (Landing P2 first would mean adding its Actions to the closed union,
-copying Part 1's `Session.mutate` into P2, and moving the Host additions into Part 1; that was considered and
-rejected on 2026-10-08.)
+| `BaseAction`, `CORE_ACTIONS`, per-session `ActionRegistry` (`actions.py`) | P2's six Actions subclass `BaseAction` and are **appended to `CORE_ACTIONS` and to the `Action` union** (Decided (recommendation) 2026-10-10, below). |
+| `Session._handlers` built from `_do_<type>`; job Actions run `_job_<type>` (`Session.submit`) | P2's handlers are `_do_<type>` / `_job_<type>` methods: no registration code. |
+| `HistoryEntry.imports`, `import_line`, `script_imports` (`routes/core.py` `/api/history`), `history.js` `sessionScript` | New core Actions import from `netstead.workbench`; `script_imports` keeps the pre-P2 header line (Task 8). |
+| `Session.mutate(net_id, edits, *, note, origin=None)`: edits a `derived_copy` draft, swaps with `NetworkHandle.replace_tables`, pushes a `_Mutated` undo record inside an Action, records `<origin>.mutate` outside one | Every P2 edit goes through it. P2 adds `recheck=`, the pending-edit ledger and its undo record, live re-checks and the selection rule (Tasks 5–6). |
+| Dispatch-level rollback (`Session._running`, `Session._undo`, `_roll_back`) | A failed Action also undoes its pending edits (`_LedgerMark`, Task 5). |
+| `Session.network`, `selection_copy`, `derive` | Routes and Host read through `network`; `derive` stays the plugins' preview tool (Decision 3). |
+| `Host` (`plugins/host.py`): `selection`, `network`, `mutate` (passes `origin=plugin id`), `derive`, `dispatch`, `writable` | P2 adds `undo`, `edit_warnings`, `plan_update/plan_delete/plan_add` (Task 7, `HOST_API` 1.1 → **1.2**). |
+| `describe_error`, `scrub` (`redact.py`) | Plugin failures stay scrubbed; `SaveNetwork` scrubs corral's warning text. |
+| Tests: `make_session` / `make_hello` (`test_workbench_plugins.py`), the autouse `_no_installed_workbench_plugins` fixture, `@pytest.mark.plugin_discovery` | P2's sessions pass `plugins=[]` (or a test plugin); none needs real discovery. |
+| Part 2 slots: `addPanel` / `showPanel` / `renderStrips` (`workspaces.js`), `addLayer` (`map.js`), `addCommandTo` + `runCommand` + `commandContext` (`commands.js`), `slots` / `CORE` / `ALL_WORKSPACES` (`slots.js`), `schemaForm` (`formview.js`), `networkBadge` (`tabs.js`) | The Issues and Edits panels, the issue layer, P2's commands, the record editor, and the switcher badge (Tasks 14–17). |
 
 ---
 
@@ -43,7 +58,7 @@ Every question this plan raised is decided. None is open.
   Workbench: cell edits in the table, and the fix editor launched from an issue or from Details. An edit that the
   spec disagrees with (a foreign key not in the referenced table, a required field left empty, a wrong type or a
   value outside the enum, a duplicate primary key) is **applied** and shown as an edit warning on the cell, the row
-  and the Issues tab, so the user can go and fix it. Only what the storage cannot hold is refused (Decision 1).
+  and the Issues panel, so the user can go and fix it. Only what the storage cannot hold is refused (Decision 1).
 - **Save writes a new copy.** Edits live on the open handle, in memory; the source (a local folder or `s3://…`) is
   never written. `SaveNetwork` writes a **new** copy inside `io.allowed_roots`, never overwrites, and reports
   corral's `OutOfSyncWarning` as text. Before saving, the outstanding warnings are shown; while any remain, saving
@@ -55,15 +70,16 @@ Every question this plan raised is decided. None is open.
 - `UndoEdit` reverses the network's **last** pending edit (LIFO, one per click). It is recorded in history like any
   Action, so a replayed session reproduces the same network.
 - Core undoes only core edits. When the last change came from a plugin (`host.mutate`), core's Undo is refused with
-  the plugin's name ("undo it in cards"); the plugin undoes its own through `host.undo` (Task 5). This keeps a
+  the plugin's name ("undo it in cards"); the plugin undoes its own through `host.undo` (Task 7). This keeps a
   plugin's state (a draft card) in step with the network.
 - No redo: re-applying is re-dispatching the `EditCells` shown in the history strip.
 
 **(b) Add and delete. Decided 2026-10-08:** delete a link in the UI; add rows from Python and the API only.
-- **Delete** is in Details and the fix editor. Deleting a link cascades to the rows that depend on it through the
-  spec's foreign keys (`lane`, `link_tod`, then their own dependents), as one undoable edit. Before anything is
-  removed, a confirmation shows what will go (`POST …/table/{name}/delete-plan`: rows per table). Deleting a node
-  that a link still references is refused, naming the links.
+- **Delete** is in Details, the fix editor, and the map feature / table row context menus. Deleting a link cascades
+  to the rows that depend on it through the spec's foreign keys (`lane`, `link_tod`, then their own dependents), as
+  one undoable edit. Before anything is removed, a confirmation shows what will go
+  (`POST …/table/{name}/delete-plan`: rows per table). Deleting a node that a link still references is refused,
+  naming the links.
 - **Add** is `AddRows`, from Python and the API, for any table with a primary key. There is no draw tool. Added links
   without geometry draw as straight lines between their nodes (`viz/buffers` already falls back to node
   coordinates).
@@ -72,37 +88,82 @@ Every question this plan raised is decided. None is open.
 - **Live, per edit:** after every mutation the session checks the rows edits have touched (by key) against the
   spec: foreign key, required, type and enum, duplicate primary key (Task 4). These edit warnings are always current.
 - **The full validation and quality run** (`RunValidation`) is marked **stale** when the network version moves past
-  the one it ran on. The Issues tab says so and offers a manual **Re-run** button. Export report is refused until
+  the one it ran on. The Issues panel says so and offers a manual **Re-run** button. Export report is refused until
   it is re-run. There is no automatic re-run.
 
-**(d) Sequencing. Decided 2026-10-08:** plugin Part 1 first, then P2 (see
-[Depends on plugin Part 1](#depends-on-plugin-part-1-read-this-first)).
+**(d) Sequencing. Decided 2026-10-08, extended 2026-10-10:** plugin Part 1, then Part 2, then P2 (see
+[Built on Plugins Parts 1 and 2](#built-on-plugins-parts-1-and-2-read-this-first)).
+
+**Decided (recommendation) 2026-10-10** (made while refreshing the plan against the built code; each is the
+recommended answer, recorded so the user can see and overturn it):
+- **R1. `Session.revert` is the undo primitive.** `revert(net_id, results, *, note, origin=None)` reverses the
+  network's newest pending edit on a copy-on-write draft and swaps it in, exactly as `mutate` swaps edits in: the
+  version is bumped, the lineage records the note, state is published, a failing Action rolls it back, and outside an
+  Action it is recorded as a non-replayable `<origin>.revert` entry. It refuses anything but the newest pending
+  edit's results (corral reverses an edit against the table that edit left). `undo_last(net_id, *, source)` finds
+  that entry, checks its source, and calls `revert`; `UndoEdit` and `host.undo` call `undo_last`. *Why:* the
+  in-place `reverse_edit` + `bump()` that Part 1's test uses skips the undo record, the lineage and the publish.
+- **R2. The pending-edit ledger records the results it reverses.** `mutate` does not write history (the calling
+  Action does), so each mutation's `EditResult`s go into the network's ledger entry. `UndoEdit` locates them there;
+  nothing is stored on the history entry. The ledger joins the dispatch-level rollback (a snapshot undo record), so a
+  failed Action leaves no pending edit behind.
+- **R3. The ledger's source comes from Part 1's `origin`.** A plugin's `host.mutate` passes its id; a core Action's
+  `mutate` (inside an Action, no origin) is `"workbench"`; a `mutate` outside any Action is `"python"`, matching the
+  `python.mutate` history entry Part 1 writes. Core's Undo undoes `"workbench"` entries only; Python can undo its own
+  with `session.undo_last(net_id, source="python")`.
+- **R4. The selection follows an edit.** After every `mutate` and `revert` on the selected network: a selection made
+  by a **query** (an utterance, whose parsed intent the payload now keeps as `intent`) is resolved again on the
+  edited network; a selection made by **ids** (clicks, "Set as selection") keeps its ids minus any link that no longer
+  exists, and becomes no selection when none is left. This replaces the first draft's Decision 15 ("a deletion clears
+  a selection that includes a deleted link"). It is deterministic, so a replayed session agrees, and a failed Action
+  restores the old selection through Part 1's rollback.
+- **R5. New core Actions join `CORE_ACTIONS` *and* the `Action` union.** `parse_action` returns an `Action` and the
+  core registry parses every `CORE_ACTIONS` member, so the union must list them too (Part 1's test pins the two
+  equal). Plugin Actions still never join the union.
+- **R6. The script header stays frozen at the nine pre-P2 Actions.** `script_imports` heads every script with
+  `from netstead.workbench import Session, OpenNetwork, …, SetSetting`, byte for byte as today; a later core Action
+  that a session used adds one `from netstead.workbench import <Name>` line after it, once.
+- **R7. Issues and Edits are dock panels in every workspace** (`workspace: "*"`, like Details), not only Inspect: a
+  plugin's Edit workspace changes the same network, so its warnings and undo stay in view. Their badges read the
+  server state (`issues`, `edits`), so they refresh with every `state` event. Hiding the issue markers is Part 2's
+  Overlays switch (`hiddenLayers`), replacing the first draft's `showIssues` toggle.
+- **R8. Record edits and deletes are context commands.** Core registers `edit_record` ("Edit…") and
+  `delete_record` ("Delete…") for the `feature` and `row` contexts, and the palette commands `fix_issue`,
+  `undo_edit`, `run_validation` and `save_copy`; the Issues panel's Fix button runs `fix_issue` through
+  `runCommand`. With these registered, a right-click on a link, a node or a keyed row always opens a menu (Part 2's
+  rule: a menu opens when a command applies).
+- **R9. The record editor is a `schemaForm`.** Details → Edit… (and the `edit_record` command) shows a generated form
+  over the record's editable columns and sends one `EditCells` with only the changed values; the fix editor (from an
+  issue) is the same form narrowed to the issue's column. Types come from the table schema (`num`, `bool`, `str`);
+  the server still coerces and refuses (Decision 1).
+- **R10. `HOST_API` goes to 1.2** (Part 2 took 1.1): `Host.undo`, `Host.edit_warnings` and `Host.plan_*` are new
+  plugin API.
 
 ---
 
 **Goal:** Validate a network in the Workbench and fix what it finds by editing its tables directly.
 - **Validate.** "Run validation" runs `Network.validate` plus the quality rules as a background job, with the rule
-  config from Settings → `validation.rules`. An **Issues** drawer tab links issue ↔ map marker ↔ table row. It
+  config from Settings → `validation.rules`. An **Issues** dock panel links issue ↔ map marker ↔ table row. It
   filters by severity, table and code, and lists unlocated issues separately. An edit marks the result stale;
   one click re-runs it. **Export report** downloads the existing `render_validation_html` page.
-- **Edit.** Cell edits in the data table (double-click a cell), and the offline report's "Fix locally" editor,
-  ported to an ES module and launched from an issue or from Details. Each edit is a recorded Action (`EditCells`,
-  `DeleteRows`, `AddRows`) applied through `Session.mutate` as corral `Edit`s (`update_rows`, `delete_rows`,
-  `add_rows`): recorded in history, with a network version bump and a lineage entry.
+- **Edit.** Cell edits in the data table (click a cell of the focused row), the record editor (Details → Edit…, or
+  Edit… on a feature or row), and the fix editor launched from an issue. Each edit is a recorded Action
+  (`EditCells`, `DeleteRows`, `AddRows`) applied through `Session.mutate` as corral `Edit`s (`update_rows`,
+  `delete_rows`, `add_rows`): recorded in history, with a network version bump and a lineage entry.
 - **Live warnings.** After each edit, the touched rows are checked against the spec. Warnings show on the cell, the
-  row and the Issues tab, and never block.
-- **Pending edits.** An **Edits** drawer tab lists the pending edits (with their source: the Workbench or a
-  plugin), **Undo last**, the open warnings, and **Save a copy**. A dirty badge marks unsaved edits on the tab and in
-  the network switcher (plugins design, UX principle 7).
+  row and the Issues panel, and never block.
+- **Pending edits.** An **Edits** dock panel lists the pending edits (with their source: the Workbench, Python or a
+  plugin), **Undo last**, the open warnings, and **Save a copy**. A dirty badge marks unsaved edits on the panel tab,
+  the workspace tab and in the network switcher (plugins design, UX principle 7).
 
 **Architecture:**
 - **Edit planning is pure.** `workbench/editing.py` turns a request into an `EditPlan` (corral `Edit`s, a summary,
   rows per table) and refuses only what the storage cannot hold. `workbench/editcheck.py` checks rows against the
   spec. Neither mutates.
-- **One mutation path.** Every edit, core or plugin, goes through `Session.mutate`. P2 extends it: each mutation
-  becomes a `PendingEdit` in the network's `EditLedger` (with its `source`, note, corral results and touched keys),
-  and the live checks re-run over every key the ledger has touched, so a later edit that fixes a foreign key clears
-  the earlier warning. `Session.undo_last` reverses the last entry (corral `reverse_edit`, LIFO).
+- **One mutation path, and its mirror.** Every edit, core or plugin, goes through `Session.mutate`; every undo through
+  `Session.revert`. Both swap a draft in (`_swap`), add or drop a `PendingEdit` in the network's `EditLedger`, re-run
+  the live checks over every key the ledger has touched (so a later edit that fixes a foreign key clears the earlier
+  warning), move the selection (R4), then publish or record (`_settle`).
 - **Validation is a job**, like Open and Build. `Session._commit` is generalised: a job returns an *outcome* with a
   `commit(session)` method (`_Loaded`, `_Validated`, `_Saved`), still committed and recorded in one critical
   section.
@@ -110,17 +171,22 @@ Every question this plan raised is decided. None is open.
   the table order it read, at that version. `locate_issues` turns positions into primary keys and an `anchor`
   (`{"link": id}`, `{"node": id}` or `{"lonlat": [x, y]}`). The browser places anchors from the network buffer it
   has already decoded.
-- **Host API 1.1** (additive): `host.selection` carries the ProjectCard facility form; `host.mutate` records its
+- **Host API 1.2** (additive): `host.selection` carries the ProjectCard facility form; `host.mutate` records its
   plugin as the source; `host.undo`, `host.edit_warnings` and `host.plan_update/plan_delete/plan_add` let the cards
   plugin lower card changes onto core edits with core's refusal rules.
 - New read-only routes, none recorded: `GET …/issues`, `…/issues/markers`, `…/report.html`, `…/edits`, and
   `POST …/table/{name}/delete-plan`.
-- Front end:
-  - the right drawer gains tabs: **Details | Issues | Edits**;
+- Front end, on Part 2's slots:
+  - the dock gains two core panels, **Issues** and **Edits** (`addPanel`, badges from the server state), beside
+    Details;
+  - issue markers are a core layer in the layer registry (`addLayer(CORE, "roadway", "issues", …)`), listed under
+    Layers → Overlays;
+  - Edit…, Delete…, Fix the picked issue…, Undo last edit, Run validation and Save a copy… are registered commands
+    (feature / row context menus and the palette);
   - an edit (same network id, new version) keeps the focus, highlights, table, page and scope, instead of resetting
     them the way a network switch does;
   - pure rules live in import-free `issuelist.js` and `editmodel.js`, unit-tested under node;
-  - DOM wiring lives in `issues.js`, `fixeditor.js`, `edits.js` and `table.js` (cell editing).
+  - DOM wiring lives in `issues.js`, `fixeditor.js`, `edits.js`, `editcmds.js` and `table.js` (cell editing).
 
 **Tech Stack:**
 - Python 3.11, pydantic v2, FastAPI.
@@ -134,69 +200,84 @@ Every question this plan raised is decided. None is open.
   superseded by the plugins design.
 - [2026-10-05-workbench-plugins-design.md](2026-10-05-workbench-plugins-design.md): UX principles 1 (core owns the
   network nouns), 3 (nothing mutates silently), 4 (everything is an Action) and 7 (dirty state is visible); `Host`.
+- [2026-10-08-workbench-plugins-p2-plan.md](2026-10-08-workbench-plugins-p2-plan.md), "What P2 changes": the dock,
+  layer and command slots P2 registers into.
 
-**Branch:** `feat/workbench-p2`, cut from `main` after plugins Part 1 has merged.
+**Branch:** `feat/workbench-p2` holds this plan. The implementation gets `feat/workbench-p2-impl`, cut from Part 2's
+tip (`origin/feat/workbench-plugins-p2`) or from `main` once #223 has merged.
 
 **Conventions:**
 - Run commands from the repo root.
 - **Tiered tests:**
   - while iterating, the task's own paths: `uv run --all-extras pytest <paths> -q`;
   - before every commit: `uv run --all-extras pytest packages -n auto -q` (the fast default tier);
-  - before merge, once, in Task 16: `uv run --all-extras pytest packages -n auto -q -m ""` (everything, including
+  - before merge, once, in Task 18: `uv run --all-extras pytest packages -n auto -q -m ""` (everything, including
     `slow` and `perf`).
-- Lint: `uv run ruff check packages && uv run ruff format --check packages`. Task 16 also runs `uv run lint-imports`
+- Lint: `uv run ruff check packages && uv run ruff format --check packages`. Task 18 also runs `uv run lint-imports`
   and `uv run python scripts/lint_no_sql.py`.
 - Ruff enforces Google-style docstrings (`D`) outside `tests/`, line length 120. `--doctest-modules` is on, so every
   `>>>` example below is a test.
 - Not every snippet below is pre-wrapped to 120 columns. After pasting, run `uv run ruff format <files>`, then the
   check pair.
 - `filterwarnings = error`: a stray warning fails a test. Writing an edited network raises corral's
-  `OutOfSyncWarning`, which Task 9 handles deliberately.
+  `OutOfSyncWarning`, which Task 11 handles deliberately.
 - Never write under `netstead/fixtures` (the conftest guard fails the session). Mutating tests load their own
   network per test and write to `tmp_path`.
+- Sessions in tests pass `plugins=[]` (or a test plugin). The autouse `_no_installed_workbench_plugins` fixture
+  already keeps real entry points out; no P2 test needs `@pytest.mark.plugin_discovery`.
 - Fixtures: **Leavenworth** (`leavenworth.parquet_dir()`: 339 links, 121 nodes, 429 lanes, 1 `link_tod` row, plus
   `geometry`) for anything edit- or validation-shaped; its CSV copy (`leavenworth.csv_dir()`) where a null matters;
   **RDU** (link + node only) where the existing session tests use it. Session tests use the `isolated_env` fixture
   (its allowed roots are `tmp_path` plus the fixture trees).
 - Pure front-end logic goes in import-free modules, tested with the `node_module` fixture (`conftest.py`). DOM
   wiring is covered by the static tests (`test_relative_imports_resolve_to_real_exports`,
-  `test_every_element_id_used_by_js_exists_in_index`, `test_js_syntax`) and by the browser walk-through in Task 16.
+  `test_every_element_id_used_by_js_exists_in_index`, `test_js_syntax`, and Part 2's dock and palette tests) and by
+  the browser walk-through in Task 18.
 - **corral `Table.filter` takes an expression transform, not a predicate.** `table.filter(lambda e:
   e.filter(e.link_id.isin(ids)))` is right; `table.filter(lambda t: t.link_id.isin(ids))` returns a one-column
   table of booleans (probed; the first draft had this bug in its `_rows` helper). A corral `Edit` predicate is the
   other kind: `lambda t: t.link_id.isin(ids)`. `editing.py` has one helper for each (`_where`, `_in`).
-- **Honesty note.** Probed on `main` (`aedc407`) while writing this revision (scripts in the scratchpad, not
-  committed):
-  - **corral `apply_edit` on a lazy table** (Leavenworth parquet and CSV): it reads the whole target table to Arrow,
-    applies the op in an ibis memtable, and swaps `table.expr` for `engine.from_arrow(new)`, an in-memory DuckDB
-    table. Untouched tables stay lazy. A one-row `update_rows` on `link` took 0.02 s warm; `reverse_edit` 0.04 s.
-  - **The undo bug is still on `main`:** `_reverse_update_rows` and `_reverse_add_rows` anti-join with `=`, and
-    `NULL = NULL` is never true. Undoing an edit to CSV link 27 (`name` is null) leaves **two** copies of link 27
-    (339 → 340 rows). An ibis `identical_to` anti-join fixes it. Task 1.
-  - **What corral accepts silently** (so the planner must refuse it first): `update_rows` with `lanes = 1.5` widens
-    the `int64` column to `float64`; `add_rows` with an unknown key adds a new column (`colour`); `add_rows` with an
-    existing `link_id` gives two rows with that key. A text value in a float column raises `IbisTypeError`
-    ("Cannot compute precedence"). Setting `None` clears a cell and keeps the dtype.
-  - **Tasks 3 and 4 were run.** Their modules and tests, as written below, passed against `main` in a scratch copy
-    (Task 3: 35 tests and doctests; Task 4: 21), with Task 1's `affected_rows` and Task 3's `self_refs` shimmed in.
-  - **Live checks:** every Leavenworth `link`, `node`, `lane` and `link_tod` row is clean (0 warnings), so a test
-    edit's warnings are its own. Checking all 339 links took 0.8 s cold. `ctrl_type = "bogus"` on node 1 gives `edit.enum`; `from_node_id = 424242` gives `edit.fk_missing`;
-    `directed = None` gives `edit.required_empty`; adding a second link 1 gives `edit.duplicate_key`.
-  - **Deletion:** `plan_delete(link 1)` deletes 1 `lane` row and the link; reversing both restores 429 lanes and 339
-    links. Deleting node 1 is refused: links 1–4 use it.
-  - Undo moves the restored row to the end of the table (order is not preserved); dtypes are preserved.
-  - Writing an edited network warns `OutOfSyncWarning` ("Package source '…' has 1 stale table(s): …").
-  - `Network.validate()` gives 17 issues on Leavenworth (16 `structural.missing_optional_resource` info, 1
-    `fk.unverifiable` warning), and `run_quality` gives 271 `quality.high_speed_residential` warnings: 288 in all.
-    All quality issues carry `table="link"`, `column="free_speed"` and a row position. Link 1 (`free_speed` 40,
-    residential) is one of them.
-  - Row order: `table.select(pk).to_pandas()` matches `table.to_pandas()` order for link, node and lane in parquet,
-    CSV and zip. Those tables are stored sorted by key, so this check is weak; Task 7 pins it with a test.
-  - Part 1 is **not** on `main`, so the snippets that touch `BaseAction`, `CORE_ACTIONS`, `Session.mutate` and
-    `Host` (Tasks 5–10) are written against the Part 1 plan's code, not run. Task 0 and Task 5's first step check
-    that those names exist as written. The front-end rules in `editmodel.js` were run under node.
-  - The plan as a whole has **not** been executed. Expected results say "pass" plus the new test names, not counts.
-    Where a step fails, fix the plan's code; don't weaken the test.
+- **Honesty note.** Re-probed on 2026-10-10 against Part 2's tip (`7a19a7f`, which contains Part 1 as merged in
+  `a042510`); scripts in the scratchpad, not committed:
+  - **The corral undo bug is still there.** `apply_edit` + `reverse_edit` on CSV link 27 (`name` is null) leaves
+    two copies of link 27 (339 → 340 rows). The same happens through the real `Session.mutate` followed by a
+    prototype of `Session.revert` (reverse on a `derived_copy`, swap with `replace_tables`): v0 → v1 → v2, lineage
+    `["lanes", "undo: lanes"]`, 340 rows. Task 1 fixes it.
+  - **Lazy-table edits** (Leavenworth parquet): `apply_edit` swaps the edited table's expression for an in-memory
+    DuckDB table (`Project` → `DatabaseTable`); untouched tables stay lazy. A one-row `update_rows` on `link` took
+    0.017 s (0.018 s warm); `reverse_edit` 0.028 s.
+  - **What corral accepts silently** (so the planner must refuse it first): `update_rows` with `lanes = 1.5` still
+    widens `int64` to `float64`. The other first-draft findings (an unknown key adds a column; a taken `link_id` is
+    added twice; text in a float column raises `IbisTypeError`) come from code unchanged since `aedc407`.
+  - **Revert through the session prototype** (parquet): a `free_speed` edit and its revert keep 339 rows and the
+    dtype; the restored row moves to the end (position 338). A two-table cascade (`lane` then `link` for link 1)
+    and its revert go 339/429 → 338/428 → 339/429.
+  - **`OutOfSyncWarning`** is still raised when writing an edited network, both a bare `apply_edit`-ed `Network` and
+    the handle after `Session.mutate` ("Package source '…' …"). Opened Leavenworth has no `dirty_tracker`, so the
+    warning comes from the tables' own dirty flags.
+  - **Leavenworth validation:** `Network.validate()` gives 17 issues (16 `structural.missing_optional_resource` info,
+    1 `fk.unverifiable` warning), and `run_quality` adds 271 `quality.high_speed_residential` warnings: **288** in all
+    (272 warnings, 16 info). All quality issues carry `table="link"`, `column="free_speed"` and a row; link 1 is
+    flagged. `Issue` still takes positional `severity, category, code, message` (not keyword-only).
+  - **Tasks 3 and 4 re-run.** Their modules and tests, extracted from this plan, pass against Part 2's tip in a
+    scratch copy (53 tests and doctests), with Task 1's `affected_rows` and Task 3's `self_refs` shimmed in. Nothing
+    they import (`related.py`, `corral.editing`, `select/`) changed since `aedc407`; only `config.py` did (plugin
+    settings).
+  - **Today, an edit leaves the selection stale:** `Select(link_ids=[1, 2])`, then deleting link 1 through
+    `Session.mutate`, leaves `link_ids == [1, 2]` with status `resolved` (R4 fixes it). An utterance selection
+    ("Ski Hill Drive", 20 links) round-trips `payload_from_intent` → `intent_from_payload` exactly and re-resolves to
+    the same ids; after deleting one of them it re-resolves to 19.
+  - **Session state today** has `networks, active, selection, style, plugins`; P2 adds `edits` and `issues`.
+  - **Part 1 facts the snippets rely on, read from the code:** `mutate(..., origin=None)` and `_record_outside_action`;
+    `_Mutated` / `_Derived` undo records and `_roll_back`; `NetworkHandle.replace_tables` / `restore`;
+    `script_imports` builds its header from `CORE_ACTIONS` (hence R6); `test_action_union_and_core_actions_hold_the_same_models_in_order`
+    pins the union to `CORE_ACTIONS` (hence R5); `_RESERVED_NAMES` in `plugins/spec.py` is built from `CORE_ACTIONS`,
+    so plugins can't name a class `EditCells`. Part 2 facts: `addPanel` adopts an existing `#dock-<id>` pane;
+    `badge(ctx)` gets `commandContext` (with `state`); `addLayer` bumps `layerSeq` and lists titled layers under
+    Overlays; core layer factories get the whole store state as `ctx.state`.
+  - The snippets for Tasks 5–17 were written against that code but **not run**; the plan as a whole has not been
+    executed. Expected results say "pass" plus the new test names, not counts. Where a step fails, fix the plan's
+    code; don't weaken the test.
 
 ## Decisions (technical, made here)
 
@@ -212,11 +293,12 @@ Every question this plan raised is decided. None is open.
 3. **No derived networks for core edits.** A cell edit is immediate and undoable, and a deletion's preview is the
    `delete-plan` dry run (rows per table), so a copy-on-write preview network adds a step without adding
    information. `derive` stays the plugins' tool for previews and scenarios (the cards plugin previews a card on a
-   derived network).
-4. **Every mutation is a pending edit, whatever made it.** The ledger records core edits (`source="workbench"`) and
-   plugin mutations (`source=<plugin id>`). Undo is LIFO per network and source-checked (decision a).
+   derived network). (`mutate` itself drafts on a `derived_copy` internally; that is not a registered network.)
+4. **Every mutation is a pending edit, whatever made it.** The ledger records core edits (`"workbench"`), plugin
+   mutations (the plugin id) and Python's (`"python"`) (R3). Undo is LIFO per network and source-checked
+   (decision a).
 5. **Live checks cover whole touched rows**, not just the edited cells (a row is what the spec constrains), and are
-   bounded: at most `MAX_CHECKED_KEYS = 10_000` keys per table; beyond that the Edits tab says the live check was
+   bounded: at most `MAX_CHECKED_KEYS = 10_000` keys per table; beyond that the Edits panel says the live check was
    cut short and suggests Run validation.
 6. **Deletion cascades through the spec's foreign keys**, recursively (link → lane → `lane_tod`), never into `link`
    or `node` (a node a link uses is refused). Self-references (`link.parent_link_id`) are not followed; rows that
@@ -243,10 +325,10 @@ Every question this plan raised is decided. None is open.
 13. **An edit keeps the view:** `linking.netChange(prev, next)` → `same | edited | switched`. Only `switched` resets
     focus, highlights and the table. `edited` refreshes rail counts, rows, related records, details, issues and
     edits in place.
-14. **Issue markers are a store-only layer toggle** ("Issues" in Layers), not a `Style` field. It is per tab and not
-    recorded, like the focus.
-15. **After a deletion, a selection that includes a deleted link is cleared.** It would otherwise point at missing
-    links.
+14. **Issue markers are a core layer with an Overlays switch** (R7): `addLayer(CORE, "roadway", "issues", …,
+    {order: 450, title: "Issues"})`, between the highlights (400) and the focus (500). Hiding it is `hiddenLayers`,
+    per tab and not recorded, like the focus.
+15. **The selection follows an edit** (R4; replaces the first draft's "a deletion clears the selection").
 16. **Saving with open warnings needs `accept_warnings=True`.** The flag is recorded, so a replayed save makes the
     same choice. A save that started at version *v* marks the ledger saved only if the network is still at *v* when
     the copy lands.
@@ -256,10 +338,12 @@ Every question this plan raised is decided. None is open.
 - **In P2:**
   - the corral undo fix;
   - `to_projectcard` `ignore_missing`, and the facility form on the selection payload;
-  - edit planning, live checks, the pending-edits ledger, undo, Host 1.1;
+  - edit planning, live checks, the pending-edits ledger, `Session.revert` / `undo_last`, the selection rule,
+    Host 1.2;
   - `RunValidation`, `EditCells`, `DeleteRows`, `AddRows`, `UndoEdit`, `SaveNetwork`;
   - issues, markers, report, edits and delete-plan routes;
-  - drawer tabs; the Issues tab and markers; cell editing; the fix editor; the Edits tab with the dirty badge;
+  - the Issues and Edits dock panels; the issue layer; P2's commands; cell editing; the record and fix editors; the
+    dirty badges;
   - docs.
 - **Deferred:**
   - redo;
@@ -267,11 +351,13 @@ Every question this plan raised is decided. None is open.
   - editing key columns, geometry, dates and times;
   - transit edits (P6: the Actions take `component` and answer "not yet supported" for `transit`);
   - auto re-validation;
+  - reverting anything but the newest pending edit (R1);
   - a corral `update_rows` that runs as an ibis `mutate` against DuckDB without the Arrow round trip (follow-up;
     see Risks).
 - **Unchanged:**
   - the P1a wizard and jobs (apart from the `_commit` refactor);
   - the P1b linking routes;
+  - Part 2's slots, palette, menus and Settings → Plugins (P2 only registers into them);
   - `map/edits` (the offline report's edit log and `apply_edits`). The Workbench does not import it in P2.
 
 ## Moved to the cards plugin
@@ -286,13 +372,13 @@ decisions the user has made for it, the schema facts and the mapping file are in
 | `DraftCard`, `ChangeLog` (commit, describe), `.yml` export and import, `read_card` | cards plugin (plugin state, `cards.*` Actions) |
 | Vendored projectcard schema, `[projectcard]` extra, `card_errors` / `validate_card` | cards plugin, with `projectcard` as a **required** dependency and its own validator |
 | `changes/mappings/gmns_to_wrangler.yaml` and `FieldMap` | cards plugin (content preserved in the scope) |
-| The Changes drawer tab (card view, commit, export, validate, import) | cards plugin's Edit workspace and dock panel |
+| The Changes drawer tab (card view, commit, export, validate, import) | cards plugin's Edit workspace and dock panel (`wb.registerWorkspace`, `wb.registerPanel`) |
 | Importing a `map/edits` edit-log YAML | cards plugin (pending decision) |
 | `ApplyChange`, `CommitCard`, `ImportCard` Actions | `cards.*` Actions |
 
 What stays in core because the plugin needs it: `to_projectcard` always writing `ignore_missing` and the facility
-form on `host.selection` (Task 2), `host.mutate` with a recorded source, `host.undo`, `host.edit_warnings` and
-`host.plan_*` (Task 5), and `SaveNetwork` (Task 9).
+form on `host.selection` (Task 2), `host.mutate` recording its plugin as the source (Task 5), `host.undo`,
+`host.edit_warnings` and `host.plan_*` (Task 7), and `SaveNetwork` (Task 11).
 
 ## File structure
 
@@ -300,25 +386,25 @@ form on `host.selection` (Task 2), `host.mutate` with a recorded source, `host.u
 |---|---|
 | `packages/corral/corral/editing/apply.py` (modify), `editing/__init__.py` (modify) | Null-safe `_reverse_add_rows` / `_reverse_update_rows`; `affected_rows` |
 | `packages/netstead/netstead/select/emit.py` (modify) | `to_projectcard` always writes `ignore_missing` |
-| `packages/netstead/netstead/workbench/selection.py` (modify) | `projectcard` facility forms on the selection payload |
+| `packages/netstead/netstead/workbench/selection.py` (modify) | `projectcard` facility forms and the `intent` of a query on the selection payload |
 | `packages/netstead/netstead/workbench/related.py` (modify) | `foreign_keys(..., self_refs=True)` |
 | `packages/netstead/netstead/workbench/editing.py` (new) | `EditPlan`, `EditRefused`, `coerce_value`, `editable`, `table_keys`, `plan_update` / `plan_delete` / `plan_add` |
 | `packages/netstead/netstead/workbench/editcheck.py` (new) | `EditWarning`, `CheckResult`, `check_rows`, `touched_keys` |
-| `packages/netstead/netstead/workbench/ledger.py` (new) | `PendingEdit`, `EditLedger` |
+| `packages/netstead/netstead/workbench/ledger.py` (new) | `PendingEdit`, `EditLedger`, `CORE_SOURCE`, `PYTHON_SOURCE` |
 | `packages/netstead/netstead/workbench/issues.py` (new) | `IssueSet`, `rule_configs`, `run_validation`, `locate_issues` |
 | `packages/netstead/netstead/config.py` (modify) | `RuleSettings.severity_override` literal |
-| `packages/netstead/netstead/workbench/actions.py` (modify) | `RunValidation`, `EditCells`, `DeleteRows`, `AddRows`, `UndoEdit`, `SaveNetwork`; appended to `CORE_ACTIONS` |
-| `packages/netstead/netstead/workbench/session.py` (modify) | Ledger in `mutate`, `undo_last`, outcomes, issues/edits state, the new handlers |
-| `packages/netstead/netstead/workbench/plugins/host.py`, `plugins/spec.py` (modify) | `HOST_API = "1.1"`; `undo`, `edit_warnings`, `plan_*`; `mutate` passes its source |
+| `packages/netstead/netstead/workbench/actions.py` (modify) | `RunValidation`, `EditCells`, `DeleteRows`, `AddRows`, `UndoEdit`, `SaveNetwork`; appended to `CORE_ACTIONS` and the `Action` union; frozen script header |
+| `packages/netstead/netstead/workbench/session.py` (modify) | Ledger in `mutate`; `revert`, `undo_last`, `edit_check`; `_swap` / `_settle` / `_LedgerMark`; the selection rule; outcomes; issues/edits state; the new handlers |
+| `packages/netstead/netstead/workbench/plugins/host.py`, `plugins/spec.py`, `plugins/__init__.py` (modify) | `HOST_API = "1.2"`; `undo`, `edit_warnings`, `plan_*`; `EditPlan`, `EditRefused` exported |
 | `packages/netstead/netstead/workbench/build.py` (modify) | `output_path` shared by Build and Save |
 | `packages/netstead/netstead/workbench/routes/common.py` (new) | `network_handle` (shared 404/501 logic) |
 | `packages/netstead/netstead/workbench/routes/edit.py` (new) | `/issues`, `/issues/markers`, `/report.html`, `/edits`, `/table/{name}/delete-plan` |
 | `packages/netstead/netstead/workbench/routes/network.py`, `server.py`, `__init__.py` (modify) | Use `network_handle`; mount `edit_router`; export actions |
-| `packages/netstead/netstead/workbench/static/js/issuelist.js`, `editmodel.js` (new) | Pure rules (node-tested) |
-| `packages/netstead/netstead/workbench/static/js/issues.js`, `fixeditor.js`, `edits.js` (new) | DOM: Issues tab, fix editor, Edits tab |
-| `packages/netstead/netstead/workbench/static/js/{linking,store,main,side,map,table,header}.js`, `index.html`, `app.css` (modify) | Tabs, edit-aware refresh, markers, row and cell marks, cell editing, dirty badge |
+| `packages/netstead/netstead/workbench/static/js/issuelist.js`, `editmodel.js` (new) | Pure rules, badges, the record schema (node-tested) |
+| `packages/netstead/netstead/workbench/static/js/issues.js`, `fixeditor.js`, `edits.js`, `editcmds.js` (new) | DOM: Issues panel and layer, record/fix editor, Edits panel, P2's commands |
+| `packages/netstead/netstead/workbench/static/js/{linking,store,main,side,map,table,header}.js`, `index.html`, `app.css` (modify) | Panels' panes, edit-aware refresh, row and cell marks, cell editing, switcher badge |
 | Tests (new): `test_workbench_editing.py`, `test_workbench_editcheck.py`, `test_workbench_edits.py`, `test_workbench_issues.py`, `test_workbench_edit_routes.py` | |
-| Tests (modify): `corral/tests/editing/test_editing.py`, `test_select_emit.py`, `test_workbench_related.py`, `test_workbench_session.py`, `test_workbench_plugins.py`, `test_workbench_js.py` | |
+| Tests (modify): `corral/tests/editing/test_editing.py`, `test_select_emit.py`, `test_workbench_related.py`, `test_workbench_session.py`, `test_workbench_plugins.py`, `test_workbench_plugin_routes.py`, `test_workbench_action_registry.py`, `test_workbench_js.py`, `test_workbench_static.py` | |
 | `packages/netstead/docs/cookbook/workbench.md`, `packages/netstead/docs/cookbook/workbench-plugins.md`, `docs/design/2026-10-02-netstead-workbench-design.md`, `docs/design/README.md` (modify) | Docs |
 
 ---
@@ -327,33 +413,37 @@ form on `host.selection` (Task 2), `host.mutate` with a recorded source, `host.u
 
 **Files:** none.
 
-- [ ] **Step 1: Check that plugins Part 1 has merged**
+- [ ] **Step 1: Check that Parts 1 and 2 are in the base**
 
 ```bash
 git fetch origin
-git log origin/main --oneline | grep -i "ActionRegistry\|Session.mutate\|plugin" | head
-grep -n "CORE_ACTIONS\|class BaseAction" packages/netstead/netstead/workbench/actions.py
-grep -n "def mutate\|def derive" packages/netstead/netstead/workbench/session.py
-grep -n "HOST_API = " packages/netstead/netstead/workbench/plugins/spec.py
+git log origin/main --oneline | grep -i "plugins, Part 1" | head -1   # a042510 (#222)
+# Part 2 (#223) merged? Then start from main; otherwise from Part 2's tip.
+git merge-base --is-ancestor origin/feat/workbench-plugins-p2 origin/main && BASE=origin/main || BASE=origin/feat/workbench-plugins-p2
+echo "$BASE"
+git show "$BASE":packages/netstead/netstead/workbench/plugins/spec.py | grep -n 'HOST_API = '
+git show "$BASE":packages/netstead/netstead/workbench/session.py | grep -n "def mutate\|def derive\|class _Mutated\|def _record_outside_action"
+git show "$BASE":packages/netstead/netstead/workbench/static/js/workspaces.js | grep -n "export function addPanel\|export function showPanel"
+git show "$BASE":packages/netstead/netstead/workbench/static/js/map.js | grep -n "export function addLayer"
 ```
 
-Expected: `CORE_ACTIONS`, `BaseAction`, `Session.mutate`, `Session.derive` and `HOST_API = "1.0"` all exist. If they
-don't, stop and wait for Part 1 (decision d: Part 1 first).
+Expected: `HOST_API = "1.1"`; `mutate(self, net_id, edits, *, note, origin=None)`, `derive`, `_Mutated` and
+`_record_outside_action` in `session.py`; `addPanel`, `showPanel` and `addLayer` exported. If Part 2 is missing,
+stop: P2's front end registers into its slots (decision d).
 
 - [ ] **Step 2: Cut the branch**
 
 ```bash
-git checkout -b feat/workbench-p2-impl origin/main
+git checkout -b feat/workbench-p2-impl "$BASE"
 uv sync --all-packages --all-extras
 ```
-
-(`feat/workbench-p2` holds this plan; the implementation gets its own branch.)
 
 - [ ] **Step 3: Record the baseline**
 
 Run: `uv run --all-extras pytest packages -n auto -q`
-Expected: all pass. Record the count in the PR description. Every later task only adds tests, except that Task 7
-edits one expectation in `test_workbench_session.py`.
+Expected: all pass. Record the count in the PR description. Later tasks only add tests, except these edits to
+existing expectations: Task 7 (`HOST_API` 1.1 → 1.2 in two tests), Task 8 (one script-imports test grows a case) and
+Task 9 (the settings notes in `test_workbench_session.py`).
 
 No commit.
 
@@ -515,7 +605,7 @@ The plugins design gives the facility form to core: `host.selection` exposes the
 facility, built by `select/emit.to_projectcard`. Two gaps today:
 - ProjectCard's `select_links` marks `ignore_missing` as **required**, and `_query_links` writes it only when it is
   false, so every card built from a default selection fails the schema. The resolved form never writes it.
-- The selection payload (what `host.selection` copies, Part 1 Task 9) carries only the GMNS fragment.
+- The selection payload (what `host.selection` copies: `Session.selection_copy`) carries only the GMNS fragment.
 
 Which `ignore_missing` value a *card* should carry for a click-pick is the cards plugin's decision (pending, see
 [the scope](2026-10-07-cards-plugin-scope.md)). Core writes the intent's value (default `true`, Wrangler's default)
@@ -1305,7 +1395,7 @@ MAX_CHECKED_KEYS = 10_000
 
 @dataclass(frozen=True)
 class EditWarning:
-    """One thing the spec says is wrong with an edited row (shown on its cell, its row and the Issues tab)."""
+    """One thing the spec says is wrong with an edited row (shown on its cell, its row and the Issues panel)."""
 
     code: str
     table: str
@@ -1482,44 +1572,38 @@ git commit -m "feat(workbench): live edit checks (required, type, enum, foreign 
 ```
 
 ---
+### Task 5: The pending-edit ledger, live re-checks, and `Session.revert` / `undo_last`
 
-### Task 5: Pending edits, live re-checks and undo in `Session.mutate`; Host API 1.1
-
-Part 1's `Session.mutate` applies corral edits all-or-nothing, bumps the version, appends to the lineage and
-publishes `state`. This task makes every mutation visible and reversible: it becomes a `PendingEdit` in the
-network's `EditLedger`, the live checks re-run over every key the ledger has touched, and `Session.undo_last`
-reverses the newest entry. `Host` passes its plugin id as the source and gains `undo`, `edit_warnings` and
-`plan_*` (`HOST_API` 1.0 → 1.1, additive).
+Part 1's `Session.mutate` (as built) applies corral edits to a `derived_copy` draft, swaps the changed tables in with
+`NetworkHandle.replace_tables` (bumping the version), appends the lineage note, and then either publishes `state`
+(inside an Action, after pushing a `_Mutated` undo record) or records a non-replayable `<origin>.mutate` entry
+(outside one). This task makes every mutation a `PendingEdit` in the network's `EditLedger`, re-runs the live checks
+over every key the ledger has touched, and adds the mirror operation, `Session.revert`, with `undo_last` on top
+(R1–R3). The ledger joins Part 1's rollback through a snapshot undo record, `_LedgerMark`.
 
 **Files:**
 - Create: `packages/netstead/netstead/workbench/ledger.py`
 - Modify: `packages/netstead/netstead/workbench/session.py`
-- Modify: `packages/netstead/netstead/workbench/plugins/host.py`, `plugins/spec.py`, `plugins/__init__.py`
-- Modify: `packages/netstead/docs/cookbook/workbench-plugins.md` (Part 1's authoring guide)
-- Test: `packages/netstead/tests/test_workbench_edits.py` (new), `packages/netstead/tests/test_workbench_plugins.py`
+- Test: `packages/netstead/tests/test_workbench_edits.py` (new)
 
-- [ ] **Step 1: Check Part 1's names**
-
-Run: `grep -n "def mutate\|def derive\|class Host\|def writable\|HOST_API" packages/netstead/netstead/workbench/session.py packages/netstead/netstead/workbench/plugins/*.py`
-Expected: `Session.mutate(self, net_id, edits, *, note)`, `Session.derive`, `Host.mutate`, `Host.writable` and
-`HOST_API = "1.0"`, as in Part 1 Tasks 8–9. If a signature differs, adapt the snippets below to it, not the other way
-round.
-
-- [ ] **Step 2: Write the failing tests**
+- [ ] **Step 1: Write the failing tests**
 
 Create `packages/netstead/tests/test_workbench_edits.py`:
 
 ```python
-"""Pending edits: every mutation is recorded, re-checked live, undone last-first, and shown as dirty state."""
+"""Pending edits: every mutation is recorded, re-checked live, reverted last-first, and shown as dirty state."""
+
+from typing import ClassVar, Literal
 
 import pytest
 from corral.editing import Edit, UnsupportedEditOp
 from netstead.fixtures import leavenworth
 from netstead.select.parse import StubParser
 from netstead.workbench import Session
-from netstead.workbench.actions import CloseNetwork, OpenNetwork
+from netstead.workbench.actions import BaseAction, CloseNetwork, OpenNetwork
 from netstead.workbench.editing import plan_add, plan_update
 from netstead.workbench.errors import ActionError
+from netstead.workbench.plugins import HOST_API, ActionSpec, WorkbenchPlugin
 
 SRC = str(leavenworth.parquet_dir())
 
@@ -1532,7 +1616,7 @@ def session(tmp_path, isolated_env):
 
 
 def handle(s):
-    return s.registry.get("leavenworth")
+    return s.network("leavenworth")
 
 
 def cell(s, link_id, column="free_speed"):
@@ -1547,11 +1631,12 @@ def mutate(s, plan, **kwargs):
 def test_a_mutation_is_a_pending_edit(session):
     mutate(session, plan_update(handle(session).roadway, "link", [1], {"free_speed": 30}))
     (entry,) = session.edits["leavenworth"].entries
-    assert (entry.seq, entry.source, entry.version, entry.touched) == (1, "workbench", 1, {"link": {1}})
+    assert (entry.seq, entry.source, entry.version, entry.touched) == (1, "python", 1, {"link": {1}})
     assert entry.view()["rows"] == {"link": 1}
     assert session.state()["edits"]["leavenworth"] == {
-        "pending": 1, "unsaved": 1, "dirty": True, "warnings": 0, "truncated": False, "last_source": "workbench",
+        "pending": 1, "unsaved": 1, "dirty": True, "warnings": 0, "truncated": False, "last_source": "python",
     }
+    assert session.history[-1].action["type"] == "python.mutate"  # Part 1: recorded outside an Action
 
 
 def test_live_warnings_follow_later_edits(session):
@@ -1566,29 +1651,41 @@ def test_undo_reverses_the_last_edit_only(session):
     h = handle(session)
     mutate(session, plan_update(h.roadway, "link", [1], {"free_speed": 30}))
     mutate(session, plan_update(h.roadway, "link", [1], {"free_speed": 25}))
-    undone = session.undo_last("leavenworth")
+    undone = session.undo_last("leavenworth", source="python")
     assert undone.seq == 2 and cell(session, 1) == [30.0] and h.version == 3
     assert h.lineage[-1] == "undo: link 1: free_speed = 25.0"
-    session.undo_last("leavenworth")
+    assert session.history[-1].action["type"] == "python.revert"  # outside an Action: recorded, not replayable
+    session.undo_last("leavenworth", source="python")
     assert cell(session, 1) == [40.0] and session.edits["leavenworth"].entries == []
     with pytest.raises(ActionError, match="nothing to undo"):
-        session.undo_last("leavenworth")
+        session.undo_last("leavenworth", source="python")
+
+
+def test_only_the_newest_change_can_be_reverted(session):
+    h = handle(session)
+    first = mutate(session, plan_update(h.roadway, "link", [1], {"free_speed": 30}))
+    mutate(session, plan_update(h.roadway, "link", [2], {"free_speed": 30}))
+    with pytest.raises(ActionError, match="only the newest change"):
+        session.revert("leavenworth", first, note="undo")
+    assert h.version == 2 and len(session.edits["leavenworth"].entries) == 2
 
 
 def test_undo_restores_a_row_that_holds_nulls(tmp_path, isolated_env):
     s = Session(project_dir=tmp_path, environ=isolated_env, parser=StubParser(), plugins=[])
     s.dispatch(OpenNetwork(source=str(leavenworth.csv_dir())))
-    h = s.registry.get(s.active)
+    h = s.network()
     s.mutate(h.id, plan_update(h.roadway, "link", [27], {"lanes": 3}).edits, note="lanes")  # link 27's name is null
-    s.undo_last(h.id)
+    s.undo_last(h.id, source="python")
     assert int((h.links_df().link_id == 27).sum()) == 1  # Task 1: not two copies
 
 
 def test_core_does_not_undo_a_plugins_change(session):
-    mutate(session, plan_update(handle(session).roadway, "link", [1], {"lanes": 2}), source="cards")
+    mutate(session, plan_update(handle(session).roadway, "link", [1], {"lanes": 2}), origin="cards")
+    assert session.edits["leavenworth"].last().source == "cards"
     with pytest.raises(ActionError, match="made by cards"):
         session.undo_last("leavenworth")
     assert session.undo_last("leavenworth", source="cards").source == "cards"
+    assert handle(session).lineage[-1] == "cards: undo: link 1: lanes = 2"
 
 
 def test_a_failed_mutation_records_nothing(session):
@@ -1599,12 +1696,37 @@ def test_a_failed_mutation_records_nothing(session):
     assert "leavenworth" not in session.edits and h.version == 0 and cell(session, 1, "lanes") == [1]
 
 
+class Scribble(BaseAction):
+    type: Literal["scribble.go"] = "scribble.go"
+    mutates: ClassVar[bool] = True
+    fail: bool = False
+
+
+def _scribble(host, action: Scribble) -> None:
+    plan = plan_update(host.network().roadway, "link", [1], {"lanes": 2})
+    host.mutate(None, plan.edits, note=plan.summary)
+    if action.fail:
+        raise RuntimeError("after mutate")
+
+
+def test_a_failed_action_leaves_no_pending_edit(tmp_path, isolated_env):
+    plugin = WorkbenchPlugin(
+        id="scribble", name="Scribble", version="0", requires_api=HOST_API, actions=(ActionSpec(Scribble, _scribble),)
+    )
+    s = Session(project_dir=tmp_path, environ=isolated_env, parser=StubParser(), plugins=[plugin])
+    s.dispatch(OpenNetwork(source=SRC))
+    assert not s.dispatch_recorded(Scribble(fail=True)).ok
+    assert "leavenworth" not in s.edits and s.network().version == 0  # Part 1 rolled the swap back; P2 the ledger
+    assert s.dispatch_recorded(Scribble()).ok
+    assert s.edits["leavenworth"].last().source == "scribble" and s.history[-1].action["type"] == "scribble.go"
+
+
 def test_saving_and_undoing_a_saved_edit(session):
     mutate(session, plan_update(handle(session).roadway, "link", [1], {"lanes": 2}))
     ledger = session.edits["leavenworth"]
     ledger.mark_saved()
     assert ledger.summary()["dirty"] is False and ledger.summary()["unsaved"] == 0
-    session.undo_last("leavenworth")
+    session.undo_last("leavenworth", source="python")
     assert ledger.summary()["dirty"] is True  # the open network no longer matches the saved copy
 
 
@@ -1614,76 +1736,42 @@ def test_closing_the_network_drops_its_edits(session):
     assert session.edits == {} and "leavenworth" not in session.state()["edits"]
 ```
 
-Append to `packages/netstead/tests/test_workbench_plugins.py` (it already imports `ClassVar`, `Literal`,
-`BaseAction`, `ActionSpec`, `WorkbenchPlugin` and defines `make_session`):
+- [ ] **Step 2: Run them to confirm they fail**
 
-```python
-class Retag(BaseAction):
-    type: Literal["tagger.retag"] = "tagger.retag"
-    mutates: ClassVar[bool] = True
-    link_id: int
+Run: `uv run --all-extras pytest packages/netstead/tests/test_workbench_edits.py -q`
+Expected: FAIL: `AttributeError: 'Session' object has no attribute 'edits'` (and `undo_last`, `revert`).
 
-
-def test_host_1_1_plans_mutates_reports_and_undoes(make_session):
-    from netstead.fixtures import leavenworth
-    from netstead.workbench.actions import OpenNetwork
-    from netstead.workbench.plugins import EditRefused
-
-    def retag(host, action: Retag) -> list[str]:
-        plan = host.plan_update(None, "link", [action.link_id], {"from_node_id": 424242})
-        host.mutate(None, plan.edits, note=plan.summary)
-        return [w["code"] for w in host.edit_warnings()]
-
-    tagger = WorkbenchPlugin(
-        id="tagger", name="Tagger", version="0.1", requires_api="1.1", actions=(ActionSpec(Retag, retag),)
-    )
-    session = make_session(tagger)
-    session.dispatch(OpenNetwork(source=str(leavenworth.parquet_dir())))
-    assert session.dispatch(Retag(link_id=1)) == ["edit.fk_missing"]
-    assert session.edits["leavenworth"].entries[-1].source == "tagger"
-    host = session._hosts["tagger"]
-    assert host.undo()["source"] == "tagger" and host.edit_warnings() == []
-    with pytest.raises(EditRefused, match="does not fit"):
-        host.plan_update(None, "link", [1], {"lanes": 1.5})
-
-
-def test_host_api_is_1_1():
-    assert HOST_API == "1.1"
-```
-
-- [ ] **Step 3: Run them to confirm they fail**
-
-Run: `uv run --all-extras pytest packages/netstead/tests/test_workbench_edits.py packages/netstead/tests/test_workbench_plugins.py -q -k "edit or host_1_1 or host_api or mutation or undo or saving or closing"`
-Expected: FAIL: `AttributeError: 'Session' object has no attribute 'edits'`, then `ImportError: EditRefused`.
-
-- [ ] **Step 4: `workbench/ledger.py`**
+- [ ] **Step 3: `workbench/ledger.py`**
 
 ```python
 """Pending edits: every mutation of an open network, kept until it is closed.
 
-The Edits tab lists them, :meth:`~netstead.workbench.session.Session.undo_last` reverses the newest, and the
+The Edits panel lists them, :meth:`~netstead.workbench.session.Session.undo_last` reverts the newest, and the
 dirty badge counts the ones no saved copy holds yet. Each entry records who made it (``source``: the
-Workbench, or a plugin's id) so an undo never reverses someone else's change.
+Workbench, Python, or a plugin's id) so an undo never reverses someone else's change. An entry keeps the corral
+results of its edits: they are what :meth:`~netstead.workbench.session.Session.revert` reverses.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 from corral.editing import EditResult
 
 from .editcheck import CheckResult
 
-__all__ = ["CORE_SOURCE", "EditLedger", "PendingEdit"]
+__all__ = ["CORE_SOURCE", "PYTHON_SOURCE", "EditLedger", "PendingEdit"]
 
-#: The source of edits made by the Workbench itself (plugins use their id).
+#: The source of edits made by a core Action (plugins use their id).
 CORE_SOURCE = "workbench"
+#: The source of a ``Session.mutate`` called outside any Action (Part 1 records it as ``python.mutate``).
+PYTHON_SOURCE = "python"
 
 
 @dataclass
 class PendingEdit:
-    """One applied mutation: who made it, why, the version it produced, and the corral results that undo it."""
+    """One applied mutation: who made it, why, the version it produced, and the corral results that revert it."""
 
     seq: int
     source: str
@@ -1694,7 +1782,7 @@ class PendingEdit:
     saved: bool = False
 
     def view(self) -> dict[str, Any]:
-        """JSON-safe: what the Edits tab shows (rows per table counts added, removed and changed rows)."""
+        """JSON-safe: what the Edits panel shows (rows per table counts added, removed and changed rows)."""
         rows: dict[str, int] = {}
         for r in self.results:
             n = r.diff.rows_added + r.diff.rows_removed + r.diff.rows_changed
@@ -1716,8 +1804,15 @@ class EditLedger:
         """Start empty."""
         self.entries: list[PendingEdit] = []
         self.check = CheckResult()
-        self.diverged = False  # an undo reversed a saved edit: the open network differs from the saved copy
+        self.diverged = False  # an undo reverted a saved edit: the open network differs from the saved copy
         self._seq = 0
+
+    def copy(self) -> EditLedger:
+        """A snapshot (entries copied one level down), for the session's rollback of a failed Action."""
+        other = EditLedger()
+        other.entries = [replace(e) for e in self.entries]
+        other.check, other.diverged, other._seq = self.check, self.diverged, self._seq
+        return other
 
     def add(
         self, source: str, note: str, version: int, results: list[EditResult], touched: dict[str, set[Any]]
@@ -1733,7 +1828,7 @@ class EditLedger:
         return self.entries[-1] if self.entries else None
 
     def pop(self) -> PendingEdit:
-        """Drop the newest entry (after its edits were reversed) and return it."""
+        """Drop the newest entry (after its edits were reverted) and return it."""
         entry = self.entries.pop()
         if entry.saved:
             self.diverged = True
@@ -1754,7 +1849,7 @@ class EditLedger:
         self.diverged = False
 
     def summary(self) -> dict[str, Any]:
-        """JSON-safe counts for the session state (the dirty badge reads ``dirty`` and ``unsaved``)."""
+        """JSON-safe counts for the session state (the dirty badges read ``dirty`` and ``unsaved``)."""
         unsaved = sum(not e.saved for e in self.entries)
         last = self.last()
         return {
@@ -1767,14 +1862,37 @@ class EditLedger:
         }
 ```
 
-- [ ] **Step 5: The session**
+`replace(e)` copies each entry so a later `mark_saved` on the live ledger can't change the snapshot; the results
+lists are shared (they are never mutated).
+
+- [ ] **Step 4: The session**
 
 In `packages/netstead/netstead/workbench/session.py`:
 
-1. Imports: `from .editcheck import CheckResult, check_rows, touched_keys`, `from .editing import table_keys`,
-   `from .ledger import CORE_SOURCE, EditLedger, PendingEdit`.
-2. In `__init__`, after `self.history`: `self.edits: dict[str, EditLedger] = {}  # net_id -> its pending edits`.
-3. Replace Part 1's `mutate` with:
+1. Imports: change `from corral.editing.apply import apply_edit` to `from corral.editing.apply import apply_edit,
+   reverse_edit`, and add `from .editcheck import CheckResult, check_rows, touched_keys`,
+   `from .editing import table_keys`, `from .ledger import CORE_SOURCE, PYTHON_SOURCE, EditLedger, PendingEdit`.
+2. After the `_Derived` dataclass, add the ledger's undo record:
+
+```python
+@dataclass
+class _LedgerMark:
+    """Undo record for a change to one network's pending-edit ledger inside an Action: the ledger before it."""
+
+    net_id: str
+    before: EditLedger | None  # a snapshot (``EditLedger.copy``); ``None``: the network had no ledger
+
+    def undo(self, session: Session) -> None:
+        if self.before is None:
+            session.edits.pop(self.net_id, None)
+        else:
+            session.edits[self.net_id] = self.before
+```
+
+   and widen the annotation in `__init__`: `self._undo: list[_Mutated | _Derived | _LedgerMark] = []`.
+3. In `__init__`, after `self.history`: `self.edits: dict[str, EditLedger] = {}  # net_id -> its pending edits`.
+4. Replace `mutate` (keep its first paragraph; the body moves into `_swap` / `_settle`), and add `revert`,
+   `undo_last` and `edit_check` after it:
 
 ```python
     def mutate(
@@ -1783,40 +1901,63 @@ In `packages/netstead/netstead/workbench/session.py`:
         edits: Sequence[Edit],
         *,
         note: str,
-        source: str = CORE_SOURCE,
-        recheck: Mapping[str, Sequence[Any]] | None = None,
+        origin: str | None = None,
+        recheck: Mapping[str, Iterable[Any]] | None = None,
     ) -> list[EditResult]:
         """Apply corral ``edits`` to a network's roadway, in order and all-or-nothing; return their results.
 
-        A failing edit reverses the ones already applied and re-raises; nothing is recorded. On success the
-        network's ``version`` is bumped (dropping its caches), ``note`` is appended to its lineage, the
-        mutation becomes a :class:`~netstead.workbench.ledger.PendingEdit` from ``source`` (the Workbench, or
-        a plugin's id), the live checks re-run (``recheck`` adds keys beyond the touched rows), and ``state``
-        is published. Not an Action itself: the Action that calls it is what history records.
+        The edits run on a copy-on-write draft of the roadway, so the network itself never holds a
+        half-applied state: a failing edit discards the draft and re-raises, leaving the tables, their
+        sync stamps, the caches and the pending edits as they were. On success the changed tables are
+        swapped in at once, the ``version`` is bumped (dropping caches), ``note`` is appended to the
+        lineage, and the change becomes a :class:`~netstead.workbench.ledger.PendingEdit` whose source is
+        ``origin`` (a plugin id), ``"workbench"`` (inside a core Action) or ``"python"`` (outside any
+        Action). The live checks then re-run over every key the network's pending edits touched (``recheck``
+        adds keys beyond the rows these edits touched), and ``state`` is published. Inside an Action, all of
+        it is undone if that Action (or one it is nested in) fails. Outside any Action nothing would record
+        it, so it gets a history entry of its own, ``<origin>.mutate``, whose ``python`` is a comment: it is
+        visible but not replayable. ``origin`` (default ``"python"`` there) also prefixes the lineage note.
+        :meth:`revert` (or :meth:`undo_last`) reverses the newest pending edit.
         """
         with self._lock:
             handle = self._handle(net_id)
-            applied: list[EditResult] = []
-            try:
-                for edit in edits:
-                    applied.append(apply_edit(handle.roadway, edit))
-            except Exception:
-                for result in reversed(applied):
-                    reverse_edit(handle.roadway, result)
-                raise
-            handle.bump()
-            handle.lineage.append(note)
+            draft = derived_copy(handle.roadway)  # shares the immutable table expressions; copies the wrappers
+            applied = [apply_edit(draft, edit) for edit in edits]
+            self._swap(handle, draft, {e.table for e in edits}, note, origin)
             touched = touched_keys(applied, table_keys(handle.roadway))
             for table, keys in (recheck or {}).items():
                 touched.setdefault(table, set()).update(keys)
-            ledger = self.edits.setdefault(handle.id, EditLedger())
-            ledger.add(source, note, handle.version, applied, touched)
-            self._recheck(handle, ledger)
-            self.events.publish({"type": "state", "state": self.state()})
+            self._ledger_for(handle.id).add(self._source(origin), note, handle.version, applied, touched)
+            self._settle(handle, note, origin, kind="mutate")
         return applied
 
+    def revert(
+        self, net_id: str | None, results: Sequence[EditResult], *, note: str, origin: str | None = None
+    ) -> None:
+        """Reverse the network's newest pending edit, given its ``results``: :meth:`mutate` run backwards.
+
+        The results are reversed newest first on a copy-on-write draft, which is swapped in the way a
+        mutation is: the version is bumped, ``note`` extends the lineage (prefixed with ``origin``), the
+        pending edit is dropped, the live checks re-run, and ``state`` is published. Inside an Action a
+        failure undoes it; outside one it is recorded as ``<origin>.revert`` (not replayable). Only the
+        newest pending edit can be reverted, since corral reverses an edit against the table that edit left
+        behind: anything else raises :class:`ActionError`.
+        """
+        with self._lock:
+            handle = self._handle(net_id)
+            ledger = self.edits.get(handle.id)
+            last = ledger.last() if ledger else None
+            if last is None or not _same_results(results, last.results):
+                raise ActionError(f"only the newest change to {handle.id} can be reverted")
+            draft = derived_copy(handle.roadway)
+            for result in reversed(last.results):
+                reverse_edit(draft, result)
+            self._swap(handle, draft, {r.edit.table for r in last.results}, note, origin)
+            self._ledger_for(handle.id).pop()
+            self._settle(handle, note, origin, kind="revert")
+
     def undo_last(self, net_id: str | None, *, source: str = CORE_SOURCE) -> PendingEdit:
-        """Reverse the network's newest pending edit, if ``source`` made it; return the entry undone.
+        """Revert the network's newest pending edit, if ``source`` made it; return the entry undone.
 
         Raises :class:`ActionError` when there is nothing to undo, or when the newest change came from
         another source (core never undoes a plugin's change, nor a plugin core's).
@@ -1825,18 +1966,13 @@ In `packages/netstead/netstead/workbench/session.py`:
             handle = self._handle(net_id)
             ledger = self.edits.get(handle.id)
             last = ledger.last() if ledger else None
-            if ledger is None or last is None:
+            if last is None:
                 raise ActionError(f"nothing to undo on {handle.id}")
             if last.source != source:
                 who = "the Workbench" if last.source == CORE_SOURCE else last.source
                 raise ActionError(f"the last change to {handle.id} was made by {who} ({last.note}); undo it there")
-            for result in reversed(last.results):
-                reverse_edit(handle.roadway, result)
-            ledger.pop()
-            handle.bump()
-            handle.lineage.append(f"undo: {last.note}")
-            self._recheck(handle, ledger)
-            self.events.publish({"type": "state", "state": self.state()})
+            origin = None if source in (CORE_SOURCE, PYTHON_SOURCE) else source
+            self.revert(handle.id, last.results, note=f"undo: {last.note}", origin=origin)
         return last
 
     def edit_check(self, net_id: str | None) -> CheckResult:
@@ -1844,9 +1980,59 @@ In `packages/netstead/netstead/workbench/session.py`:
         with self._lock:
             ledger = self.edits.get(self._handle(net_id).id)
             return ledger.check if ledger else CheckResult()
+```
 
-    def _recheck(self, handle: NetworkHandle, ledger: EditLedger) -> None:
-        """Re-run the live checks over every key the ledger touched (call with the lock held)."""
+5. Add the private helpers next to `_record_outside_action`:
+
+```python
+    def _swap(self, handle: NetworkHandle, draft: Network, names: Iterable[str], note: str, origin: str | None) -> None:
+        """Swap ``draft``'s tables ``names`` into ``handle`` in one step: bump the version, extend the lineage.
+
+        Inside an Action an undo record goes first, so a failing Action puts the tables, version, lineage and
+        sync stamps back (Part 1's rollback). Call with the lock held.
+        """
+        roadway = handle.roadway
+        changed = {name: (draft.tables[name].expr, draft.tables[name].dirty) for name in names}
+        if self._running:
+            tracker = roadway.dirty_tracker
+            self._undo.append(
+                _Mutated(
+                    handle,
+                    tables={name: (roadway.tables[name].expr, roadway.tables[name].dirty) for name in changed},
+                    stamps={name: tracker.get_table_stamp(name) for name in changed} if tracker else {},
+                    version=handle.version,
+                    lineage=len(handle.lineage),
+                )
+            )
+        handle.replace_tables(changed)
+        handle.lineage.append(f"{origin}: {note}" if origin else note)
+
+    def _ledger_for(self, net_id: str) -> EditLedger:
+        """``net_id``'s ledger, about to change: inside an Action its snapshot goes on the undo stack first."""
+        ledger = self.edits.get(net_id)
+        if self._running:
+            self._undo.append(_LedgerMark(net_id, ledger.copy() if ledger is not None else None))
+        if ledger is None:
+            ledger = self.edits[net_id] = EditLedger()
+        return ledger
+
+    def _source(self, origin: str | None) -> str:
+        """Who a mutation belongs to: its plugin, a core Action (``"workbench"``), or Python outside any Action."""
+        return origin or (CORE_SOURCE if self._running else PYTHON_SOURCE)
+
+    def _settle(self, handle: NetworkHandle, note: str, origin: str | None, *, kind: str) -> None:
+        """After a swap: re-run the live checks, then publish (inside an Action) or record (outside one)."""
+        self._recheck(handle)
+        if self._running:
+            self.events.publish({"type": "state", "state": self.state()})
+        else:
+            self._record_outside_action(handle.id, note, origin or PYTHON_SOURCE, kind=kind)
+
+    def _recheck(self, handle: NetworkHandle) -> None:
+        """Re-run the live checks over every key the network's ledger touched (call with the lock held)."""
+        ledger = self.edits.get(handle.id)
+        if ledger is None:
+            return
         try:
             ledger.check = check_rows(handle.roadway, ledger.touched())
         except Exception:  # boundary: a failing check must not undo a good edit; Run validation still works
@@ -1854,34 +2040,282 @@ In `packages/netstead/netstead/workbench/session.py`:
             ledger.check = CheckResult(truncated=True)
 ```
 
-   Add `Any` to the typing import and `Mapping` to `collections.abc` if Part 1 did not. Place `undo_last` and
-   `edit_check` with the public API methods (after `derive`), and `_recheck` with the private helpers.
-4. In `state()`, add `"edits": {nid: ledger.summary() for nid, ledger in self.edits.items()},`.
-5. In `_do_close_network`, after the examples line: `self.edits.pop(action.net_id, None)`.
+   `_recheck` assigns `ledger.check` on the live ledger after `_ledger_for` snapshotted it, so a rollback also restores
+   the check that matched the old tables.
 
-- [ ] **Step 6: Host 1.1**
-
-In `plugins/spec.py`, set `HOST_API = "1.1"` and extend its comment: `1.1 adds Host.undo, Host.edit_warnings and
-Host.plan_update/plan_delete/plan_add, and records the plugin as the source of its mutations.`
-
-In `plugins/host.py`:
-- import `from ..editing import EditPlan, plan_add, plan_delete, plan_update` (outside `TYPE_CHECKING`);
-- change `mutate` to pass the source:
+6. Give `_record_outside_action` a `kind` (the action type's suffix), keeping today's output for `mutate`:
 
 ```python
-    def mutate(self, net_id: str | None, edits: Sequence[Edit], *, note: str) -> list[EditResult]:
-        """Apply corral edits all-or-nothing; lineage gets ``"<plugin id>: <note>"``; the pending edit is ours."""
-        return self._session.mutate(net_id, edits, note=f"{self.plugin_id}: {note}", source=self.plugin_id)
+    def _record_outside_action(self, net_id: str, note: str, origin: str, *, kind: str = "mutate") -> None:
+        """Record a ``mutate`` or ``revert`` no Action covers, so nothing changes silently (not replayable)."""
+        text = " ".join(note.split())  # one line: it becomes a comment in a script
+        entry = HistoryEntry(
+            seq=len(self.history) + 1,
+            action={"type": f"{origin}.{kind}", "net_id": net_id, "note": text},
+            ...  # the rest unchanged
 ```
 
+7. Add a module-level helper next to `_mark_rolled_back`:
+
+```python
+def _same_results(given: Sequence[EditResult], held: Sequence[EditResult]) -> bool:
+    """Whether ``given`` are exactly the ``EditResult`` objects a pending edit holds (identity, in order)."""
+    return len(given) == len(held) and all(a is b for a, b in zip(given, held, strict=True))
+```
+
+8. In `state()`, add `"edits": {nid: ledger.summary() for nid, ledger in self.edits.items()},`.
+9. In `_do_close_network`, after the examples line: `self.edits.pop(action.net_id, None)`.
+10. Update the module docstring's first paragraph: replace "Network *edits* are not actions here yet: in P2 they
+    become ProjectCard-shaped ``NetworkChange`` objects." with "Network edits are Actions too (``EditCells``,
+    ``DeleteRows``, ``AddRows``, ``UndoEdit``); each one's mutation is a pending edit (see :mod:`.ledger`)."
+
+- [ ] **Step 5: Run the tests**
+
+Run: `uv run --all-extras pytest packages/netstead/tests/test_workbench_edits.py packages/netstead/tests/test_workbench_session.py packages/netstead/tests/test_workbench_plugins.py -q`
+Expected: all pass. Part 1's `test_mutate_*`, `test_a_handler_that_mutates_then_fails_is_rolled_back`,
+`test_a_rolled_back_mutate_restores_the_sync_stamp`, `test_a_job_mutates_without_deadlock_and_is_recorded` and
+`test_a_python_mutate_outside_an_action_is_recorded` still pass: `_swap` is the old body, and `kind` defaults to
+`"mutate"`.
+
+- [ ] **Step 6: Before commit**
+
+Run: `uv run --all-extras pytest packages -n auto -q` and the ruff pair. Expected: all pass.
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add packages/netstead/netstead/workbench/ledger.py packages/netstead/netstead/workbench/session.py packages/netstead/tests/test_workbench_edits.py
+git commit -m "feat(workbench): every mutation is a pending edit with live re-checks; Session.revert and undo_last"
+```
+
+---
+
+### Task 6: The selection follows an edit
+
+R4: after a `mutate` or `revert` on the selected network, a query selection is resolved again, and an id selection
+keeps its ids minus the links that are gone. The selection payload keeps a query's parsed intent (`intent`, the tool
+arguments `payload_from_intent` writes) so it can be resolved again without the language model.
+
+**Files:**
+- Modify: `packages/netstead/netstead/workbench/selection.py`, `packages/netstead/netstead/workbench/session.py`
+- Test: `packages/netstead/tests/test_workbench_edits.py`
+
+- [ ] **Step 1: Write the failing tests**
+
+Append to `packages/netstead/tests/test_workbench_edits.py` (add `Select` to the actions import, and
+`from netstead.workbench.editing import plan_delete`):
+
+```python
+def test_an_id_selection_drops_deleted_links(session):
+    session.dispatch(Select(link_ids=[1, 2]))
+    assert session.selection["intent"] is None  # made by ids
+    mutate(session, plan_delete(handle(session).roadway, "link", [1]))
+    assert session.selection["link_ids"] == [2] and session.selection["status"] == "resolved"
+    mutate(session, plan_delete(handle(session).roadway, "link", [2]))
+    assert session.selection is None  # nothing left to select
+
+
+def test_an_id_selection_survives_an_unrelated_edit_unchanged(session):
+    session.dispatch(Select(link_ids=[1, 2]))
+    before = session.selection
+    mutate(session, plan_update(handle(session).roadway, "link", [3], {"lanes": 2}))
+    assert session.selection is before
+
+
+def test_a_query_selection_is_resolved_again(session):
+    sel = session.dispatch(Select(utterance="Ski Hill Drive"))
+    assert sel["status"] == "resolved" and len(sel["link_ids"]) == 20 and sel["intent"] is not None
+    gone = sel["link_ids"][0]
+    mutate(session, plan_delete(handle(session).roadway, "link", [gone]))
+    assert len(session.selection["link_ids"]) == 19 and gone not in session.selection["link_ids"]
+    assert session.selection["utterance"] == "Ski Hill Drive"
+    session.undo_last("leavenworth", source="python")
+    assert len(session.selection["link_ids"]) == 20  # the revert brings the link back into the query's answer
+
+
+def test_a_failed_action_keeps_the_old_selection(tmp_path, isolated_env):
+    plugin = WorkbenchPlugin(
+        id="scribble", name="Scribble", version="0", requires_api=HOST_API, actions=(ActionSpec(Scribble, _scribble),)
+    )
+    s = Session(project_dir=tmp_path, environ=isolated_env, parser=StubParser(), plugins=[plugin])
+    s.dispatch(OpenNetwork(source=SRC))
+    s.dispatch(Select(link_ids=[1, 2]))
+    before = s.selection
+    assert not s.dispatch_recorded(Scribble(fail=True)).ok
+    assert s.selection is before  # Part 1's rollback restores the view
+```
+
+"Ski Hill Drive" is the most common name in Leavenworth (20 links), and the `StubParser` resolves a bare street name
+(probed; see the honesty note).
+
+- [ ] **Step 2: Run them to confirm they fail**
+
+Run: `uv run --all-extras pytest packages/netstead/tests/test_workbench_edits.py -q -k selection`
+Expected: FAIL: `KeyError: 'intent'`, then the stale `link_ids`.
+
+- [ ] **Step 3: The payload keeps a query's intent**
+
+In `workbench/selection.py`:
+- add `from netstead.select.parse import payload_from_intent`;
+- in `selection_payload`'s returned dict, after `"utterance"`, add
+  `"intent": payload_from_intent(result.intent) if utterance is not None else None,`;
+- in `unparsed_payload`'s returned dict, after `"utterance"`, add `"intent": None,`;
+- add to `selection_payload`'s docstring: "``intent`` is a query's parsed intent as tool arguments
+  (:func:`~netstead.select.parse.payload_from_intent`), so an edit can resolve it again; ``None`` for a selection
+  made by ids."
+
+- [ ] **Step 4: The rule**
+
+In `session.py`:
+- import `from netstead.select.errors import IntentError`, `from netstead.select.parse import intent_from_payload`
+  (extend the existing `netstead.select.parse` import) and `from netstead.viz.styling import json_scalar` (extend the
+  existing `styleable_columns` import);
+- in `_settle`, call `self._refresh_selection(handle)` right after `self._recheck(handle)`;
+- add after `_recheck`:
+
+```python
+    def _refresh_selection(self, handle: NetworkHandle) -> None:
+        """Keep the shared selection true to an edited network (call with the lock held, after a swap).
+
+        A selection made by a query (its payload keeps the parsed ``intent``) is resolved again; one made
+        by ids keeps them, minus the links that no longer exist, and is cleared when none is left. It is
+        deterministic, so a replayed session agrees; a failed Action restores the old one (``_roll_back``).
+        """
+        sel = self.selection
+        if not sel or sel["net_id"] != handle.id or sel["component"] != "roadway":
+            return
+        links, nodes = handle.links_df(), handle.nodes_df()
+        if sel.get("intent") is not None:
+            try:
+                intent = intent_from_payload(sel["intent"], sel["utterance"] or "")
+            except IntentError:  # cannot happen for a payload we wrote; keep the ids rule rather than fail an edit
+                logger.exception("could not re-read the selection's intent on %s", handle.id)
+            else:
+                result = resolve_frames(intent, links, nodes)
+                self.selection = selection_payload(
+                    handle, result, utterance=sel["utterance"], parsed_by=sel["parsed_by"]
+                )
+                return
+        present = {json_scalar(v) for v in links["link_id"]}
+        kept = [i for i in sel["link_ids"] if i in present]
+        if kept == sel["link_ids"]:
+            return
+        if not kept:
+            self.selection = None
+            return
+        result = resolve_frames(SelectionIntent(link_ids=kept), links, nodes)
+        self.selection = selection_payload(handle, result)
+```
+
+The re-resolution reads `links_df()` for the new version, which the map buffer needs anyway (it is cached per
+version).
+
+- [ ] **Step 5: Run the tests**
+
+Run: `uv run --all-extras pytest packages/netstead/tests/test_workbench_edits.py packages/netstead/tests/test_workbench_session.py packages/netstead/tests/test_select_cli.py -q`
+Expected: all pass. Existing selection tests that compare whole payloads gain the `intent` key; if one compares a
+payload dict exactly, add `"intent": None` (ids) or the expected intent there.
+
+- [ ] **Step 6: Before commit**
+
+Run: `uv run --all-extras pytest packages -n auto -q` and the ruff pair. Expected: all pass.
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add packages/netstead/netstead/workbench/selection.py packages/netstead/netstead/workbench/session.py packages/netstead/tests/test_workbench_edits.py
+git commit -m "feat(workbench): the selection follows an edit (queries re-resolve; ids drop deleted links)"
+```
+
+---
+
+### Task 7: Host API 1.2: `undo`, `edit_warnings`, `plan_*`
+
+`host.mutate` already passes `origin=self.plugin_id` (Part 1), so a plugin's mutation is a pending edit with its id as
+the source (Task 5). This task adds what the cards plugin needs to lower a change onto core's rules and undo it.
+
+**Files:**
+- Modify: `packages/netstead/netstead/workbench/plugins/host.py`, `plugins/spec.py`, `plugins/__init__.py`
+- Modify: `packages/netstead/docs/cookbook/workbench-plugins.md`
+- Test: `packages/netstead/tests/test_workbench_plugins.py`, `packages/netstead/tests/test_workbench_plugin_routes.py`
+
+- [ ] **Step 1: Write the failing tests**
+
+Append to `packages/netstead/tests/test_workbench_plugins.py`:
+
+```python
+class Retag(BaseAction):
+    type: Literal["tagger.retag"] = "tagger.retag"
+    mutates: ClassVar[bool] = True
+    link_id: int
+
+
+def test_host_1_2_plans_mutates_reports_and_undoes(make_session):
+    from netstead.fixtures import leavenworth
+    from netstead.workbench.actions import OpenNetwork
+    from netstead.workbench.plugins import EditRefused
+
+    def retag(host, action: Retag) -> list[str]:
+        plan = host.plan_update(None, "link", [action.link_id], {"from_node_id": 424242})
+        host.mutate(None, plan.edits, note=plan.summary)
+        return [w["code"] for w in host.edit_warnings()]
+
+    tagger = WorkbenchPlugin(
+        id="tagger", name="Tagger", version="0.1", requires_api="1.2", actions=(ActionSpec(Retag, retag),)
+    )
+    session = make_session(tagger)
+    session.dispatch(OpenNetwork(source=str(leavenworth.parquet_dir())))
+    assert session.dispatch(Retag(link_id=1)) == ["edit.fk_missing"]
+    assert session.edits["leavenworth"].last().source == "tagger"
+    host = session._hosts["tagger"]
+    assert host.undo()["source"] == "tagger" and host.edit_warnings() == []
+    assert session.history[-1].action["type"] == "tagger.revert"  # outside an Action: recorded, not replayable
+    with pytest.raises(EditRefused, match="does not fit"):
+        host.plan_update(None, "link", [1], {"lanes": 1.5})
+
+
+def test_host_undo_refuses_core_s_change(make_session):
+    from netstead.fixtures import leavenworth
+    from netstead.workbench.actions import OpenNetwork
+    from netstead.workbench.editing import plan_update
+
+    session = make_session(make_hello())
+    session.dispatch(OpenNetwork(source=str(leavenworth.parquet_dir())))
+    plan = plan_update(session.network().roadway, "link", [1], {"lanes": 2})
+    session.mutate(None, plan.edits, note=plan.summary)  # Python's change, not hello's
+    with pytest.raises(ActionError, match="made by python"):
+        session._hosts["hello"].undo()
+```
+
+In the same file, change `test_a_plugin_built_for_api_1_0_installs_on_this_host`'s first assertion to
+`assert HOST_API == "1.2"` and its docstring to "… on 1.2." In `test_workbench_plugin_routes.py`, rename
+`test_plugins_report_host_api_1_1` to `test_plugins_report_host_api_1_2` and expect `"1.2"`.
+
+- [ ] **Step 2: Run them to confirm they fail**
+
+Run: `uv run --all-extras pytest packages/netstead/tests/test_workbench_plugins.py packages/netstead/tests/test_workbench_plugin_routes.py -q -k "host_1_2 or host_undo or api_1_0 or host_api"`
+Expected: FAIL: `ImportError: cannot import name 'EditRefused'`, and `HOST_API` is still `"1.1"`; the tagger
+plugin is `incompatible` until then.
+
+- [ ] **Step 3: Implement**
+
+In `plugins/spec.py`, set `HOST_API = "1.2"` and add a line to its comment:
+`#: 1.2: Host.undo, Host.edit_warnings and Host.plan_update/plan_delete/plan_add; every mutation is a pending edit.`
+
+In `plugins/host.py`:
+- import `from ..editing import EditPlan, plan_add, plan_delete, plan_update` outside `TYPE_CHECKING` (`editing.py`
+  imports neither the session nor the plugins package, so there is no cycle);
+- extend `mutate`'s docstring: "It becomes a pending edit whose source is this plugin: core's Edits panel lists it
+  with the plugin's id, and core's Undo never reverses it (use :meth:`undo`)."
 - add after `derive`:
 
 ```python
     def undo(self, net_id: str | None = None) -> dict[str, Any]:
-        """Reverse this plugin's newest mutation of a network, if it is the network's newest change.
+        """Revert this plugin's newest mutation of a network, if it is the network's newest change.
 
-        Raises ``ActionError`` when the newest change came from core or another plugin. Returns the undone
-        entry's view (``seq``, ``source``, ``note``, ``version``, ``rows``).
+        Raises ``ActionError`` when the newest change came from core, Python or another plugin. Returns the
+        undone entry's view (``seq``, ``source``, ``note``, ``version``, ``rows``, ``saved``). Inside an Action
+        handler a failure of that Action restores it; elsewhere it is recorded as ``<plugin id>.revert``.
         """
         return self._session.undo_last(net_id, source=self.plugin_id).view()
 
@@ -1890,7 +2324,7 @@ In `plugins/host.py`:
         return [w.to_dict() for w in self._session.edit_check(net_id).warnings]
 
     def plan_update(self, net_id: str | None, table: str, ids: Sequence[Any], values: dict[str, Any]) -> EditPlan:
-        """Core's plan for setting cells (raises ``EditRefused`` for what storage cannot hold). Apply it with ``mutate``."""
+        """Core's plan for setting cells (raises ``EditRefused`` for what storage cannot hold); apply it with :meth:`mutate`."""
         return plan_update(self.network(net_id).roadway, table, ids, values)
 
     def plan_delete(self, net_id: str | None, table: str, ids: Sequence[Any]) -> EditPlan:
@@ -1902,48 +2336,53 @@ In `plugins/host.py`:
         return plan_add(self.network(net_id).roadway, table, rows)
 ```
 
-A plan reads the network, so call `mutate` with it before anything else changes the network (a handler runs under
-the session lock, so inside one handler that holds).
+A plan reads the network, so apply it before anything else changes the network. Inside one handler that holds (it
+runs under the session lock); from a job, plan and `mutate` back to back, and pass `recheck=plan.recheck` only
+through core (plugins don't need it: deleted self-references are re-checked by core's own `DeleteRows`).
 
-In `plugins/__init__.py`, add `from ..editing import EditPlan, EditRefused` and put both names in `__all__`.
+In `plugins/__init__.py`, add `from ..editing import EditPlan, EditRefused`, and put both names in `__all__`
+(sorted). Extend the module docstring: "``EditPlan`` / ``EditRefused`` come from core's edit planner (``host.plan_*``)."
 
-In `packages/netstead/docs/cookbook/workbench-plugins.md`, add a short section "Editing networks (API 1.1)": plan
-with `host.plan_*`, apply with `host.mutate(net_id, plan.edits, note=plan.summary)`, read `host.edit_warnings()`
-before committing anything to disk, and undo your own newest change with `host.undo()`. Say that core shows every
-plugin mutation in its Edits tab with the plugin's id, and never undoes it.
+In `packages/netstead/docs/cookbook/workbench-plugins.md`, add a section "Editing networks (API 1.2)": plan with
+`host.plan_*`, apply with `host.mutate(net_id, plan.edits, note=plan.summary)`, read `host.edit_warnings()` before
+committing anything to disk, and undo your own newest change with `host.undo()`. Say that core lists every plugin
+mutation in its Edits panel with the plugin's id and never undoes it, that undo is strict LIFO across sources (core's
+Undo and `host.undo` each refuse the other's change, naming who made it), and that a plugin needing 1.2 declares
+`requires_api="1.2"`.
 
-- [ ] **Step 7: Run the tests**
+- [ ] **Step 4: Run the tests**
 
-Run: `uv run --all-extras pytest packages/netstead/tests/test_workbench_edits.py packages/netstead/tests/test_workbench_plugins.py packages/netstead/tests/test_workbench_session.py -q`
-Expected: all pass. Part 1's `test_mutate_*` tests still pass: `source` and `recheck` default.
+Run: `uv run --all-extras pytest packages/netstead/tests/test_workbench_plugins.py packages/netstead/tests/test_workbench_plugin_routes.py packages/netstead/tests/test_workbench_edits.py -q`
+Expected: all pass. The hello example declares `requires_api=HOST_API`, so it follows the bump.
 
-- [ ] **Step 8: Before commit**
+- [ ] **Step 5: Before commit**
 
-Run: `uv run --all-extras pytest packages -n auto -q` and the ruff pair. Expected: all pass.
+Run: `uv run --all-extras pytest packages -n auto -q` and the ruff pair. Expected: all pass (the JS tests inject
+`hostApi: "1.1"` as test data and don't read the constant).
 
-- [ ] **Step 9: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
-git add packages/netstead/netstead/workbench/ledger.py packages/netstead/netstead/workbench/session.py packages/netstead/netstead/workbench/plugins packages/netstead/docs/cookbook/workbench-plugins.md packages/netstead/tests/test_workbench_edits.py packages/netstead/tests/test_workbench_plugins.py
-git commit -m "feat(workbench): pending edits with live re-checks and source-checked undo; Host API 1.1"
+git add packages/netstead/netstead/workbench/plugins packages/netstead/docs/cookbook/workbench-plugins.md packages/netstead/tests/test_workbench_plugins.py packages/netstead/tests/test_workbench_plugin_routes.py
+git commit -m "feat(workbench): Host API 1.2: host.undo, host.edit_warnings and host.plan_*"
 ```
 
 ---
 
-### Task 6: Edit Actions: `EditCells`, `DeleteRows`, `AddRows`, `UndoEdit`
+### Task 8: Edit Actions: `EditCells`, `DeleteRows`, `AddRows`, `UndoEdit`; the script header stays
 
-Each is a core Action on Part 1's registry (appended to `CORE_ACTIONS`; the closed `Action` union is not touched).
-Its handler plans with Task 3, applies through `Session.mutate` (Task 5), and returns the plan's summary, the rows
-it touched, and the live warnings on those rows.
+Each is a core Action, appended to `CORE_ACTIONS` and to the `Action` union (R5). Its handler plans with Task 3,
+applies through `Session.mutate` (Task 5), and returns the plan's summary, the rows it touched, and the live warnings
+on those rows. `script_imports` keeps the pre-P2 header line (R6).
 
 **Files:**
 - Modify: `packages/netstead/netstead/workbench/actions.py`, `session.py`, `__init__.py`
-- Test: `packages/netstead/tests/test_workbench_edits.py`
+- Test: `packages/netstead/tests/test_workbench_edits.py`, `packages/netstead/tests/test_workbench_action_registry.py`
 
 - [ ] **Step 1: Write the failing tests**
 
 Append to `packages/netstead/tests/test_workbench_edits.py`, and extend its actions import to
-`from netstead.workbench.actions import AddRows, CloseNetwork, DeleteRows, EditCells, OpenNetwork, Select, UndoEdit`
+`from netstead.workbench.actions import AddRows, BaseAction, CloseNetwork, DeleteRows, EditCells, OpenNetwork, Select, UndoEdit`
 plus `from netstead.workbench.errors import ActionError, NotSupportedYet`:
 
 ```python
@@ -1955,6 +2394,8 @@ def test_a_cell_edit_is_one_recorded_action(session):
     assert entry.python == "app.do(EditCells(ids=[1], values={'free_speed': 30}, note='signed 30 mph'))"
     assert entry.imports == "from netstead.workbench import EditCells"
     assert handle(session).lineage == ["link 1: free_speed = 30.0 (signed 30 mph)"]
+    assert session.edits["leavenworth"].last().source == "workbench"
+    assert [e.action["type"] for e in session.history] == ["open_network", "edit_cells"]  # no python.mutate entry
 
 
 def test_an_edit_the_spec_disagrees_with_is_applied_and_warned(session):
@@ -1973,7 +2414,8 @@ def test_delete_a_link_then_undo(session):
     lanes = handle(session).roadway.tables["lane"].count()
     result = session.dispatch(DeleteRows(ids=[1]))
     assert result["rows"] == {"lane": 1, "link": 1} and 1 not in set(handle(session).links_df().link_id)
-    session.dispatch(UndoEdit())
+    undone = session.dispatch(UndoEdit())
+    assert undone["undone"]["source"] == "workbench" and undone["version"] == 2
     assert 1 in set(handle(session).links_df().link_id) and handle(session).roadway.tables["lane"].count() == lanes
     assert [e.action["type"] for e in session.history[-2:]] == ["delete_rows", "undo_edit"]
 
@@ -1983,10 +2425,10 @@ def test_deleting_a_node_a_link_uses_is_refused(session):
         session.dispatch(DeleteRows(table="node", ids=[1]))
 
 
-def test_deleting_a_selected_link_clears_the_selection(session):
-    session.dispatch(Select(link_ids=[1, 2]))
-    session.dispatch(DeleteRows(ids=[1]))
-    assert session.selection is None
+def test_core_undo_refuses_a_python_change(session):
+    mutate(session, plan_update(handle(session).roadway, "link", [1], {"lanes": 2}))
+    with pytest.raises(ActionError, match="made by python"):
+        session.dispatch(UndoEdit())
 
 
 def test_add_rows_from_python(session):
@@ -2024,19 +2466,41 @@ def test_a_replayed_history_reproduces_the_edits(session, tmp_path):
     session.dispatch(EditCells(ids=[1], values={"free_speed": 30}))
     session.dispatch(EditCells(ids=[2], values={"lanes": 2}))
     session.dispatch(UndoEdit())
+    from fastapi.testclient import TestClient
+    from netstead.workbench import build_app
+
+    history = TestClient(build_app(session)).get("/api/history").json()
+    assert history["imports"][1:] == [
+        "from netstead.workbench import EditCells", "from netstead.workbench import UndoEdit",
+    ]
+    script = "\n".join([*history["imports"], *(e["python"] for e in history["entries"])])
     other = Session(project_dir=tmp_path, environ=session._environ, parser=StubParser(), plugins=[])
-    namespace = {"app": other}
-    for entry in session.history:
-        exec(entry.imports, namespace)  # noqa: S102  (replaying our own recorded snippets)
-        exec(entry.python, namespace)  # noqa: S102
-    df = other.registry.get("leavenworth").links_df()
+    exec(script, {"app": other})  # noqa: S102  (replaying our own recorded snippets)
+    df = other.network("leavenworth").links_df()
     assert df.loc[df.link_id == 1, "free_speed"].tolist() == [30.0]
     assert df.loc[df.link_id == 2, "lanes"].tolist() == [1]
 ```
 
+In `packages/netstead/tests/test_workbench_action_registry.py`, extend
+`test_script_imports_keep_the_core_line_and_add_each_plugin_line_once` with:
+
+```python
+    from netstead.workbench.actions import EditCells, UndoEdit
+
+    edit, undo = import_line(EditCells(ids=[1], values={"lanes": 2})), import_line(UndoEdit())
+    assert edit == "from netstead.workbench import EditCells"
+    assert script_imports([edit, greet, undo, edit]) == [core, edit, greet, undo]  # the header line is unchanged
+```
+
+`test_action_union_and_core_actions_hold_the_same_models_in_order` and
+`test_default_registry_holds_exactly_the_core_actions` keep passing as written, because the union and
+`CORE_ACTIONS` grow together. `test_history_imports_head_a_core_script_unchanged` and
+`test_session_script_for_core_actions_is_byte_identical` (`test_workbench_server.py`) keep passing because the
+header is frozen.
+
 - [ ] **Step 2: Run them to confirm they fail**
 
-Run: `uv run --all-extras pytest packages/netstead/tests/test_workbench_edits.py -q`
+Run: `uv run --all-extras pytest packages/netstead/tests/test_workbench_edits.py packages/netstead/tests/test_workbench_action_registry.py -q`
 Expected: FAIL with `ImportError: cannot import name 'AddRows'`.
 
 - [ ] **Step 3: The Actions**
@@ -2097,7 +2561,7 @@ class AddRows(BaseAction):
 
 
 class UndoEdit(BaseAction):
-    """Reverse the network's last edit, when the Workbench made it (a plugin undoes its own changes)."""
+    """Revert the network's last edit, when the Workbench made it (a plugin undoes its own changes)."""
 
     type: Literal["undo_edit"] = "undo_edit"
     mutates: ClassVar[bool] = True
@@ -2105,16 +2569,51 @@ class UndoEdit(BaseAction):
 ```
 
 `CellValue` lists `bool` first so pydantic's smart union keeps `True` a boolean (it would anyway; the order documents
-it). Append the four classes to `CORE_ACTIONS`, add them and `MAX_EDIT_IDS` to `__all__`, and export the four
-classes from `workbench/__init__.py` (import and `__all__`): `import_line` writes
-`from netstead.workbench import EditCells` for a core Action.
+it).
+
+Append the four classes, in this order, to **both** the `Action` union and `CORE_ACTIONS` (R5). Add them and
+`MAX_EDIT_IDS` to `__all__`, and export the four classes from `workbench/__init__.py` (import and `__all__`):
+`import_line` writes `from netstead.workbench import EditCells` for a core Action.
+
+Freeze the script header (R6). Replace `script_imports` with:
+
+```python
+#: The core Actions on a replayed script's first line, exactly as before P2 added core Actions, so a script that
+#: uses only these keeps its header byte for byte. A later core Action gets its own line, like a plugin's.
+_SCRIPT_HEADER = ("OpenNetwork", "BuildNetwork", "CloseNetwork", "SetActiveNetwork", "Select", "ClearSelection",
+                  "Style", "Navigate", "SetSetting")
+
+
+def script_imports(lines: Iterable[str]) -> list[str]:
+    """The import lines heading a replayed session script, given its entries' :func:`import_line` values.
+
+    The first line is always ``Session`` plus the nine original core Actions from ``netstead.workbench`` (so
+    a script using only those is unchanged from before plugins and P2 existed); each other line (a later core
+    Action's, a plugin Action's) follows once, in order.
+
+    >>> script_imports(["from netstead.workbench import Select", "from hello import Greet"])[1:]
+    ['from hello import Greet']
+    >>> script_imports(["from netstead.workbench import EditCells"])[1:]
+    ['from netstead.workbench import EditCells']
+    """
+    covered = {f"from netstead.workbench import {name}" for name in _SCRIPT_HEADER}
+    head = ", ".join(["Session", *_SCRIPT_HEADER])
+    return [f"from netstead.workbench import {head}", *dict.fromkeys(ln for ln in lines if ln and ln not in covered)]
+```
+
+Add a guard comment above `CORE_ACTIONS`: "Append new core Actions at the end, here and in `Action`; never
+reorder (`_SCRIPT_HEADER` names the first nine)."
+
+`plugins/spec.py`'s `_RESERVED_NAMES` is built from `CORE_ACTIONS`, so plugins can no longer name a class
+`EditCells`, `DeleteRows`, `AddRows` or `UndoEdit` (nor, after Tasks 9 and 11, `RunValidation` or `SaveNetwork`).
+That is intended: a script binds those names from `netstead.workbench`.
 
 - [ ] **Step 4: The handlers**
 
 In `packages/netstead/netstead/workbench/session.py`:
-- imports: add `EditCells, DeleteRows, AddRows, UndoEdit` to the `.actions` import;
-  `from corral.editing import EditingError`; `from .editing import EditPlan, EditRefused, plan_add, plan_delete,
-  plan_update` (extend Task 5's `table_keys` import); `from collections.abc import Callable` if Part 1 did not add it;
+- imports: add `AddRows, DeleteRows, EditCells, UndoEdit` to the `.actions` import;
+  `from corral.editing import EditingError` (extend the `Edit, EditResult` import); `from .editing import EditPlan,
+  EditRefused, plan_add, plan_delete, plan_update` (extend Task 5's `table_keys` import);
 - add after `_do_set_setting`:
 
 ```python
@@ -2125,9 +2624,10 @@ In `packages/netstead/netstead/workbench/session.py`:
 
     def _apply_plan(self, handle: NetworkHandle, plan: EditPlan, note: str | None) -> dict[str, Any]:
         """Apply ``plan`` as one pending edit and describe it, with the live warnings on the rows it touched."""
+        text = f"{plan.summary} ({note})" if note else plan.summary
         try:
-            self.mutate(handle.id, plan.edits, note=f"{plan.summary} ({note})" if note else plan.summary, recheck=plan.recheck)
-        except EditingError as exc:  # corral refused the payload; mutate already reversed what it applied
+            self.mutate(handle.id, plan.edits, note=text, recheck=plan.recheck)
+        except EditingError as exc:  # corral refused the payload; the draft was discarded, nothing changed
             raise ActionError(f"the edit failed: {exc}") from exc
         ledger = self.edits[handle.id]
         entry = ledger.last()
@@ -2149,11 +2649,7 @@ In `packages/netstead/netstead/workbench/session.py`:
     def _do_delete_rows(self, action: DeleteRows) -> dict[str, Any]:
         handle = self._edit_target(action)
         plan = _planned(lambda: plan_delete(handle.roadway, action.table, action.ids))
-        result = self._apply_plan(handle, plan, action.note)
-        sel = self.selection
-        if action.table == "link" and sel and sel["net_id"] == handle.id and set(sel["link_ids"]) & set(plan.keys):
-            self.selection = None  # it would point at deleted links
-        return result
+        return self._apply_plan(handle, plan, action.note)  # the selection follows in mutate (Task 6)
 
     def _do_add_rows(self, action: AddRows) -> dict[str, Any]:
         handle = self._edit_target(action)
@@ -2183,12 +2679,15 @@ def _planned(build: Callable[[], EditPlan]) -> EditPlan:
 ```
 
 `_do_*` handlers run under the session lock (`dispatch_recorded`), and `mutate` re-enters it (an `RLock`), so a plan,
-its application and the version bump are one step for every reader that takes the lock.
+its application and the version bump are one step for every reader that takes the lock. Because they run inside an
+Action, `mutate` pushes its undo records and publishes `state` instead of writing a `python.mutate` entry, and the
+pending edit's source is `"workbench"`.
 
 - [ ] **Step 5: Run the tests**
 
-Run: `uv run --all-extras pytest packages/netstead/tests/test_workbench_edits.py packages/netstead/tests/test_workbench_session.py packages/netstead/tests/test_workbench_actions.py packages/netstead/tests/test_workbench_action_registry.py -q`
-Expected: all pass. `test_default_registry_holds_exactly_the_core_actions` reads `CORE_ACTIONS`, so it grows with it.
+Run: `uv run --all-extras pytest packages/netstead/tests/test_workbench_edits.py packages/netstead/tests/test_workbench_session.py packages/netstead/tests/test_workbench_actions.py packages/netstead/tests/test_workbench_action_registry.py packages/netstead/tests/test_workbench_server.py packages/netstead/tests/test_workbench_plugins.py -q`
+Expected: all pass, including the byte-identical script tests and
+`test_actions_lists_core_and_plugin_actions_with_owner_and_schema` (the catalog grows).
 
 - [ ] **Step 6: Before commit**
 
@@ -2197,13 +2696,13 @@ Run: `uv run --all-extras pytest packages -n auto -q` and the ruff pair. Expecte
 - [ ] **Step 7: Commit**
 
 ```bash
-git add packages/netstead/netstead/workbench packages/netstead/tests/test_workbench_edits.py
-git commit -m "feat(workbench): EditCells, DeleteRows (FK cascade), AddRows and UndoEdit actions"
+git add packages/netstead/netstead/workbench packages/netstead/tests/test_workbench_edits.py packages/netstead/tests/test_workbench_action_registry.py
+git commit -m "feat(workbench): EditCells, DeleteRows (FK cascade), AddRows and UndoEdit; the script header stays"
 ```
 
 ---
 
-### Task 7: `RunValidation`: a background job, with issues located by key and anchor
+### Task 9: `RunValidation`: a background job, with issues located by key and anchor
 
 **Files:**
 - Create: `packages/netstead/netstead/workbench/issues.py`
@@ -2537,8 +3036,9 @@ class RunValidation(BaseAction):
         return f"validate {self.net_id or 'network'}"
 ```
 
-Append it to `CORE_ACTIONS`, and add it to `__all__` and `workbench/__init__.py` (import and `__all__`). Do not add
-it to the closed `Action` union: Part 1's registry is the one list.
+Append it to the `Action` union and to `CORE_ACTIONS` (R5), after Task 8's four, and add it to `__all__` and
+`workbench/__init__.py` (import and `__all__`). A session that runs it gets a
+`from netstead.workbench import RunValidation` line after the frozen header (R6).
 
 - [ ] **Step 6: The session: job outcomes commit themselves**
 
@@ -2591,7 +3091,7 @@ class _Validated:
 ```
 
    Rename its parameter from `loaded: _Loaded` to `outcome: _Outcome` (Part 1 already typed `action` as
-   `BaseAction`). Define, after the outcome classes, `_Outcome = _Loaded | _Validated` (Task 9 adds `_Saved`).
+   `BaseAction`). Define, after the outcome classes, `_Outcome = _Loaded | _Validated` (Task 11 adds `_Saved`).
 4. In `__init__`, after `self.history`: `self.issues: dict[str, IssueSet] = {}  # net_id -> last validation`.
 5. Add the job after `_job_build_network`:
 
@@ -2650,7 +3150,7 @@ git commit -m "feat(workbench): RunValidation job; issues located by record key 
 
 ---
 
-### Task 8: Issues, markers and report routes
+### Task 10: Issues, markers and report routes
 
 **Files:**
 - Create: `packages/netstead/netstead/workbench/routes/common.py`
@@ -2792,7 +3292,7 @@ def network_handle(session: Session, net_id: str, component: str) -> NetworkHand
 In `routes/network.py`, replace the inner `def handle(...)` body with
 `return network_handle(session, net_id, component)`, and import it from `.common`.
 
-Create `packages/netstead/netstead/workbench/routes/edit.py`. Task 10 adds the edit routes to it.
+Create `packages/netstead/netstead/workbench/routes/edit.py`. Task 12 adds the edit routes to it.
 
 ```python
 """Validation and edit views of one network: ``/api/n/{net_id}/{component}/issues``, ``/report.html``, ``/edits``.
@@ -2925,7 +3425,7 @@ git commit -m "feat(workbench): issues, markers and report routes"
 
 ---
 
-### Task 9: `SaveNetwork`: write the edited network as a new copy (warnings need confirming)
+### Task 11: `SaveNetwork`: write the edited network as a new copy (warnings need confirming)
 
 **Files:**
 - Modify: `packages/netstead/netstead/workbench/build.py` (`output_path`)
@@ -3054,7 +3554,8 @@ class SaveNetwork(BaseAction):
         return f"save {self.name}"
 ```
 
-Append it to `CORE_ACTIONS`, and add it to `__all__` and `workbench/__init__.py`.
+Append it to the `Action` union and to `CORE_ACTIONS` (R5), after `RunValidation`, and add it to `__all__` and
+`workbench/__init__.py`.
 
 - [ ] **Step 5: The job**
 
@@ -3105,7 +3606,7 @@ Then the job, after `_job_run_validation`:
         if open_warnings and not action.accept_warnings:
             n = len(open_warnings)
             refused = ActionError(
-                f"the network has {n} open edit warning{'s' if n != 1 else ''}; review them in the Issues tab, "
+                f"the network has {n} open edit warning{'s' if n != 1 else ''}; review them in the Issues panel, "
                 "then save with accept_warnings=True"
             )
             refused.payload = {"count": n, "warnings": [w.to_dict() for w in open_warnings[:50]]}
@@ -3146,7 +3647,7 @@ git commit -m "feat(workbench): SaveNetwork writes a new copy; open edit warning
 
 ---
 
-### Task 10: Edit routes: `/edits` and the delete plan
+### Task 12: Edit routes: `/edits` and the delete plan
 
 **Files:**
 - Modify: `packages/netstead/netstead/workbench/routes/edit.py`, `session.py`
@@ -3214,7 +3715,7 @@ In `session.py`, add with the public API methods (after `edit_check`):
 
 ```python
     def edits_payload(self, handle: NetworkHandle) -> dict[str, Any]:
-        """The Edits tab's data: pending edits (newest first), undo state, dirty state and the live warnings."""
+        """The Edits panel's data: pending edits (newest first), undo state, dirty state and the live warnings."""
         with self._lock:
             ledger = self.edits.get(handle.id) or EditLedger()
             last = ledger.last()
@@ -3287,8 +3788,10 @@ git commit -m "feat(workbench): edits view and delete-plan dry run routes"
 ```
 
 ---
+### Task 13: Pure front-end rules: `issuelist.js`, `editmodel.js`, and `linking.js` additions
 
-### Task 11: Pure front-end rules: `issuelist.js`, `editmodel.js`, and `linking.js` additions
+The rules the panels, the layer, the commands and the grid share. Badges read the **server state** (`issues`,
+`edits`), so the dock re-evaluates them on every `state` event with no extra wiring (Part 2 Decision 5).
 
 **Files:**
 - Create: `packages/netstead/netstead/workbench/static/js/issuelist.js`
@@ -3304,6 +3807,11 @@ Append to `packages/netstead/tests/test_workbench_js.py`:
 NET = (
     "const net = {id2idx: new Map([[7, 0]]), nodeId2idx: new Map([[3, 1]]), linkStart: [0, 3],"
     " linkPositions: [0, 0, 1, 1, 2, 2], nodePositions: [9, 9, 5, 6]};"
+)
+STATE = (
+    '{active: "a", issues: {a: {version: 1, stale: true, counts: {error: 1, warning: 2, info: 3}}},'
+    ' edits: {a: {pending: 2, unsaved: 2, dirty: true, warnings: 4, truncated: false, last_source: "workbench"},'
+    ' b: {pending: 1, unsaved: 0, dirty: false, warnings: 0, truncated: false, last_source: "cards"}}}'
 )
 
 
@@ -3346,6 +3854,13 @@ def test_record_issues_and_the_status_line(node_module):
     assert node_module("issuelist.js", ["rangeLabel"], "rangeLabel(100, 50, 288)") == "101–150 of 288"
 
 
+def test_the_issues_badge_counts_issues_and_edit_warnings(node_module):
+    assert node_module("issuelist.js", ["issuesBadge"], f"issuesBadge({STATE})") == 10  # 6 issues + 4 warnings
+    assert node_module("issuelist.js", ["issuesBadge"], '[issuesBadge({active: "b", edits: {}}), issuesBadge(null)]') == [
+        None, None,
+    ]
+
+
 @pytest.mark.parametrize(
     ("raw", "sample", "want"),
     [("45", 40, 45), ("abc", 40, "abc"), ("true", True, True), ("0", False, False), (" x ", "y", "x"),
@@ -3376,6 +3891,23 @@ def test_cell_and_delete_actions(node_module):
     assert gone == {"type": "delete_rows", "table": "link", "ids": [1]}
 
 
+def test_the_record_schema_and_what_changed(node_module):
+    cols = (
+        '[{name: "link_id", kind: "num"}, {name: "name", kind: "str"}, {name: "lanes", kind: "num"},'
+        ' {name: "directed", kind: "bool"}, {name: "geometry", kind: "geom"}]'
+    )
+    schema = node_module("editmodel.js", ["recordSchema"], f'recordSchema({cols}, "link_id")')
+    assert list(schema["properties"]) == ["name", "lanes", "directed"]
+    assert schema["properties"]["lanes"] == {"title": "lanes", "anyOf": [{"type": "number"}, {"type": "null"}]}
+    one = node_module("editmodel.js", ["recordSchema"], f'recordSchema({cols}, "link_id", ["lanes"])')
+    assert list(one["properties"]) == ["lanes"]
+    changed = node_module(
+        "editmodel.js", ["changedValues"],
+        'changedValues({name: "Main", lanes: 1, directed: true}, {lanes: 2, directed: true}, ["name", "lanes", "directed"])',
+    )
+    assert changed == {"name": None, "lanes": 2}  # a field cleared in the form is left out of its value: null
+
+
 def test_cell_warnings_index_one_table(node_module):
     expr = (
         'cellWarnings([{table: "link", key: 1, column: "from_node_id", message: "m1"},'
@@ -3387,32 +3919,35 @@ def test_cell_warnings_index_one_table(node_module):
 
 def test_delete_plan_text(node_module):
     text = node_module("editmodel.js", ["deletePlanText"], 'deletePlanText({table: "link", rows: {lane: 2, link: 1}, refused: null})')
-    assert text == "Delete 1 link row? This also deletes 2 lane rows. Undo is in the Edits tab."
+    assert text == "Delete 1 link row? This also deletes 2 lane rows. Undo is in the Edits panel."
     refused = node_module("editmodel.js", ["deletePlanText"], 'deletePlanText({table: "node", rows: {}, refused: "node 1 is still used"})')
     assert refused == "node 1 is still used"
 
 
-def test_pending_lines_and_badges(node_module):
+def test_pending_lines_badges_and_undo(node_module):
     lines = node_module(
         "editmodel.js",
         ["pendingLine"],
-        '[pendingLine({seq: 2, note: "link 1: lanes = 2", source: "workbench"}), pendingLine({seq: 3, note: "cards: x", source: "cards"})]',
+        '[pendingLine({seq: 2, note: "link 1: lanes = 2", source: "workbench"}), pendingLine({seq: 3, note: "x", source: "cards"})]',
     )
-    assert lines == ["#2 link 1: lanes = 2", "#3 cards: x [cards]"]
+    assert lines == ["#2 link 1: lanes = 2", "#3 x [cards]"]
     badges = node_module(
         "editmodel.js",
         ["dirtyBadge"],
         "[dirtyBadge({dirty: true, unsaved: 2}), dirtyBadge({dirty: true, unsaved: 0}), dirtyBadge({dirty: false}), dirtyBadge(null)]",
     )
     assert badges == ["2 unsaved", "changed since saved", "", ""]
+    panel = node_module("editmodel.js", ["editsBadge"], f'[editsBadge({STATE}), editsBadge({{...{STATE}, active: "b"}})]')
+    assert panel == [{"text": "2", "dirty": True, "title": "2 unsaved"}, None]
     blocked = node_module(
         "editmodel.js",
         ["undoBlocked"],
-        '[undoBlocked({pending: 1, last_source: "workbench"}), undoBlocked({pending: 1, last_source: "cards"}), undoBlocked({pending: 0})]',
+        '[undoBlocked({pending: 1, last_source: "workbench"}), undoBlocked({pending: 1, last_source: "cards"}),'
+        ' undoBlocked({pending: 1, last_source: "python"}), undoBlocked({pending: 0})]',
     )
-    assert blocked == ["", "The last change was made by cards; undo it there.", "Nothing to undo."]
-    cols = node_module("editmodel.js", ["editableColumns"], 'editableColumns({link_id: 1, name: "a", geometry: "x", lanes: 2}, "link_id")')
-    assert cols == ["name", "lanes"]
+    assert blocked == ["", "The last change was made by cards; undo it there.",
+                       "The last change was made from Python; undo it there.", "Nothing to undo."]
+    assert node_module("editmodel.js", ["editSummary"], f"editSummary({STATE}).unsaved") == 2
 
 
 @pytest.mark.parametrize(
@@ -3440,7 +3975,7 @@ Expected: the new tests FAIL. The modules don't exist yet; `netChange` is not ex
 Create `packages/netstead/netstead/workbench/static/js/issuelist.js`:
 
 ```js
-// Issues-tab rules. Import-free and DOM-free: unit-tested under node (tests/test_workbench_js.py).
+// Issues-panel rules. Import-free and DOM-free: unit-tested under node (tests/test_workbench_js.py).
 //
 // An issue's `anchor` places it on the map: {link: id} (its middle vertex), {node: id}, or {lonlat: [x, y]}.
 // The server sends anchors, not coordinates; positions come from the network buffer the browser already has.
@@ -3491,6 +4026,9 @@ export const recordIssues = (records, table, id) => (records && records[table] &
 
 export const rangeLabel = (offset, shown, total) => (total ? `${offset + 1}–${offset + shown} of ${total}` : "No issues");
 
+// The last validation of the active network (session state `issues[active]`), or null.
+export const issueMeta = state => (state && state.issues && state.issues[state.active]) || null;
+
 // One line on the state of the last validation.
 export function statusLine(meta) {
   if (!meta) return "Not validated yet.";
@@ -3498,14 +4036,22 @@ export function statusLine(meta) {
   const parts = SEVERITIES.filter(s => c[s]).map(s => `${c[s].toLocaleString("en-US")} ${s}${c[s] === 1 || s === "info" ? "" : "s"}`);
   return `Validated v${meta.version}: ${parts.join(", ") || "no issues"}` + (meta.stale ? " · the network changed since: re-run" : "");
 }
+
+// The Issues panel's badge (Part 2 `badge(ctx)`, from `ctx.state`): validation issues plus live edit warnings on the
+// active network, or null for none.
+export function issuesBadge(state) {
+  const meta = issueMeta(state), edits = state && state.edits && state.edits[state.active];
+  const n = (meta ? SEVERITIES.reduce((t, k) => t + (meta.counts[k] || 0), 0) : 0) + ((edits && edits.warnings) || 0);
+  return n || null;
+}
 ```
 
 Create `packages/netstead/netstead/workbench/static/js/editmodel.js`:
 
 ```js
-// Edit rules: cell values, edit actions, and how pending edits and warnings read. Ported in part from the
-// offline report's "Fix locally" editor (map/templates/map_component.js: coerceLikely). Import-free and
-// DOM-free: unit-tested under node (tests/test_workbench_js.py).
+// Edit rules: cell values, edit actions, the record form's schema, and how pending edits and warnings read. Ported
+// in part from the offline report's "Fix locally" editor (map/templates/map_component.js: coerceLikely).
+// Import-free and DOM-free: unit-tested under node (tests/test_workbench_js.py).
 
 // The typed text as the value to send. Empty clears the cell (null). A number when the current value is a
 // number; true/false for a yes/no value; otherwise the text as typed (a text column keeps "007"). The server
@@ -3538,7 +4084,31 @@ export function deleteAction(table, ids, note = null) {
   return action;
 }
 
-// The columns the editor offers for a record: everything but its key and its geometry.
+const JSON_TYPE = { num: "number", bool: "boolean", str: "string" };
+
+// The record editor's JSON Schema (for wb.schemaForm) from a table's /schema columns ({name, kind}): every column
+// but the key and geometry, each nullable (empty clears the cell), or only `only` (a fix names one column).
+export function recordSchema(columns, pk, only = null) {
+  const properties = {};
+  for (const c of columns) {
+    if (c.name === pk || !JSON_TYPE[c.kind] || (only && !only.includes(c.name))) continue;
+    properties[c.name] = { title: c.name, anyOf: [{ type: JSON_TYPE[c.kind] }, { type: "null" }] };
+  }
+  return { type: "object", properties };
+}
+
+// The values to send: each of `keys` whose form value differs from the record's. A field cleared in the form is
+// missing from its value (schemaForm drops a blank optional field): that clears the cell (null).
+export function changedValues(before, after, keys) {
+  const out = {};
+  for (const k of keys) {
+    const a = after[k] ?? null;
+    if (a !== (before[k] ?? null)) out[k] = a;
+  }
+  return out;
+}
+
+// The columns the cell editor offers for a record: everything but its key and its geometry.
 export const editableColumns = (attributes, pk) => Object.keys(attributes).filter(k => k !== pk && k !== "geometry");
 
 // One table's edit warnings, indexed for the grid: {"<key>": {"<column>": ["message", ...]}}.
@@ -3559,21 +4129,32 @@ export function deletePlanText(plan) {
   if (plan.refused) return plan.refused;
   const also = Object.entries(plan.rows).filter(([t]) => t !== plan.table).map(([t, n]) => rowCount(n, t));
   return `Delete ${rowCount(plan.rows[plan.table] || 0, plan.table)}?` +
-    (also.length ? ` This also deletes ${also.join(", ")}.` : "") + " Undo is in the Edits tab.";
+    (also.length ? ` This also deletes ${also.join(", ")}.` : "") + " Undo is in the Edits panel.";
 }
 
-// One pending edit in the Edits tab; a plugin's carries its id.
+// One pending edit in the Edits panel; another source's carries its name.
 export const pendingLine = e => `#${e.seq} ${e.note}${e.source === "workbench" ? "" : ` [${e.source}]`}`;
 
-// The dirty badge for a network's edit summary (session state `edits[net_id]`): "" when clean.
+// The active network's edit summary (session state `edits[active]`), or null.
+export const editSummary = state => (state && state.edits && state.edits[state.active]) || null;
+
+// The dirty text for an edit summary: "" when clean.
 export function dirtyBadge(summary) {
   if (!summary || !summary.dirty) return "";
   return summary.unsaved ? `${summary.unsaved} unsaved` : "changed since saved";
 }
 
+// The Edits panel's badge (Part 2 `badge(ctx)`, from `ctx.state`): {text, dirty, title} while dirty, else null.
+// The dock's workspace tab shows the dirty mark from it whenever another workspace is open.
+export function editsBadge(state) {
+  const s = editSummary(state);
+  return s && s.dirty ? { text: s.unsaved ? String(s.unsaved) : "", dirty: true, title: dirtyBadge(s) } : null;
+}
+
 // Why core's Undo is unavailable, or "" when it can undo.
 export function undoBlocked(summary) {
   if (!summary || !summary.pending) return "Nothing to undo.";
+  if (summary.last_source === "python") return "The last change was made from Python; undo it there.";
   if (summary.last_source !== "workbench") return `The last change was made by ${summary.last_source}; undo it there.`;
   return "";
 }
@@ -3600,7 +4181,7 @@ export function netChange(prevKey, nextKey) {
 - [ ] **Step 4: Run the tests**
 
 Run: `uv run --all-extras pytest packages/netstead/tests/test_workbench_js.py packages/netstead/tests/test_workbench_static.py -q`
-Expected: all pass.
+Expected: all pass. The existing `test_row_marks` still passes (the new arguments default off).
 
 - [ ] **Step 5: Before commit**
 
@@ -3610,92 +4191,130 @@ Run: `uv run --all-extras pytest packages -n auto -q` and the ruff pair. Expecte
 
 ```bash
 git add packages/netstead/netstead/workbench/static/js packages/netstead/tests/test_workbench_js.py
-git commit -m "feat(workbench): issue-list and edit rules as unit-tested modules"
+git commit -m "feat(workbench): issue-list, badge and edit rules as unit-tested modules"
 ```
 
 ---
 
-### Task 12: Drawer tabs, the edits feed, and an edit keeps the view
+### Task 14: Issues and Edits dock panels, the edits feed, and an edit keeps the view
+
+Part 2 made the right drawer the dock, with core's Details as its first panel. P2's Issues and Edits register into
+it exactly as a plugin panel would (Part 2's "What P2 changes"), in every workspace (R7). Their panes are static
+markup, so the static id test sees every element the JS uses; `addPanel` adopts a pane that already exists.
 
 **Files:**
 - Modify: `packages/netstead/netstead/workbench/static/index.html`, `app.css`
-- Create: `packages/netstead/netstead/workbench/static/js/edits.js` (Task 15 adds the Edits tab to it)
-- Modify: `packages/netstead/netstead/workbench/static/js/store.js`, `side.js`, `main.js`, `table.js`
+- Create: `packages/netstead/netstead/workbench/static/js/edits.js` (Task 17 adds the Edits panel's rendering)
+- Modify: `packages/netstead/netstead/workbench/static/js/store.js`, `main.js`, `table.js`
+- Test: `packages/netstead/tests/test_workbench_static.py`
 
-- [ ] **Step 1: The drawer**
+- [ ] **Step 1: Write the failing test**
 
-In `index.html`, replace the opening `<aside id="side">` line with the lines below, and put a `</section>`
-immediately before the existing `</aside>`. The Issues and Edits panes are filled by Tasks 13 and 15. They are
-added now so the tab bar is complete.
+Append to `packages/netstead/tests/test_workbench_static.py`:
 
-```html
-  <aside id="side">
-    <nav id="side-tabs" role="tablist" aria-label="Drawer">
-      <button role="tab" data-tab="details" class="on" aria-selected="true">Details</button>
-      <button role="tab" data-tab="issues" aria-selected="false">Issues <span id="issues-count" class="pcount">0</span></button>
-      <button role="tab" data-tab="edits" aria-selected="false">Edits <span id="edits-count" class="pcount">0</span></button>
-    </nav>
-    <section class="side-pane" data-pane="details" role="tabpanel">
+```python
+def test_issues_and_edits_are_core_dock_panels():
+    html = (STATIC_DIR / "index.html").read_text()
+    side = html[html.index('<aside id="side">') : html.index("</aside>")]
+    order = [side.index(f'id="dock-{p}"') for p in ("details", "issues", "edits")]
+    assert order == sorted(order)
+    for panel in ("issues", "edits"):
+        assert f'data-panel="{panel}"' in side and f'aria-labelledby="dtab-{panel}" hidden' in side
+    edits = (JS_DIR / "edits.js").read_text()
+    assert 'addPanel(CORE, { id: "issues"' in edits and 'addPanel(CORE, { id: "edits"' in edits
+    assert "workspace: ALL_WORKSPACES" in edits
+    main = (JS_DIR / "main.js").read_text()
+    assert main.index("registerCoreSlots()") < main.index("registerEditPanels()") < main.index("wireWorkspaces(")
+    assert "drawerTab" not in (JS_DIR / "store.js").read_text()  # the dock's dockPanel holds the choice
 ```
 
-Then, between that `</section>` and `</aside>`, add two empty panes:
+- [ ] **Step 2: Run it to confirm it fails**
+
+Run: `uv run --all-extras pytest packages/netstead/tests/test_workbench_static.py -q -k dock_panels`
+Expected: FAIL: there is no `#dock-issues`.
+
+- [ ] **Step 3: The panes**
+
+In `index.html`, between the `</section>` that closes `#dock-details` and `</aside>`, add two empty panes (Tasks 15
+and 17 fill them):
 
 ```html
-    <section class="side-pane" data-pane="issues" role="tabpanel" hidden></section>
-    <section class="side-pane" data-pane="edits" role="tabpanel" hidden></section>
+    <section class="dock-pane" id="dock-issues" data-panel="issues" role="tabpanel" aria-labelledby="dtab-issues" hidden></section>
+    <section class="dock-pane" id="dock-edits" data-panel="edits" role="tabpanel" aria-labelledby="dtab-edits" hidden></section>
 ```
 
 Append to `app.css`:
 
 ```css
-  #side-tabs { display:flex; gap:4px; margin:-4px 0 12px; border-bottom:1px solid var(--edge); }
-  #side-tabs button { background:none; color:var(--muted); border-radius:6px 6px 0 0; padding:6px 10px; font-size:12.5px; }
-  #side-tabs button.on { color:var(--ink); box-shadow:inset 0 -2px 0 var(--accent); }
   a.btn { display:inline-block; text-decoration:none; padding:5px 10px; border-radius:8px; font-size:12px;
           border:1px solid var(--edge); color:var(--ink); }
   a.btn.off { opacity:.45; pointer-events:none; }
 ```
 
-- [ ] **Step 2: Store keys**
+- [ ] **Step 4: Store keys**
 
-In `store.js`, add to the initial state:
+In `store.js`, add to the initial state (no `drawerTab`: the dock's `dockPanel` holds the choice; no `showIssues`:
+Layers → Overlays hides the issue layer through `hiddenLayers`):
 
 ```js
-  drawerTab: "details",       // details | issues | edits (per tab, never recorded)
   issues: null,               // /issues/markers for the active network: {net_id, version, markers, records}
   issueFilter: { severity: [], table: "", code: "", located: "", thisRecord: false },
   issueFocus: null,           // the issue number last picked in the list or on the map
-  showIssues: true,           // the map's issue-marker layer (Layers panel; view state only)
+  fixTarget: null,            // {table, id, column, note}: what "Fix the picked issue…" edits (an issue or a warning)
   edits: null,                // GET /edits for the active network: pending edits and live edit warnings
 ```
 
-- [ ] **Step 3: Tabs**
+- [ ] **Step 5: The panels and the edits feed**
 
-In `side.js`, add:
+Create `packages/netstead/netstead/workbench/static/js/edits.js`. The Issues panel (warnings), the grid (cell marks)
+and the Edits panel all read `store.edits`; this keeps it current, and registers the two panels.
 
 ```js
-// The drawer's tabs (Details | Issues | Edits): which pane shows is per-tab view state.
-export function showTab(name) { store.set({ drawerTab: name }); }
+// The Issues and Edits dock panels (registered like a plugin's, in every workspace), and the active network's pending
+// edits and live edit warnings (GET /edits), kept in `store.edits`. Task 17 adds the Edits panel's rendering.
+import { getJSON, netPath } from "./api.js";
+import { toast } from "./dom.js";
+import { editsBadge } from "./editmodel.js";
+import { issuesBadge } from "./issuelist.js";
+import { ALL_WORKSPACES, CORE } from "./slots.js";
+import { store } from "./store.js";
+import { addPanel } from "./workspaces.js";
 
-function renderTab(name) {
-  for (const b of document.querySelectorAll("#side-tabs button")) {
-    const on = b.dataset.tab === name;
-    b.classList.toggle("on", on);
-    b.setAttribute("aria-selected", String(on));
-  }
-  for (const pane of document.querySelectorAll(".side-pane")) pane.hidden = pane.dataset.pane !== name;
+let seq = 0, feedKey = null;
+const activeId = () => { const s = store.get().server; return s && s.active; };
+
+// Badges read the server state (ctx.state), so the dock refreshes them on every state event.
+export function registerEditPanels() {
+  addPanel(CORE, { id: "issues", title: "Issues", workspace: ALL_WORKSPACES, order: 10, badge: c => issuesBadge(c.state) });
+  addPanel(CORE, { id: "edits", title: "Edits", workspace: ALL_WORKSPACES, order: 20, badge: c => editsBadge(c.state) });
+}
+
+export async function loadEdits() {
+  const id = activeId(), mine = ++seq;
+  if (!id) { store.set({ edits: null }); return; }
+  const j = await getJSON(netPath(id, "edits"));
+  if (mine === seq && activeId() === id) store.set({ edits: j });
+}
+
+// Server state arrived: reload when the active network, its version, or its edit summary moved.
+export function onEditsState(server) {
+  const id = server.active, h = server.networks.find(n => n.id === id);
+  const key = JSON.stringify([id, h && h.version, server.edits && server.edits[id]]);
+  if (key === feedKey) return;
+  feedKey = key;
+  loadEdits().catch(e => toast(e.message));
 }
 ```
 
-At the end of `wireSide()`, add:
+With three panels the dock's tab strip now shows (Part 2: it shows with two or more), reading
+"Details | Issues ⟨n⟩ | Edits ⟨n⟩ ●".
 
-```js
-  for (const b of document.querySelectorAll("#side-tabs button")) b.onclick = () => showTab(b.dataset.tab);
-  store.subscribe(["drawerTab"], s => renderTab(s.drawerTab));
-  renderTab(store.get().drawerTab);
-```
+In `main.js`:
+- import `{ onEditsState, registerEditPanels }` from `./edits.js`;
+- in `boot()`, call `registerEditPanels();` right after `registerCoreSlots();` (before `wireWorkspaces(...)`);
+- add to `wireStore()`: `store.subscribe(["server"], s => onEditsState(s.server));`
 
-- [ ] **Step 4: An edit keeps the view**
+- [ ] **Step 6: An edit keeps the view**
 
 In `table.js`, add after `onNetworkChanged`:
 
@@ -3721,7 +4340,7 @@ async function refreshRail() {
 ```
 
 In `main.js`:
-- import `netChange` from `./linking.js` and `onNetworkEdited` from `./table.js`;
+- import `netChange` from `./linking.js` and add `onNetworkEdited` to the `./table.js` import;
 - replace
 
 ```js
@@ -3750,80 +4369,79 @@ function onNetKey(key) {
 }
 ```
 
-- [ ] **Step 5: The edits feed**
+`loadActiveNetwork` already re-fits the map only on a switch (`switched`), so an edit keeps the camera too.
 
-Create `packages/netstead/netstead/workbench/static/js/edits.js`. The Issues tab (warnings), the grid (cell marks) and
-the Edits tab all read `store.edits`; this keeps it current.
+- [ ] **Step 7: Run the static and JS tests**
 
-```js
-// The active network's pending edits and live edit warnings (GET /edits), kept in `store.edits`.
-// Task 15 adds the Edits tab's rendering and buttons to this module.
-import { getJSON, netPath } from "./api.js";
-import { toast } from "./dom.js";
-import { store } from "./store.js";
+Run: `uv run --all-extras pytest packages/netstead/tests/test_workbench_static.py packages/netstead/tests/test_workbench_js.py packages/netstead/tests/test_workbench_slots_js.py -q`
+Expected: all pass. Every new id is in `index.html`, every import resolves, and Part 2's dock tests
+(`test_the_drawer_is_the_dock_and_keeps_the_details_content`, `test_core_registers_inspect_and_details_through_the_slots`)
+are unchanged.
 
-let seq = 0, feedKey = null;
-const activeId = () => { const s = store.get().server; return s && s.active; };
-
-export async function loadEdits() {
-  const id = activeId(), mine = ++seq;
-  if (!id) { store.set({ edits: null }); return; }
-  const j = await getJSON(netPath(id, "edits"));
-  if (mine === seq && activeId() === id) store.set({ edits: j });
-}
-
-// Server state arrived: reload when the active network, its version, or its edit summary moved.
-export function onEditsState(server) {
-  const id = server.active, h = server.networks.find(n => n.id === id);
-  const key = JSON.stringify([id, h && h.version, server.edits && server.edits[id]]);
-  if (key === feedKey) return;
-  feedKey = key;
-  loadEdits().catch(e => toast(e.message));
-}
-```
-
-In `main.js`, import `{ onEditsState }` from `./edits.js` and add to `wireStore()`:
-`store.subscribe(["server"], s => onEditsState(s.server));`
-
-- [ ] **Step 6: Run the static and JS tests**
-
-Run: `uv run --all-extras pytest packages/netstead/tests/test_workbench_static.py packages/netstead/tests/test_workbench_js.py -q`
-Expected: all pass. Every new id is in `index.html`, and every import resolves.
-
-- [ ] **Step 7: Before commit**
+- [ ] **Step 8: Before commit**
 
 Run: `uv run --all-extras pytest packages -n auto -q` and the ruff pair. Expected: all pass.
 
-- [ ] **Step 8: Commit**
+- [ ] **Step 9: Commit**
 
 ```bash
-git add packages/netstead/netstead/workbench/static
-git commit -m "feat(workbench): drawer tabs, the edits feed; an edit keeps focus, highlights and the table"
+git add packages/netstead/netstead/workbench/static packages/netstead/tests/test_workbench_static.py
+git commit -m "feat(workbench): Issues and Edits dock panels with badges; an edit keeps focus, highlights and the table"
 ```
 
 ---
 
-### Task 13: The Issues tab (validation and edit warnings), map markers and row marks
+### Task 15: The Issues panel, the issue layer, row marks, and the validation commands
 
 **Files:**
-- Create: `packages/netstead/netstead/workbench/static/js/issues.js`
+- Create: `packages/netstead/netstead/workbench/static/js/issues.js`, `editcmds.js`, `fixeditor.js` (a stub here;
+  Task 17 fills it)
 - Modify: `packages/netstead/netstead/workbench/static/index.html`, `app.css`
 - Modify: `packages/netstead/netstead/workbench/static/js/map.js`, `table.js`, `main.js`
+- Test: `packages/netstead/tests/test_workbench_static.py`
 
-`issues.js` imports `openFixEditor` from `fixeditor.js` (Task 15). To keep this task's module graph complete, this
-task creates `fixeditor.js` with only that export as a stub, and Task 15 fills it in:
+`editcmds.js` imports `openFixEditor` from `fixeditor.js` (Task 17). To keep this task's module graph complete,
+create `fixeditor.js` now with only that export as a stub:
 
 ```js
-// The fix editor (Task 15).
+// The record and fix editor (Task 17).
 export async function openFixEditor() {}
 ```
 
-- [ ] **Step 1: The pane**
+- [ ] **Step 1: Write the failing test**
 
-In `index.html`, fill `<section class="side-pane" data-pane="issues" …>`. Edit warnings come first: they are
-always current, while a validation run can be stale.
+Append to `packages/netstead/tests/test_workbench_static.py`:
+
+```python
+def test_issue_markers_and_validation_commands_use_the_slots():
+    issues = (JS_DIR / "issues.js").read_text()
+    assert 'addLayer(CORE, "roadway", "issues"' in issues and 'title: "Issues"' in issues
+    assert '"issues"' not in (JS_DIR / "map.js").read_text()  # the layer lives in issues.js, not in map.js
+    cmds = (JS_DIR / "editcmds.js").read_text()
+    for command in ("run_validation", "fix_issue"):
+        assert f'id: "{command}"' in cmds
+    assert 'runCore("fix_issue")' in issues  # an issue's Fix button goes through the commands registry
+    main = (JS_DIR / "main.js").read_text()
+    assert "registerIssueLayer()" in main and "registerEditCommands()" in main
+    html = (STATIC_DIR / "index.html").read_text()
+    pane = html[html.index('id="dock-issues"') : html.index('id="dock-edits"')]
+    for element_id in ("iss-edit", "iss-run", "iss-report", "iss-status", "iss-list", "iss-unlocated", "iss-fixer"):
+        assert f'id="{element_id}"' in pane
+    assert 'id="tg-issues"' not in html  # hidden through Layers → Overlays, not a toggle of its own
+```
+
+- [ ] **Step 2: Run it to confirm it fails**
+
+Run: `uv run --all-extras pytest packages/netstead/tests/test_workbench_static.py -q -k validation_commands`
+Expected: FAIL: `issues.js` does not exist.
+
+- [ ] **Step 3: The pane**
+
+In `index.html`, fill `<section class="dock-pane" id="dock-issues" …>`. Edit warnings come first: they are always
+current, while a validation run can be stale. `#iss-fixer` holds the fix editor (one at a time).
 
 ```html
+      <div id="iss-fixer"></div>
       <div class="label">Edit warnings <span id="iss-edit-count" class="pcount">0</span></div>
       <div id="iss-edit"><span class="empty">No edit warnings.</span></div>
       <div class="label">Validation</div>
@@ -3843,13 +4461,6 @@ always current, while a validation run can be stale.
       <div id="iss-unlocated"></div>
 ```
 
-In the Layers panel, after the Selection row, add:
-
-```html
-        <div class="row"><label class="sw"><input type="checkbox" id="tg-issues" checked><span></span></label>
-          <span class="lbl">Issues</span></div>
-```
-
 Append to `app.css`:
 
 ```css
@@ -3866,29 +4477,63 @@ Append to `app.css`:
   #tbl-grid tr.iss td:first-child { box-shadow:inset 3px 0 0 rgb(240,170,60); }
 ```
 
-- [ ] **Step 2: `issues.js`**
+- [ ] **Step 4: The commands**
+
+Create `packages/netstead/netstead/workbench/static/js/editcmds.js` (Task 17 adds the record and undo commands):
 
 ```js
-// Issues tab: the live edit warnings, then validation: run it (a background job), list issues by filter, and link
-// issue <-> map marker <-> row. The list, markers and report are read-only views of the last RunValidation and of
-// GET /edits; nothing here is recorded.
-import { dispatch, getJSON, netPath } from "./api.js";
-import { $, esc, toast } from "./dom.js";
+// Core's validate and edit commands, registered like a plugin's (palette, feature and row menus). Core commands
+// may read the page's store; plugin commands only get the frozen ctx.
+import { dispatch } from "./api.js";
+import { $, toast } from "./dom.js";
+import { addCommandTo, commandContext, runCommand } from "./commands.js";
 import { openFixEditor } from "./fixeditor.js";
-import { SEVERITIES, issuesQuery, rangeLabel, statusLine } from "./issuelist.js";
-import { flyTo } from "./map.js";
-import { showTab } from "./side.js";
+import { CORE, slots } from "./slots.js";
 import { store } from "./store.js";
+import { showPanel } from "./workspaces.js";
+
+const fail = e => toast(e.message);
+const add = spec => addCommandTo(slots, store, CORE, { contexts: ["palette"], ...spec });
+
+// Run one of core's registered commands with the current context (a button that does what a command does).
+export function runCore(id) {
+  const command = slots.commands.get(id), s = store.get();
+  if (!command) return;
+  const ctx = commandContext({ server: s.server, focus: s.focus, highlights: s.highlights, workspace: s.workspace });
+  runCommand(command, ctx, (c, e) => fail(e));
+}
+
+export function registerEditCommands() {
+  add({ id: "run_validation", group: "Issues", title: "Run validation", when: c => Boolean(c.network),
+    run: () => { showPanel("issues"); return dispatch({ type: "run_validation" }); } });
+  add({ id: "fix_issue", group: "Issues", title: "Fix the picked issue…", when: () => Boolean(store.get().fixTarget),
+    run: () => { showPanel("issues"); return openFixEditor($("iss-fixer"), store.get().fixTarget); } });
+}
+```
+
+- [ ] **Step 5: `issues.js`**
+
+```js
+// Issues panel: the live edit warnings, then validation: run it (a background job), list issues by filter, and link
+// issue <-> map marker <-> row. The list, markers and report are read-only views of the last RunValidation and of
+// GET /edits; nothing here is recorded. The markers are a core layer in the layer registry ("Issues" in Overlays).
+import { getJSON, netPath } from "./api.js";
+import { $, esc, toast } from "./dom.js";
+import { runCore } from "./editcmds.js";
+import { SEVERITIES, SEVERITY_RGB, issueMeta, issuesQuery, markerPoints, rangeLabel, statusLine } from "./issuelist.js";
+import { addLayer, flyTo } from "./map.js";
+import { CORE } from "./slots.js";
+import { store } from "./store.js";
+import { showPanel } from "./workspaces.js";
 
 const PAGE = 100;
 let offset = 0, seq = 0, metaKey = null;
 const fail = e => toast(e.message);
 const activeId = () => { const s = store.get().server; return s && s.active; };
-export const issueMeta = s => (s.server && s.server.issues && s.server.issues[s.server.active]) || null;
 
 // Server state arrived: reload markers and the list when the active network's issue set (or its staleness) moved.
 export function onIssuesState(s) {
-  const meta = issueMeta(s), key = JSON.stringify([s.server && s.server.active, meta]);
+  const meta = issueMeta(s.server), key = JSON.stringify([s.server && s.server.active, meta]);
   renderStatus(meta);
   if (key === metaKey) return;
   metaKey = key;
@@ -3904,17 +4549,15 @@ export function reloadIssues({ restart = false } = {}) {
 function renderStatus(meta) {
   const id = activeId(), current = meta && !meta.stale;
   $("iss-status").textContent = statusLine(meta);
-  renderCount();
   $("iss-run").textContent = meta && meta.stale ? "Re-run validation" : "Run validation";
   $("iss-report").classList.toggle("off", !current);
   $("iss-report").href = current && id ? netPath(id, "report.html") : "#";
 }
 
-// The tab's count: validation issues plus live edit warnings.
-function renderCount() {
-  const s = store.get(), meta = issueMeta(s);
-  const warned = s.edits && s.edits.net_id === activeId() ? s.edits.warnings.length : 0;
-  $("issues-count").textContent = (meta ? SEVERITIES.reduce((n, k) => n + (meta.counts[k] || 0), 0) : 0) + warned;
+// Pick what "Fix the picked issue…" edits, then run that command (the button and the palette do the same thing).
+function fix(target) {
+  store.set({ fixTarget: target });
+  runCore("fix_issue");
 }
 
 // The live edit warnings (GET /edits, via store.edits): click one to focus its record; Fix opens the editor on its
@@ -3928,23 +4571,25 @@ export function renderEditWarnings(edits) {
     `<div class="iss-msg">${esc(w.message)}</div></div><button class="mini ghost iss-fix">Fix</button></div>`).join("")
     : '<span class="empty">No edit warnings.</span>';
   for (const row of $("iss-edit").querySelectorAll(".iss")) {
-    const w = list[Number(row.dataset.w)];
-    row.onclick = e => { if (!e.target.closest(".iss-fix, .fix-editor")) store.set({ focus: { table: w.table, id: w.key, from: "table" } }); };
-    row.querySelector(".iss-fix").onclick = () => openFixEditor(row, { table: w.table, id: w.key, column: w.column }).catch(fail);
+    const w = list[Number(row.dataset.w)], target = { table: w.table, id: w.key, column: w.column, note: w.message };
+    row.onclick = e => {
+      if (e.target.closest(".iss-fix")) return;
+      store.set({ fixTarget: target, focus: { table: w.table, id: w.key, from: "table" } });
+    };
+    row.querySelector(".iss-fix").onclick = () => fix(target);
   }
-  renderCount();
 }
 
 async function loadMarkers() {
   const id = activeId();
-  if (!id || !issueMeta(store.get())) { store.set({ issues: null }); return; }
+  if (!id || !issueMeta(store.get().server)) { store.set({ issues: null }); return; }
   const j = await getJSON(netPath(id, "issues/markers"));
   if (activeId() === id) store.set({ issues: { ...j, net_id: id } });
 }
 
 async function loadList() {
   const id = activeId(), mine = ++seq, s = store.get();
-  if (!id || !issueMeta(s)) {
+  if (!id || !issueMeta(s.server)) {
     $("iss-list").innerHTML = '<span class="empty">Run validation to list issues.</span>';
     $("iss-unlocated").innerHTML = ""; $("iss-range").textContent = ""; $("iss-unloc-count").textContent = "0";
     return;
@@ -3981,37 +4626,38 @@ function renderFacets(facets, f) {
 
 function issueHTML(i) {
   const where = i.key != null ? `${i.table} ${i.key}` : i.table || "";
-  const fix = i.fixable ? `<button class="mini ghost iss-fix">Fix</button>` : "";
+  const button = i.fixable ? `<button class="mini ghost iss-fix">Fix</button>` : "";
   return `<div class="iss sev-${esc(i.severity)}" data-i="${i.i}" tabindex="0"><span class="sev-dot"></span>` +
     `<div class="iss-body"><div><b>${esc(i.code)}</b> <span class="diag">${esc(where)}${i.column ? ` · ${esc(i.column)}` : ""}</span></div>` +
-    `<div class="iss-msg">${esc(i.message)}</div>${i.fix_hint ? `<div class="diag">${esc(i.fix_hint)}</div>` : ""}</div>${fix}</div>`;
+    `<div class="iss-msg">${esc(i.message)}</div>${i.fix_hint ? `<div class="diag">${esc(i.fix_hint)}</div>` : ""}</div>${button}</div>`;
 }
+
+const fixTargetOf = i => (i.fixable ? { table: i.table, id: i.key, column: i.column, note: `${i.code}: ${i.message}` } : null);
 
 function wireRows(el, issues) {
   const byI = new Map(issues.map(i => [String(i.i), i]));
   for (const row of el.querySelectorAll(".iss")) {
     const issue = byI.get(row.dataset.i);
-    row.onclick = e => { if (!e.target.closest(".iss-fix, .fix-editor")) selectIssue(issue); };
-    const fix = row.querySelector(".iss-fix");
-    if (fix) fix.onclick = () => openFixEditor(row, {
-      table: issue.table, id: issue.key, column: issue.column, note: `${issue.code}: ${issue.message}`,
-    }).catch(fail);
+    row.onclick = e => { if (!e.target.closest(".iss-fix")) selectIssue(issue); };
+    const button = row.querySelector(".iss-fix");
+    if (button) button.onclick = () => fix(fixTargetOf(issue));
   }
 }
 
-// An issue in the list: mark it and focus its record. The map flies there and the table scrolls to its row.
+// An issue in the list: mark it, make it the fix target, and focus its record. The map flies there and the table
+// scrolls to its row.
 function selectIssue(issue) {
   const a = issue.anchor || {};
-  const patch = { issueFocus: issue.i };
+  const patch = { issueFocus: issue.i, fixTarget: fixTargetOf(issue) };
   if (issue.key != null) patch.focus = { table: issue.table, id: issue.key, from: "table" };
   else if (a.link != null || a.node != null) patch.focus = { table: a.link != null ? "link" : "node", id: a.link ?? a.node, from: "table" };
   store.set(patch);
   if (!patch.focus && a.lonlat) flyTo(a.lonlat[0], a.lonlat[1]);
 }
 
-// A marker clicked on the map: open the Issues tab filtered to that record, with the issue marked.
+// A marker clicked on the map: open the Issues panel filtered to that record, with the issue marked.
 export function onIssueMarker(m) {
-  showTab("issues");
+  showPanel("issues");
   const patch = { issueFocus: m.i };
   if (m.key != null) {
     patch.focus = { table: m.table, id: m.key, from: "map" };
@@ -4022,48 +4668,52 @@ export function onIssueMarker(m) {
 
 export function markFocusedIssue() {
   const i = store.get().issueFocus;
-  for (const row of document.querySelectorAll("#side .iss")) {
+  for (const row of document.querySelectorAll("#dock-issues .iss[data-i]")) {
     const on = row.dataset.i === String(i);
     row.classList.toggle("on", on);
     if (on) row.scrollIntoView({ block: "nearest" });
   }
 }
 
+// The markers: a dot per located issue, coloured by severity; the picked issue is drawn larger. A core factory
+// gets the whole store state as ctx.state (map.js layerContext). Positions are cached per decoded network and
+// issue set, so an edit (a new version) re-places them; the set itself stays the one validated, until re-run.
+let cache = { net: null, issues: null, points: [] };
+function issueLayer(c) {
+  const s = c.state;
+  if (!s.issues || !c.net || s.issues.net_id !== s.server.active) return null;
+  if (cache.net !== c.net || cache.issues !== s.issues) cache = { net: c.net, issues: s.issues, points: markerPoints(s.issues.markers, c.net) };
+  return new c.deck.ScatterplotLayer({ id: "issues", data: cache.points, getPosition: p => p.position,
+    getRadius: p => (p.i === s.issueFocus ? 8 : 4.5), radiusUnits: "pixels", stroked: true, lineWidthMinPixels: 1,
+    getFillColor: p => [...SEVERITY_RGB[p.severity], 230], getLineColor: [17, 21, 26],
+    updateTriggers: { getRadius: s.issueFocus }, pickable: true, parameters: { depthTest: false },
+    onClick: info => { if (info && info.object) onIssueMarker(info.object); } });
+}
+
+// Between the highlights (400) and the focus (500); titled, so Layers → Overlays lists an "Issues" switch.
+export function registerIssueLayer() {
+  addLayer(CORE, "roadway", "issues", issueLayer, { order: 450, title: "Issues" });
+}
+
 function setFilter(patch) { store.set({ issueFilter: { ...store.get().issueFilter, ...patch } }); }
 
 export function wireIssues() {
-  $("iss-run").onclick = () => dispatch({ type: "run_validation" }).catch(fail);
+  $("iss-run").onclick = () => runCore("run_validation");
   $("iss-sev").onchange = e => setFilter({ severity: e.target.value ? [e.target.value] : [] });
   $("iss-table").onchange = e => setFilter({ table: e.target.value });
   $("iss-code").onchange = e => setFilter({ code: e.target.value });
   $("iss-this").onchange = e => setFilter({ thisRecord: e.target.checked });
   $("iss-prev").onclick = () => { offset = Math.max(0, offset - PAGE); reloadIssues(); };
   $("iss-next").onclick = () => { offset += PAGE; reloadIssues(); };
-  $("tg-issues").checked = store.get().showIssues;
-  $("tg-issues").onchange = e => store.set({ showIssues: e.target.checked });
 }
 ```
 
-- [ ] **Step 3: Map markers**
+- [ ] **Step 6: `flyTo` in `map.js`**
 
-In `map.js`:
-- import `SEVERITY_RGB` and `markerPoints` from `./issuelist.js`;
-- add `onIssueClick() {}` to the default `handlers`;
-- add, before `render`:
+Add after `flyToNode`:
 
 ```js
-// Validation issues: a dot per located issue, coloured by severity; the picked issue is drawn larger.
-let issueCache = { key: null, points: [] };
-function issueLayer(s) {
-  const key = `${s.netKey}|${s.issues.net_id}|${s.issues.version}`;
-  if (issueCache.key !== key) issueCache = { key, points: markerPoints(s.issues.markers, s.net) };
-  return new deck.ScatterplotLayer({ id: "issues", data: issueCache.points, getPosition: p => p.position,
-    getRadius: p => (p.i === s.issueFocus ? 8 : 4.5), radiusUnits: "pixels", stroked: true, lineWidthMinPixels: 1,
-    getFillColor: p => [...SEVERITY_RGB[p.severity], 230], getLineColor: [17, 21, 26],
-    updateTriggers: { getRadius: s.issueFocus }, pickable: true, parameters: { depthTest: false },
-    onClick: info => { if (info && info.object) handlers.onIssueClick(info.object); } });
-}
-
+// Fly to a point that is not a feature (an issue that reported coordinates) and mark it.
 export function flyTo(lon, lat) {
   if (!map) return;
   store.set({ marker: { lon, lat } });
@@ -4071,13 +4721,9 @@ export function flyTo(lon, lat) {
 }
 ```
 
-- in `render()`, before the `if (s.marker)` line:
-  `if (s.showIssues && s.issues && s.issues.net_id === s.server.active) layers.push(issueLayer(s));`
+No other `map.js` change: the issue layer registers through `addLayer`, and its `onClick` is its own.
 
-The marker cache is keyed on `netKey`, so an edit (a new version) re-places the markers. The issue set itself
-stays the one validated, until it is re-run.
-
-- [ ] **Step 4: Row marks**
+- [ ] **Step 7: Row marks**
 
 In `table.js`:
 - import `recordIssues` from `./issuelist.js`;
@@ -4092,12 +4738,13 @@ In `table.js`:
     const title = tip ? ` title="${esc(tip)}"` : "";
 ```
 
-- [ ] **Step 5: Wire it in `main.js`**
+- [ ] **Step 8: Wire it in `main.js`**
 
-- import `{ markFocusedIssue, onIssueMarker, onIssuesState, reloadIssues, renderEditWarnings, wireIssues }` from
-  `./issues.js`;
-- call `wireIssues()` in `boot()` with the other `wire*()` calls;
-- pass `onIssueClick: onIssueMarker` to `initMap`;
+- import `{ markFocusedIssue, onIssuesState, registerIssueLayer, reloadIssues, renderEditWarnings, wireIssues }` from
+  `./issues.js`, and `{ registerEditCommands }` from `./editcmds.js`;
+- in `boot()`: call `registerEditCommands();` right after `registerCoreCommands();`; add `wireIssues();` to the
+  `wire*()` line; call `registerIssueLayer();` right after that line (after `wireStore()`, so the `layerSeq`
+  subscription that renders Overlays is already in place);
 - add to `wireStore()`:
 
 ```js
@@ -4105,35 +4752,36 @@ In `table.js`:
   store.subscribe(["issueFilter"], s => { $("iss-this").checked = s.issueFilter.thisRecord; reloadIssues({ restart: true }); });
   store.subscribe(["focus"], s => { if (s.issueFilter.thisRecord) reloadIssues({ restart: true }); });
   store.subscribe(["issueFocus"], () => markFocusedIssue());
-  store.subscribe(["issues", "showIssues", "issueFocus"], () => render());
+  store.subscribe(["issues", "issueFocus"], () => render());
   store.subscribe(["issues"], () => refreshRows());
   store.subscribe(["edits"], s => renderEditWarnings(s.edits));
 ```
 
-- [ ] **Step 6: Run the static and JS tests**
+- [ ] **Step 9: Run the static and JS tests**
 
-Run: `uv run --all-extras pytest packages/netstead/tests/test_workbench_static.py packages/netstead/tests/test_workbench_js.py -q`
+Run: `uv run --all-extras pytest packages/netstead/tests/test_workbench_static.py packages/netstead/tests/test_workbench_js.py packages/netstead/tests/test_workbench_slots_js.py -q`
 Expected: all pass.
 
-- [ ] **Step 7: Before commit**
+- [ ] **Step 10: Before commit**
 
 Run: `uv run --all-extras pytest packages -n auto -q` and the ruff pair. Expected: all pass.
 
-- [ ] **Step 8: Commit**
+- [ ] **Step 11: Commit**
 
 ```bash
-git add packages/netstead/netstead/workbench/static
-git commit -m "feat(workbench): Issues tab (edit warnings, validation) linked to map markers and rows; export report"
+git add packages/netstead/netstead/workbench/static packages/netstead/tests/test_workbench_static.py
+git commit -m "feat(workbench): Issues panel (edit warnings, validation), an issue layer in the registry, row marks"
 ```
 
 ---
 
-### Task 14: Cell editing in the data table, with warning marks
+### Task 16: Cell editing in the data table, with warning marks
 
 A row click focuses the record (P1b). A click on a cell of the **focused** row opens that cell for editing: Enter
 applies an `EditCells` action, Escape or leaving cancels. Cells with live edit warnings are underlined, with the
 messages as their tooltip, and their row is marked. In the focused row a foreign-key cell shows its value as text
-plus a small ↗ link, so a click on the value edits it and the ↗ still jumps to the referenced row.
+plus a small ↗ link, so a click on the value edits it and the ↗ still jumps to the referenced row. A right-click on a
+row keeps opening Part 2's row menu (Task 17 adds Edit… and Delete… to it).
 
 **Files:**
 - Modify: `packages/netstead/netstead/workbench/static/js/table.js`, `main.js`
@@ -4142,7 +4790,7 @@ plus a small ↗ link, so a click on the value edits it and the ↗ still jumps 
 - [ ] **Step 1: Imports and state**
 
 In `table.js`:
-- extend the api import to `import { dispatch, getJSON, netPath, postJSON } from "./api.js";`;
+- change the api import to `import { dispatch, getJSON, netPath, postJSON } from "./api.js";`;
 - add `import { cellAction, cellWarnings } from "./editmodel.js";`;
 - after `let rowsTimer = …`, add:
 
@@ -4178,7 +4826,7 @@ In `renderRows`:
   `const warned = s.edits && s.edits.net_id === activeId() ? cellWarnings(s.edits.warnings, TBL.name) : {};`;
 - in the row map, after `pv`, add `const rw = warned[String(pv)];` and
   `const focused = Boolean(s.focus && s.focus.table === TBL.name && s.focus.id === pv);`, pass `warned: Boolean(rw)`
-  to `rowMarks` (next to Task 13's `issues: nIss`), and replace the `tds` line with:
+  to `rowMarks` (next to Task 15's `issues: nIss`), and replace the `tds` line with:
 
 ```js
     const tds = r.map((v, c) => {
@@ -4188,7 +4836,8 @@ In `renderRows`:
     }).join("");
 ```
 
-- replace the row click wiring with:
+- replace the row click wiring (`for (const tr of body.querySelectorAll("tr.data")) tr.onclick = () => rowClick(tr.dataset.pk);`)
+  with the lines below; leave the `oncontextmenu` wiring as it is:
 
 ```js
   for (const tr of body.querySelectorAll("tr.data")) tr.onclick = e => {
@@ -4223,6 +4872,7 @@ function startCellEdit(tr, td) {
     if (dirty) refreshRows();
   };
   input.onclick = e => e.stopPropagation();
+  input.oncontextmenu = e => e.stopPropagation(); // the browser's own menu (paste) inside the input, not the row menu
   input.onblur = () => setTimeout(close, 150); // an Enter in flight wins
   input.onkeydown = async e => {
     if (e.key === "Escape") { close(); return; }
@@ -4262,7 +4912,9 @@ live check).
 - [ ] **Step 5: Run the static and JS tests**
 
 Run: `uv run --all-extras pytest packages/netstead/tests/test_workbench_static.py packages/netstead/tests/test_workbench_js.py -q`
-Expected: all pass. The editing behaviour itself is checked in the Task 16 walk-through.
+Expected: all pass (`test_context_menus_are_wired_on_the_map_the_grid_and_the_selection` still finds
+`openContextMenu("row"` and `oncontextmenu` in `table.js`). The editing behaviour itself is checked in the Task 18
+walk-through.
 
 - [ ] **Step 6: Before commit**
 
@@ -4277,66 +4929,89 @@ git commit -m "feat(workbench): edit cells in the data table; live warning marks
 
 ---
 
-### Task 15: The fix editor, Details edit and delete, the Edits tab, the dirty badge, and Save a copy
+### Task 17: The record and fix editor, Edit… and Delete… commands, the Edits panel, Undo, Save a copy, and the switcher badge
 
 **Files:**
 - Modify (fill the stub): `packages/netstead/netstead/workbench/static/js/fixeditor.js`
-- Modify: `packages/netstead/netstead/workbench/static/js/edits.js`, `side.js`, `header.js`, `main.js`
+- Modify: `packages/netstead/netstead/workbench/static/js/editcmds.js`, `edits.js`, `side.js`, `header.js`, `main.js`
 - Modify: `packages/netstead/netstead/workbench/static/index.html`, `app.css`
+- Test: `packages/netstead/tests/test_workbench_static.py`
 
-- [ ] **Step 1: `fixeditor.js`**
+- [ ] **Step 1: Write the failing test**
+
+Append to `packages/netstead/tests/test_workbench_static.py`:
+
+```python
+def test_record_edits_undo_and_save_are_registered_commands():
+    cmds = (JS_DIR / "editcmds.js").read_text()
+    assert 'id: "edit_record"' in cmds and 'id: "delete_record"' in cmds
+    assert cmds.count('contexts: ["feature", "row"]') == 2
+    for command in ("undo_edit", "save_copy"):
+        assert f'id: "{command}"' in cmds
+    fix = (JS_DIR / "fixeditor.js").read_text()
+    assert 'from "./formview.js"' in fix and "schemaForm(" in fix and "recordSchema(" in fix
+    html = (STATIC_DIR / "index.html").read_text()
+    pane = html[html.index('id="dock-edits"') : html.index("</aside>")]
+    for element_id in ("ed-undo", "ed-undo-why", "ed-status", "ed-list", "ed-save-name", "ed-save-format", "ed-save", "ed-save-fb"):
+        assert f'id="{element_id}"' in pane
+    header = (JS_DIR / "header.js").read_text()
+    assert "dirtyBadge(" in header and "networkBadge(" in header
+```
+
+- [ ] **Step 2: Run it to confirm it fails**
+
+Run: `uv run --all-extras pytest packages/netstead/tests/test_workbench_static.py -q -k registered_commands`
+Expected: FAIL: no `edit_record` command.
+
+- [ ] **Step 3: `fixeditor.js`**
 
 Replace the stub:
 
 ```js
-// The fix editor, ported from the offline report's "Fix locally" mini-editor (map_component.js): one property of
-// one record (or of every selected link), applied as an EditCells action. Delete asks the server what the cascade
-// would remove (a dry run) and says so before anything is deleted.
+// The record editor (Details → Edit…, or Edit… on a feature or row) and the fix editor (an issue's Fix…): a
+// generated form (wb.schemaForm, formview.js) over the record's editable columns, or just the issue's column,
+// that sends one EditCells action with only what changed. Ported from the offline report's "Fix locally"
+// mini-editor (map_component.js). Delete asks the server what the cascade would remove (a dry run) first.
 import { dispatch, getJSON, netPath, postJSON } from "./api.js";
 import { esc, toast } from "./dom.js";
-import { cellAction, deleteAction, deletePlanText, editableColumns } from "./editmodel.js";
+import { changedValues, deleteAction, deletePlanText, recordSchema } from "./editmodel.js";
+import { schemaForm } from "./formview.js";
 import { activeSelection, store } from "./store.js";
 
-// Open the editor inside `host` for {table, id, column?, note?}; a second call on the same host closes it.
+// Open the editor in `host` for {table, id, column?, note?}; it replaces whatever editor `host` held.
 export async function openFixEditor(host, { table, id, column = null, note = "" }) {
-  const open = host.querySelector(".fix-editor");
-  if (open) { open.remove(); return; }
-  const s = store.get();
-  const rec = await getJSON(netPath(s.server.active, `feature/${encodeURIComponent(table)}/${encodeURIComponent(id)}`));
-  const cols = editableColumns(rec.attributes, rec.pk);
+  const s = store.get(), net = s.server.active;
+  const [rec, schema] = await Promise.all([
+    getJSON(netPath(net, `feature/${encodeURIComponent(table)}/${encodeURIComponent(id)}`)),
+    getJSON(netPath(net, `table/${encodeURIComponent(table)}/schema`)),
+  ]);
+  const formSchema = recordSchema(schema.columns, schema.primary_key, column ? [column] : null);
+  const keys = Object.keys(formSchema.properties);
+  const before = Object.fromEntries(keys.map(k => [k, rec.attributes[k] ?? null]));
   const sel = activeSelection(s);
-  const many = table === "link" && sel && sel.status === "resolved" && sel.link_ids.includes(id) && sel.link_ids.length > 1;
-  const el = document.createElement("div");
-  el.className = "fix-editor";
-  el.innerHTML =
-    `<div class="row"><b>${esc(table)} ${esc(id)}</b></div>` +
-    `<div class="row"><select class="fx-col" aria-label="Property">` +
-    cols.map(c => `<option${c === column ? " selected" : ""}>${esc(c)}</option>`).join("") + "</select>" +
-    `<input class="fx-val grow" aria-label="New value" placeholder="empty clears it"></div>` +
+  const many = table === "link" && sel && sel.link_ids.includes(id) && sel.link_ids.length > 1;
+  host.innerHTML = `<div class="fix-editor" role="group" aria-label="Edit ${esc(table)} ${esc(id)}">` +
+    `<div class="row"><b>${esc(table)} ${esc(id)}</b>${column ? ` <span class="diag">${esc(column)}</span>` : ""}</div>` +
+    `<div class="fx-form"></div>` +
     `<div class="row"><input class="fx-note grow" aria-label="Note" placeholder="Why (kept with the edit)" value="${esc(note || "")}"></div>` +
     (many ? `<label class="row"><input type="checkbox" class="fx-sel"> all ${sel.link_ids.length} selected links</label>` : "") +
     `<div class="row"><button class="mini fx-apply">Apply</button><button class="mini ghost fx-cancel">Cancel</button>` +
-    `<button class="mini ghost fx-delete">Delete…</button><span class="diag fx-now"></span></div>`;
-  const current = () => rec.attributes[el.querySelector(".fx-col").value];
-  const showCurrent = () => {
-    const v = current();
-    el.querySelector(".fx-now").textContent = `now: ${v == null || v === "" ? "empty" : v}`;
-    el.querySelector(".fx-val").value = v == null ? "" : String(v);
-  };
-  el.querySelector(".fx-col").onchange = showCurrent;
+    `<button class="mini ghost fx-delete">Delete…</button></div></div>`;
+  const el = host.querySelector(".fix-editor");
+  const form = schemaForm(el.querySelector(".fx-form"), formSchema, before);
   el.querySelector(".fx-cancel").onclick = () => el.remove();
   el.querySelector(".fx-delete").onclick = () => deleteRecord(table, id).then(done => { if (done) el.remove(); });
   el.querySelector(".fx-apply").onclick = async () => {
-    try {
-      const box = el.querySelector(".fx-sel");
-      await dispatch(cellAction({ table, ids: box && box.checked ? sel.link_ids : [id], column: el.querySelector(".fx-col").value,
-        raw: el.querySelector(".fx-val").value, current: current(), note: el.querySelector(".fx-note").value.trim() || null }));
-      el.remove();
-    } catch (e) { toast(e.message); }
+    const errors = form.errors();
+    if (errors.length) { toast(errors.join("; ")); return; }
+    const values = changedValues(before, form.value(), keys);
+    if (!Object.keys(values).length) { toast("Nothing changed."); return; }
+    const box = el.querySelector(".fx-sel"), why = el.querySelector(".fx-note").value.trim();
+    const action = { type: "edit_cells", table, ids: box && box.checked ? [...sel.link_ids] : [id], values };
+    if (why) action.note = why;
+    try { await dispatch(action); el.remove(); } catch (e) { toast(e.message); }
   };
-  host.appendChild(el);
-  showCurrent();
-  el.querySelector(".fx-val").focus();
+  form.focus();
 }
 
 // Delete one record after showing what goes with it; resolves to whether it was deleted.
@@ -4351,31 +5026,86 @@ export async function deleteRecord(table, id) {
 }
 ```
 
-- [ ] **Step 2: Edit and delete from Details**
+`schemaForm` parses each control by its kind (a number box for `num`, a three-way menu for a nullable `bool`, text
+for `str`); a blank field clears the cell. The server still coerces to the column's real type and refuses what does
+not fit (an integer column and `1.5`).
+
+- [ ] **Step 4: Edit and delete from Details**
 
 In `side.js`:
 - import `{ deleteRecord, openFixEditor }` from `./fixeditor.js`;
-- in `showDetails`, replace `el.innerHTML = \`${head}<table>${rows}</table>\`;` with:
+- turn `showDetails` into a wrapper that remembers its render, so a command can wait for it:
+
+```js
+let detailsShown = Promise.resolve();
+// The last showDetails render (a command that opens the editor in Details waits for it).
+export const detailsSettled = () => detailsShown;
+
+export function showDetails(table, id) {
+  detailsShown = renderDetails(table, id);
+  return detailsShown;
+}
+```
+
+  and rename the existing `export async function showDetails(table, id)` to `async function renderDetails(table, id)`;
+- in `renderDetails`, replace `el.innerHTML = \`${head}<table>${rows}</table>\`;` with:
 
 ```js
     const actions = `<div class="row det-actions"><button class="mini ghost" data-act="edit">Edit…</button>` +
-      `<button class="mini ghost" data-act="delete">Delete…</button></div>`;
+      `<button class="mini ghost" data-act="delete">Delete…</button></div><div class="det-edit"></div>`;
     el.innerHTML = `${head}${actions}<table>${rows}</table>`;
     el.querySelector('[data-act="edit"]').onclick = () =>
-      openFixEditor(el.querySelector(".det-actions"), { table, id }).catch(e => toast(e.message));
+      openFixEditor(el.querySelector(".det-edit"), { table, id }).catch(e => toast(e.message));
     el.querySelector('[data-act="delete"]').onclick = () => deleteRecord(table, id);
 ```
 
 Any focused record can be edited (any table with a key); the delete plan says when a deletion is refused (a node a
 link uses) before anything happens.
 
-- [ ] **Step 3: The Edits pane**
+- [ ] **Step 5: The commands**
 
-In `index.html`, fill `<section class="side-pane" data-pane="edits" …>`:
+In `editcmds.js`:
+- extend the imports: `import { editSummary, undoBlocked } from "./editmodel.js";`,
+  `import { deleteRecord, openFixEditor } from "./fixeditor.js";` (replacing the single import), and
+  `import { detailsSettled } from "./side.js";`;
+- add before `registerEditCommands`:
+
+```js
+// Focus the record (Details shows it), then open the record editor in Details.
+async function editRecord(table, id) {
+  showPanel("details");
+  const f = store.get().focus;
+  if (!f || f.table !== table || f.id !== id) store.set({ focus: { table, id, from: "table" } });
+  await detailsSettled();
+  const host = document.querySelector("#details .det-edit");
+  if (host) await openFixEditor(host, { table, id });
+}
+```
+
+- add at the end of `registerEditCommands`:
+
+```js
+  // A right-clicked map feature or grid row (and, in the palette, the focused record's "For …" group).
+  add({ id: "edit_record", title: "Edit…", contexts: ["feature", "row"], when: c => Boolean(c.target),
+    run: c => editRecord(c.target.table, c.target.id) });
+  add({ id: "delete_record", title: "Delete…", contexts: ["feature", "row"], when: c => Boolean(c.target),
+    run: c => deleteRecord(c.target.table, c.target.id) });
+  add({ id: "undo_edit", group: "Edits", title: "Undo last edit", when: c => !undoBlocked(editSummary(c.state)),
+    run: () => dispatch({ type: "undo_edit" }) });
+  add({ id: "save_copy", group: "Edits", title: "Save a copy…", when: c => Boolean(c.network),
+    run: () => { showPanel("edits"); $("ed-save-name").focus(); } });
+```
+
+With `edit_record` and `delete_record` registered, a right-click on a link, a node or a keyed grid row always opens a
+menu (R8); Part 2's right-drag guard still keeps MapLibre's rotate.
+
+- [ ] **Step 6: The Edits pane**
+
+In `index.html`, fill `<section class="dock-pane" id="dock-edits" …>`:
 
 ```html
-      <p class="diag">Every change to this network since it was opened, newest first: your edits and any plugin's.
-        Undo reverses your newest edit. The strip at the bottom is the session history (every action).</p>
+      <p class="diag">Every change to this network since it was opened, newest first: your edits, Python's and any
+        plugin's. Undo reverses your newest edit. The strip at the bottom is the session history (every action).</p>
       <div class="row wrap"><button class="mini ghost" id="ed-undo" disabled>Undo last</button>
         <span class="diag" id="ed-undo-why"></span></div>
       <div id="ed-status" class="diag"></div>
@@ -4393,22 +5123,24 @@ Append to `app.css`:
 ```css
   .chg { padding:7px 0; border-bottom:1px solid var(--edge); font-size:12.5px; }
   .chg.unsaved { box-shadow:inset 3px 0 0 var(--accent); padding-left:8px; }
-  .pcount.dirty { background:var(--accent); }
   .fix-editor { margin:6px 0; padding:8px; border:1px solid var(--edge); border-radius:8px; background:#0c0e12; }
   .fix-editor .row { display:flex; gap:6px; align-items:center; margin:4px 0; }
   .row.wrap { flex-wrap:wrap; }
 ```
 
-- [ ] **Step 4: The Edits tab in `edits.js`**
+- [ ] **Step 7: The Edits panel in `edits.js`**
 
-Extend Task 12's `edits.js`: change its imports to
+Extend Task 14's `edits.js`: change its imports to
 
 ```js
 import { dispatch, getJSON, netPath } from "./api.js";
 import { $, esc, toast } from "./dom.js";
-import { dirtyBadge, pendingLine, undoBlocked } from "./editmodel.js";
+import { dirtyBadge, editsBadge, pendingLine, undoBlocked } from "./editmodel.js";
 import { createFileBrowser } from "./filebrowser.js";
+import { issuesBadge } from "./issuelist.js";
+import { ALL_WORKSPACES, CORE } from "./slots.js";
 import { store } from "./store.js";
+import { addPanel } from "./workspaces.js";
 ```
 
 and add:
@@ -4417,11 +5149,10 @@ and add:
 let saver = null;
 const fail = e => toast(e.message);
 
-// The Edits tab: pending edits (newest first), why Undo is unavailable, dirty state and the save controls.
+// The Edits panel: pending edits (newest first), why Undo is unavailable, dirty state and the save controls. The
+// panel's tab badge comes from editsBadge (registered in registerEditPanels).
 export function renderEdits(edits) {
   const e = edits && edits.net_id === activeId() ? edits : null;
-  $("edits-count").textContent = e ? e.unsaved : 0;
-  $("edits-count").classList.toggle("dirty", Boolean(e && e.dirty));
   const why = undoBlocked(e);
   $("ed-undo").disabled = Boolean(why);
   $("ed-undo-why").textContent = e && e.pending ? why : "";
@@ -4465,46 +5196,49 @@ export function wireEdits() {
 `save_network` is a job: the request answers 202 at once, and the outcome arrives as a `job` event in the Jobs
 panel (a refusal lists the warnings in its history entry).
 
-- [ ] **Step 5: The dirty badge in the network switcher**
+- [ ] **Step 8: The dirty badge in the network switcher**
 
-In `header.js`, import `{ dirtyBadge }` from `./editmodel.js`, and in `renderHeader` change the option text to show
-the badge (plugins design, UX principle 7):
+In `header.js`, import `{ dirtyBadge }` from `./editmodel.js`, and in `renderHeader` compose it with Part 2's derived
+mark (plugins design, UX principle 7). A clean base network's option stays exactly as before:
 
 ```js
-  const badge = n => { const b = dirtyBadge((server.edits || {})[n.id]); return b ? ` • ${b}` : ""; };
-  sel.innerHTML = server.networks.length
-    ? server.networks.map(n => `<option value="${esc(n.id)}"${n.id === server.active ? " selected" : ""}>${esc(n.label)}${esc(badge(n))}</option>`).join("")
-    : '<option value="">No network open</option>';
+    ? server.networks.map(n => {
+      const mark = networkBadge(n); // a base network's option is exactly as before
+      const marks = [dirtyBadge((server.edits || {})[n.id]), mark].filter(Boolean).join(" • ");
+      return `<option value="${esc(n.id)}"${n.id === server.active ? " selected" : ""}` +
+        `${mark ? ` title="${esc(derivedTitle(n, server.networks))}"` : ""}>${esc(n.label)}${marks ? ` • ${esc(marks)}` : ""}</option>`;
+    }).join("")
 ```
 
 `editmodel.js` is import-free, so `header.js` importing it adds no cycle.
 
-- [ ] **Step 6: Wire it**
+- [ ] **Step 9: Wire it**
 
 In `main.js`:
-- import `{ renderEdits, wireEdits }` from `./edits.js` (next to Task 12's `onEditsState`);
-- call `wireEdits()` in `boot()` with the other `wire*()` calls;
+- import `{ renderEdits, wireEdits }` from `./edits.js` (next to Task 14's `onEditsState, registerEditPanels`);
+- add `wireEdits();` to the `wire*()` line in `boot()`;
 - add to `wireStore()`: `store.subscribe(["edits"], s => renderEdits(s.edits));`
 
-- [ ] **Step 7: Run the static and JS tests**
+- [ ] **Step 10: Run the static and JS tests**
 
-Run: `uv run --all-extras pytest packages/netstead/tests/test_workbench_static.py packages/netstead/tests/test_workbench_js.py -q`
-Expected: all pass. Every new id is in `index.html`, and every import resolves.
+Run: `uv run --all-extras pytest packages/netstead/tests/test_workbench_static.py packages/netstead/tests/test_workbench_js.py packages/netstead/tests/test_workbench_slots_js.py -q`
+Expected: all pass. Every new id is in `index.html`, and every import resolves (`fixeditor.js` → `formview.js`,
+`editcmds.js` → `side.js`; `side.js` → `fixeditor.js` only, so no cycle).
 
-- [ ] **Step 8: Before commit**
+- [ ] **Step 11: Before commit**
 
 Run: `uv run --all-extras pytest packages -n auto -q` and the ruff pair. Expected: all pass.
 
-- [ ] **Step 9: Commit**
+- [ ] **Step 12: Commit**
 
 ```bash
-git add packages/netstead/netstead/workbench/static
-git commit -m "feat(workbench): fix editor, delete with a cascade preview, Edits tab with undo, dirty badge and save a copy"
+git add packages/netstead/netstead/workbench/static packages/netstead/tests/test_workbench_static.py
+git commit -m "feat(workbench): record and fix editor (schema form), Edit/Delete/Undo/Save commands, Edits panel, dirty badge"
 ```
 
 ---
 
-### Task 16: Docs, the full suite, lint, and the browser walk-through
+### Task 18: Docs, the full suite, lint, and the browser walk-through
 
 **Files:**
 - Modify: `packages/netstead/docs/cookbook/workbench.md`
@@ -4517,11 +5251,12 @@ In `packages/netstead/docs/cookbook/workbench.md`, add before `## Language model
 ```markdown
 ## Validate and fix
 
-- **Issues → Run validation** checks the spec, the keys and the quality rules, as a background job. The
-  rules use **Settings → Validation** (`validation.rules`, keyed by rule code, such as
-  `quality.high_speed_residential`).
+- **Issues → Run validation** (or **Run validation** in the command palette, Ctrl+K / ⌘K) checks the spec, the
+  keys and the quality rules, as a background job. The rules use **Settings → Validation** (`validation.rules`,
+  keyed by rule code, such as `quality.high_speed_residential`).
 - Click an issue: its record is focused, the map flies to it and its row is marked. Click a dot on the map:
-  the Issues tab opens on that record's issues. Rows with issues are marked in the table.
+  the Issues panel opens on that record's issues. Rows with issues are marked in the table. **Layers → Overlays →
+  Issues** hides the dots.
 - Filter by severity, table and code. **This record** lists only the focused record's issues. Issues with
   no place on the map are listed under **Unlocated**.
 - After an edit the validation says it is stale: **Re-run validation** checks again. **Export report**
@@ -4531,28 +5266,32 @@ In `packages/netstead/docs/cookbook/workbench.md`, add before `## Language model
 
 - **In the table:** click a row to focus it, then click one of its cells, type, and press Enter (Escape
   cancels; an empty value clears the cell). The key column is not edited in place.
-- **From an issue or Details:** **Fix** (on an issue) and **Edit…** (in Details) open a small editor for any
-  property of the record, or of every selected link at once.
-- **Delete…** (Details or the editor) first says what goes with the record: a link takes its lanes and
-  time-of-day rows. A node that a link still uses cannot be deleted.
+- **A whole record:** **Edit…** in Details, or right-click a link, a node or a row → **Edit…**, opens a form
+  for every editable column (or for every selected link at once). **Fix** on an issue opens it on that column.
+- **Delete…** (Details, the editor, or the right-click menu) first says what goes with the record: a link takes
+  its lanes and time-of-day rows. A node that a link still uses cannot be deleted.
 - **Adding rows** is Python or the API only: `app.do(AddRows(table="node", rows=[{...}]))`.
 - Each edit is one action in the session history (so "copy as Python" replays it), bumps the network's
-  version, and is listed in the **Edits** tab. **Undo last** reverses your newest edit; changes a plugin made
-  are undone in that plugin.
+  version, and is listed in the **Edits** panel. **Undo last** (or **Undo last edit** in the palette) reverses
+  your newest edit; changes a plugin made are undone in that plugin, and changes made from Python with
+  `session.undo_last(net_id, source="python")`.
+- A selection follows an edit: one made by a query is resolved again, one made by clicking keeps its links,
+  minus any you deleted.
 
 ### Edit warnings
 
 An edit the spec disagrees with is still applied, and warned about at once: a foreign key that is not in the
 referenced table, a required field left empty, a value of the wrong type or outside the allowed list, or a
 duplicate key. The cell is underlined (hover for why), the row is marked, and the warning is listed at the
-top of the Issues tab with a **Fix** button. A later edit that puts it right clears the warning.
+top of the Issues panel with a **Fix** button. A later edit that puts it right clears the warning.
 
 ### Save a copy
 
-**Edits → Save a copy** writes the edited network to a new folder or file inside your allowed folders; the
-network you opened, local or remote, is never written to. If edit warnings are still open, they are listed and
-you choose whether to save anyway (`SaveNetwork(..., accept_warnings=True)` in Python). The badge in the
-network switcher and on the Edits tab counts edits no saved copy holds yet.
+**Edits → Save a copy** (or **Save a copy…** in the palette) writes the edited network to a new folder or file
+inside your allowed folders; the network you opened, local or remote, is never written to. If edit warnings are
+still open, they are listed and you choose whether to save anyway (`SaveNetwork(..., accept_warnings=True)` in
+Python). The badge on the Edits tab and in the network switcher counts edits no saved copy holds yet; with a
+plugin's workspace open, the Inspect tab shows a dirty mark too.
 ```
 
 - [ ] **Step 2: The design records**
@@ -4561,7 +5300,7 @@ In `docs/design/2026-10-02-netstead-workbench-design.md`, below the P1b plan lin
 
 ```markdown
 P2 plan: [2026-10-07-workbench-p2-plan.md](2026-10-07-workbench-p2-plan.md): validation and direct table edits in core
-(live warnings, cascading deletes, undo, Save a copy), built on plugins Part 1. ProjectCard editing is the cards
+(live warnings, cascading deletes, undo, Save a copy), built on plugins Parts 1 and 2. ProjectCard editing is the cards
 plugin's ([scope](2026-10-07-cards-plugin-scope.md)).
 ```
 
@@ -4571,7 +5310,8 @@ the plans table, and update the Workbench design row's notes ("P2 implemented; n
 - [ ] **Step 3: The full tier, before merge**
 
 Run: `uv run --all-extras pytest packages -n auto -q -m ""`
-Expected: all pass, including `slow` (the doc contract test runs the cookbook pages) and `perf`.
+Expected: all pass, including `slow` (the doc contract test runs the cookbook pages), `perf`, and the
+`plugin_discovery` tests if the hello example is installed.
 
 Run: `uv run ruff check packages && uv run ruff format --check packages && uv run lint-imports && uv run python scripts/lint_no_sql.py`
 Expected: clean. `lint-imports` keeps every contract: `netstead.workbench` imports no plugin package.
@@ -4581,34 +5321,43 @@ Expected: clean. `lint-imports` keeps every contract: `netstead.workbench` impor
 Start the app through `preview_start`, with a `.claude/launch.json` entry that runs
 `uv run netstead app packages/netstead/netstead/fixtures/leavenworth/parquet --port 8852`. Then check each item:
 
-1. **Validate.**
-   - Issues → **Run validation**. The Jobs badge counts it, and the tab then reads
-     `Validated v0: 272 warnings, 16 info`.
-   - Orange dots appear on the map, and the Unlocated list has 17 entries.
-2. **Issue ↔ map ↔ row.**
+1. **Panels.** The dock shows **Details | Issues | Edits**; with no plugin the workspace strip stays hidden.
+2. **Validate.**
+   - Issues → **Run validation**. The Jobs badge counts it, and the panel then reads
+     `Validated v0: 272 warnings, 16 info`; the Issues tab badge reads 288.
+   - Orange dots appear on the map, and the Unlocated list has 17 entries. Layers → Overlays lists **Issues**;
+     switching it off hides the dots.
+3. **Issue ↔ map ↔ row.**
    - Split view, link table. Click a `quality.high_speed_residential` issue. The map flies to the link, its row
      is focused and scrolled into view, and the row carries the issue mark.
-   - Click another dot on the map. The Issues tab opens on **This record**, with that issue marked.
-3. **Fix from an issue.**
+   - Click another dot on the map. The Issues panel opens on **This record**, with that issue marked.
+4. **Fix from an issue.**
    - Click **Fix** on link 1's issue. The editor shows `free_speed`, now 40. Enter `30` and Apply.
    - The row shows 30, and the focus and table page are unchanged (no reset).
-   - The Edits tab lists `#1 link 1: free_speed = 30.0 (…)`, the badge reads 1, the network switcher shows
-     `• 1 unsaved`, and the bottom strip shows `app.do(EditCells(...))`.
-   - The Issues tab says the validation is stale. **Re-run validation** gives 271 warnings, and **Export
+   - The Edits panel lists `#1 link 1: free_speed = 30.0 (…)`, its tab badge reads 1 with a dirty dot, the
+     network switcher shows `• 1 unsaved`, and the bottom strip shows `app.do(EditCells(...))`.
+   - The Issues panel says the validation is stale. **Re-run validation** gives 271 warnings, and **Export
      report** downloads `leavenworth-validation.html`.
-4. **Cell edit with a warning.** Focus link 2's row, click its `from_node_id` value, type `424242`, Enter. The cell
+5. **Cell edit with a warning.** Focus link 2's row, click its `from_node_id` value, type `424242`, Enter. The cell
    is underlined (hover: "is not a node.node_id"), the row is marked, and Issues → Edit warnings lists it. Click
    the cell again, type link 2's old value, Enter: the warning clears.
-5. **Refusal.** Click link 1's `lanes` cell, type `1.5`, Enter. A toast says it does not fit; nothing changes
+6. **Refusal.** Click link 1's `lanes` cell, type `1.5`, Enter. A toast says it does not fit; nothing changes
    and no edit is listed.
-6. **Undo.** Edits → **Undo last**. The value is back, the entry is gone, and the history has `UndoEdit`.
-7. **Delete.** Details for a link → **Delete…**. The confirmation names the lane rows that go with it. Confirm:
-   the link disappears from the map, and the lane count in the rail drops. **Undo last** brings both back.
-   Details for node 1 → **Delete…**: refused, naming the links that use it.
-8. **Save with a warning.** Make an edit with a warning (step 4's first half), then **Save a copy**: the
-   confirmation lists the warning. Cancel: nothing is written. Save again and accept: the job writes the copy,
-   the badge clears, and the opened fixture is unchanged (re-open it to check).
-9. **Network.** Nothing goes to a non-local host except the basemap tiles and the CDN.
+7. **Context menus and the palette.** Right-click a link: the menu offers **Edit…** and **Delete…**; Edit… opens
+   the record form in Details. Ctrl+K (⌘K): **Undo last edit**, **Run validation** and **Save a copy…** are listed;
+   with a record focused, its "For link …" group lists Edit… and Delete….
+8. **Undo.** Edits → **Undo last** (or the palette). The value is back, the entry is gone, and the history has
+   `UndoEdit`.
+9. **Delete and the selection.** Select "Ski Hill Drive" (20 links). Details for one of its links → **Delete…**.
+   The confirmation names the lane rows that go with it. Confirm: the link disappears from the map, the lane count
+   in the rail drops, and the selection now has 19 links. **Undo last** brings all three back. Details for node 1 →
+   **Delete…**: refused, naming the links that use it.
+10. **Save with a warning.** Make an edit with a warning (step 5's first half), then **Save a copy**: the
+    confirmation lists the warning. Cancel: nothing is written. Save again and accept: the job writes the copy,
+    the badges clear, and the opened fixture is unchanged (re-open it to check).
+11. **A plugin's change** (optional, with `examples/workbench-plugin-hello` installed): its Actions still run; if a
+    plugin mutates, the Edits panel lists the change with the plugin's name and **Undo last** says to undo it there.
+12. **Network.** Nothing goes to a non-local host except the basemap tiles and the CDN.
 
 Fix anything that fails before opening the PR. Reset the viewport afterwards (`preset: "desktop"`) if you changed
 it.
@@ -4628,62 +5377,85 @@ git commit -m "docs(workbench): validate, edit tables, edit warnings and save a 
 
 | Requirement | Where |
 |---|---|
-| Validation + quality checks as a job, rule config from Settings | Task 7 (`RunValidation`, `run_validation`, `rule_configs`; `severity_override` checked at load) |
-| Issues panel: issue ↔ map marker ↔ table row | Task 7 (keys and anchors), 8 (`/issues`, `/issues/markers`), 13 (list, markers, row marks, `onIssueMarker`) |
-| Filter by severity, table, code; unlocated listed separately | Task 8 (`query`, facets, `located=no`), 13 (selects, "This record", Unlocated) |
-| Export report via `render_validation_html` | Task 8 (`/report.html`, refused when stale), 13 (button) |
-| Edits in the UX: cell edits; the ported "fix locally" editor from an issue | Task 14 (cells), 15 (`fixeditor.js`, Details), 11 (`parseCell`, ported from `coerceLikely`) |
-| Edits apply through `Host.mutate`/`Session.mutate` as corral `update_rows`/`delete_rows`/`add_rows`, in history, version bump + lineage | Task 3 (plans), 5 (`mutate` + ledger), 6 (Actions on the registry) |
-| Live, non-blocking warnings: FK missing, required empty, type/enum, duplicate key; on cell, row and Issues tab | Task 4 (`check_rows`), 5 (re-check after every mutation), 13 (Issues list), 14 (cell and row marks) |
-| Warnings shown before saving; explicit confirmation while any remain | Task 9 (`accept_warnings`), 15 (confirmation listing them) |
-| Pending-edits list with a dirty badge (UX principle 7) | Task 5 (`EditLedger.summary`), 10 (`/edits`), 15 (Edits tab, tab and switcher badges) |
-| Undo of the last edit, one at a time, itself a recorded Action (decision a) | Task 5 (`undo_last`), 6 (`UndoEdit`), 15 (button) |
-| Delete cascades through spec FKs and shows what goes; a referenced node is refused (decision b) | Task 3 (`plan_delete`), 10 (`delete-plan`), 15 (`deleteRecord`) |
-| Adding rows from Python and the API (decision b) | Task 3 (`plan_add`), 6 (`AddRows`) |
-| Live checks per edit; full validation stale with a manual Re-run (decision c) | Task 4–5 (live), 7 (`stale`), 13 ("Re-run validation") |
-| Built on plugins Part 1; Actions on the registry, not the closed union (decision d) | Header; Tasks 6, 7, 9 (`CORE_ACTIONS`) |
+| Validation + quality checks as a job, rule config from Settings | Task 9 (`RunValidation`, `run_validation`, `rule_configs`; `severity_override` checked at load) |
+| Issues panel: issue ↔ map marker ↔ table row | Task 9 (keys and anchors), 10 (`/issues`, `/issues/markers`), 15 (list, the issue layer, row marks, `onIssueMarker`) |
+| Filter by severity, table, code; unlocated listed separately | Task 10 (`query`, facets, `located=no`), 15 (selects, "This record", Unlocated) |
+| Export report via `render_validation_html` | Task 10 (`/report.html`, refused when stale), 15 (button) |
+| Edits in the UX: cell edits; the ported "fix locally" editor from an issue; a record editor | Task 16 (cells), 17 (`fixeditor.js` on `schemaForm`, Details, Edit… command), 13 (`parseCell` from `coerceLikely`, `recordSchema`) |
+| Edits apply through `Host.mutate`/`Session.mutate` as corral `update_rows`/`delete_rows`/`add_rows`, in history, version bump + lineage | Task 3 (plans), 5 (`mutate` + ledger), 8 (Actions on the registry) |
+| Live, non-blocking warnings: FK missing, required empty, type/enum, duplicate key; on cell, row and Issues panel | Task 4 (`check_rows`), 5 (re-check after every mutation and revert), 15 (Issues list), 16 (cell and row marks) |
+| Warnings shown before saving; explicit confirmation while any remain | Task 11 (`accept_warnings`), 17 (confirmation listing them) |
+| Pending-edits list with a dirty badge (UX principle 7) | Task 5 (`EditLedger.summary`), 12 (`/edits`), 14 (panel badge via `addPanel`), 17 (Edits panel, switcher badge) |
+| Undo of the last edit, one at a time, itself a recorded Action (decision a) | Task 5 (`revert`, `undo_last`), 8 (`UndoEdit`), 17 (button and palette command) |
+| Delete cascades through spec FKs and shows what goes; a referenced node is refused (decision b) | Task 3 (`plan_delete`), 12 (`delete-plan`), 17 (`deleteRecord`, Delete… command) |
+| Adding rows from Python and the API (decision b) | Task 3 (`plan_add`), 8 (`AddRows`) |
+| Live checks per edit; full validation stale with a manual Re-run (decision c) | Tasks 4–5 (live), 9 (`stale`), 15 ("Re-run validation", `run_validation` command) |
+| Built on Plugins Parts 1 and 2; Actions on the registry (decision d) | Header; Tasks 5–8 (Part 1 as built), 14–17 (Part 2 slots) |
+| A failed Action leaves no pending edit, no selection change | Task 5 (`_LedgerMark`), 6 (`_roll_back` restores the selection) |
+| The stored selection after an edit (R4) | Task 6 |
+| Issues and Edits through the dock, with badges (Part 2) | Task 14 (`addPanel`, `issuesBadge`, `editsBadge`) |
+| Issue markers through the layer registry (Part 2) | Task 15 (`addLayer(CORE, "roadway", "issues", …)`) |
+| Context commands and the palette (Part 2) | Tasks 15 (`run_validation`, `fix_issue`), 17 (`edit_record`, `delete_record`, `undo_edit`, `save_copy`) |
+| `schemaForm` for edit forms (Part 2) | Task 17 (`fixeditor.js`) |
+| "Copy as Python" byte-identical for old sessions; new Actions bring their imports | Task 8 (`_SCRIPT_HEADER`, `script_imports`; the server tests stay green) |
+| Host API 1.2 | Task 7 |
 | `to_projectcard` always writes `ignore_missing`; `host.selection` exposes the facility form | Task 2 |
-| Save writes a new copy inside the allowed roots, never overwrites; `OutOfSyncWarning` handled | Task 9 |
-| Nothing mutates silently (UX principle 3) | Task 5: every mutation, core or plugin, is a pending edit with its source |
+| Save writes a new copy inside the allowed roots, never overwrites; `OutOfSyncWarning` handled | Task 11 |
+| Nothing mutates silently (UX principle 3) | Task 5: every mutation and revert, core, Python or plugin, is a pending edit with its source; outside an Action Part 1 also records it |
 | corral null-safe undo | Task 1 |
-| An edit keeps the current view | Task 12 (`netChange`, `onNetworkEdited`) |
+| An edit keeps the current view | Task 14 (`netChange`, `onNetworkEdited`) |
 
 **Placeholder scan:**
 - No "TBD" and no "similar to Task N".
-- New files are given in full, except `fixeditor.js` (a one-line stub in Task 13, given in full in Task 15) and
-  `edits.js` (the feed in Task 12, the tab added in Task 15).
+- New files are given in full, except `fixeditor.js` (a stub in Task 15, given in full in Task 17), `edits.js` (the
+  panels and feed in Task 14, the Edits panel added in Task 17) and `editcmds.js` (two commands in Task 15, four
+  more in Task 17).
 - Conditional instructions remain only where the plan cannot know a fact. Each says what to check and what to do:
-  - Part 1's exact names and signatures (Task 0 and Task 5, Step 1);
   - `DataPackage`'s required fields (Task 3);
-  - `Issue` positional arguments (Task 7);
-  - a private-import lint on `_schemas` (Task 4).
+  - a private-import lint on `_schemas` (Task 4);
+  - existing selection tests that compare a whole payload (Task 6).
 
 **Name consistency:**
 - Python: `plan_update/plan_delete/plan_add`, `EditPlan(edits, summary, rows, keys, recheck)`, `EditRefused`,
-  `check_rows`, `CheckResult.for_rows/to_dict`, `touched_keys`, `EditLedger.add/last/pop/touched/mark_saved/summary`,
-  `PendingEdit.view`, `Session.mutate/undo_last/edit_check/edits_payload/delete_preview/issue_set` and
-  `Host.undo/edit_warnings/plan_*` are used the same way in Tasks 3–15.
+  `check_rows`, `CheckResult.for_rows/to_dict`, `touched_keys`,
+  `EditLedger.copy/add/last/pop/touched/mark_saved/summary`, `PendingEdit.view`, `CORE_SOURCE`, `PYTHON_SOURCE`,
+  `Session.mutate(..., origin, recheck)/revert/undo_last(..., source)/edit_check/edits_payload/delete_preview/issue_set`,
+  `Session._swap/_ledger_for/_source/_settle/_recheck/_refresh_selection`, `_LedgerMark`, and
+  `Host.undo/edit_warnings/plan_*` are used the same way in Tasks 3–17.
 - Action `type`s: `run_validation`, `edit_cells`, `delete_rows`, `add_rows`, `undo_edit`, `save_network`. These are
-  what the front end dispatches (`issues.js`, `table.js`, `fixeditor.js`/`editmodel.js`, `edits.js`).
-- Store keys (`drawerTab`, `issues`, `issueFilter`, `issueFocus`, `showIssues`, `edits`) are the same across
-  `store.js`, `main.js`, `issues.js`, `map.js`, `table.js` and `edits.js`.
-- Ids added to `index.html`: `side-tabs`, `issues-count`, `edits-count`, `iss-*`, `tg-issues`, `ed-*`. None were
-  removed. The static tests enforce both directions.
+  what the front end dispatches (`editcmds.js`, `table.js`, `fixeditor.js`/`editmodel.js`, `edits.js`).
+- Store keys (`issues`, `issueFilter`, `issueFocus`, `fixTarget`, `edits`) are the same across `store.js`,
+  `main.js`, `issues.js`, `editcmds.js`, `table.js` and `edits.js`.
+- Dock panel ids `issues`, `edits` (panes `#dock-issues`, `#dock-edits`); layer id `issues`; command ids
+  `run_validation`, `fix_issue`, `edit_record`, `delete_record`, `undo_edit`, `save_copy` (core's are bare, Part 2
+  Decision 1).
+- Ids added to `index.html`: `dock-issues`, `dock-edits`, `iss-*`, `ed-*`. None were removed. The static tests
+  enforce both directions.
 
 **Risks:**
-- **Edits on large networks.** Each edit to a big table round-trips that table through Arrow, and every edit to
-  `link` or `node` re-packs `network.bin`. Regional networks with 1M+ links will feel it; the follow-up is a
-  DuckDB-native `update_rows`.
+- **Edits on large networks.** Each edit to a big table round-trips that table through Arrow (on the draft), and
+  every edit to `link` or `node` re-packs `network.bin`. Regional networks with 1M+ links will feel it; the
+  follow-up is a DuckDB-native `update_rows`.
 - **Live checks grow with the ledger.** They re-check every key any pending edit touched; `MAX_CHECKED_KEYS` bounds
-  each table, and the Edits tab says when the check was cut short.
+  each table, and the Edits panel says when the check was cut short.
+- **The ledger snapshot per Action.** `_ledger_for` copies the ledger (entries one level down; results shared) each
+  time an Action changes it. Pending edits are few (one per user edit), so this is cheap; a script that dispatches
+  thousands of edits in one session would want a lighter mark (the entry count and `_seq`).
 - **Issue positions.** They assume DuckDB returns a table in the same order to `to_pandas()` and to
-  `select(pk).to_pandas()`. Task 7 pins this on Leavenworth, whose tables happen to be sorted by key. A multi-file
+  `select(pk).to_pandas()`. Task 9 pins this on Leavenworth, whose tables happen to be sorted by key. A multi-file
   parquet source could break it; the longer-term fix is for rules to report keys in `Issue.extra`.
 - **`warnings.catch_warnings` in `SaveNetwork`** is process-global. A warning raised on another thread during a
   save could be swallowed into the save's notes. Jobs are few and short; noted in the code.
 - **Concurrent validation and edits.** An edit while a validation job runs can give the job a mix of versions. The
   result is stored with the version it started on, so it shows as stale and the UI offers a re-run.
-- **Undo after a plugin change.** Strict LIFO across sources means core's Undo is blocked until the plugin undoes
-  its own change. That is deliberate (a plugin's draft state stays true), and the Edits tab says who to ask.
-- **Part 1 drift.** Snippets that touch `BaseAction`, `CORE_ACTIONS`, `Session.mutate` and `Host` follow the Part 1
-  plan, not merged code. Task 0 and Task 5 Step 1 check the names first.
+- **Undo after another source's change.** Strict LIFO across sources means core's Undo is blocked until the plugin
+  (or Python) undoes its own change. That is deliberate (a plugin's draft state stays true), and the Edits panel
+  says who to ask.
+- **A nested core edit inside a plugin Action** (`host.dispatch(EditCells(...))`) is a `"workbench"` pending edit,
+  so the plugin's `host.undo` refuses it and core's Undo reverses it. A plugin that wants to own an edit uses
+  `host.plan_*` + `host.mutate` instead; the authoring guide says so.
+- **Right-click now always opens a menu on features and keyed rows** (R8). Part 2's gesture guard keeps
+  right-drag rotate on the map; on a row the browser's own menu is one Escape away.
+- **Snippets not run.** Tasks 5–17 were written against the Part 1/Part 2 code as built (see the honesty note) but
+  not executed. Where a name or signature turns out different, adapt the snippet to the code, not the other way
+  round.

@@ -10,7 +10,7 @@ Status: **proposed** · Date: 2026-10-07 · Owner: Elizabeth Sall
 - **Origin:** the ProjectCard half of the first Workbench P2 draft (commit `eeaa01b` on `feat/workbench-p2`). P2
   was re-scoped to core validate + edit ([P2 plan](2026-10-07-workbench-p2-plan.md)); its card research is kept
   here so it is not lost.
-- **Depends on:** plugins Part 1 (the plugin core) and Workbench P2 (core edits, Host API 1.1).
+- **Depends on:** plugins Parts 1 and 2 (the plugin core and the front-end slots) and Workbench P2 (core edits, Host API 1.2).
 
 ## What the plugin does
 
@@ -31,17 +31,17 @@ changed only through `cards.*` Actions (`cards.add_change`, `cards.undo_change`,
 ...). Every network change it makes goes through core, so core's history, Edits tab, live warnings and dirty badge
 see it.
 
-## Requirements on the Host API (v1, as extended to 1.1 by P2)
+## Requirements on the Host API (v1, as extended to 1.2 by P2)
 
 | Host member | Provided by | What the plugin uses it for |
 |---|---|---|
 | `host.selection` with `projectcard: {picked, resolved, query}` | Part 1 (`selection`) + P2 Task 2 (facility form) | The card's `facility`: the query form for NL/query selections, the id form for clicks. `picked` says which. |
-| `host.mutate(net_id, edits, note=...)` | Part 1; P2 records the plugin as the pending edit's `source` | Applying a card change (lowered to corral edits) to the preview or the base network. |
+| `host.mutate(net_id, edits, note=...)` | Part 1 (passes `origin=<plugin id>`); P2 Task 5 makes that the pending edit's `source` | Applying a card change (lowered to corral edits) to the preview or the base network. |
 | `host.derive(net_id, label=, note=)` | Part 1 | The preview network for a change before it is committed. |
 | `host.writable(path)` (the design calls it `paths.writable`) | Part 1 | Writing card YAML inside `io.allowed_roots`. |
-| `host.plan_update / plan_delete / plan_add` | P2 Task 5 (1.1) | Lowering a change onto core's edit planner, so a card cannot do what a cell edit may not (widen an integer column, add a column, delete a node a link uses). |
-| `host.undo(net_id)` | P2 Task 5 (1.1) | Undoing the draft's last change; core refuses when the network's newest change is not the plugin's. |
-| `host.edit_warnings(net_id)` | P2 Task 5 (1.1) | Showing open warnings before a commit, the same rule core applies before a save. |
+| `host.plan_update / plan_delete / plan_add` | P2 Task 7 (1.2) | Lowering a change onto core's edit planner, so a card cannot do what a cell edit may not (widen an integer column, add a column, delete a node a link uses). |
+| `host.undo(net_id)` | P2 Task 7 (1.2) | Undoing the draft's last change; core refuses when the network's newest change is not the plugin's. |
+| `host.edit_warnings(net_id)` | P2 Task 7 (1.2) | Showing open warnings before a commit, the same rule core applies before a save. |
 | `host.dispatch`, `host.has_action`, `host.settings`, `host.submit_job` | Part 1 | `catalog.add_card`; plugin settings; long imports as jobs. |
 
 Plugins import only `Host`, `BaseAction`, `ActionSpec`, `WorkbenchPlugin`, `EditPlan` and `EditRefused` from
