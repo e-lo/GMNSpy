@@ -6,7 +6,18 @@ const ESC = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;
 // dom.js's `esc`, repeated because a pure module can't import dom.js.
 const esc = v => String(v).replace(/[&<>"']/g, c => ESC[c]);
 
-export const resolveRef = (schema, node) => (node && node.$ref ? schema.$defs[node.$ref.split("/").pop()] : node);
+// A `$ref` node -> its definition, with the node's own keys (a field's default, description, title) on top.
+export function resolveRef(schema, node) {
+  if (!node || !node.$ref) return node;
+  const { $ref, ...own } = node;
+  return { ...((schema.$defs || {})[$ref.split("/").pop()] || {}), ...own };
+}
+
+// resolveRef, and also inside `anyOf` (pydantic writes Optional[SomeEnum] as anyOf [{$ref}, {type: null}]).
+const resolveField = (schema, node) => {
+  const p = resolveRef(schema, node);
+  return p && Array.isArray(p.anyOf) ? { ...p, anyOf: p.anyOf.map(o => resolveRef(schema, o)) } : p;
+};
 
 // A schema bound, kept only when it is a finite number: plugin schemas pass `json_schema_extra` through verbatim.
 const bound = v => (typeof v === "number" && Number.isFinite(v) ? v : null);
@@ -35,13 +46,13 @@ export function fieldsFrom(schema, value = {}, { omit = [] } = {}) {
   const required = new Set(schema.required || []);
   const fields = [];
   for (const [name, raw] of Object.entries(schema.properties || {})) {
-    const prop = resolveRef(schema, raw);
+    const prop = resolveField(schema, raw);
     if (omit.includes(name) || prop.const !== undefined) continue;
     if (prop.type === "object" && prop.properties) {
       const inner = new Set(prop.required || []);
       for (const [sub, subRaw] of Object.entries(prop.properties)) {
         const key = `${name}.${sub}`;
-        fields.push(describe(key, resolveRef(schema, subRaw), getPath(value, key),
+        fields.push(describe(key, resolveField(schema, subRaw), getPath(value, key),
           required.has(name) && inner.has(sub), prop.title || name));
       }
     } else {
@@ -89,7 +100,11 @@ export function formErrors(fields, value) {
 export function parseInput(field, raw) {
   if (field.kind === "bool") return { ok: true, value: Boolean(raw) };
   if (raw === "" || raw === null || raw === undefined) return { ok: true, value: null };
-  if (field.kind === "choice" || field.kind === "text") return { ok: true, value: String(raw) };
+  if (field.kind === "choice") {  // back to the option itself: Literal[1, 2] and IntEnum choices stay numbers
+    const option = (field.options || []).find(o => String(o) === String(raw));
+    return { ok: true, value: option === undefined ? String(raw) : option };
+  }
+  if (field.kind === "text") return { ok: true, value: String(raw) };
   if (field.kind === "int" || field.kind === "float") {
     const n = Number(raw);
     if (!Number.isFinite(n) || (field.kind === "int" && !Number.isInteger(n))) {

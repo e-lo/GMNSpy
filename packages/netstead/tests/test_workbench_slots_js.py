@@ -1,9 +1,12 @@
 """Node unit tests for the plugin front end's pure modules (Workbench plugins, Part 2)."""
 
+import enum
 import json
 import shutil
+from typing import Literal
 
 import pytest
+from pydantic import BaseModel, Field
 
 pytestmark = pytest.mark.skipif(shutil.which("node") is None, reason="node not installed")
 
@@ -470,3 +473,56 @@ def test_layer_registry_remove_owner_and_disposers(node_module):
     after_owner, stale, kept, first, left = node_module("layers.js", ["createLayerRegistry"], expr)
     assert after_owner == ["base"] and stale is False and kept == ["base", "hello.a2"]
     assert first is True and left == ["base"]
+
+
+class _Color(enum.StrEnum):
+    red = "red"
+    blue = "blue"
+
+
+class _Size(enum.IntEnum):
+    S = 1
+    M = 2
+
+
+class _Where(BaseModel):
+    city: str = "Paris"
+
+
+class _Shapes(BaseModel):
+    """The pydantic shapes a plugin Action's schema commonly has."""
+
+    tint: _Color | None = None  # anyOf [{$ref}, {type: null}]
+    color: _Color = Field(_Color.blue, description="The colour.")  # {$ref, default, description}
+    size: _Size = _Size.M
+    lanes: Literal[1, 2] = 1
+    where: _Where = Field(default_factory=_Where, description="Where to.")
+
+
+def test_fields_resolve_refs_with_their_own_keys_and_inside_any_of(node_module):
+    fields = node_module("schemaform.js", ["fieldsFrom"], f"fieldsFrom({json.dumps(_Shapes.model_json_schema())})")
+    got = {f["key"]: (f["kind"], f.get("options"), f["nullable"], f["default"], f["description"]) for f in fields}
+    assert got == {
+        "tint": ("choice", ["red", "blue"], True, None, ""),
+        "color": ("choice", ["red", "blue"], False, "blue", "The colour."),
+        "size": ("choice", [1, 2], False, 2, ""),
+        "lanes": ("choice", [1, 2], False, 1, ""),
+        "where.city": ("text", None, False, "Paris", ""),
+    }
+
+
+def test_a_choice_parses_back_to_its_option_value(node_module):
+    got = node_module(
+        "schemaform.js",
+        ["parseInput"],
+        '[parseInput({kind: "choice", options: [1, 2], label: "Lanes"}, "2"),'
+        ' parseInput({kind: "choice", options: ["a", "b"], label: "Mode"}, "b"),'
+        ' parseInput({kind: "choice", options: [true, false], label: "Flag"}, "false"),'
+        ' parseInput({kind: "choice", options: ["a"], label: "Mode"}, "")]',
+    )
+    assert got == [
+        {"ok": True, "value": 2},
+        {"ok": True, "value": "b"},
+        {"ok": True, "value": False},
+        {"ok": True, "value": None},
+    ]
