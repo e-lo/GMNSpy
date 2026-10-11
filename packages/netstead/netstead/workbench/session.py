@@ -782,6 +782,30 @@ class Session:
                 "plugins": self._plugin_state(),
             }
 
+    def action_catalog(self) -> list[dict[str, Any]]:
+        """Each registered Action, for the browser's generated forms and ``wb.hasAction``.
+
+        Each entry has ``type``, class ``name``, ``description`` (its docstring's first line), owning
+        ``plugin`` (``None`` for core), ``mutates`` and its JSON ``schema``.
+        """
+        with self._lock:
+            owner = {spec.model.action_type(): pid for pid, plugin in self.plugins.items() for spec in plugin.actions}
+            models = [(t, self.actions.model(t)) for t in self.actions.types()]
+        catalog = []
+        for action_type, model in models:
+            doc = (model.__doc__ or "").strip().splitlines()
+            catalog.append(
+                {
+                    "type": action_type,
+                    "name": model.__name__,
+                    "description": doc[0] if doc else "",
+                    "plugin": owner.get(action_type),
+                    "mutates": model.mutates,
+                    "schema": model.model_json_schema(),
+                }
+            )
+        return catalog
+
     def settings_payload(self) -> dict[str, Any]:
         """Settings values, per-key sources, JSON schema, and file paths, for the Settings UI.
 
