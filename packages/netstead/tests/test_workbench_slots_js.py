@@ -559,7 +559,7 @@ def test_command_context_hands_out_a_frozen_copy_of_the_state(node_module):
 
 
 JS_DIR = STATIC_DIR / "js"
-HOST_MODULES = ("wbhost.js", "slots.js", "layers.js", "store.js", "hub.js")
+HOST_MODULES = ("wbhost.js", "slots.js", "layers.js", "store.js", "hub.js", "commands.js")
 
 WB_HARNESS = """
 import { createWb, eventName, keysChanged, pluginPath } from "./wbhost.js";
@@ -567,6 +567,7 @@ import { createSlots } from "./slots.js";
 import { createLayerRegistry } from "./layers.js";
 import { activeSelection, createStore } from "./store.js";
 import { createHub } from "./hub.js";
+import { frozenCopy } from "./commands.js";
 
 export async function run() {
   const slots = createSlots(), layers = createLayerRegistry(), hub = createHub(), calls = [];
@@ -582,16 +583,16 @@ export async function run() {
     dock: { addWorkspace: (o, s) => slots.addWorkspace(o, s),
             addPanel: (o, s) => ({ dispose: slots.addPanel(o, s), refreshBadge() {} }), showPanel() {} },
     schemaForm: () => null, toast: m => calls.push(["toast", m]),
-    onError: (id, phase, e) => calls.push(["error", id, phase, e.message]),
+    onError: (id, phase, e) => calls.push(["error", id, phase, e.message]), frozenCopy,
   };
   const { wb, rollback } = createWb("hello", deps);
-  const seen = [];
+  const seen = [], frozen = [];
   wb.registerWorkspace({ id: "hello.ws", title: "Hello" });
   wb.registerPanel({ id: "hello.p", title: "P", workspace: "hello.ws", render() {} });
   wb.registerCommand({ id: "hello.c", title: "C", run() {} });
   wb.registerLayer("roadway", "hello.l", () => null);
-  wb.store.subscribe(["plugins.hello"], s => seen.push(["store", s.plugins.hello.n]));
-  wb.selection.subscribe(sel => seen.push(["selection", sel && sel.link_ids]));
+  wb.store.subscribe(["plugins.hello"], s => { seen.push(["store", s.plugins.hello.n]); frozen.push(Object.isFrozen(s.plugins.hello)); });
+  wb.selection.subscribe(sel => { seen.push(["selection", sel && sel.link_ids]); frozen.push(Object.isFrozen(sel.link_ids)); });
   wb.on("greeted", p => seen.push(["event", p]));
   wb.on("other.thing", () => { throw new Error("listener bug"); });
   let refused = null;
@@ -620,7 +621,14 @@ export async function run() {
     .map(f => { try { f(); return null; } catch (e) { return e.message; } });
   store.set({ server: { ...server({ net_id: "n1", link_ids: [9] }), plugins: { hello: { n: 2 } } } });
   hub.emit("hello.greeted", "after rollback");
-  return { before, after, refused, badPath, late, lateListeners, seen, calls,
+  // get() and the listeners hand out frozen copies: a plugin can't change the page's own state.
+  const live = store.get().server;
+  const mutations = [() => { wb.store.get().active = "x"; }, () => wb.store.get().networks.push({}),
+    () => wb.selection.get().link_ids.push(1), () => { wb.selection.get().net_id = "n2"; }]
+    .map(f => { try { f(); return false; } catch (e) { return e instanceof TypeError; } });
+  const untouched = [store.get().server === live, live.active, live.networks.length, live.selection.link_ids,
+    wb.store.get() === wb.store.get(), wb.store.get() !== live];
+  return { before, after, refused, badPath, late, lateListeners, seen, calls, frozen, mutations, untouched,
     has: [wb.hasAction("hello.greet"), wb.hasAction("cards.x")],
     badPaths,
     okPaths: [pluginPath("hello", "/a/../b?q=1#h"), pluginPath("hello", "/x%2Fy")],
@@ -652,6 +660,9 @@ def test_wb_registers_namespaced_tracks_and_rolls_back(node_module, tmp_path):
     assert got["late"] == "hello: activation was rolled back; nothing more can be registered"
     assert got["lateListeners"] == [got["late"]] * 3
     assert got["seen"] == [["store", 1], ["selection", [4]], ["event", {"name": "Ada"}]]
+    assert got["frozen"] == [True, True]
+    assert got["mutations"] == [True] * 4
+    assert got["untouched"] == [True, "n1", 1, [9], True, True]  # one copy per server object, never the live one
     assert got["calls"] == [
         ["get", "/api/plugins/hello/count"],
         ["post", "/api/plugins/hello/echo", {"a": 1}],
@@ -1023,7 +1034,7 @@ const ws = await import("./workspaces.js");
 const { createWb } = await import("./wbhost.js");
 const { slots } = await import("./slots.js");
 const { store, activeSelection } = await import("./store.js");
-const { addCommandTo } = await import("./commands.js");
+const { addCommandTo, frozenCopy } = await import("./commands.js");
 const { layerRegistry } = await import("./layers.js");
 const { createHub } = await import("./hub.js");
 
@@ -1037,7 +1048,7 @@ const { wb, rollback } = createWb("broken", {
   addCommand: (o, s) => addCommandTo(slots, store, o, s),
   layers: { register: (o, c, i, f, opt) => layerRegistry.register(o, c, i, f, opt) },
   dock: { addWorkspace: ws.addWorkspace, addPanel: ws.addPanel, showPanel: ws.showPanel },
-  schemaForm: () => null, toast() {}, onError: (id, phase, e) => errors.push([id, phase, e.message]),
+  schemaForm: () => null, toast() {}, onError: (id, phase, e) => errors.push([id, phase, e.message]), frozenCopy,
 });
 // What a plugin's activate(wb) might do before it throws.
 wb.registerWorkspace({ id: "broken.ws", title: "Broken", layout: { view: "map" } });

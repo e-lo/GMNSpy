@@ -24,7 +24,7 @@ export const keysChanged = (prev, next, keys) => keys.some(k => JSON.stringify(p
 
 // deps: {hostApi, store, activeSelection, getJSON, postJSON, fetch, dispatch, events: {on}, addCommand,
 //        layers: {register}, dock: {addWorkspace, addPanel, showPanel}, schemaForm, actionTypes, actionSchema,
-//        toast, onError(pluginId, phase, error)}
+//        toast, onError(pluginId, phase, error), frozenCopy}
 export function createWb(pluginId, deps) {
   const disposers = [];
   let closed = false;
@@ -43,7 +43,8 @@ export function createWb(pluginId, deps) {
       return undefined;
     }
   };
-  const serverNow = () => deps.store.get().server;
+  // The server state as plugin code sees it: a deep-frozen copy (one per server object), never the page's own.
+  const serverNow = () => deps.frozenCopy(deps.store.get().server);
   const selectionOf = server => deps.activeSelection({ server }) || null;
   // Listeners are refused after a rollback too: an activate that timed out may resume and subscribe later.
   const watch = (changed, fn, phase) => {
@@ -52,8 +53,8 @@ export function createWb(pluginId, deps) {
     const cb = safe(fn, phase);
     return track(deps.store.subscribe(["server"], s => {
       const before = prev;
-      prev = s.server;
-      if (changed(before, s.server)) cb(s.server);
+      prev = deps.frozenCopy(s.server);
+      if (changed(before, prev)) cb(prev);
     }));
   };
 

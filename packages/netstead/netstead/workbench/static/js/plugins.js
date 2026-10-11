@@ -3,7 +3,7 @@
 // finishing) rolls back what it registered, is listed in Settings → Plugins, and never stops the others.
 import { openActionForm } from "./actform.js";
 import { dispatch, getJSON, postJSON } from "./api.js";
-import { actionCommands, addCommandTo } from "./commands.js";
+import { actionCommands, addCommandTo, frozenCopy } from "./commands.js";
 import { toast } from "./dom.js";
 import { schemaForm } from "./formview.js";
 import { hub } from "./hub.js";
@@ -75,5 +75,6 @@ function hostDeps({ hostApi, actionTypes, schemas }) {
     hostApi, store, activeSelection, getJSON, postJSON, dispatch, fetch: (url, init) => fetch(url, init),
     events: hub, addCommand, layers: { register: addLayer }, dock: { addWorkspace, addPanel, showPanel },
     schemaForm, actionTypes, actionSchema: type => schemas.get(type) || null, toast, onError: reportPluginError,
+    frozenCopy,
   };
 }
