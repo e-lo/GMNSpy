@@ -29,6 +29,7 @@ export const store = createStore({
   layerSeq: 0,                // bumped when a layer registers or goes, so Overlays and the map redraw
   workspace: "inspect",       // the active workspace tab (per tab; remembered in localStorage)
   dockPanel: {},              // workspace id -> the dock panel showing in it
+  commandSeq: 0,              // bumped when a command registers or goes, so menus re-check what applies
 });
 
 export function activeSelection(s) {

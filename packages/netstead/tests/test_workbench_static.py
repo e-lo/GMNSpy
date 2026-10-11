@@ -257,3 +257,16 @@ def test_core_registers_inspect_and_details_through_the_slots():
     assert 'slots.addWorkspace(CORE, { id: "inspect"' in src and 'slots.addPanel(CORE, { id: "details"' in src
     main = (JS_DIR / "main.js").read_text()
     assert "registerCoreSlots()" in main and "wireWorkspaces(" in main
+
+
+def test_context_menus_are_wired_on_the_map_the_grid_and_the_selection():
+    html = (STATIC_DIR / "index.html").read_text()
+    assert '<div id="ctxmenu" role="menu" aria-label="Commands" hidden></div>' in html
+    pane = html[html.index('id="dock-details"') : html.index("</aside>")]
+    assert 'id="sel-cmds-wrap" hidden' in pane and 'aria-haspopup="menu"' in pane
+    map_js = (JS_DIR / "map.js").read_text()
+    assert 'map.on("contextmenu"' in map_js and "handlers.onContextMenu(" in map_js
+    table = (JS_DIR / "table.js").read_text()
+    assert 'openContextMenu("row"' in table and "oncontextmenu" in table
+    main = (JS_DIR / "main.js").read_text()
+    assert 'openContextMenu("feature"' in main and "wireContextMenus(" in main

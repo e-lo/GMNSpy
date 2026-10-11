@@ -17,7 +17,7 @@ const TOOLTIP_STYLE = { background: "#11151a", color: "#e6e8ec", fontSize: "12px
   borderRadius: "6px", border: "1px solid #2a2f3a" };
 
 let map = null, overlay = null;
-let handlers = { onLinkClick() {}, onNodeClick() {}, onBoxSelect() {}, onLayerError(e) { console.error(e); } };
+let handlers = { onLinkClick() {}, onNodeClick() {}, onBoxSelect() {}, onContextMenu() {}, onLayerError(e) { console.error(e); } };
 let colorCache = { key: null, colors: null };
 let labelsShown = true;
 // Whether the current style's layers exist (style.load fired). Not map.isStyleLoaded(): that also waits for
@@ -32,6 +32,10 @@ export function initMap(style, hooks) {
   map.addControl(new maplibregl.NavigationControl(), "top-left");
   overlay = new deck.MapboxOverlay({ interleaved: false, layers: [], getTooltip });
   map.addControl(overlay);
+  map.on("contextmenu", e => {
+    const target = recordAt(e.point);
+    if (target) handlers.onContextMenu(target, { x: e.originalEvent.clientX, y: e.originalEvent.clientY });
+  });
   new ResizeObserver(() => map.resize()).observe($("map"));
   map.on("zoomend", () => { const s = store.get(); if (s.server && s.server.style.show_direction) render(); });
   // Ready once the style is parsed, not on "load": that waits for every basemap tile of the opening
@@ -177,6 +181,16 @@ function getTooltip({ layer, index }) {
   const id = attrs.link_id[index], nm = attrs.name[index], rf = attrs.ref[index], ft = attrs.facility_type[index];
   return { html: `<b>link ${esc(id)}</b><br>${nm ? esc(nm) : "<i>unnamed</i>"}${rf ? " · " + esc(rf) : ""}` +
     `<br><span style="color:#8a93a3">${ft ? esc(ft) : ""}</span>`, style: TOOLTIP_STYLE };
+}
+
+// The record under a right-click: a link or node feature ({table, id}), or null.
+function recordAt(point) {
+  const s = store.get();
+  const info = overlay.pickObject({ x: point.x, y: point.y, radius: 4, layerIds: ["nodes", "links"] });
+  if (!info || info.index == null || info.index < 0 || !s.net) return null;
+  if (info.layer.id === "links") return { table: "link", id: s.attrs.link_id[info.index] };
+  if (info.layer.id === "nodes") return { table: "node", id: s.net.nodeIds[info.index] };
+  return null;
 }
 
 function fit(bounds, padding, retried, duration = 500) {

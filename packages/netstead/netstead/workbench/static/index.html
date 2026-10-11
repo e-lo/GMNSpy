@@ -101,6 +101,7 @@
     <div id="dock-tabs" role="tablist" aria-label="Panels" hidden></div>
     <section class="dock-pane" id="dock-details" data-panel="details" role="tabpanel" aria-labelledby="dtab-details">
     <div id="status-wrap"></div>
+    <div id="sel-cmds-wrap" hidden><button class="mini ghost" id="sel-cmds" aria-haspopup="menu">Selection actions &#9662;</button></div>
     <div class="label">Highlighted links <span id="hl-count" class="pcount">0</span></div>
     <div id="hl-wrap">
       <span class="empty" id="hl-hint">Turn on <b>Highlight links</b> (&#9647;), then click links or shift-drag a box.</span>
@@ -250,6 +251,7 @@
   </div>
 </div>
 <!-- /settings -->
+<div id="ctxmenu" role="menu" aria-label="Commands" hidden></div>
 <div id="toast" role="status"></div>
 </body>
 </html>

@@ -272,3 +272,10 @@
   #ws-tabs button:focus-visible, #dock-tabs button:focus-visible { outline:2px solid var(--hl); outline-offset:-2px; }
   #dock-tabs { margin:-4px 0 12px; border-bottom:1px solid var(--edge); }
   .dirty { color:var(--accent); font-size:10px; margin-left:3px; }
+  #sel-cmds-wrap { margin:8px 0 0; }
+  #ctxmenu { position:fixed; z-index:30; min-width:200px; max-width:320px; padding:4px; background:var(--panel);
+             border:1px solid var(--edge); border-radius:8px; box-shadow:0 6px 24px rgba(0,0,0,.45); }
+  #ctxmenu .ctx-head { padding:6px 10px 2px; font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.06em; }
+  #ctxmenu button { display:block; width:100%; text-align:left; background:none; color:var(--ink); border:0; border-radius:6px;
+                    padding:6px 10px; font-weight:500; font-size:12.5px; }
+  #ctxmenu button:hover, #ctxmenu button:focus { background:#20242e; outline:none; }

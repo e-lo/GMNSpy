@@ -2,6 +2,7 @@
 // the record (never a recorded selection: see linking.js); the scope menu filters to the selection, the
 // highlights, or the records related to them; related rows are tinted; FK cells jump to their target.
 import { getJSON, netPath, postJSON } from "./api.js";
+import { openContextMenu } from "./ctxmenu.js";
 import { $, esc, toast } from "./dom.js";
 import { clampOffset, coerceId, pageOffset, rowMarks, rowsRequest, scopeHint } from "./linking.js";
 import { resizeSoon } from "./map.js";
@@ -153,6 +154,11 @@ function renderRows(cols, rows, vias) {
     return `<tr class="data ${marks.join(" ")}" data-pk="${pv == null ? "" : esc(pv)}"${title}>${tds}</tr>`;
   }).join("");
   for (const tr of body.querySelectorAll("tr.data")) tr.onclick = () => rowClick(tr.dataset.pk);
+  for (const tr of body.querySelectorAll("tr.data")) tr.oncontextmenu = e => {
+    if (tr.dataset.pk === "" || !TBL.schema.primary_key) return;
+    const target = { table: TBL.name, id: coerceId(tr.dataset.pk, pkNumeric()) };
+    if (openContextMenu("row", target, { x: e.clientX, y: e.clientY })) e.preventDefault();
+  };
   for (const a of body.querySelectorAll("a.fk")) a.onclick = e => {
     e.preventDefault(); e.stopPropagation();
     jumpTo(a.dataset.ref, coerceId(a.dataset.id, Boolean(a.dataset.num))).catch(fail);

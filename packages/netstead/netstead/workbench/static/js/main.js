@@ -1,5 +1,6 @@
 // Workbench boot: wire modules to the store and the server's SSE stream.
 import { getBuffer, getJSON, netPath, subscribe } from "./api.js";
+import { openContextMenu, wireContextMenus } from "./ctxmenu.js";
 import { $, toast } from "./dom.js";
 import { rememberRecent, renderHeader, renderRecent, wireHeader } from "./header.js";
 import { showEntry, wireHistory } from "./history.js";
@@ -140,6 +141,7 @@ function wireStore() {
 async function boot() {
   registerCoreSlots();
   wireWorkspaces();
+  wireContextMenus({ onError: (command, e) => toast(`${command.title}: ${(e && e.message) || e}`) }); // Task 14 routes this to the Plugins section
   wireStore(); wirePanels(); wireSide(); wireTable(); wireHeader(); wireHistory(); wireMapButtons(); wireJobs(); wireWizard(); wireLLM(); wireSettings();
   registerSection("llm", "Language models", "llm-panel", () => renderLLMPanel());
   renderRecent();
@@ -165,6 +167,7 @@ async function boot() {
   });
   initMap(cfg.style, {
     onLinkClick, onNodeClick, onBoxSelect,
+    onContextMenu: (target, at) => openContextMenu("feature", target, at),
     onReady: () => { mapReady = true; return onState(store.get().server); },
   });
 }
