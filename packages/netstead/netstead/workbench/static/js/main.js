@@ -7,12 +7,14 @@ import { openContextMenu, wireContextMenus } from "./ctxmenu.js";
 import { $, toast } from "./dom.js";
 import { rememberRecent, renderHeader, renderRecent, wireHeader } from "./header.js";
 import { showEntry, wireHistory } from "./history.js";
+import { hub } from "./hub.js";
 import { loadJobs, onJob, wireJobs } from "./jobs.js";
 import { onHistoryEntry, onLLMEvent, onLLMJob, refreshLLM, renderLLMPanel, wireLLM } from "./llm.js";
 import { layerRegistry } from "./layers.js";
 import { fitBbox, fitLinks, fitNetwork, flyToNode, initMap, render, setBasemap } from "./map.js";
 import { decodeNetwork } from "./netbuf.js";
 import { populateColorby, renderLegend, renderPluginLayers, syncControls, wirePanels } from "./panels.js";
+import { loadPlugins, reportPluginError } from "./plugins.js";
 import { clearDetails, renderHighlights, renderSelection, showDetails, wireSide } from "./side.js";
 import { cancelRelated, renderRelatedBadges, scheduleRelated } from "./related.js";
 import { onSettingsHistory, registerSection, wireSettings } from "./settings.js";
@@ -142,11 +144,13 @@ function wireStore() {
 }
 
 async function boot() {
+  // Every plugin-code failure (and core's own, which only toasts) goes to the Plugins section, once per message.
+  const commandError = (command, e) => reportPluginError(command.owner, `command ${command.id}`, e);
   registerCoreSlots();
-  wireWorkspaces();
-  wireContextMenus({ onError: (command, e) => toast(`${command.title}: ${(e && e.message) || e}`) }); // Task 14 routes this to the Plugins section
+  wireWorkspaces({ onError: reportPluginError });
+  wireContextMenus({ onError: commandError });
   registerCoreCommands();
-  wirePalette({ onError: (command, e) => toast(`${command.title}: ${(e && e.message) || e}`) }); // Task 14 routes this too
+  wirePalette({ onError: commandError });
   wireActionForm();
   wireStore(); wirePanels(); wireSide(); wireTable(); wireHeader(); wireHistory(); wireMapButtons(); wireJobs(); wireWizard(); wireLLM(); wireSettings();
   registerSection("llm", "Language models", "llm-panel", () => renderLLMPanel());
@@ -155,6 +159,7 @@ async function boot() {
   store.set({ server, basemap: cfg.style });
   await loadJobs();
   restoreViewMode();
+  loadPlugins().catch(e => toast(`Plugins: ${e.message}`)); // not awaited: a slow plugin never delays the map
   refreshLLM().catch(e => toast(e.message));
   if (history.entries.length) showEntry(history.entries[history.entries.length - 1]);
   // Subscribe now, not on map load, so job/history events are never missed. Until the map is ready a
@@ -165,14 +170,16 @@ async function boot() {
   subscribe({
     state: e => { if (mapReady) onState(e.state); else store.set({ server: e.state }); },
     history: e => { showEntry(e.entry); rememberRecent(e.entry); onHistoryEntry(e.entry); onSettingsHistory(e.entry);
-      onSettingChanged(e.entry).catch(err => toast(err.message));
+      onSettingChanged(e.entry).catch(err => toast(err.message)); hub.emit("core.history", e.entry);
     },
     navigate: e => { if (mapReady) onNavigate(e); },
-    job: e => { onJob(e.job); onWizardJob(e.job); onLLMJob(e.job); },
+    job: e => { onJob(e.job); onWizardJob(e.job); onLLMJob(e.job); hub.emit("core.job", e.job); },
+    plugin: e => hub.emit(`${e.plugin}.${e.name}`, e.payload),
     llm: onLLMEvent,
   });
   initMap(cfg.style, {
     onLinkClick, onNodeClick, onBoxSelect,
+    onLayerError: e => reportPluginError(e.owner, "layer", e.error),
     onContextMenu: (target, at) => openContextMenu("feature", target, at),
     onReady: () => { mapReady = true; return onState(store.get().server); },
   });

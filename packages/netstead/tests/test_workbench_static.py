@@ -300,3 +300,21 @@ def test_schema_forms_reuse_the_shared_field_model_and_the_action_dialog_exists(
         element_id = f"actform-{suffix}"
         assert f'id="{element_id}"' in dialog
     assert "wireActionForm()" in (JS_DIR / "main.js").read_text()
+
+
+def test_main_loads_plugins_after_core_and_forwards_their_events():
+    main = (JS_DIR / "main.js").read_text()
+    assert 'from "./plugins.js"' in main and "loadPlugins()" in main
+    assert main.index("registerCoreSlots()") < main.index("loadPlugins()")
+    assert "await loadPlugins()" not in main  # never delays the map
+    assert re.search(r"plugin:\s*e\s*=>\s*hub\.emit\(", main)
+    assert 'hub.emit("core.history"' in main and 'hub.emit("core.job"' in main
+    assert "onLayerError:" in main
+
+
+def test_the_loader_isolates_each_plugin():
+    src = (JS_DIR / "plugins.js").read_text()
+    assert "rollback()" in src and 'reportPluginError(status.id, "activate"' in src
+    assert "ACTIVATE_TIMEOUT_MS" in src and "typeof mod.activate" in src
+    assert "actionCommands(" in src and "openActionForm(" in src
+    assert "status.id === CORE" in src  # "core" is reserved (review I-2): never activated as a plugin
