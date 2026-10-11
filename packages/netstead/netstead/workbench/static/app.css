@@ -85,7 +85,7 @@
   .hex { width:66px; background:#0c0e12; color:var(--ink); border:1px solid var(--edge); border-radius:6px;
          padding:3px 6px; font-size:12px; font-family:ui-monospace,monospace; }
   /* toggle switch */
-  .sw { position:relative; width:34px; height:18px; flex:none; }
+  .sw { position:relative; display:inline-block; vertical-align:middle; width:34px; height:18px; flex:none; }
   .sw input { opacity:0; width:0; height:0; }
   .sw span { position:absolute; inset:0; background:#3a4150; border-radius:999px; transition:.15s; cursor:pointer; }
   .sw span::before { content:""; position:absolute; width:14px; height:14px; left:2px; top:2px; background:#e6e8ec;
