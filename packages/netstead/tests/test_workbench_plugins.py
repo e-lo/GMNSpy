@@ -957,6 +957,18 @@ def test_host_publish_sends_a_namespaced_plugin_event(host_of):
     ]
 
 
+@pytest.mark.parametrize("name", ["other.thing", "Greeted", "1st", "", "greeted!", "hello greeted", "_x"])
+def test_host_publish_refuses_a_name_wb_on_could_not_hear(host_of, name):
+    # wb.on("a.b") means another plugin's event "b", so a dotted (or otherwise odd) name would never arrive.
+    session, host = host_of
+    published: list[dict[str, Any]] = []
+    session.events.publish = published.append
+    with pytest.raises(ValueError, match=r"hello: host\.publish event names are lowercase .*\[a-z\]\[a-z0-9_\]\*"):
+        host.publish(name)
+    host.publish("greeted_2")
+    assert [e["name"] for e in published] == ["greeted_2"]
+
+
 def test_host_writable_stays_inside_the_allowed_roots(host_of, tmp_path):
     from netstead.workbench.errors import PathNotAllowed
 
