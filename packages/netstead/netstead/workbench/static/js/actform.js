@@ -8,12 +8,15 @@ import { schemaForm } from "./formview.js";
 import { trapTab } from "./modal.js";
 
 let opener = null, form = null, current = null;
+let opened = 0; // bumped on each open: a run still in flight doesn't write into a form opened after it
 
 export const actionFormOpen = () => !$("actform").hidden;
 
 export function openActionForm(entry, prefill = {}) {
   if (!actionFormOpen()) opener = document.activeElement;
   current = entry;
+  opened++;
+  $("actform-run").disabled = false;
   $("actform-title").textContent = entry.label;
   $("actform-desc").textContent = entry.description || "";
   $("actform-result").textContent = "";
@@ -30,17 +33,27 @@ export function closeActionForm() {
 }
 
 async function run() {
+  if ($("actform-run").disabled) return; // already running (Enter pressed twice)
   const errors = form.errors();
   if (errors.length) { $("actform-result").textContent = errors.join("; "); return; }
+  const mine = opened, show = text => { if (mine === opened) $("actform-result").textContent = text; };
   $("actform-run").disabled = true;
   try {
     const result = await dispatch({ ...form.value(), type: current.type });
-    $("actform-result").textContent = result == null ? "Done." : `Done: ${typeof result === "string" ? result : JSON.stringify(result)}`;
+    show(result == null ? "Done." : `Done: ${typeof result === "string" ? result : JSON.stringify(result)}`);
   } catch (e) {
-    $("actform-result").textContent = e.message;
+    show(e.message);
   } finally {
-    $("actform-run").disabled = false;
+    if (mine === opened) $("actform-run").disabled = false;
   }
+}
+
+// Enter in a one-line field runs the form, after reading that field (its change event may not have fired yet).
+function onEnter(e) {
+  if (e.key !== "Enter" || e.isComposing || !e.target.matches("#actform-body input")) return;
+  e.preventDefault();
+  e.target.dispatchEvent(new Event("change", { bubbles: true }));
+  run();
 }
 
 export function wireActionForm() {
@@ -48,6 +61,7 @@ export function wireActionForm() {
   $("actform-run").onclick = () => run();
   $("actform").addEventListener("keydown", e => {
     if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); closeActionForm(); return; }
+    onEnter(e);
     trapTab($("actform"), e);
   });
 }

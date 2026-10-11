@@ -729,3 +729,121 @@ def test_switching_a_plugin_edits_the_disabled_list(node_module):
         'withPluginEnabled(["a"], "a", false)]',
     )
     assert got == [["b"], ["a", "b"], ["a"]]
+
+
+# Part R (batch-2 review): schema forms.
+FORM_FIELDS = [
+    {"key": "n", "label": "N", "kind": "float", "nullable": False, "value": 3, "default": None, "required": True},
+    {
+        "key": "flag",
+        "label": "Flag",
+        "kind": "bool",
+        "nullable": False,
+        "value": None,
+        "default": None,
+        "required": False,
+    },
+    {
+        "key": "mode",
+        "label": "Mode",
+        "kind": "choice",
+        "options": ["a", "b"],
+        "nullable": False,
+        "value": None,
+        "default": "b",
+        "required": False,
+    },
+    {
+        "key": "maybe",
+        "label": "Maybe",
+        "kind": "text",
+        "nullable": True,
+        "value": None,
+        "default": None,
+        "required": True,
+    },
+    {"key": "opt", "label": "Opt", "kind": "text", "nullable": True, "value": None, "default": None, "required": False},
+]
+
+
+def test_fill_shown_makes_what_a_form_shows_its_value(node_module):
+    got = node_module("schemaform.js", ["fillShown"], f"fillShown({json.dumps(FORM_FIELDS)}, {{n: 3}})")
+    assert got["value"] == {"n": 3, "flag": False, "mode": "b", "maybe": None}  # explicit null; "opt" left out
+    assert [f["value"] for f in got["fields"]] == [3, False, "b", None, None]
+
+
+def test_form_errors_name_bad_entries_explicit_nulls_and_exclusive_bounds(node_module):
+    fields = [
+        *FORM_FIELDS,
+        {
+            "key": "gt",
+            "label": "Gt",
+            "kind": "float",
+            "min": 0,
+            "max": 10,
+            "exclusiveMin": True,
+            "exclusiveMax": True,
+            "value": None,
+            "default": None,
+            "required": False,
+            "nullable": False,
+        },
+        {
+            "key": "ge",
+            "label": "Ge",
+            "kind": "float",
+            "min": 0,
+            "max": 10,
+            "value": None,
+            "default": None,
+            "required": False,
+            "nullable": False,
+        },
+    ]
+    expr = (
+        f"(() => {{ const f = {json.dumps(fields)};"
+        ' return [formErrors(f, {n: 3, maybe: null, gt: 0, ge: 0}, new Set(["n"])),'
+        " formErrors(f, {n: 3, gt: 10, ge: 10}), formErrors(f, {n: 3, maybe: null, gt: 5})]; })()"
+    )
+    assert node_module("schemaform.js", ["formErrors"], expr) == [
+        ["N: fix this entry", "Gt must be more than 0"],  # the stale 3 is not sent; Ge 0 is fine (inclusive)
+        ["Maybe is required", "Gt must be less than 10"],  # "maybe" missing altogether is not None on purpose
+        [],
+    ]
+
+
+def test_generated_form_controls_none_menus_json_placeholders_and_distinct_ids(node_module):
+    expr = """[
+      inputHTML({key: "a.b", label: "B", kind: "bool", nullable: true, value: null, default: null, required: true},
+                "sf1-", {form: true}),
+      inputHTML({key: "a-b", label: "B", kind: "bool", nullable: true, value: false, default: true, required: false},
+                "sf1-", {form: true}),
+      inputHTML({key: "r", label: "R", kind: "json", nullable: false, value: null, default: [1, 2], required: false},
+                "sf1-", {form: true}),
+      inputHTML({key: "c", label: "C", kind: "choice", options: ["x"], nullable: true, value: null, default: null,
+                 required: true}, "sf1-", {form: true}),
+      inputHTML({key: "c", label: "C", kind: "choice", options: ["x"], nullable: true, value: null, default: null}),
+    ]"""
+    got = node_module("schemaform.js", ["inputHTML"], expr)
+    assert got[0] == (
+        '<select id="sf1-a-002eb" data-key="a.b" aria-required="true"><option value="" selected>None</option>'
+        '<option value="true">true</option><option value="false">false</option></select>'
+    )
+    assert got[1].startswith('<select id="sf1-a-002db" data-key="a-b">') and '<option value="false" selected>' in got[1]
+    assert got[2] == '<textarea id="sf1-r" data-key="r" rows="3" spellcheck="false" placeholder="[1,2]"></textarea>'
+    assert ">None</option>" in got[3]
+    assert got[4] == (  # the Settings dialog's markup is unchanged
+        '<select id="set-c" data-key="c"><option value="" selected>(default)</option>'
+        '<option value="x">x</option></select>'
+    )
+
+
+def test_a_nullable_bool_menu_parses_to_null_true_or_false(node_module):
+    field = '{kind: "bool", nullable: true, label: "B"}'
+    got = node_module(
+        "schemaform.js",
+        ["parseInput"],
+        f'[parseInput({field}, ""), parseInput({field}, "true"), parseInput({field}, "false"), '
+        'parseInput({kind: "bool", label: "C"}, true)]',
+    )
+    assert [g["value"] for g in got] == [None, True, False, True]

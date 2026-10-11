@@ -3,7 +3,7 @@
 // control (setCustomValidity), and the form's value is never changed by it. Schema text (titles, descriptions, enum
 // values) comes from plugins, so every piece of it is escaped.
 import { esc } from "./dom.js";
-import { fieldsFrom, formErrors, inputHTML, parseControl, setPath } from "./schemaform.js";
+import { explicitNull, fieldId, fieldsFrom, fillShown, formErrors, inputHTML, parseControl, setPath } from "./schemaform.js";
 
 let forms = 0;
 const copy = v => JSON.parse(JSON.stringify(v || {}));
@@ -14,26 +14,23 @@ export function schemaForm(el, schema, value = {}, { onChange = () => {}, omit =
   const prefix = `sf${++forms}-`;
   let current = copy(value);
   let fields = [];
+  const bad = new Set(); // keys whose entry didn't parse: `current` still holds their last good value
   const draw = () => {
-    fields = fieldsFrom(schema || {}, current, { omit });
     // A checkbox or a menu always shows a value: make it the form's value too, so what is sent is what is seen.
-    for (const f of fields) {
-      if (f.value !== null || f.nullable || !(f.kind === "bool" || (f.kind === "choice" && f.options.length))) continue;
-      f.value = f.default ?? (f.kind === "bool" ? false : f.options[0]);
-      current = setPath(current, f.key, f.value);
-    }
+    ({ fields, value: current } = fillShown(fieldsFrom(schema || {}, current, { omit }), current));
+    bad.clear();
     let group = null;
     el.innerHTML = fields.map(f => {
       const head = f.group && f.group !== group ? `<div class="sf-group">${esc(f.group)}</div>` : "";
       group = f.group;
-      return `${head}<div class="sf-field"><label for="${prefix}${esc(f.key.replace(/\./g, "-"))}">${esc(f.label)}` +
-        `${f.required ? ' <span class="sf-req" aria-hidden="true">*</span>' : ""}</label>${inputHTML(f, prefix)}` +
+      return `${head}<div class="sf-field"><label for="${esc(fieldId(prefix, f.key))}">${esc(f.label)}` +
+        `${f.required ? ' <span class="sf-req" aria-hidden="true">*</span>' : ""}</label>${inputHTML(f, prefix, { form: true })}` +
         (f.description ? `<div class="sf-help">${esc(f.description)}</div>` : "") + "</div>";
     }).join("") || '<p class="empty">Nothing to fill in.</p>';
   };
   const api = {
     value: () => copy(current),
-    errors: () => formErrors(fields, current),
+    errors: () => formErrors(fields, current, bad),
     set(next) { current = copy(next); draw(); },
     focus() { const c = el.querySelector("[data-key]:not([disabled])"); if (c) c.focus(); return Boolean(c); },
   };
@@ -46,8 +43,9 @@ export function schemaForm(el, schema, value = {}, { onChange = () => {}, omit =
     const parsed = parseControl(field, { type: control.type, value: control.value, checked: control.checked,
       badInput: Boolean(control.validity && control.validity.badInput) });
     control.setCustomValidity(parsed.ok ? "" : parsed.error);
-    if (!parsed.ok) { control.reportValidity(); return; }
-    current = setPath(current, field.key, parsed.value);
+    if (!parsed.ok) { bad.add(field.key); control.reportValidity(); return; }
+    bad.delete(field.key);
+    current = setPath(current, field.key, parsed.value, explicitNull(field));
     onChange(api.value(), { errors: api.errors() });
   };
   draw();
