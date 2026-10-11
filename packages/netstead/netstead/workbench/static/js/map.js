@@ -4,6 +4,7 @@ import { createClickGuard } from "./gesture.js";
 import { layerRegistry } from "./layers.js";
 import { widthForLanes } from "./netbuf.js";
 import { buildLinkColors } from "./palette.js";
+import { commandContext, frozenCopy } from "./commands.js";
 import { CORE } from "./slots.js";
 import { activeSelection, store } from "./store.js";
 
@@ -164,17 +165,30 @@ function registerCoreLayers() {
   reg("marker", c => (c.marker ? markerLayer(c.marker) : null));
 }
 
-// What every layer factory sees (plugins' too: see the cookbook's registerLayer). `deck` is the global deck.gl.
+// What core's layer factories see. `deck` is the global deck.gl.
 function layerContext(s) {
   return { state: s, server: s.server, style: s.server.style, net: s.net, attrs: s.attrs, selection: activeSelection(s),
     focus: s.focus, highlights: s.highlights, related: s.related, marker: s.marker, zoom: map.getZoom(), deck };
 }
 
+// What a plugin's layer factory sees (the cookbook's registerLayer): the command context's frozen copies, plus the
+// map's own parts. `highlights` is a copy (a Set); `net` and `attrs`, the decoded network, are too big to copy per
+// render and are shared: read them, never change them.
+function pluginLayerContext(s) {
+  const c = commandContext({ server: s.server, focus: s.focus, highlights: s.highlights, workspace: s.workspace });
+  return Object.freeze({ server: c.state, style: c.state.style, net: s.net, attrs: s.attrs, selection: c.selection,
+    focus: c.focus, highlights: new Set(s.highlights), related: frozenCopy(s.related), marker: frozenCopy(s.marker),
+    zoom: map.getZoom(), deck });
+}
+
+const isDeckLayer = layer => typeof deck.Layer !== "function" || layer instanceof deck.Layer;
+
 export function render() {
   if (!overlay) return;
   const s = store.get();
   if (!s.net || !s.server) { overlay.setProps({ layers: [] }); return; }
-  const { layers, errors } = layerRegistry.build("roadway", layerContext(s), s.hiddenLayers);
+  const { layers, errors } = layerRegistry.build("roadway", layerContext(s), s.hiddenLayers,
+    { isLayer: isDeckLayer, pluginCtx: () => pluginLayerContext(s) });
   overlay.setProps({ layers });
   setLabels(s.server.style.show.labels);
   for (const e of errors) handlers.onLayerError(e);

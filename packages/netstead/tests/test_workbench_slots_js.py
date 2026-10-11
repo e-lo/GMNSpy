@@ -896,3 +896,46 @@ def test_views_are_saved_per_workspace_and_inspect_restores_its_own(node_module)
         })()""",
     )
     assert got == [{"inspect": "map", "cards.edit": "split"}, "map", "table", None, None]
+
+
+def test_plugin_code_gets_deep_frozen_copies_of_page_state(node_module):
+    got = _commands(
+        node_module,
+        "const focus = {table: 'link', id: 7}, hl = new Set([5]);"
+        "const c = commandContext({server, focus, highlights: hl}, {table: 'link', id: 7});"
+        "const tries = [() => c.selection.link_ids.splice(0), () => { c.state.networks[0].version = 9; },"
+        " () => { c.focus.id = 1; }, () => c.highlights.push(6), () => { c.target.id = 2; },"
+        " () => { c.network = null; }];"
+        "const refused = tries.map(t => { try { t(); return false; } catch (e) { return e instanceof TypeError; } });"
+        "return [refused, server.selection.link_ids, server.networks[0].version, focus.id, [...hl],"
+        " commandContext({server}).state === c.state];",  # one copy per server object
+        ["commandContext"],
+    )
+    assert got == [[True] * 6, [1, 2], 3, 7, [5], True]
+
+
+def test_layer_build_refuses_non_layers_and_hands_plugins_their_own_ctx(node_module):
+    expr = """(() => {
+      const r = createLayerRegistry(), Layer = class { constructor(id) { this.id = id; } }, seen = [];
+      r.register("core", "roadway", "base", c => new Layer("links"));
+      r.register("hello", "roadway", "hello.ok", c => { seen.push(c.who); return new Layer("hello.dots"); });
+      r.register("hello", "roadway", "hello.plain", () => ({ id: "hello.plain" }));
+      r.register("hello", "roadway", "hello.two", c => { seen.push(c.who); return null; });
+      let made = 0;
+      const { layers, errors } = r.build("roadway", { who: "core" }, new Set(),
+        { isLayer: l => l instanceof Layer, pluginCtx: () => (made++, { who: "plugin" }) });
+      return [layers.map(l => l.id), errors, seen, made];
+    })()"""
+    got = node_module("layers.js", ["createLayerRegistry"], expr)
+    assert got == [
+        ["links", "hello.dots"],
+        [
+            {
+                "owner": "hello",
+                "id": "hello.plain",
+                "error": "layer hello.plain: the factory returned something that is not a deck.gl layer",
+            }
+        ],
+        ["plugin", "plugin"],
+        1,  # built once per render, and only when a plugin layer draws
+    ]

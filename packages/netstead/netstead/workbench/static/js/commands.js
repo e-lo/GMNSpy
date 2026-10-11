@@ -5,17 +5,36 @@ import { activeSelection } from "./store.js";
 // Tables drawn on the map: a focused record from one of them is a "feature" as well as a "row".
 const MAP_TABLES = new Set(["link", "node"]);
 
-// What a command's `when(ctx)` and `run(ctx)` see. `target` is the right-clicked map feature or grid row
-// ({table, id}), or the focused record for the palette's "For …" group; null otherwise. `state` is a frozen shallow
-// copy of the server state: a command can't swap out the page's own (changes go through Actions).
+function deepFreeze(v) {
+  if (v && typeof v === "object" && !Object.isFrozen(v)) {
+    Object.freeze(v);
+    for (const k of Object.keys(v)) deepFreeze(v[k]);
+  }
+  return v;
+}
+
+const copies = new WeakMap();
+// A deep-frozen copy of a JSON-shaped value (the server state, focus, related records), made once per object: the
+// page replaces these on every change rather than editing them, so a copy stays current until its source goes.
+export function frozenCopy(v) {
+  if (!v || typeof v !== "object") return v;
+  if (!copies.has(v)) copies.set(v, deepFreeze(JSON.parse(JSON.stringify(v))));
+  return copies.get(v);
+}
+
+// What plugin code sees (a command's `when(ctx)` and `run(ctx)`, a panel's or workspace's `badge(ctx)`, and the
+// plugin part of a layer's ctx). `target` is the right-clicked map feature or grid row ({table, id}), or the focused
+// record for the palette's "For …" group; null otherwise. Everything in it is a frozen copy, `state` (the server
+// state) and `selection` deeply: plugin code can't change the page's own (changes go through Actions).
 export function commandContext({ server, focus = null, highlights = new Set(), workspace = "inspect" }, target = null) {
-  const net = server ? server.networks.find(n => n.id === server.active) : null;
-  const selection = activeSelection({ server }) || null;
-  return {
-    network: net ? { id: net.id, version: net.version, derived_from: net.derived_from ?? null } : null,
+  const state = frozenCopy(server);
+  const net = state ? state.networks.find(n => n.id === state.active) : null;
+  const selection = activeSelection({ server: state }) || null;
+  return Object.freeze({
+    network: net ? Object.freeze({ id: net.id, version: net.version, derived_from: net.derived_from ?? null }) : null,
     selection, selectionCount: selection ? selection.link_ids.length : 0,
-    focus, highlights: [...highlights], workspace, target, state: server ? Object.freeze({ ...server }) : server,
-  };
+    focus: frozenCopy(focus), highlights: Object.freeze([...highlights]), workspace, target: frozenCopy(target), state,
+  });
 }
 
 export const commandLabel = c => (c.group ? `${c.group} ▸ ${c.title}` : c.title);

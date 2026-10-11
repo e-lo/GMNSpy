@@ -32,19 +32,27 @@ export function createLayerRegistry() {
     ids: () => sorted().map(l => l.id),
     // Layers with a title: the Layers panel lists them under "Overlays" with a show/hide switch.
     toggleable: () => sorted().filter(l => l.title),
-    // Every layer of `component`, in order, skipping `hidden` ids. A factory that throws, or a plugin deck layer
-    // whose id isn't namespaced ("hello.…"; core's ids such as "links" drive picking), is left out and reported.
-    build(component, ctx, hidden = new Set()) {
+    // Every layer of `component`, in order, skipping `hidden` ids. A factory that throws, returns something that
+    // isn't a deck.gl layer (`isLayer`), or a plugin deck layer whose id isn't namespaced ("hello.…"; core's ids such
+    // as "links" drive picking) is left out and reported. Plugin factories get `pluginCtx()` (copies they can't use
+    // to change the page) when given, else `ctx`.
+    build(component, ctx, hidden = new Set(), { isLayer = () => true, pluginCtx = null } = {}) {
       const layers = [], errors = [];
+      let forPlugins = null;
       for (const l of sorted()) {
         if (l.component !== component || hidden.has(l.id)) continue;
         let out;
-        try { out = l.factory(ctx); } catch (e) {
+        const c = l.owner === CORE || !pluginCtx ? ctx : (forPlugins = forPlugins || pluginCtx());
+        try { out = l.factory(c); } catch (e) {
           errors.push({ owner: l.owner, id: l.id, error: String((e && e.message) || e) });
           continue;
         }
         for (const layer of [].concat(out ?? [])) {
           if (!layer) continue;
+          if (!isLayer(layer)) {
+            errors.push({ owner: l.owner, id: l.id, error: `layer ${l.id}: the factory returned something that is not a deck.gl layer` });
+            continue;
+          }
           if (l.owner !== CORE && !(typeof layer.id === "string" && layer.id.startsWith(`${l.owner}.`))) {
             errors.push({ owner: l.owner, id: l.id, error: `deck layer id ${JSON.stringify(layer.id)} must start with "${l.owner}."` });
             continue;

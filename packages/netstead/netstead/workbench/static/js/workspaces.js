@@ -1,6 +1,7 @@
 // Workspace tabs (header) and the dock (the right drawer), rendered from the slots registry. Core's Inspect workspace
 // and Details panel register here exactly as a plugin's would. Each strip shows only with two or more tabs, so a
 // Workbench with no plugins looks as it always has. Both strips follow the WAI-ARIA tabs pattern (arrows, Home, End).
+import { commandContext } from "./commands.js";
 import { $, esc, toast } from "./dom.js";
 import { ALL_WORKSPACES, CORE, panelsFor, slots } from "./slots.js";
 import { store } from "./store.js";
@@ -90,7 +91,9 @@ const selectedPanel = panels => panels.find(p => p.id === store.get().dockPanel[
 // A plugin's badge(ctx), contained: one that throws shows no badge and is reported.
 function badgeOf(item) {
   if (!item.badge) return null;
-  try { return normalizeBadge(item.badge({ state: store.get().server })); } catch (e) { report(item.owner, "badge", e); return null; }
+  const s = store.get();
+  const ctx = commandContext({ server: s.server, focus: s.focus, highlights: s.highlights, workspace: s.workspace });
+  try { return normalizeBadge(item.badge(ctx)); } catch (e) { report(item.owner, "badge", e); return null; }
 }
 
 const badgeHTML = b => (b && b.text ? ` <span class="pcount">${esc(b.text)}</span>` : "") +
