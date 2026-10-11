@@ -1,6 +1,15 @@
 # Workbench Plugins, Part 2 (front-end slots): Implementation Plan
 
-Status: **accepted** (open questions decided 2026-10-10) · Date: 2026-10-08 · Owner: Elizabeth Sall · Parent: [Workbench plugins design](2026-10-05-workbench-plugins-design.md)
+Status: **implemented (PR pending)** (open questions decided 2026-10-10) · Date: 2026-10-08 · Owner: Elizabeth Sall · Parent: [Workbench plugins design](2026-10-05-workbench-plugins-design.md)
+
+> **Implementation note (2026-10-10).** Tasks 0–19 are done on `feat/workbench-plugins-p2`, with two review
+> rounds folded in (batch 1's fixes after Task 6, batch 2's as "Part R" before Task 19). Where the code differs
+> from the snippets below, the [deviations table](#additions-to-and-deviations-from-the-designs-wb-table) says how
+> and why; the snippets are kept as written. The largest differences: `commandContext` hands plugin code deep-frozen
+> copies (commands, badges and plugin layers alike); each workspace saves its own view (`netstead.views`); the map's
+> feature menu never opens at the end of a right-drag; the palette is ⌘K on a Mac and Ctrl+K elsewhere; schema
+> forms track entries that didn't parse, send an explicit `null` for a required-but-nullable field, and enforce
+> exclusive bounds; registering a command always bumps `commandSeq` (`addCommandTo`).
 
 > **For agentic workers:** REQUIRED SUB-SKILL: use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to carry out this plan task by task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -172,6 +181,17 @@ and 6. Scope comes from [Part 1's plan](2026-10-05-workbench-plugins-p1-plan.md)
 | — (palette ranking) | The palette ranks by match **within** each group ("Commands", "For ‹table› ‹id›", "Selection (n links)"); groups keep that order. A command that fits several groups is listed once, in the first it fits. Intended: the group says what the command acts on. |
 | — (schema forms) | `wb.schemaForm`'s `value()` includes what a checkbox or a non-nullable menu shows (its default, else unchecked / the first option), so what is sent is what is seen. Fields left blank are left out. |
 | Open question 2: "Commands…" hides at 640 px or narrower | It also hides whenever the header's spacer has no room for it (a container query on the spacer), so it never makes the header wrap: the header's layout with no plugins is unchanged at every width. Ctrl+K / ⌘K always works. |
+| Task 14 loader | `reportPluginError` is wired once for every plugin call site (dock, menus, palette, map layers) and reports each (owner, phase, message) once; a command's phase names it (`command hello.c`). An `activate` that rejects after its 5 s limit is reported, not left unhandled. |
+| Task 15 Plugins section | The section re-renders when a browser-side plugin error arrives while it is open; the override note hides when empty; focus stays on the switch after the list redraws. |
+| Decision 6 / Task 9 badges (`badge(ctx)`) | A badge gets the full `commandContext`, not `{state}`. Everything in that context is a frozen copy; the server state and selection are deep-frozen, made once per server object (`frozenCopy`). A plugin layer factory gets its own frozen ctx (`highlights` a Set copy; `net` and `attrs` shared and read-only, documented). (Review S-1.) |
+| Task 6 `layers.build` | Takes `{isLayer, pluginCtx}`: map.js passes `instanceof deck.Layer`, so a factory returning a non-layer is reported and never reaches deck. (Review S-6.) |
+| Task 5 `addCommand` | `addCommandTo(slots, store, owner, spec)` in `commands.js` registers core's and plugins' commands and bumps `commandSeq` on add and on an actual removal. (Review I-2.) |
+| Open question 1 (the remembered view) | Saved per workspace in `netstead.views`; Inspect restores its own entry (`netstead.viewmode` only as a fallback), so a plugin workspace's layout never leaks into Inspect after a reload. (Review I-4.) |
+| Open question 9 (right-drag) | `gesture.js`'s click guard: a `contextmenu` while the button is down (macOS) waits for mouseup; one after a >4 px move is dropped. (Review I-3.) |
+| Open question 2 (shortcut) | ⌘K on a Mac only and Ctrl+K elsewhere only, so Ctrl+K keeps its text-box meaning on a Mac; the button's title and `aria-keyshortcuts` follow the platform. (Review S-2.) |
+| Task 2 / 12 schema forms | Entries that didn't parse are tracked and named by `errors()`; a required nullable field sends `null` ("None" in its menu); a nullable bool is a three-way menu; a JSON field with no value is empty with its default as placeholder; `exclusiveMinimum`/`exclusiveMaximum` are exclusive; generated ids keep `-` and `.` apart; Enter runs the Action form. The Settings markup is unchanged. A `list` kind for arrays of numbers was not added (it would change Settings' fields). (Review I-1, S-3, S-4, N-4–N-7.) |
+| Task 9 / 10 / 11 accessibility | `tabpanel` roles only while a strip shows; workspace tabs use manual activation; menu and palette sections are `role="group"`; Selection actions toggles `aria-expanded`. (Review S-5, N-1–N-3.) |
+| Task 18 order | Docs were written after Part R, so they describe the final behaviour. |
 
 ## Scope notes
 
