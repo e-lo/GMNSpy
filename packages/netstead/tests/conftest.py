@@ -218,27 +218,41 @@ def run_node():
 WORKBENCH_JS = _FIXTURES_ROOT.resolve().parent / "workbench" / "static" / "js"
 
 
-#: A line that imports something. Pure modules may import only sibling pure modules (``from "./x.js"``).
-_IMPORT_LINE = re.compile(r"^\s*import\s.*$", re.M)
-_SIBLING = re.compile(r'from\s*"\./([\w-]+)\.js"')
+#: A statement that names another module: ``import … from "…"`` (one line or several), ``export {…} from "…"`` /
+#: ``export * from "…"``, or a bare ``import "…"``. Group 1 or 2 is the specifier.
+_MODULE_REF = re.compile(
+    r'^[ \t]*(?:import\b|export\s*(?:\*|\{))[^;"]*?\bfrom\s*"([^"]*)"|^[ \t]*import\s*"([^"]*)"', re.M
+)
+#: Where every import statement starts: each must be one :data:`_MODULE_REF` could read.
+_IMPORT_START = re.compile(r"^[ \t]*import\b.*$", re.M)
+#: A sibling pure module's specifier (``"./x.js"``), as written in a ``from`` clause or a bare import.
+_SIBLING_SPEC = re.compile(r'(\bfrom\s*|\bimport\s*)"\./([\w-]+)\.js"')
 
 
 def _copy_pure(path: Path, dest: Path, copied: set[str]) -> str:
     """Copy ``path`` into ``dest`` as ``.mjs`` with the sibling modules it imports (recursively); return its name.
 
-    Node then treats them as ES modules without a package.json. A pure module may import only other pure
-    modules beside it, one import per line; any other import (a bare or remote one) fails loudly.
+    Node then treats them as ES modules without a package.json. A pure module may import (or re-export from) only
+    other pure modules beside it, written with double quotes; any other import (a bare or remote one, or one this
+    scan can't read) fails loudly rather than leaving a module behind.
     """
     name = f"{path.stem}.mjs"
     if name in copied:
         return name
     copied.add(name)
     source = path.read_text(encoding="utf-8")
-    for line in _IMPORT_LINE.findall(source):
-        sibling = _SIBLING.search(line)
-        assert sibling, f"{path.name}: a pure module may import only sibling pure modules, not: {line.strip()}"
+    refs = list(_MODULE_REF.finditer(source))
+    readable = {m.start() for m in refs}
+    for start in _IMPORT_START.finditer(source):
+        assert start.start() in readable, (
+            f'{path.name}: can\'t read this import (use `import {{ a }} from "./b.js";`): {start.group(0).strip()}'
+        )
+    for ref in refs:
+        spec = ref.group(1) if ref.group(1) is not None else ref.group(2)
+        sibling = re.fullmatch(r"\./([\w-]+)\.js", spec)
+        assert sibling, f"{path.name}: a pure module may import only sibling pure modules, not: {spec!r}"
         _copy_pure(path.with_name(f"{sibling.group(1)}.js"), dest, copied)
-    (dest / name).write_text(_SIBLING.sub(r'from "./\1.mjs"', source), encoding="utf-8")
+    (dest / name).write_text(_SIBLING_SPEC.sub(r'\1"./\2.mjs"', source), encoding="utf-8")
     return name
 
 

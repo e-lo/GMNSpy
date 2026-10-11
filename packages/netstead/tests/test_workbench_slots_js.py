@@ -25,6 +25,24 @@ def test_node_module_refuses_a_non_sibling_import(node_module, tmp_path):
         node_module(tmp_path / "c.js", ["y"], "y")
 
 
+def test_node_module_follows_multi_line_imports_and_re_exports(node_module, tmp_path):
+    src = tmp_path / "multi"
+    src.mkdir()
+    (src / "b.js").write_text("export const two = () => 2;\nexport const three = () => 3;\n")
+    (src / "c.js").write_text('export { three } from "./b.js";\n')
+    (src / "a.js").write_text(
+        'import {\n  two,\n} from "./b.js";\nimport { three } from "./c.js";\n'
+        "export const five = () => two() + three();\n"
+    )
+    assert node_module(src / "a.js", ["five"], "five()") == 5
+
+
+def test_node_module_names_an_import_it_cannot_read(node_module, tmp_path):
+    (tmp_path / "d.js").write_text("import { y } from './e.js';\nexport const z = 1;\n")
+    with pytest.raises(AssertionError, match="can't read this import"):
+        node_module(tmp_path / "d.js", ["z"], "z")
+
+
 GREET_SCHEMA = {
     "title": "Greet",
     "type": "object",

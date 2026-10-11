@@ -1088,3 +1088,22 @@ def test_the_plugin_id_core_is_reserved(make_session):
     assert any("reserved" in p for p in problems(make_hello(id="core", actions=()), ActionRegistry(), taken=()))
     session = make_session(make_hello(id="core", actions=()))
     assert _status(session, "core").state == "error" and "reserved" in _status(session, "core").error
+
+
+def test_a_plugin_built_for_api_1_0_installs_on_this_host(make_session):
+    """A minor bump only adds: a plugin that declares 1.0 still installs (and its Action registers) on 1.1."""
+    assert HOST_API == "1.1"
+    session = make_session(make_hello(requires_api="1.0"))
+    assert _status(session, "hello").state == "loaded" and session.actions.has("hello.greet")
+
+
+def test_the_action_catalog_drops_an_unloaded_plugins_actions(make_session):
+    from fastapi.testclient import TestClient
+    from netstead.workbench import build_app
+
+    session = make_session(make_hello())
+    client = TestClient(build_app(session))
+    assert "hello.greet" in {a["type"] for a in client.get("/api/actions").json()["actions"]}
+    session.unload_plugin("hello", "its mount failed")
+    types = {a["type"] for a in client.get("/api/actions").json()["actions"]}
+    assert "hello.greet" not in types and "open_network" in types
