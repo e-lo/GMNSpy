@@ -25,6 +25,8 @@ export const store = createStore({
   related: null,              // last /related answer for focus + highlights (related.js)
   tableScope: "all",          // all | selection | highlighted | related
   relHops: 1,                 // related-records depth ("Expand a hop" toggles 1 <-> 2)
+  hiddenLayers: new Set(),    // titled overlay layers switched off in Layers → Overlays (per tab, never recorded)
+  layerSeq: 0,                // bumped when a layer registers or goes, so Overlays and the map redraw
 });
 
 export function activeSelection(s) {

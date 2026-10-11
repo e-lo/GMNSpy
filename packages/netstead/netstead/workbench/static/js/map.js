@@ -1,7 +1,9 @@
 // deck.gl-over-MapLibre network rendering, picking, and camera moves.
 import { $, esc } from "./dom.js";
+import { layerRegistry } from "./layers.js";
 import { widthForLanes } from "./netbuf.js";
 import { buildLinkColors } from "./palette.js";
+import { CORE } from "./slots.js";
 import { activeSelection, store } from "./store.js";
 
 const OFFSET_EXT = typeof deck.PathStyleExtension === "function" ? new deck.PathStyleExtension({ offset: true }) : null;
@@ -14,7 +16,8 @@ const ARROW_SVG = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(
 const TOOLTIP_STYLE = { background: "#11151a", color: "#e6e8ec", fontSize: "12px", padding: "6px 8px",
   borderRadius: "6px", border: "1px solid #2a2f3a" };
 
-let map = null, overlay = null, handlers = { onLinkClick() {}, onNodeClick() {}, onBoxSelect() {} };
+let map = null, overlay = null;
+let handlers = { onLinkClick() {}, onNodeClick() {}, onBoxSelect() {}, onLayerError(e) { console.error(e); } };
 let colorCache = { key: null, colors: null };
 let labelsShown = true;
 // Whether the current style's layers exist (style.load fired). Not map.isStyleLoaded(): that also waits for
@@ -133,19 +136,39 @@ function setLabels(show) {
     if (l.type === "symbol" || l.id === "labels") map.setLayoutProperty(l.id, "visibility", show ? "visible" : "none");
 }
 
+// Core's layer groups, bottom to top (layers.js CORE_ORDER). Each returns what render() used to push, or nothing.
+function registerCoreLayers() {
+  const reg = (id, factory) => layerRegistry.register(CORE, "roadway", id, factory);
+  reg("base", c => baseLayers(c.net, c.style, linkColors(c.state)));
+  reg("selection", c => (c.style.show.selection && c.selection ? selectionLayers(c.net, c.style, c.selection) : null));
+  reg("related", c => (c.related ? relatedLayers(c.net, c.related) : null));
+  reg("highlighted", c => (c.highlights.size ? idPathLayer(c.net, "highlighted", c.highlights, [...HIGHLIGHT_COLOR, 255], 2.5) : null));
+  reg("focus", c => (c.focus && c.focus.table === "link" ? idPathLayer(c.net, "focus", [c.focus.id], FOCUS_COLOR, 4) : null));
+  reg("marker", c => (c.marker ? markerLayer(c.marker) : null));
+}
+
+// What every layer factory sees (plugins' too: see the cookbook's registerLayer). `deck` is the global deck.gl.
+function layerContext(s) {
+  return { state: s, server: s.server, style: s.server.style, net: s.net, attrs: s.attrs, selection: activeSelection(s),
+    focus: s.focus, highlights: s.highlights, related: s.related, marker: s.marker, zoom: map.getZoom(), deck };
+}
+
 export function render() {
   if (!overlay) return;
   const s = store.get();
   if (!s.net || !s.server) { overlay.setProps({ layers: [] }); return; }
-  const style = s.server.style, sel = activeSelection(s);
-  const layers = baseLayers(s.net, style, linkColors(s));
-  if (style.show.selection && sel) layers.push(...selectionLayers(s.net, style, sel));
-  if (s.related) layers.push(...relatedLayers(s.net, s.related));
-  if (s.highlights.size) { const l = idPathLayer(s.net, "highlighted", s.highlights, [...HIGHLIGHT_COLOR, 255], 2.5); if (l) layers.push(l); }
-  if (s.focus && s.focus.table === "link") { const l = idPathLayer(s.net, "focus", [s.focus.id], FOCUS_COLOR, 4); if (l) layers.push(l); }
-  if (s.marker) layers.push(markerLayer(s.marker));
+  const { layers, errors } = layerRegistry.build("roadway", layerContext(s), s.hiddenLayers);
   overlay.setProps({ layers });
-  setLabels(style.show.labels);
+  setLabels(s.server.style.show.labels);
+  for (const e of errors) handlers.onLayerError(e);
+}
+
+// A plugin's layer (wb.registerLayer): drawn at once, and listed under Layers → Overlays when it has a title.
+export function addLayer(owner, component, id, factory, options) {
+  const dispose = layerRegistry.register(owner, component, id, factory, options);
+  const changed = () => store.set({ layerSeq: store.get().layerSeq + 1 });
+  changed();
+  return () => { dispose(); changed(); };
 }
 
 function getTooltip({ layer, index }) {
@@ -244,3 +267,5 @@ export function setBasemap(style) {
   map.once("style.load", () => render());
   map.setStyle(style, { diff: false });
 }
+
+registerCoreLayers();

@@ -5,9 +5,10 @@ import { rememberRecent, renderHeader, renderRecent, wireHeader } from "./header
 import { showEntry, wireHistory } from "./history.js";
 import { loadJobs, onJob, wireJobs } from "./jobs.js";
 import { onHistoryEntry, onLLMEvent, onLLMJob, refreshLLM, renderLLMPanel, wireLLM } from "./llm.js";
+import { layerRegistry } from "./layers.js";
 import { fitBbox, fitLinks, fitNetwork, flyToNode, initMap, render, setBasemap } from "./map.js";
 import { decodeNetwork } from "./netbuf.js";
-import { populateColorby, renderLegend, syncControls, wirePanels } from "./panels.js";
+import { populateColorby, renderLegend, renderPluginLayers, syncControls, wirePanels } from "./panels.js";
 import { clearDetails, renderHighlights, renderSelection, showDetails, wireSide } from "./side.js";
 import { cancelRelated, renderRelatedBadges, scheduleRelated } from "./related.js";
 import { onSettingsHistory, registerSection, wireSettings } from "./settings.js";
@@ -115,7 +116,8 @@ function onSelectionMaybeChanged(sel) {
 }
 
 function wireStore() {
-  store.subscribe(["server", "net", "prop", "highlights", "marker", "focus", "related"], () => render());
+  store.subscribe(["server", "net", "prop", "highlights", "marker", "focus", "related", "hiddenLayers", "layerSeq"], () => render());
+  store.subscribe(["layerSeq", "hiddenLayers"], s => renderPluginLayers(layerRegistry.toggleable(), s.hiddenLayers));
   store.subscribe(["server"], s => {
     renderHeader(s.server); syncControls(s.server.style); renderSelection(activeSelection(s));
     onSelectionMaybeChanged(activeSelection(s));

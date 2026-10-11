@@ -214,3 +214,22 @@ def test_settings_and_schema_forms_share_one_field_model():
     assert "function inputHTML" not in settings and 'from "./schemaform.js"' in settings
     settingsform = (JS_DIR / "settingsform.js").read_text()
     assert "function fieldKind" not in settingsform and 'from "./schemaform.js"' in settingsform
+
+
+def test_map_draws_every_layer_from_the_registry_in_the_old_order():
+    src = (JS_DIR / "map.js").read_text()
+    assert 'layerRegistry.build("roadway"' in src
+    core_ids = ("base", "selection", "related", "highlighted", "focus", "marker")
+    for core_id in core_ids:
+        assert f'reg("{core_id}"' in src, f"core layer group {core_id} must register on the registry"
+    render = re.search(r"export function render\(\) \{.*?\n\}", src, re.S).group(0)
+    assert "layers.push(" not in render  # nothing bypasses the registry
+    order = [src.index(f'reg("{core_id}"') for core_id in core_ids]
+    assert order == sorted(order)  # registered in drawing order (CORE_ORDER enforces it anyway)
+
+
+def test_layers_popover_lists_overlays_from_the_registry():
+    html = (STATIC_DIR / "index.html").read_text()
+    panel = html[html.index('id="layers-panel"') : html.index('id="settings-panel"')]
+    assert 'id="plugin-layers"' in panel
+    assert "export function renderPluginLayers(" in (JS_DIR / "panels.js").read_text()
