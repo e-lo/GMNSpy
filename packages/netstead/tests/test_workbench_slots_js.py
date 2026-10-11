@@ -867,3 +867,18 @@ def test_adding_and_removing_a_command_bumps_command_seq(node_module, tmp_path):
     )
     # registered: 1; removed: 2; a second dispose removes nothing and doesn't bump
     assert node_module(root / "harness.js", ["run"], "run()") == [1, 1, True, 2, False, 2]
+
+
+def test_the_map_menu_opens_on_a_click_never_after_a_right_drag(node_module):
+    expr = """(() => {
+      const open = () => "open", g = createClickGuard(), out = [];
+      // Windows / Linux: contextmenu after mouseup
+      g.down(10, 10); g.move(11, 11); out.push(g.up(11, 11)); out.push(g.menu(open));
+      g.down(10, 10); g.move(40, 10); out.push(g.up(40, 10)); out.push(g.menu(open));
+      // macOS: contextmenu at mousedown (or Ctrl+click), opened on mouseup unless it became a drag
+      g.down(10, 10); out.push(g.menu(open)); out.push(g.up(12, 10));
+      g.down(10, 10); out.push(g.menu(open)); g.move(30, 30); out.push(g.up(30, 30));
+      return out.map(x => (typeof x === "function" ? x() : x));
+    })()"""
+    got = node_module("gesture.js", ["createClickGuard"], expr)
+    assert got == [None, "open", None, None, None, "open", None, None]

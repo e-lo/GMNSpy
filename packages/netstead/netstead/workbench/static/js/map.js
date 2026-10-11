@@ -1,5 +1,6 @@
 // deck.gl-over-MapLibre network rendering, picking, and camera moves.
 import { $, esc } from "./dom.js";
+import { createClickGuard } from "./gesture.js";
 import { layerRegistry } from "./layers.js";
 import { widthForLanes } from "./netbuf.js";
 import { buildLinkColors } from "./palette.js";
@@ -32,10 +33,7 @@ export function initMap(style, hooks) {
   map.addControl(new maplibregl.NavigationControl(), "top-left");
   overlay = new deck.MapboxOverlay({ interleaved: false, layers: [], getTooltip });
   map.addControl(overlay);
-  map.on("contextmenu", e => {
-    const target = recordAt(e.point);
-    if (target) handlers.onContextMenu(target, { x: e.originalEvent.clientX, y: e.originalEvent.clientY });
-  });
+  wireContextMenu();
   new ResizeObserver(() => map.resize()).observe($("map"));
   map.on("zoomend", () => { const s = store.get(); if (s.server && s.server.style.show_direction) render(); });
   // Ready once the style is parsed, not on "load": that waits for every basemap tile of the opening
@@ -43,6 +41,21 @@ export function initMap(style, hooks) {
   map.on("style.load", () => { styleReady = true; });
   map.once("style.load", hooks.onReady);
   wireBoxSelect();
+}
+
+// A right-click (or Ctrl+click on a Mac) on a feature opens its menu, but never at the end of a right-drag rotate.
+function wireContextMenu() {
+  const guard = createClickGuard();
+  map.getCanvasContainer().addEventListener("mousedown", e => guard.down(e.clientX, e.clientY), true);
+  window.addEventListener("mousemove", e => guard.move(e.clientX, e.clientY), true);
+  window.addEventListener("mouseup", e => { const open = guard.up(e.clientX, e.clientY); if (open) open(); }, true);
+  map.on("contextmenu", e => {
+    const target = recordAt(e.point);
+    if (!target) return;
+    const at = { x: e.originalEvent.clientX, y: e.originalEvent.clientY };
+    const open = guard.menu(() => handlers.onContextMenu(target, at));
+    if (open) open();
+  });
 }
 
 export function resizeSoon() { if (map) setTimeout(() => map.resize(), 60); }
