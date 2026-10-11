@@ -130,9 +130,20 @@ export async function runCommand(command, ctx, onError) {
   try { await command.run(ctx); } catch (e) { onError(command, e); }
 }
 
-// Ctrl+K (Cmd+K on a Mac) opens the palette, even from a text box.
-export const isPaletteShortcut = e =>
-  Boolean(e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && String(e.key).toLowerCase() === "k";
+// Whether `nav` (the page's navigator) is a Mac's, where the palette's modifier is ⌘ rather than Ctrl.
+export const isMacPlatform = nav =>
+  /mac|iphone|ipad/i.test(String((nav && nav.userAgentData && nav.userAgentData.platform) || (nav && nav.platform) || ""));
+
+// Ctrl+K (⌘K on a Mac) opens the palette, even from a text box. On a Mac, Ctrl+K stays the text box's own (delete to
+// the end of the line), and elsewhere ⌘ isn't a modifier the page sees. `mac` left out accepts either.
+export function isPaletteShortcut(e, mac) {
+  const mod = mac === undefined ? e.ctrlKey || e.metaKey : mac ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey;
+  return Boolean(mod) && !e.altKey && !e.shiftKey && String(e.key).toLowerCase() === "k";
+}
+
+// Whether the shortcut toggles the palette now: never while another dialog (Settings, Open / Import, an Action's
+// form) is open.
+export const paletteShortcutAllowed = (e, { mac, otherDialog }) => isPaletteShortcut(e, mac) && !otherDialog;
 
 // One palette command per plugin Action, opening its schema form ("Hello: Greet…"): a plugin with no front end
 // still has a UI (plugins design, "declarative first"). An Action whose schema the server couldn't generate

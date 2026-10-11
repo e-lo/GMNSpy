@@ -1,7 +1,7 @@
 // The command palette (Ctrl+K / ⌘K, or "Commands…"): every applicable command, searchable, keyboard first. The input
 // is a combobox over a listbox (aria-activedescendant); Enter runs, Escape closes, focus returns to the opener.
 import { $, esc } from "./dom.js";
-import { commandContext, commandLabel, isPaletteShortcut, paletteGroups, runCommand } from "./commands.js";
+import { commandContext, commandLabel, isMacPlatform, paletteGroups, paletteShortcutAllowed, runCommand } from "./commands.js";
 import { closeMenu } from "./ctxmenu.js";
 import { trapTab } from "./modal.js";
 import { slots } from "./slots.js";
@@ -68,7 +68,10 @@ const otherDialogOpen = () => [...document.querySelectorAll(".modal")].some(m =>
 
 export function wirePalette({ onError }) {
   report = onError;
+  const mac = isMacPlatform(navigator);
   $("cmd-btn").onclick = () => openPalette();
+  $("cmd-btn").title = `Command palette (${mac ? "⌘K" : "Ctrl+K"})`;
+  $("cmd-btn").setAttribute("aria-keyshortcuts", mac ? "Meta+K" : "Control+K");
   $("cmdk-input").oninput = refresh;
   $("cmdk-input").onkeydown = e => {
     if (e.key === "Enter") { e.preventDefault(); choose(active); return; }
@@ -84,7 +87,7 @@ export function wirePalette({ onError }) {
   });
   $("cmdk").addEventListener("pointerdown", e => { if (e.target === $("cmdk")) closePalette(); }); // the backdrop
   document.addEventListener("keydown", e => {
-    if (!isPaletteShortcut(e) || otherDialogOpen()) return; // one dialog at a time
+    if (!paletteShortcutAllowed(e, { mac, otherDialog: otherDialogOpen() })) return; // one dialog at a time
     e.preventDefault();
     if (paletteOpen()) closePalette(); else openPalette();
   });

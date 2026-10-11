@@ -939,3 +939,19 @@ def test_layer_build_refuses_non_layers_and_hands_plugins_their_own_ctx(node_mod
         ["plugin", "plugin"],
         1,  # built once per render, and only when a plugin layer draws
     ]
+
+
+def test_the_palette_shortcut_is_cmd_k_on_a_mac_and_ctrl_k_elsewhere(node_module):
+    got = node_module(
+        "commands.js",
+        ["isMacPlatform", "isPaletteShortcut", "paletteShortcutAllowed"],
+        """[
+          [isMacPlatform({platform: "MacIntel"}), isMacPlatform({userAgentData: {platform: "macOS"}}),
+           isMacPlatform({platform: "Win32"}), isMacPlatform({platform: "Linux x86_64"})],
+          [isPaletteShortcut({key: "k", metaKey: true}, true), isPaletteShortcut({key: "k", ctrlKey: true}, true),
+           isPaletteShortcut({key: "k", ctrlKey: true}, false), isPaletteShortcut({key: "k", metaKey: true}, false)],
+          [paletteShortcutAllowed({key: "k", ctrlKey: true}, {mac: false, otherDialog: false}),
+           paletteShortcutAllowed({key: "k", ctrlKey: true}, {mac: false, otherDialog: true})],
+        ]""",
+    )
+    assert got == [[True, True, False, False], [True, False, True, False], [True, False]]
