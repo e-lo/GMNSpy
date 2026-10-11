@@ -966,3 +966,89 @@ def test_strips_and_their_tabpanel_roles_show_only_with_two_tabs(node_module):
         {"workspaces": True, "dock": False},
         {"workspaces": False, "dock": True},
     ]
+
+
+# A failed activation rolls back through workspaces.js's own disposers (cross-lens review): the real DOM module runs
+# against a small fake document, so its panes, strips and active workspace are checked, not just the registries.
+FAKE_DOM = """
+class El {
+  constructor(id = "", tag = "div") { this.id = id; this.tagName = tag; this.children = []; this.parent = null;
+    this.attrs = {}; this.dataset = {}; this.hidden = false; this.className = ""; this._html = ""; this.style = {};
+    this.classList = { toggle() {}, add() {}, remove() {} }; }
+  set innerHTML(v) { this._html = v; this.children = []; }
+  get innerHTML() { return this._html; }
+  appendChild(c) { c.parent = this; this.children.push(c); return c; }
+  remove() { if (this.parent) this.parent.children = this.parent.children.filter(c => c !== this); this.parent = null; }
+  setAttribute(k, v) { this.attrs[k] = String(v); }
+  getAttribute(k) { return this.attrs[k] ?? null; }
+  removeAttribute(k) { delete this.attrs[k]; }
+  contains() { return false; }
+  querySelectorAll(sel) { return sel === ".dock-pane" ? this.children.filter(c => c.className === "dock-pane") : []; }
+  closest() { return null; }
+  focus() {}
+}
+const find = (id, el) => (el.id === id ? el : el.children.map(c => find(id, c)).find(Boolean) || null);
+const body = new El("body");
+for (const id of ["ws-tabs", "dock-tabs", "stage", "side", "viewmode"]) body.appendChild(new El(id));
+const details = new El("dock-details", "section");
+details.className = "dock-pane"; details.dataset.panel = "details";
+body.children[3].appendChild(details);
+body.children[2].dataset.mode = "map";
+globalThis.document = { getElementById: id => find(id, body), createElement: tag => new El("", tag),
+  querySelectorAll: () => [], activeElement: null, addEventListener() {} };
+globalThis.window = { addEventListener() {} };
+globalThis.localStorage = { m: {}, getItem(k) { return this.m[k] ?? null; }, setItem(k, v) { this.m[k] = String(v); } };
+globalThis.deck = {};
+"""
+
+ROLLBACK_HARNESS = """
+import "./fakedom.mjs";
+const ws = await import("./workspaces.js");
+const { createWb } = await import("./wbhost.js");
+const { slots } = await import("./slots.js");
+const { store, activeSelection } = await import("./store.js");
+const { addCommandTo } = await import("./commands.js");
+const { layerRegistry } = await import("./layers.js");
+const { createHub } = await import("./hub.js");
+
+ws.registerCoreSlots();
+ws.wireWorkspaces({ onError() {} });
+store.set({ server: { networks: [], active: null, selection: null } });
+const errors = [];
+const { wb, rollback } = createWb("broken", {
+  hostApi: "1.1", store, activeSelection, events: createHub(), actionTypes: new Set(), actionSchema: () => null,
+  getJSON: async () => ({}), postJSON: async () => ({}), fetch: async () => ({}), dispatch: async () => null,
+  addCommand: (o, s) => addCommandTo(slots, store, o, s),
+  layers: { register: (o, c, i, f, opt) => layerRegistry.register(o, c, i, f, opt) },
+  dock: { addWorkspace: ws.addWorkspace, addPanel: ws.addPanel, showPanel: ws.showPanel },
+  schemaForm: () => null, toast() {}, onError: (id, phase, e) => errors.push([id, phase, e.message]),
+});
+// What a plugin's activate(wb) might do before it throws.
+wb.registerWorkspace({ id: "broken.ws", title: "Broken", layout: { view: "map" } });
+wb.registerPanel({ id: "broken.p", title: "P", workspace: "broken.ws", render(el) { el.innerHTML = "<p>hi</p>"; } });
+wb.registerCommand({ id: "broken.c", title: "C", run() {} });
+wb.showPanel("broken.p");
+const during = [store.get().workspace, Boolean(document.getElementById("dock-broken.p")),
+  document.getElementById("ws-tabs").hidden, document.getElementById("stage").getAttribute("role")];
+rollback();
+const after = [store.get().workspace, Boolean(document.getElementById("dock-broken.p")),
+  document.getElementById("ws-tabs").hidden, document.getElementById("dock-tabs").hidden,
+  document.getElementById("stage").getAttribute("role"), document.getElementById("dock-details").hidden,
+  document.getElementById("dock-details").getAttribute("role"),
+  slots.workspaces.list().map(w => w.id), slots.panels.list().map(p => p.id), slots.commands.list().length,
+  store.get().commandSeq];
+console.log(JSON.stringify({ during, after, errors }));
+"""
+
+
+def test_a_failed_activation_leaves_no_trace_in_the_dock_and_returns_to_inspect(run_node, tmp_path):
+    root = tmp_path / "rollback"
+    shutil.copytree(JS_DIR, root)
+    (root / "fakedom.mjs").write_text(FAKE_DOM, encoding="utf-8")
+    (root / "harness.mjs").write_text(ROLLBACK_HARNESS, encoding="utf-8")
+    proc = run_node([str(root / "harness.mjs")])
+    assert proc.returncode == 0, proc.stderr
+    got = json.loads(proc.stdout)
+    assert got["during"] == ["broken.ws", True, False, "tabpanel"]
+    assert got["after"] == ["inspect", False, True, True, None, False, None, ["inspect"], ["details"], 0, 2]
+    assert got["errors"] == []
