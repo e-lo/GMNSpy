@@ -318,3 +318,14 @@ def test_the_loader_isolates_each_plugin():
     assert "ACTIVATE_TIMEOUT_MS" in src and "typeof mod.activate" in src
     assert "actionCommands(" in src and "openActionForm(" in src
     assert "status.id === CORE" in src  # "core" is reserved (review I-2): never activated as a plugin
+
+
+def test_settings_has_a_plugins_section_registered_like_language_models():
+    html = (STATIC_DIR / "index.html").read_text()
+    dialog = html[html.index('id="settings"') : html.index("<!-- /settings -->")]
+    for element_id in ("plugins-panel", "plugins-host", "plugins-note", "plugins-list"):
+        assert f'id="{element_id}"' in dialog
+    main = (JS_DIR / "main.js").read_text()
+    assert 'registerSection("plugins", "Plugins", "plugins-panel"' in main and "wirePluginsPanel()" in main
+    panel = (JS_DIR / "pluginspanel.js").read_text()
+    assert '"app.disabled_plugins"' in panel and 'scope: "user"' in panel

@@ -15,6 +15,7 @@ import { fitBbox, fitLinks, fitNetwork, flyToNode, initMap, render, setBasemap }
 import { decodeNetwork } from "./netbuf.js";
 import { populateColorby, renderLegend, renderPluginLayers, syncControls, wirePanels } from "./panels.js";
 import { loadPlugins, reportPluginError } from "./plugins.js";
+import { renderPluginsPanel, wirePluginsPanel } from "./pluginspanel.js";
 import { clearDetails, renderHighlights, renderSelection, showDetails, wireSide } from "./side.js";
 import { cancelRelated, renderRelatedBadges, scheduleRelated } from "./related.js";
 import { onSettingsHistory, registerSection, wireSettings } from "./settings.js";
@@ -154,6 +155,8 @@ async function boot() {
   wireActionForm();
   wireStore(); wirePanels(); wireSide(); wireTable(); wireHeader(); wireHistory(); wireMapButtons(); wireJobs(); wireWizard(); wireLLM(); wireSettings();
   registerSection("llm", "Language models", "llm-panel", () => renderLLMPanel());
+  registerSection("plugins", "Plugins", "plugins-panel", () => renderPluginsPanel());
+  wirePluginsPanel();
   renderRecent();
   const [cfg, server, history] = await Promise.all([getJSON("/api/config"), getJSON("/api/state"), getJSON("/api/history")]);
   store.set({ server, basemap: cfg.style });

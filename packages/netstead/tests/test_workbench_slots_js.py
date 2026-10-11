@@ -644,3 +644,88 @@ def test_wb_registers_namespaced_tracks_and_rolls_back(node_module, tmp_path):
     ]
     assert got["has"] == [True, False]
     assert got["pure"] == ["/api/plugins/hello/count?x=1", "hello.greeted", "core.history", False, True]
+
+
+STATUSES = [
+    {
+        "id": "hello",
+        "name": "Hello",
+        "version": "0.1.0",
+        "requires_api": "1.1",
+        "state": "loaded",
+        "error": None,
+        "frontend": "/plugins/hello/main.js",
+    },
+    {
+        "id": "cards",
+        "name": "cards",
+        "version": "",
+        "requires_api": None,
+        "state": "disabled",
+        "error": None,
+        "frontend": None,
+    },
+    {
+        "id": "old",
+        "name": "Old",
+        "version": "2.0.0",
+        "requires_api": "2.0",
+        "state": "incompatible",
+        "error": "needs plugin API 2.0; this netstead provides 1.1",
+        "frontend": None,
+    },
+    {
+        "id": "boom",
+        "name": "boom",
+        "version": "",
+        "requires_api": None,
+        "state": "error",
+        "error": "RuntimeError: nope",
+        "frontend": None,
+    },
+]
+
+
+def test_plugin_rows_show_fit_errors_and_pending_restarts(node_module):
+    args = {
+        "statuses": STATUSES,
+        "hostApi": "1.1",
+        "disabled": ["cards", "hello", "gone"],
+        "browserErrors": {"hello": [{"phase": "activate", "message": "x"}]},
+    }
+    rows = node_module("pluginlist.js", ["pluginRows"], f"pluginRows({json.dumps(args)})")
+    assert [
+        (r["id"], r["version"], r["compat"], r["stateText"], r["enabled"], r["restart"], r["errors"]) for r in rows
+    ] == [
+        (
+            "hello",
+            "0.1.0",
+            "1.1 (compatible)",
+            "Loaded",
+            False,
+            True,
+            ["activate: x"],
+        ),  # switched off: restart to apply
+        ("cards", "—", "—", "Disabled", False, False, []),
+        (
+            "old",
+            "2.0.0",
+            "2.0 (this netstead provides 1.1)",
+            "Incompatible",
+            True,
+            False,
+            ["needs plugin API 2.0; this netstead provides 1.1"],
+        ),
+        ("boom", "—", "—", "Failed to load", True, False, ["RuntimeError: nope"]),
+        ("gone", "—", "—", "Not installed", False, False, []),  # listed so it can be cleared
+    ]
+
+
+def test_switching_a_plugin_edits_the_disabled_list(node_module):
+    got = node_module(
+        "pluginlist.js",
+        ["withPluginEnabled"],
+        '[withPluginEnabled(["a", "b"], "a", true), withPluginEnabled(["a"], "b", false), '
+        'withPluginEnabled(["a"], "a", false)]',
+    )
+    assert got == [["b"], ["a", "b"], ["a"]]
