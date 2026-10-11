@@ -9,7 +9,9 @@ Status: **implemented (PR pending)** (open questions decided 2026-10-10) · Date
 > copies (commands, badges and plugin layers alike); each workspace saves its own view (`netstead.views`); the map's
 > feature menu never opens at the end of a right-drag; the palette is ⌘K on a Mac and Ctrl+K elsewhere; schema
 > forms track entries that didn't parse, send an explicit `null` for a required-but-nullable field, and enforce
-> exclusive bounds; registering a command always bumps `commandSeq` (`addCommandTo`).
+> exclusive bounds; registering a command always bumps `commandSeq` (`addCommandTo`). After the final review, plugins
+> load in parallel (`pluginload.js`), each under one time limit for import and `activate` together, and a failing
+> command toasts on every run.
 
 > **For agentic workers:** REQUIRED SUB-SKILL: use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to carry out this plan task by task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -167,21 +169,23 @@ and 6. Scope comes from [Part 1's plan](2026-10-05-workbench-plugins-p1-plan.md)
 
 | Design | This plan |
 |---|---|
-| `wb.api`: scoped fetch + `dispatch` | `wb.api.fetch(path, init)`, plus `get(path)` / `post(path, body)` JSON helpers; all scoped to `/api/plugins/<id>`, refusing `..` and other hosts. `dispatch(action)` posts any Action (cross-plugin and core). |
-| `wb.store` with `subscribe(keys, fn)` | As designed; keys may be dotted. Returns an unsubscribe function. |
-| `wb.selection` with a change subscription | `get()` and `subscribe(fn)`; fires when the active network's selection changes. |
+| `wb.api`: scoped fetch + `dispatch` | `wb.api.fetch(path, init)`, plus `get(path)` / `post(path, body)` JSON helpers; all scoped to `/api/plugins/<id>`: the path is resolved with `URL` (so `%2e%2e` and `\` count) and must stay under that prefix; other hosts are refused. `dispatch(action)` posts any Action (cross-plugin and core). (Final review S-1.) |
+| `wb.store` with `subscribe(keys, fn)` | As designed; keys may be dotted. `get()` and the listener's argument are a frozen copy (`frozenCopy`, injected). Returns an unsubscribe function. (Final review S-2.) |
+| `wb.selection` with a change subscription | `get()` and `subscribe(fn)`; fires when the active network's selection changes. Frozen copies, as `wb.store`. |
 | `registerWorkspace({id, title, layout})` | `layout` is `{view?: "map" \| "split" \| "table"}`; optional `badge(ctx)` and `order`. Returns an unregister function. |
 | `registerPanel({workspace, id, title, render(el), badge?})` | `workspace` may be an id, a list, or `"*"`; optional `onShow()` and `order`. Returns `{refreshBadge(), dispose()}`. |
 | `registerCommand({id, title, when, run, contexts})` | Optional `group`; `contexts` defaults to `["palette"]`. The NL-assistant surface is **deferred** (Actions already reach the assistant through `action_json_schema`). |
 | `registerLayer(component, id, factory)` | Optional 4th argument `{order, title}`. `factory(ctx)` returns a layer, a list, or nothing; `ctx` carries `deck`, `net`, `attrs`, `style`, `selection`, `focus`, `highlights`, `related`, `marker`, `zoom`, `server`. |
 | `schemaForm(el, schema, value, {onChange})` | Also `omit`; returns `{value(), errors(), set(value), focus()}`. |
-| `hasAction(type)`, `on(event, fn)` | As designed (sync: the action list is read once before activation). |
+| `hasAction(type)`, `on(event, fn)` | As designed (sync: the action list is read once before activation). After a rollback, `on` and both `subscribe`s are refused like the `register*` calls (final review I-1). `host.publish` refuses names outside `[a-z][a-z0-9_]*`, since a dotted name can't be heard through `on` (final review S-3). |
 | — | **New:** `wb.id`, `wb.hostApi`, `wb.actionSchema(type)`, `wb.showPanel(id)`, `wb.toast(message)`. |
 | Selection commands (`contexts: ["selection"]`) | A selection with no links (an utterance that matched nothing leaves `link_ids: []`) counts as no selection: no "Selection (n links)" section in menus or the palette, and no "Selection actions" button. (Recorded during implementation.) |
 | — (palette ranking) | The palette ranks by match **within** each group ("Commands", "For ‹table› ‹id›", "Selection (n links)"); groups keep that order. A command that fits several groups is listed once, in the first it fits. Intended: the group says what the command acts on. |
 | — (schema forms) | `wb.schemaForm`'s `value()` includes what a checkbox or a non-nullable menu shows (its default, else unchecked / the first option), so what is sent is what is seen. Fields left blank are left out. |
 | Open question 2: "Commands…" hides at 640 px or narrower | It also hides whenever the header's spacer has no room for it (a container query on the spacer), so it never makes the header wrap: the header's layout with no plugins is unchanged at every width. Ctrl+K / ⌘K always works. |
-| Task 14 loader | `reportPluginError` is wired once for every plugin call site (dock, menus, palette, map layers) and reports each (owner, phase, message) once; a command's phase names it (`command hello.c`). An `activate` that rejects after its 5 s limit is reported, not left unhandled. |
+| Task 14 loader | `reportPluginError` is wired once for every plugin call site (dock, menus, palette, map layers); a command's phase names it (`command hello.c`). Passive failures (badge, layer, `when`, listeners) are reported once per (owner, phase, message); a command's `run` is logged and toasted every time, and listed once (final review I-4). The import and `activate` are timed together ("did not load and activate within 5 s"), and plugins load in parallel and all settle before `restoreWorkspace`, so N hung plugins cost one limit (final review I-2). An `activate` that rejects after its limit is reported, not left unhandled. The loader and the reporter live in `pluginload.js` (`activateOne`, `activatePlugins`, `createErrorReporter`, `commandReporters`), injected and node-tested (final review S-4). Consequence of parallel loading: between two plugins' entries with equal `order`, registration order (the registries' tie-break) follows which plugin finished loading first; the guide tells authors to set `order`. Errors from a plugin's own timers or unreturned promises aren't attributed to it (guide, final review S-5); a global `error`/`unhandledrejection` listener could come later. |
+| Task 15 Plugins section (final review) | While a project file, `NETSTEAD_APP__DISABLED_PLUGINS` or the session sets `app.disabled_plugins`, every switch is `disabled` with `aria-describedby="plugins-note"`, and the note names the project file (from `payload.paths`) or the variable (`pluginsLock`); when the switches are enabled the effective value is the user value, so they never copy a higher layer's ids into the user file (I-3). The row markup moved to `pluginlist.js` (`pluginRowHTML`, using `schemaform.js`'s `esc`, now exported). `.sw` is `inline-block`, so the switch keeps its size inside the table cell. |
+| Task 8 / 16 derived mark | The tooltip names the base network's label while it is open, else `derived from <id> (closed)` (`derivedTitle`, final review N-1). |
 | Task 15 Plugins section | The section re-renders when a browser-side plugin error arrives while it is open; the override note hides when empty; focus stays on the switch after the list redraws. |
 | Decision 6 / Task 9 badges (`badge(ctx)`) | A badge gets the full `commandContext`, not `{state}`. Everything in that context is a frozen copy; the server state and selection are deep-frozen, made once per server object (`frozenCopy`). A plugin layer factory gets its own frozen ctx (`highlights` a Set copy; `net` and `attrs` shared and read-only, documented). (Review S-1.) |
 | Task 6 `layers.build` | Takes `{isLayer, pluginCtx}`: map.js passes `instanceof deck.Layer`, so a factory returning a non-layer is reported and never reaches deck. (Review S-6.) |
@@ -227,10 +231,11 @@ All front-end paths are under `packages/netstead/netstead/workbench/static/`.
 | `js/slots.js` (new, pure) | `createRegistry`, `checkId`, `workspaceSpec`, `panelSpec`, `commandSpec`, `panelsFor`, `createSlots`, `slots` |
 | `js/commands.js` (new, pure) | `commandContext`, `applicable`, `menuSections`, `selectionSections`, `paletteGroups`, `matchScore`, `runCommand`, `isPaletteShortcut`, `actionCommands`, `commandLabel` |
 | `js/layers.js` (new, pure) | `createLayerRegistry`, `layerRegistry`, `COMPONENTS`, `CORE_ORDER` |
-| `js/tabs.js` (new, pure) | `nextIndex`, `normalizeBadge`, `workspaceBadge`, `tabLabel`, `viewFor`, `networkBadge` |
+| `js/tabs.js` (new, pure) | `nextIndex`, `normalizeBadge`, `workspaceBadge`, `tabLabel`, `viewFor`, `networkBadge`, `derivedTitle` |
 | `js/hub.js` (new, pure) | `createHub`, `hub` |
 | `js/wbhost.js` (new, pure) | `createWb`, `pluginPath`, `eventName`, `keysChanged` |
-| `js/pluginlist.js` (new, pure) | `pluginRows`, `withPluginEnabled` |
+| `js/pluginlist.js` (new, pure) | `pluginRows`, `withPluginEnabled`, `pluginsLock`, `pluginRowHTML` (final review) |
+| `js/pluginload.js` (new, pure; final review) | `activateOne`, `activatePlugins`, `createErrorReporter`, `commandReporters` |
 | `js/workspaces.js` (new) | Workspace strip and dock: `registerCoreSlots`, `addWorkspace`, `addPanel`, `showWorkspace`, `showPanel`, `restoreWorkspace`, `renderStrips`, `wireWorkspaces` |
 | `js/ctxmenu.js` (new) | Feature/row/selection menus: `openContextMenu`, `wireContextMenus` |
 | `js/modal.js` (new) | `trapTab` (moved out of `settings.js`) |
