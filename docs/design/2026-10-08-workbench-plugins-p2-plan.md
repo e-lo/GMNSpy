@@ -168,6 +168,10 @@ and 6. Scope comes from [Part 1's plan](2026-10-05-workbench-plugins-p1-plan.md)
 | `schemaForm(el, schema, value, {onChange})` | Also `omit`; returns `{value(), errors(), set(value), focus()}`. |
 | `hasAction(type)`, `on(event, fn)` | As designed (sync: the action list is read once before activation). |
 | — | **New:** `wb.id`, `wb.hostApi`, `wb.actionSchema(type)`, `wb.showPanel(id)`, `wb.toast(message)`. |
+| Selection commands (`contexts: ["selection"]`) | A selection with no links (an utterance that matched nothing leaves `link_ids: []`) counts as no selection: no "Selection (n links)" section in menus or the palette, and no "Selection actions" button. (Recorded during implementation.) |
+| — (palette ranking) | The palette ranks by match **within** each group ("Commands", "For ‹table› ‹id›", "Selection (n links)"); groups keep that order. A command that fits several groups is listed once, in the first it fits. Intended: the group says what the command acts on. |
+| — (schema forms) | `wb.schemaForm`'s `value()` includes what a checkbox or a non-nullable menu shows (its default, else unchecked / the first option), so what is sent is what is seen. Fields left blank are left out. |
+| Open question 2: "Commands…" hides at 640 px or narrower | It also hides whenever the header's spacer has no room for it (a container query on the spacer), so it never makes the header wrap: the header's layout with no plugins is unchanged at every width. Ctrl+K / ⌘K always works. |
 
 ## Scope notes
 
