@@ -6,6 +6,7 @@ import shutil
 from typing import Literal
 
 import pytest
+from netstead.workbench.server import STATIC_DIR
 from pydantic import BaseModel, Field
 
 pytestmark = pytest.mark.skipif(shutil.which("node") is None, reason="node not installed")
@@ -555,3 +556,91 @@ def test_command_context_hands_out_a_frozen_copy_of_the_state(node_module):
         ["commandContext"],
     )
     assert got == [True, True, "n1", "n1", None]
+
+
+JS_DIR = STATIC_DIR / "js"
+HOST_MODULES = ("wbhost.js", "slots.js", "layers.js", "store.js", "hub.js")
+
+WB_HARNESS = """
+import { createWb, eventName, keysChanged, pluginPath } from "./wbhost.js";
+import { createSlots } from "./slots.js";
+import { createLayerRegistry } from "./layers.js";
+import { activeSelection, createStore } from "./store.js";
+import { createHub } from "./hub.js";
+
+export async function run() {
+  const slots = createSlots(), layers = createLayerRegistry(), hub = createHub(), calls = [];
+  const server = s => ({ networks: [{ id: "n1", version: 1 }], active: "n1", selection: s,
+                         plugins: { hello: { n: 0 } } });
+  const store = createStore({ server: server(null) });
+  const deps = {
+    hostApi: "1.1", store, activeSelection, events: hub, actionTypes: new Set(["hello.greet"]),
+    actionSchema: () => null,
+    getJSON: async p => (calls.push(["get", p]), {}), postJSON: async (p, b) => (calls.push(["post", p, b]), {}),
+    fetch: async p => (calls.push(["fetch", p]), {}), dispatch: async a => (calls.push(["dispatch", a.type]), "ok"),
+    addCommand: (o, s) => slots.addCommand(o, s), layers,
+    dock: { addWorkspace: (o, s) => slots.addWorkspace(o, s),
+            addPanel: (o, s) => ({ dispose: slots.addPanel(o, s), refreshBadge() {} }), showPanel() {} },
+    schemaForm: () => null, toast: m => calls.push(["toast", m]),
+    onError: (id, phase, e) => calls.push(["error", id, phase, e.message]),
+  };
+  const { wb, rollback } = createWb("hello", deps);
+  const seen = [];
+  wb.registerWorkspace({ id: "hello.ws", title: "Hello" });
+  wb.registerPanel({ id: "hello.p", title: "P", workspace: "hello.ws", render() {} });
+  wb.registerCommand({ id: "hello.c", title: "C", run() {} });
+  wb.registerLayer("roadway", "hello.l", () => null);
+  wb.store.subscribe(["plugins.hello"], s => seen.push(["store", s.plugins.hello.n]));
+  wb.selection.subscribe(sel => seen.push(["selection", sel && sel.link_ids]));
+  wb.on("greeted", p => seen.push(["event", p]));
+  wb.on("other.thing", () => { throw new Error("listener bug"); });
+  let refused = null;
+  try { wb.registerCommand({ id: "c2", title: "x", run() {} }); } catch (e) { refused = e.message; }
+  await wb.api.get("/count"); await wb.api.post("/echo", { a: 1 }); await wb.api.dispatch({ type: "hello.greet" });
+  let badPath = null;
+  try { wb.api.get("/../state"); } catch (e) { badPath = e.message; }
+  store.set({ server: server(null) });                                                   // nothing watched changed
+  store.set({ server: { ...server({ net_id: "n1", link_ids: [4] }), plugins: { hello: { n: 1 } } } });
+  hub.emit("hello.greeted", { name: "Ada" }); hub.emit("other.thing", 1); hub.emit("greeted", "not mine");
+  const before = [slots.workspaces.list().map(x => x.id), slots.panels.list().map(x => x.id),
+                  slots.commands.list().map(x => x.id), layers.ids()];
+  rollback();
+  const after = [slots.workspaces.list().length, slots.panels.list().length, slots.commands.list().length,
+                 layers.ids().length];
+  let late = null;
+  try { wb.registerCommand({ id: "hello.late", title: "L", run() {} }); } catch (e) { late = e.message; }
+  hub.emit("hello.greeted", "after rollback");
+  return { before, after, refused, badPath, late, seen, calls,
+    has: [wb.hasAction("hello.greet"), wb.hasAction("cards.x")],
+    pure: [pluginPath("hello", "/count?x=1"), eventName("hello", "greeted"), eventName("hello", "core.history"),
+           keysChanged({ a: { b: 1 } }, { a: { b: 1 }, c: 2 }, ["a.b"]),
+           keysChanged({ a: { b: 1 } }, { a: { b: 2 } }, ["a.b"])] };
+}
+"""
+
+
+def _harness(tmp_path, source: str):
+    root = tmp_path / "harness"
+    root.mkdir()
+    for name in HOST_MODULES:
+        shutil.copy(JS_DIR / name, root / name)
+    (root / "harness.js").write_text(source, encoding="utf-8")
+    return root / "harness.js"
+
+
+def test_wb_registers_namespaced_tracks_and_rolls_back(node_module, tmp_path):
+    got = node_module(_harness(tmp_path, WB_HARNESS), ["run"], "await run()")
+    assert got["before"] == [["hello.ws"], ["hello.p"], ["hello.c"], ["hello.l"]]
+    assert got["after"] == [0, 0, 0, 0]
+    assert got["refused"] == 'hello: id "c2" must start with "hello."'
+    assert got["badPath"] == 'hello: wb.api paths start with "/" and stay under /api/plugins/hello'
+    assert got["late"] == "hello: activation was rolled back; nothing more can be registered"
+    assert got["seen"] == [["store", 1], ["selection", [4]], ["event", {"name": "Ada"}]]
+    assert got["calls"] == [
+        ["get", "/api/plugins/hello/count"],
+        ["post", "/api/plugins/hello/echo", {"a": 1}],
+        ["dispatch", "hello.greet"],
+        ["error", "hello", "event other.thing", "listener bug"],
+    ]
+    assert got["has"] == [True, False]
+    assert got["pure"] == ["/api/plugins/hello/count?x=1", "hello.greeted", "core.history", False, True]
