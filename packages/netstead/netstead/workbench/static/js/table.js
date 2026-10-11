@@ -22,6 +22,7 @@ const tablePath = rest => netPath(activeId(), `table/${encodeURIComponent(TBL.na
 
 export const tableVisible = () => $("stage").dataset.mode !== "map";
 export const tableShowing = name => tableVisible() && TBL.name === name;
+export const currentViewMode = () => $("stage").dataset.mode;
 
 export function setViewMode(mode) {
   $("stage").dataset.mode = mode;

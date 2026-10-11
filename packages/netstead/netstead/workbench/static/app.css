@@ -264,3 +264,11 @@
   #tbl-grid a.fk { color:var(--hl); text-decoration:none; border-bottom:1px dotted var(--hl); }
   .tbl-item .rel-badge { font-size:10.5px; color:var(--hl); margin-left:6px; }
   #tbl-hint { margin-left:10px; font-size:12px; }
+  /* ---- plugins part 2: workspace tabs and the dock (strips show with two or more tabs) ---- */
+  #ws-tabs, #dock-tabs { display:flex; gap:2px; flex-wrap:wrap; }
+  #ws-tabs button, #dock-tabs button { background:none; color:var(--muted); border:0; border-radius:6px 6px 0 0;
+    padding:6px 10px; font-size:12.5px; font-weight:600; }
+  #ws-tabs button.on, #dock-tabs button.on { color:var(--ink); box-shadow:inset 0 -2px 0 var(--accent); }
+  #ws-tabs button:focus-visible, #dock-tabs button:focus-visible { outline:2px solid var(--hl); outline-offset:-2px; }
+  #dock-tabs { margin:-4px 0 12px; border-bottom:1px solid var(--edge); }
+  .dirty { color:var(--accent); font-size:10px; margin-left:3px; }

@@ -233,3 +233,27 @@ def test_layers_popover_lists_overlays_from_the_registry():
     panel = html[html.index('id="layers-panel"') : html.index('id="settings-panel"')]
     assert 'id="plugin-layers"' in panel
     assert "export function renderPluginLayers(" in (JS_DIR / "panels.js").read_text()
+
+
+def test_the_drawer_is_the_dock_and_keeps_the_details_content():
+    html = (STATIC_DIR / "index.html").read_text()
+    side = html[html.index('<aside id="side">') : html.index("</aside>")]
+    assert 'id="dock-tabs" role="tablist"' in side and side.index('id="dock-tabs"') < side.index('id="dock-details"')
+    pane = side[side.index('id="dock-details"') :]
+    assert 'data-panel="details"' in pane and 'role="tabpanel"' in pane
+    for element_id in ("status-wrap", "hl-count", "hl-set", "hl-clear", "details", "anchors", "fragment", "diag"):
+        assert f'id="{element_id}"' in pane
+
+
+def test_the_workspace_strip_is_in_the_first_header_row_and_starts_hidden():
+    html = (STATIC_DIR / "index.html").read_text()
+    row = html[html.index("<header>") : html.index('id="nl-row"')]
+    assert '<nav id="ws-tabs" role="tablist" aria-label="Workspaces" hidden>' in row
+    assert '<div id="dock-tabs" role="tablist" aria-label="Panels" hidden>' in html
+
+
+def test_core_registers_inspect_and_details_through_the_slots():
+    src = (JS_DIR / "workspaces.js").read_text()
+    assert 'slots.addWorkspace(CORE, { id: "inspect"' in src and 'slots.addPanel(CORE, { id: "details"' in src
+    main = (JS_DIR / "main.js").read_text()
+    assert "registerCoreSlots()" in main and "wireWorkspaces(" in main

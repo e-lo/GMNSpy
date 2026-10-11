@@ -15,6 +15,7 @@
   <header>
     <div class="hrow">
       <h1>Netstead Workbench</h1>
+      <nav id="ws-tabs" role="tablist" aria-label="Workspaces" hidden></nav>
       <select id="net-select" aria-label="Active network"></select>
       <button id="open-wizard" class="mini">Open / Import…</button>
       <select id="recent" aria-label="Recent networks"></select>
@@ -97,6 +98,8 @@
     </div>
   </div>
   <aside id="side">
+    <div id="dock-tabs" role="tablist" aria-label="Panels" hidden></div>
+    <section class="dock-pane" id="dock-details" data-panel="details" role="tabpanel" aria-labelledby="dtab-details">
     <div id="status-wrap"></div>
     <div class="label">Highlighted links <span id="hl-count" class="pcount">0</span></div>
     <div id="hl-wrap">
@@ -114,6 +117,7 @@
     <pre id="fragment">—</pre>
     <div class="label">Diagnostics</div>
     <div id="diag"><span class="empty">—</span></div>
+    </section>
   </aside>
   <footer id="history">
     <span id="hist-seq">—</span>

@@ -15,6 +15,7 @@ import { onSettingsHistory, registerSection, wireSettings } from "./settings.js"
 import { activeSelection, store } from "./store.js";
 import { onFocusChanged, onNetworkChanged, refreshRows, restoreViewMode, syncScopeControls, tableVisible, wireTable } from "./table.js";
 import { onWizardJob, wireWizard } from "./wizard.js";
+import { registerCoreSlots, wireWorkspaces } from "./workspaces.js";
 
 const netKeyFor = server => {
   const h = server.networks.find(n => n.id === server.active);
@@ -137,6 +138,8 @@ function wireStore() {
 }
 
 async function boot() {
+  registerCoreSlots();
+  wireWorkspaces();
   wireStore(); wirePanels(); wireSide(); wireTable(); wireHeader(); wireHistory(); wireMapButtons(); wireJobs(); wireWizard(); wireLLM(); wireSettings();
   registerSection("llm", "Language models", "llm-panel", () => renderLLMPanel());
   renderRecent();

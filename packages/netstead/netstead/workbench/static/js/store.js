@@ -27,6 +27,8 @@ export const store = createStore({
   relHops: 1,                 // related-records depth ("Expand a hop" toggles 1 <-> 2)
   hiddenLayers: new Set(),    // titled overlay layers switched off in Layers → Overlays (per tab, never recorded)
   layerSeq: 0,                // bumped when a layer registers or goes, so Overlays and the map redraw
+  workspace: "inspect",       // the active workspace tab (per tab; remembered in localStorage)
+  dockPanel: {},              // workspace id -> the dock panel showing in it
 });
 
 export function activeSelection(s) {
