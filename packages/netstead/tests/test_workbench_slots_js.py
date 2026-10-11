@@ -1079,3 +1079,161 @@ def test_a_failed_activation_leaves_no_trace_in_the_dock_and_returns_to_inspect(
     assert got["during"] == ["broken.ws", True, False, "tabpanel"]
     assert got["after"] == ["inspect", False, True, True, None, False, None, ["inspect"], ["details"], 0, 2]
     assert got["errors"] == []
+
+
+# Final review (S-4): the loader's paths, run under node with a short time limit and injected imports.
+LOADER_HARNESS = """
+import { activateOne, activatePlugins, commandReporters, createErrorReporter } from "./pluginload.js";
+import { createWb } from "./wbhost.js";
+import { createSlots } from "./slots.js";
+import { activeSelection, createStore } from "./store.js";
+import { createHub } from "./hub.js";
+import { frozenCopy, runCommand } from "./commands.js";
+
+const wait = ms => new Promise(r => setTimeout(r, ms));
+const never = () => new Promise(() => {});
+const st = (id, state = "loaded") => ({ id, state, version: "1", frontend: `/plugins/${id}/main.js` });
+
+// Each failure path once, all at the same time (as loadPlugins runs them).
+export async function paths() {
+  const reports = [], rolled = [], activated = [];
+  const report = (owner, phase, e) => reports.push([owner, phase, String((e && e.message) || e)]);
+  const createWb = id => ({ wb: { id, register() { if (rolled.includes(id)) throw new Error("rolled back"); } },
+                            rollback: () => rolled.push(id) });
+  const mods = {
+    ok: { activate: wb => { activated.push(wb.id); } },
+    noact: {},
+    throws: { activate() { throw new Error("boom"); } },
+    rejects: { activate: async () => { throw new Error("async boom"); } },
+    hang: { activate: never },
+    // Fails after the time limit, registering into its rolled-back wb: reported too, not an unhandled rejection.
+    late: { activate: async wb => { await wait(80); wb.register(); } },
+  };
+  const importModule = s => (s.id === "badimport" ? Promise.reject(new Error("SyntaxError: x"))
+    : s.id === "hangimport" ? never() : Promise.resolve(mods[s.id]));
+  const ids = ["ok", "badimport", "noact", "throws", "rejects", "hang", "hangimport", "late"];
+  const results = await Promise.all(ids.map(id => activateOne(st(id), { importModule, createWb, timeoutMs: 40, report })));
+  const atLimit = reports.length;
+  await wait(120);
+  return { results, activated, rolled: [...rolled].sort(), atLimit, reports: [...reports].sort() };
+}
+
+// Hung plugins load side by side: N of them cost one time limit, not N. "core" is refused; others are skipped.
+export async function parallel() {
+  const reports = [], imported = [];
+  const report = (owner, phase, e) => reports.push([owner, phase, String((e && e.message) || e)]);
+  const importModule = s => { imported.push(s.id); return never(); };
+  const createWb = () => ({ wb: {}, rollback() {} });
+  const t0 = Date.now();
+  await activatePlugins([st("core"), st("h1"), st("h2"), st("h3"), st("h4"), st("off", "disabled"),
+    { ...st("nofe"), frontend: null }], { importModule, createWb, timeoutMs: 150, report });
+  return { elapsed: Date.now() - t0, imported, reports };
+}
+
+// The real wb: an activate that times out after subscribing loses its listener at the rollback, and when it
+// resumes it can't subscribe again (the failure is reported).
+export async function realWb() {
+  const hub = createHub(), store = createStore({ server: { networks: [], active: null, selection: null } });
+  const heard = [], reports = [];
+  const report = (owner, phase, e) => reports.push([owner, phase, String((e && e.message) || e)]);
+  const deps = { store, activeSelection, events: hub, frozenCopy, onError: report };
+  const mod = { activate: async wb => {
+    wb.on("greeted", p => heard.push(p));
+    hub.emit("hello.greeted", "during");
+    await wait(80);
+    wb.on("greeted", p => heard.push(["resumed", p]));
+  } };
+  const ok = await activateOne(st("hello"), { importModule: async () => mod, createWb: id => createWb(id, deps),
+    timeoutMs: 30, report });
+  hub.emit("hello.greeted", "after the rollback");
+  await wait(100);
+  hub.emit("hello.greeted", "after it resumed");
+  return { ok, heard, reports };
+}
+
+// Passive failures (a badge, a layer, a when) are reported once; a command the user runs, every time.
+export async function reporter() {
+  const toasts = [], logs = [];
+  const store = createStore({ pluginErrors: {} });
+  const report = createErrorReporter({ store, toast: m => toasts.push(m), log: (...a) => logs.push(a[0]) });
+  report("hello", "badge", new Error("x")); report("hello", "badge", new Error("x"));
+  const { whenError, runError } = commandReporters(report);
+  const cmd = { owner: "hello", id: "hello.c", run() { throw new Error("y"); }, when() { throw new Error("w"); } };
+  await runCommand(cmd, {}, runError); await runCommand(cmd, {}, runError);
+  whenError(cmd, new Error("w")); whenError(cmd, new Error("w"));
+  const core = { owner: "core", id: "zoom", run: async () => { throw new Error("z"); } };
+  await runCommand(core, {}, runError); await runCommand(core, {}, runError);
+  return { toasts, logs, stored: store.get().pluginErrors };
+}
+"""
+
+LOADER_MODULES = (*HOST_MODULES, "pluginload.js")
+
+
+def _loader(node_module, tmp_path, fn: str):
+    root = tmp_path / "loader"
+    if not root.exists():
+        root.mkdir()
+        for name in LOADER_MODULES:
+            shutil.copy(JS_DIR / name, root / name)
+        (root / "harness.js").write_text(LOADER_HARNESS, encoding="utf-8")
+    return node_module(root / "harness.js", [fn], f"await {fn}()")
+
+
+def test_activate_one_contains_each_failure_and_a_late_one(node_module, tmp_path):
+    got = _loader(node_module, tmp_path, "paths")
+    assert got["results"] == [True, False, False, False, False, False, False, False]
+    assert got["activated"] == ["ok"]
+    assert got["rolled"] == sorted(["badimport", "noact", "throws", "rejects", "hang", "hangimport", "late"])
+    assert got["atLimit"] == 7  # each failure once, by the time limit
+    limit = "did not load and activate within 0.04 s"
+    assert got["reports"] == sorted(
+        [
+            ["badimport", "activate", "SyntaxError: x"],
+            ["noact", "activate", "/plugins/noact/main.js exports no activate(wb)"],
+            ["throws", "activate", "boom"],
+            ["rejects", "activate", "async boom"],
+            ["hang", "activate", limit],
+            ["hangimport", "activate", limit],  # a hung import no longer blocks the others
+            ["late", "activate", limit],
+            ["late", "activate", "rolled back"],  # after the limit
+        ]
+    )
+
+
+def test_hung_plugins_load_in_parallel_and_core_is_refused(node_module, tmp_path):
+    got = _loader(node_module, tmp_path, "parallel")
+    assert got["imported"] == ["h1", "h2", "h3", "h4"]
+    assert 150 <= got["elapsed"] < 450, got["elapsed"]  # one at a time would be 600
+    assert got["reports"][0] == ["core", "activate", 'the plugin id "core" is reserved']
+    assert [r[0] for r in got["reports"][1:]] == ["h1", "h2", "h3", "h4"]
+
+
+def test_a_timed_out_activate_loses_its_listeners_and_cannot_add_more(node_module, tmp_path):
+    got = _loader(node_module, tmp_path, "realWb")
+    assert got["ok"] is False
+    assert got["heard"] == ["during"]
+    assert got["reports"] == [
+        ["hello", "activate", "did not load and activate within 0.03 s"],
+        ["hello", "activate", "hello: activation was rolled back; nothing more can be registered"],
+    ]
+
+
+def test_a_failing_command_toasts_every_run_but_is_listed_once(node_module, tmp_path):
+    got = _loader(node_module, tmp_path, "reporter")
+    assert got["toasts"] == [
+        "Plugin hello: x",  # a badge: once
+        "Plugin hello: y",
+        "Plugin hello: y",  # each run
+        "Plugin hello: w",  # a when: once
+        "z",
+        "z",  # core's own command: each run, never listed
+    ]
+    assert len(got["logs"]) == 6
+    assert got["stored"] == {
+        "hello": [
+            {"phase": "badge", "message": "x"},
+            {"phase": "command hello.c", "message": "y"},
+            {"phase": "command hello.c", "message": "w"},
+        ]
+    }

@@ -14,6 +14,7 @@ import { layerRegistry } from "./layers.js";
 import { fitBbox, fitLinks, fitNetwork, flyToNode, initMap, render, setBasemap } from "./map.js";
 import { decodeNetwork } from "./netbuf.js";
 import { populateColorby, renderLegend, renderPluginLayers, syncControls, wirePanels } from "./panels.js";
+import { commandReporters } from "./pluginload.js";
 import { loadPlugins, reportPluginError } from "./plugins.js";
 import { renderPluginsPanel, wirePluginsPanel } from "./pluginspanel.js";
 import { clearDetails, renderHighlights, renderSelection, showDetails, wireSide } from "./side.js";
@@ -145,13 +146,14 @@ function wireStore() {
 }
 
 async function boot() {
-  // Every plugin-code failure (and core's own, which only toasts) goes to the Plugins section, once per message.
-  const commandError = (command, e) => reportPluginError(command.owner, `command ${command.id}`, e);
+  // Every plugin-code failure (and core's own, which only toasts) goes to the Plugins section: a passive one (a badge,
+  // a layer, a `when`) once per message, a command the user ran every time.
+  const { whenError, runError } = commandReporters(reportPluginError);
   registerCoreSlots();
   wireWorkspaces({ onError: reportPluginError });
-  wireContextMenus({ onError: commandError });
+  wireContextMenus({ onError: whenError, onRunError: runError });
   registerCoreCommands();
-  wirePalette({ onError: commandError });
+  wirePalette({ onError: whenError, onRunError: runError });
   wireActionForm();
   wireStore(); wirePanels(); wireSide(); wireTable(); wireHeader(); wireHistory(); wireMapButtons(); wireJobs(); wireWizard(); wireLLM(); wireSettings();
   registerSection("llm", "Language models", "llm-panel", () => renderLLMPanel());

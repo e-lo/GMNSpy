@@ -313,11 +313,13 @@ def test_main_loads_plugins_after_core_and_forwards_their_events():
 
 
 def test_the_loader_isolates_each_plugin():
+    # The paths themselves (import failure, no activate, timeout, "core") are node-tested against pluginload.js.
     src = (JS_DIR / "plugins.js").read_text()
-    assert "rollback()" in src and 'reportPluginError(status.id, "activate"' in src
-    assert "ACTIVATE_TIMEOUT_MS" in src and "typeof mod.activate" in src
+    assert "await activatePlugins(" in src and "timeoutMs: ACTIVATE_TIMEOUT_MS" in src
+    assert src.index("await activatePlugins(") < src.index("restoreWorkspace()")  # every plugin settles first
     assert "actionCommands(" in src and "openActionForm(" in src
-    assert "status.id === CORE" in src  # "core" is reserved (review I-2): never activated as a plugin
+    load = (JS_DIR / "pluginload.js").read_text()
+    assert "rollback()" in load and "status.id === CORE" in load
 
 
 def test_settings_has_a_plugins_section_registered_like_language_models():

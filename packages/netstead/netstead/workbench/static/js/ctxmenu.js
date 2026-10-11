@@ -8,7 +8,7 @@ import { store } from "./store.js";
 import { nextIndex } from "./tabs.js";
 
 let entries = [], menuCtx = null, opener = null;
-let report = () => {};
+let report = () => {}, reportRun = () => {};
 
 const contextNow = target => {
   const s = store.get();
@@ -63,7 +63,7 @@ export function closeMenu({ restore = true } = {}) {
 function choose(i) {
   const command = entries[i], ctx = menuCtx;
   closeMenu();
-  if (command) runCommand(command, ctx, report);
+  if (command) runCommand(command, ctx, reportRun);
 }
 
 // "Selection actions" shows only while a selection command applies (core registers none).
@@ -72,8 +72,10 @@ function syncSelectionButton() {
   $("sel-cmds-wrap").hidden = !(ctx.selection && applicable(slots.commands.list(), "selection", ctx, report).length);
 }
 
-export function wireContextMenus({ onError }) {
+// `onError` gets a `when` that throws; `onRunError` a command that fails when run.
+export function wireContextMenus({ onError, onRunError = onError }) {
   report = onError;
+  reportRun = onRunError;
   const menu = $("ctxmenu");
   menu.onclick = e => { const b = e.target.closest('[role="menuitem"]'); if (b) choose(Number(b.dataset.i)); };
   menu.onkeydown = e => {

@@ -9,7 +9,7 @@ import { store } from "./store.js";
 import { nextIndex } from "./tabs.js";
 
 let opener = null, items = [], active = 0;
-let report = () => {};
+let report = () => {}, reportRun = () => {};
 
 export const paletteOpen = () => !$("cmdk").hidden;
 
@@ -62,14 +62,16 @@ function choose(i) {
   const it = items[i];
   if (!it) return;
   closePalette();
-  runCommand(it.command, it.ctx, report);
+  runCommand(it.command, it.ctx, reportRun);
 }
 
 // Another dialog (Settings, Open / Import, an Action's form) is open: the shortcut leaves it alone.
 const otherDialogOpen = () => [...document.querySelectorAll(".modal")].some(m => m.id !== "cmdk" && !m.hidden);
 
-export function wirePalette({ onError }) {
+// `onError` gets a `when` that throws; `onRunError` a command that fails when run.
+export function wirePalette({ onError, onRunError = onError }) {
   report = onError;
+  reportRun = onRunError;
   const mac = isMacPlatform(navigator);
   $("cmd-btn").onclick = () => openPalette();
   $("cmd-btn").title = `Command palette (${mac ? "⌘K" : "Ctrl+K"})`;

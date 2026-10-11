@@ -226,9 +226,9 @@ def router(host: Host) -> APIRouter:
 
 `static_dir` is served at `/plugins/<id>/`. Requests can't escape it (`..` and its encoded forms
 get a 404). At startup the Workbench imports `frontend` and calls its `activate(wb)` (see
-[The front end](#the-front-end-activatewb)). If the module fails to import, has no `activate`, or
-`activate` throws or takes more than 5 seconds, everything it registered is removed and
-Settings → Plugins shows the error. The rest of the Workbench carries on. `router(host)` is called once,
+[The front end](#the-front-end-activatewb)). If the module fails to import, has no `activate`,
+`activate` throws, or importing the module and running `activate` take more than 5 seconds together,
+everything it registered is removed and Settings → Plugins shows the error. The rest of the Workbench carries on. `router(host)` is called once,
 when the session installs the plugin. If it raises or returns something other than an `APIRouter`,
 or `static_dir` isn't a directory, the plugin isn't installed: it is marked `error`, none of its
 Actions register, its state isn't merged, and nothing of it is mounted.
@@ -277,9 +277,11 @@ it would silently leave out every plugin.
 ## The front end: `activate(wb)`
 
 A plugin's front end is one native ES module (no build step), served from `static_dir` as
-`/plugins/<id>/<frontend>`. After core has drawn the map, the Workbench imports each loaded plugin's
-module in `GET /api/plugins` order, one at a time, and calls its `activate(wb)`. A slow plugin never
-delays the map. `wb` is the only way in: don't import core's modules or reach into its DOM.
+`/plugins/<id>/<frontend>`. After core has drawn the map, the Workbench imports every loaded plugin's
+module at once and calls each one's `activate(wb)`. A slow plugin never delays the map or another
+plugin. Tabs, panels, commands and layers sort by `order`; between two plugins' entries with the same
+`order`, which comes first depends on which plugin finished loading first, so set `order` when placement
+matters. `wb` is the only way in: don't import core's modules or reach into its DOM.
 
 The hello example's `main.js`, annotated:
 
@@ -456,7 +458,7 @@ Every call into plugin code is contained, so one plugin's bug never breaks core 
 
 | Call | When it throws (or its promise rejects) |
 |---|---|
-| `activate(wb)` (or the module import, or no `activate`, or more than 5 s) | Everything it registered is removed, and later registrations and listeners (`wb.on`, `subscribe`) through that `wb` are refused. |
+| `activate(wb)` (or the module import, or no `activate`, or the import and `activate` taking more than 5 s together) | Everything it registered is removed, and later registrations and listeners (`wb.on`, `subscribe`) through that `wb` are refused. |
 | A panel's `render` | The panel shows "This panel failed to load: …". |
 | A `badge` | No badge. |
 | `onShow`, a `wb.on` or `wb.store` / `wb.selection` listener | Skipped for that call. |
@@ -464,9 +466,10 @@ Every call into plugin code is contained, so one plugin's bug never breaks core 
 | A command's `run` | Nothing else happens. |
 | A layer factory | That layer isn't drawn. |
 
-Each failure is logged to the browser console, shown once in a notice ("Plugin hello: …"), and listed
-under the plugin in **Settings → Plugins**. A failure with the same message is reported once, not on
-every redraw.
+Each failure is logged to the browser console, shown in a notice ("Plugin hello: …"), and listed
+under the plugin in **Settings → Plugins**. A failure that would repeat on every redraw (a badge, a
+layer, a `when`, a listener) is reported once per message. A command's `run` is reported every time the
+user runs it, so they always see why nothing happened, but it is listed once.
 
 Every string a plugin hands core (titles, badges, menu labels, schema text) is shown as text, never
 as markup. Markup you write into your own panel's `el` is yours to escape.
