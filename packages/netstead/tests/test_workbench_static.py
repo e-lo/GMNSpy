@@ -329,3 +329,8 @@ def test_settings_has_a_plugins_section_registered_like_language_models():
     assert 'registerSection("plugins", "Plugins", "plugins-panel"' in main and "wirePluginsPanel()" in main
     panel = (JS_DIR / "pluginspanel.js").read_text()
     assert '"app.disabled_plugins"' in panel and 'scope: "user"' in panel
+
+
+def test_the_network_switcher_marks_derived_networks():
+    header = (JS_DIR / "header.js").read_text()
+    assert 'from "./tabs.js"' in header and "networkBadge(" in header
