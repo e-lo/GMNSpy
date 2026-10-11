@@ -13,6 +13,8 @@ from urllib.parse import urlsplit
 
 from pydantic import ValidationError
 
+from netstead.llm.secrets import redact as redact_keys
+
 __all__ = ["MAX_ERROR_LEN", "describe_error", "safe_scrub", "scrub", "scrub_source"]
 
 #: Default cap on a scrubbed message's length (short enough to show in a toast).
@@ -70,7 +72,8 @@ def scrub_source(source: str) -> str:
 def describe_error(exc: BaseException) -> str:
     """``"<Type>: <message>"`` for an exception raised by code we don't control, safe to show in the browser.
 
-    URLs in the message lose their secrets (:func:`safe_scrub`) and the message is capped. A pydantic
+    URLs in the message lose their secrets (:func:`safe_scrub`), API-key-shaped tokens are redacted, and the
+    message is capped. A pydantic
     ``ValidationError`` would print the rejected input, so it is described by where and what failed only.
     """
     if isinstance(exc, ValidationError):
@@ -79,4 +82,4 @@ def describe_error(exc: BaseException) -> str:
         message = f"{exc.error_count()} validation error(s) for {exc.title}: {where}"
     else:
         message = str(exc)
-    return f"{type(exc).__name__}: {safe_scrub(message)}"
+    return f"{type(exc).__name__}: {safe_scrub(redact_keys(message))}"

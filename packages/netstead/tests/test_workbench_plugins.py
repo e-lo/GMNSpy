@@ -1033,3 +1033,13 @@ def test_router_and_discovery_errors_are_shown_without_values(make_session):
     assert "SECRET" not in _status(session, "hello").error and "bucket.example" in _status(session, "hello").error
     _, statuses = discover(eps=[FakeEntryPoint("leaky", _raise(_validation_error()))])
     assert statuses[0].state == "error" and "SECRET" not in statuses[0].error
+
+
+def test_describe_error_redacts_bare_api_keys():
+    """A key-shaped token anywhere in a plugin's exception text never reaches the browser."""
+    from netstead.workbench.redact import describe_error
+
+    token = "sk-ant-api03-" + "A" * 40
+    text = describe_error(ValueError(f"upstream refused token {token}"))
+    assert token not in text
+    assert "[redacted]" in text
