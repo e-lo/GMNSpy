@@ -24,6 +24,9 @@ HOST_API = "1.1"
 
 #: A plugin id: the namespace for its Action types, routes, state, settings and static files (``fullmatch``).
 _PLUGIN_ID = re.compile(r"[a-z][a-z0-9_]*")
+#: Plugin ids the front end uses for itself: ``"core"`` owns core's workspaces, panels, commands and layers
+#: (an owner tag that skips the id prefix check, and whose rollback would remove core's own registrations).
+_RESERVED_IDS = frozenset({"core"})
 #: Names a replayed script binds from ``netstead.workbench``: a plugin Action class must not rebind one.
 _RESERVED_NAMES = frozenset({"Session", *(model.__name__ for model in CORE_ACTIONS)})
 
@@ -83,6 +86,8 @@ def problems(plugin: WorkbenchPlugin, registry: ActionRegistry, taken: Collectio
     found: list[str] = []
     if not isinstance(plugin.id, str) or not _PLUGIN_ID.fullmatch(plugin.id):
         found.append(f"plugin id {plugin.id!r} must match [a-z][a-z0-9_]*")
+    if plugin.id in _RESERVED_IDS:
+        found.append(f"plugin id {plugin.id!r} is reserved for the Workbench itself")
     if plugin.id in taken:
         found.append(f"another plugin already uses the id {plugin.id!r}")
     names = _RESERVED_NAMES | {registry.model(t).__name__ for t in registry.types()}

@@ -1081,3 +1081,10 @@ def test_the_catalog_lists_a_schema_it_cannot_generate_as_none(make_session, mon
     catalog = {entry["type"]: entry for entry in session.action_catalog()}
     assert catalog["hello.greet"]["schema"] is None and catalog["open_network"]["schema"]["properties"]
     assert "hello.greet" in caplog.text
+
+
+def test_the_plugin_id_core_is_reserved(make_session):
+    """The front end tags core's own registrations with the owner "core": a plugin may not take that id."""
+    assert any("reserved" in p for p in problems(make_hello(id="core", actions=()), ActionRegistry(), taken=()))
+    session = make_session(make_hello(id="core", actions=()))
+    assert _status(session, "core").state == "error" and "reserved" in _status(session, "core").error

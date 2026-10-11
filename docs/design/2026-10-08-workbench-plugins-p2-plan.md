@@ -2799,6 +2799,7 @@ def test_the_loader_isolates_each_plugin():
     assert "rollback()" in src and 'reportPluginError(status.id, "activate"' in src
     assert "ACTIVATE_TIMEOUT_MS" in src and "typeof mod.activate" in src
     assert "actionCommands(" in src and "openActionForm(" in src
+    assert "status.id === CORE" in src  # "core" is reserved (review I-2): never activated as a plugin
 ```
 
 - [ ] **Step 2: Run them and check they fail**
@@ -2829,7 +2830,7 @@ import { toast } from "./dom.js";
 import { schemaForm } from "./formview.js";
 import { hub } from "./hub.js";
 import { addLayer } from "./map.js";
-import { slots } from "./slots.js";
+import { CORE, slots } from "./slots.js";
 import { activeSelection, store } from "./store.js";
 import { createWb } from "./wbhost.js";
 import { addPanel, addWorkspace, restoreWorkspace, showPanel } from "./workspaces.js";
@@ -2866,6 +2867,9 @@ export async function loadPlugins() {
   for (const spec of actionCommands(actions, plugins)) addCommand(spec.owner, { ...spec, run: () => openActionForm(spec.entry) });
   const shared = { hostApi, actionTypes: new Set(actions.map(a => a.type)), schemas: new Map(actions.map(a => [a.type, a.schema])) };
   for (const status of plugins) {
+    // "core" is reserved (spec.problems refuses it too): its owner tag would skip the id prefix check, and a
+    // rollback's removeOwner("core") would remove core's own registrations.
+    if (status.id === CORE) { reportPluginError(status.id, "activate", 'the plugin id "core" is reserved'); continue; }
     if (status.state === "loaded" && status.frontend) await activatePlugin(status, shared);
   }
   restoreWorkspace();
