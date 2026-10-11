@@ -80,10 +80,11 @@ the design. Core enforces some of them and plugins are expected to follow the re
    (`<id>.<name>`) and get the same history, "copy as Python", replay and HTTP dispatch as core
    Actions.
 5. **Schema-driven forms.** Plugin Actions render from their JSON Schema through one core form
-   component, so a new Action needs no form code and every form looks alike. (The browser side
-   arrives with the plugin front end.)
+   component (`wb.schemaForm`); every plugin Action also gets a generated form in the command
+   palette.
 6. **Workspaces as tabs, with predictable placement.** Plugins contribute workspaces, dock panels,
-   commands (palette, context menus, the NL assistant) and map layers. They don't add ad-hoc UI.
+   commands (palette and context menus; the NL assistant surface comes later) and map layers. They
+   don't add ad-hoc UI.
 7. **Dirty state is always visible.** Unsaved drafts, uncommitted cards and derived networks are
    badged in the network switcher and on workspace tabs.
 8. **Plugins are accountable.** Every installed plugin reports its id, version, required API and
@@ -224,8 +225,10 @@ def router(host: Host) -> APIRouter:
 ```
 
 `static_dir` is served at `/plugins/<id>/`. Requests can't escape it (`..` and its encoded forms
-get a 404). The browser loader that imports `frontend` and calls its `activate(wb)` arrives with the
-Workbench's plugin front end. Until then the file is only served. `router(host)` is called once,
+get a 404). At startup the Workbench imports `frontend` and calls its `activate(wb)` (see
+[The front end](#the-front-end-activatewb)). If the module fails to import, has no `activate`, or
+`activate` throws or takes more than 5 seconds, everything it registered is removed and
+Settings → Plugins shows the error. The rest of the Workbench carries on. `router(host)` is called once,
 when the session installs the plugin. If it raises or returns something other than an `APIRouter`,
 or `static_dir` isn't a directory, the plugin isn't installed: it is marked `error`, none of its
 Actions register, its state isn't merged, and nothing of it is mounted.
@@ -271,6 +274,203 @@ It holds the core Actions plus every loaded plugin's. The module-level
 `netstead.workbench.actions.action_json_schema` covers core Actions only, so a tool list built from
 it would silently leave out every plugin.
 
+## The front end: `activate(wb)`
+
+A plugin's front end is one native ES module (no build step), served from `static_dir` as
+`/plugins/<id>/<frontend>`. After core has drawn the map, the Workbench imports each loaded plugin's
+module in `GET /api/plugins` order, one at a time, and calls its `activate(wb)`. A slow plugin never
+delays the map. `wb` is the only way in: don't import core's modules or reach into its DOM.
+
+The hello example's `main.js`, annotated:
+
+<!-- doctest: skip -->
+```js
+export function activate(wb) {
+  let greeted = 0;
+
+  // A dock panel in the Inspect workspace. render(el) runs the first time the panel shows.
+  const panel = wb.registerPanel({
+    workspace: "inspect",
+    id: "hello.panel",                 // every id starts with "<plugin id>."
+    title: "Hello",
+    order: 50,                         // after core's Details (0)
+    badge: () => greeted || null,      // a count on the tab; {dirty: true, title: "…"} for unsaved work
+    render(el) {
+      el.innerHTML =
+        '<p class="muted">Greet someone. Each greeting is a recorded Action: see the history strip.</p>' +
+        '<div></div><button class="mini">Greet</button> <span class="muted" role="status"></span>';
+      const [, slot, button, status] = el.children;
+      // A form generated from the Action's JSON Schema (from GET /api/actions).
+      const form = wb.schemaForm(slot, wb.actionSchema("hello.greet"), { name: "world" });
+      button.onclick = async () => {
+        const errors = form.errors();  // required fields, bounds, entries that didn't parse
+        if (errors.length) { status.textContent = errors.join("; "); return; }
+        try {
+          // Every change is an Action: recorded in history, replayable in "Copy as Python".
+          status.textContent = await wb.api.dispatch({ ...form.value(), type: "hello.greet" });
+        } catch (e) {
+          status.textContent = e.message;  // text, never markup
+        }
+      };
+    },
+  });
+
+  // The count comes from the plugin's own route; host.publish("greeted") says when to re-read it.
+  const refresh = async () => {
+    greeted = (await wb.api.get("/count")).greeted;  // GET /api/plugins/hello/count
+    panel.refreshBadge();
+  };
+  wb.on("greeted", () => refresh());
+  refresh().catch(e => wb.toast(e.message));
+
+  // Commands: one in the palette, one on a right-clicked map feature or table row, one for the selection.
+  wb.registerCommand({
+    id: "hello.greet", title: "Say hello", contexts: ["palette"],
+    run: () => wb.api.dispatch({ type: "hello.greet", name: "world" }),
+  });
+  wb.registerCommand({
+    id: "hello.greet_record", title: "Say hello to this record", contexts: ["feature", "row"],
+    run: ctx => wb.api.dispatch({ type: "hello.greet", name: `${ctx.target.table} ${ctx.target.id}` }),
+  });
+  wb.registerCommand({
+    id: "hello.greet_selection", title: "Say hello to the selection", contexts: ["selection"],
+    when: ctx => ctx.selectionCount > 0,
+    run: ctx => wb.api.dispatch({ type: "hello.greet", name: `${ctx.selectionCount} selected links` }),
+  });
+}
+```
+
+### The `wb` reference
+
+| Member | What it gives you |
+|---|---|
+| `wb.id`, `wb.hostApi` | This plugin's id, and the plugin API this netstead provides (`"1.1"`). |
+| `wb.api.fetch(path, init)`, `wb.api.get(path)`, `wb.api.post(path, body)` | `fetch`, and JSON helpers, scoped to your router: `"/count"` is `/api/plugins/<id>/count`. A path must start with `/`; `..` and other hosts are refused. |
+| `wb.api.dispatch(action)` | Posts any Action (yours, another plugin's, core's) to `POST /api/actions` and resolves to its result. |
+| `wb.store.get()`, `wb.store.subscribe(keys, fn)` | The server state (`/api/state`), and a listener that fires when any of `keys` changes. Keys may be dotted (`"plugins.hello"`). `get()` is the page's live object: read it, never change it (changes go through Actions). Returns an unsubscribe function. |
+| `wb.selection.get()`, `wb.selection.subscribe(fn)` | The active network's shared selection (or `null`), and a listener for its changes. |
+| `wb.registerWorkspace({id, title, layout?, badge?, order?})` | A workspace tab. `layout: {view: "map" \| "split" \| "table"}` is its first-visit view; after that it opens in the view the user left it in. Returns an unregister function. |
+| `wb.registerPanel({workspace, id, title, render?, badge?, onShow?, order?})` | A dock panel. `workspace` is an id, a list, or `"*"` (every workspace). `render(el)` runs once, the first time it shows; `onShow()` each time it is shown. Returns `{refreshBadge(), dispose()}`. |
+| `wb.registerCommand({id, title, run, contexts?, when?, group?, order?})` | A command. `contexts` defaults to `["palette"]` (see [Commands](#commands)). Returns an unregister function. |
+| `wb.registerLayer(component, id, factory, {order?, title?})` | A map layer (see [Map layers](#map-layers)). Returns an unregister function. |
+| `wb.schemaForm(el, schema, value, {onChange?, omit?})` | Renders a form for a JSON Schema into `el` (see [Forms](#forms)). Returns `{value(), errors(), set(value), focus()}`. |
+| `wb.actionSchema(type)`, `wb.hasAction(type)` | An Action's JSON Schema (or `null`), and whether it is registered: for soft dependencies on another plugin, as `host.has_action` is in Python. Read from `GET /api/actions` before activation. |
+| `wb.on(event, fn)` | Your own `host.publish(event, payload)` events (`"greeted"`), another plugin's (`"catalog.added"`), or core's (`"core.history"`, `"core.job"`). They arrive over the page's one event stream: never open your own `EventSource`. Returns an unsubscribe function. |
+| `wb.showPanel(id)` | Shows a panel, switching workspace when the current one doesn't have it. |
+| `wb.toast(message)` | A short notice, prefixed with your plugin id. |
+
+`GET /api/actions` lists every registered Action: `type`, class `name`, `description` (its
+docstring's first line), owning `plugin` (`null` for core), `mutates`, and its JSON `schema`.
+
+**Ids.** Every id a plugin registers (workspace, panel, command, layer, and the `id` of each deck.gl
+layer a factory returns) starts with `"<plugin id>."`. Core's ids are bare (`inspect`, `details`,
+`links`), and the plugin id `core` is reserved.
+
+### Commands
+
+`run(ctx)` and `when(ctx)` get one context:
+
+| Key | What it is |
+|---|---|
+| `network` | `{id, version, derived_from}` of the active network, or `null`. |
+| `selection`, `selectionCount` | The active network's shared selection (`{net_id, link_ids, …}`) and its number of links. A selection with no links counts as none. |
+| `focus` | The record last clicked, `{table, id}`, or `null`. |
+| `highlights` | The highlighted link ids (an array). |
+| `workspace` | The active workspace's id. |
+| `target` | The right-clicked record, `{table, id}`: a map feature or grid row, or the focused record in the palette's "For …" group. `null` otherwise. |
+| `state` | The server state. |
+
+Everything in `ctx` is a frozen copy: changing it throws, and the page's own state is untouched.
+Changes go through Actions. A panel's or workspace's `badge(ctx)` gets the same context.
+
+Where each context shows:
+
+| `contexts` entry | Where |
+|---|---|
+| `"palette"` | The command palette (**Ctrl+K**, **⌘K** on a Mac, or **Commands…** in the header). |
+| `"feature"` | Right-click on a link or node on the map. |
+| `"row"` | Right-click on a table row. |
+| `"selection"` | **Selection actions ▾** in the Details panel, a "Selection (n links)" section in the map and row menus, and in the palette. |
+
+The palette is also the keyboard way to a context menu: with a record focused it lists that record's
+feature and row commands under "For ‹table› ‹id›", and the selection's under "Selection (n links)".
+A command's `group` shows as "Group ▸ Title" in menus and the palette. A menu opens only when a
+command applies; with none, the map keeps its right-drag rotate and a table row the browser's own
+menu.
+
+**Declarative first.** Every plugin Action also gets a generated palette command, "‹Plugin›:
+‹Action›…" (for hello, "Hello: Greet…"). It opens a dialog with the Action's schema form and a Run
+button, so a plugin that ships no JavaScript is still usable.
+
+### Badges
+
+`badge(ctx)` returns a count, a string, or `{text, dirty, title}`, or nothing for no badge. It is
+re-evaluated on every server-state change, and when you call `panel.refreshBadge()`. `dirty: true`
+shows a dot on the panel's tab and on its workspace tab, so unsaved work is visible from anywhere.
+
+### Map layers
+
+<!-- doctest: skip -->
+```js
+wb.registerLayer("roadway", "hello.pins", ctx =>
+  ctx.focus && ctx.focus.table === "node"
+    ? new ctx.deck.ScatterplotLayer({ id: "hello.pins", data: [/* … */], getPosition: d => d.xy, getRadius: 8 })
+    : null,
+  { title: "Hello pins", order: 350 });
+```
+
+- `factory(ctx)` returns a deck.gl layer, a list of them, or nothing, on every map redraw. Anything
+  that isn't a deck.gl layer, or a layer whose `id` doesn't start with `"<plugin id>."`, is left
+  out and reported (core's ids drive picking, tooltips and box-select).
+- `ctx` has `deck` (the page's deck.gl), `server`, `style`, `selection`, `focus`, `highlights` (a
+  Set), `related`, `marker`, `zoom`, `net` and `attrs`. `server`, `selection`, `focus`, `related`
+  and `marker` are frozen copies and `highlights` is a copy. **`net` and `attrs`** (the decoded
+  network and its attributes) are too big to copy on each redraw, so they are the page's own: read
+  them, never change them.
+- Core's layers, bottom to top: `base` 100, `selection` 200, `related` 300, `highlighted` 400,
+  `focus` 500, `marker` 600. A plugin layer defaults to 350: above related records, under the user's
+  highlights, focus and marker.
+- A `title` lists the layer under Layers → **Overlays**, with a show/hide switch (per browser tab,
+  not recorded).
+- `"transit"` is accepted as a component and not drawn yet.
+
+### Forms
+
+`wb.schemaForm(el, schema, value, {onChange, omit})` is the Settings dialog's field renderer, made
+general: text, numbers (with their bounds), checkboxes, menus for enums and `Literal`s, lists, one
+level of nested object as a group, and JSON for anything else. A `const` property (an Action's
+`type`) gets no field, and `omit` drops others by name. `value()` is what the form shows: a
+checkbox's or menu's shown value is included, a field left blank is left out, and a required field
+that may be `None` sends `null` (its blank choice reads "None"). `errors()` lists required fields
+left empty, numbers out of bounds, and entries that didn't parse. The server validates again.
+
+### Styling
+
+Use core's classes (`mini`, `ghost`, `muted`, `pcount`, `row`, `sw`) so your panel looks like the
+rest of the Workbench. Scope your own CSS under `[data-panel="<your panel id>"]`, the panel's
+container. If you ship a stylesheet, add a `<link>` for it from `activate`.
+
+### When plugin code fails
+
+Every call into plugin code is contained, so one plugin's bug never breaks core or another plugin:
+
+| Call | When it throws (or its promise rejects) |
+|---|---|
+| `activate(wb)` (or the module import, or no `activate`, or more than 5 s) | Everything it registered is removed, and later registrations through that `wb` are refused. |
+| A panel's `render` | The panel shows "This panel failed to load: …". |
+| A `badge` | No badge. |
+| `onShow`, a `wb.on` or `wb.store` / `wb.selection` listener | Skipped for that call. |
+| A command's `when` | The command doesn't apply. |
+| A command's `run` | Nothing else happens. |
+| A layer factory | That layer isn't drawn. |
+
+Each failure is logged to the browser console, shown once in a notice ("Plugin hello: …"), and listed
+under the plugin in **Settings → Plugins**. A failure with the same message is reported once, not on
+every redraw.
+
+Every string a plugin hands core (titles, badges, menu labels, schema text) is shown as text, never
+as markup. Markup you write into your own panel's `el` is yours to escape.
+
 ## Test a plugin
 
 There is no special harness. Build a `Session` with your plugin passed in explicitly, which skips
@@ -305,7 +505,8 @@ session in `TestClient(build_app(session))` from `netstead.workbench`.
 ## Startup outcomes
 
 Every plugin seen at startup gets a `netstead.workbench.plugins.PluginStatus`, listed by
-`GET /api/plugins` together with the host's `host_api`:
+`GET /api/plugins` together with the host's `host_api`, and shown in the Workbench under
+**Settings → Plugins** (with any front-end errors from the browser):
 
 | State | Meaning |
 |---|---|
@@ -321,7 +522,10 @@ To turn a plugin off without uninstalling it:
 disabled_plugins = ["hello"]
 ```
 
-`app.disabled_plugins` is read at startup, so restart `netstead app` after changing it. Dispatching
+Or switch it off in **Settings → Plugins**, which saves `app.disabled_plugins` in your user config (the
+section says so when a project file or a `NETSTEAD_*` variable sets it instead, since that value wins).
+`app.disabled_plugins` is read at startup, so restart `netstead app` after changing it; the row says
+"restart to apply" until then. Dispatching
 an Action of a plugin that isn't loaded fails like any unknown Action type (HTTP 422).
 
 ## Versioning
@@ -330,6 +534,11 @@ an Action of a plugin that isn't loaded fails like any unknown Action type (HTTP
 is compatible when the major versions are equal and the host's minor is at least the plugin's. A
 plugin written against `1.0` runs on `1.3`, but not on `2.0`, and a `1.3` plugin doesn't run on `1.0`.
 A minor bump only adds to the API and a major bump breaks it.
+
+| `HOST_API` | Added |
+|---|---|
+| `1.0` | The Python plugin core: Actions, `Host`, settings, state, routes, static files. |
+| `1.1` | The browser API: `activate(wb)` and the `wb` object (workspaces, dock panels, commands, map layers, `schemaForm`), and `GET /api/actions`. A plugin with a front end should pass `requires_api="1.1"` (or `HOST_API`); a `1.0` plugin still runs. |
 
 **The plugin API is provisional until netstead v1.0.** Until then it may change without a major
 bump. Pin the netstead versions you support in your package's dependencies, and check the changelog
