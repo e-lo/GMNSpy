@@ -102,10 +102,11 @@ export const isPaletteShortcut = e =>
   Boolean(e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && String(e.key).toLowerCase() === "k";
 
 // One palette command per plugin Action, opening its schema form ("Hello: Greet…"): a plugin with no front end
-// still has a UI (plugins design, "declarative first").
+// still has a UI (plugins design, "declarative first"). An Action whose schema the server couldn't generate
+// (`schema: null`) gets none: there is nothing to build its form from.
 export function actionCommands(catalog, statuses) {
   const names = new Map(statuses.map(s => [s.id, s.name || s.id]));
-  return catalog.filter(a => a.plugin && names.has(a.plugin)).map(a => {
+  return catalog.filter(a => a.plugin && names.has(a.plugin) && a.schema).map(a => {
     const label = `${names.get(a.plugin)}: ${a.name}`;
     return { owner: a.plugin, id: `${a.type}:form`, title: `${label}…`, contexts: ["palette"],
       entry: { type: a.type, label, description: a.description, schema: a.schema } };

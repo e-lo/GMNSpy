@@ -1043,3 +1043,41 @@ def test_describe_error_redacts_bare_api_keys():
     text = describe_error(ValueError(f"upstream refused token {token}"))
     assert token not in text
     assert "[redacted]" in text
+
+
+# ---------------------------------------------------------------------------- JSON schemas (GET /api/actions)
+
+
+class Opaque:
+    """A field type pydantic can validate (``arbitrary_types_allowed``) but not describe in JSON Schema."""
+
+
+class OpaqueAction(BaseAction):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+    type: Literal["hello.opaque"] = "hello.opaque"
+    thing: Opaque | None = None
+
+
+def test_problems_refuses_an_action_with_no_json_schema():
+    found = problems(make_hello(actions=(_spec(OpaqueAction),)), ActionRegistry(), taken=())
+    assert any(p.startswith("hello.opaque: its fields have no JSON schema") for p in found), found
+
+
+def test_a_plugin_whose_action_has_no_schema_is_refused_and_the_catalog_still_answers(make_session):
+    session = make_session(make_hello(actions=(_spec(OpaqueAction),)))
+    assert _status(session, "hello").state == "error" and "no JSON schema" in _status(session, "hello").error
+    types = {entry["type"] for entry in session.action_catalog()}
+    assert "hello.opaque" not in types and "open_network" in types
+
+
+def test_the_catalog_lists_a_schema_it_cannot_generate_as_none(make_session, monkeypatch, caplog):
+    """Defence in depth: install refuses such a model, but a failure later must not fail the whole catalog."""
+    session = make_session(make_hello())
+
+    def boom(cls, *args, **kwargs):
+        raise RuntimeError("schema exploded")
+
+    monkeypatch.setattr(Greet, "model_json_schema", classmethod(boom))
+    catalog = {entry["type"]: entry for entry in session.action_catalog()}
+    assert catalog["hello.greet"]["schema"] is None and catalog["open_network"]["schema"]["properties"]
+    assert "hello.greet" in caplog.text

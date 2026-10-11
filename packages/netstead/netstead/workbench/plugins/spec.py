@@ -105,9 +105,25 @@ def problems(plugin: WorkbenchPlugin, registry: ActionRegistry, taken: Collectio
         if action_type in seen_types:
             found.append(f"action type {action_type!r} is declared twice")
         seen_types.add(action_type)
+        found.extend(_schema_problems(model, action_type))
         found.extend(_replay_problems(model, names))
         names = names | {model.__name__}
     return found
+
+
+def _schema_problems(model: type[BaseAction], action_type: str) -> list[str]:
+    """Why ``model`` has no JSON schema (``GET /api/actions`` and the browser's generated forms need one).
+
+    A field pydantic can validate but not describe (an ``arbitrary_types_allowed`` class, say) fails here,
+    at install, rather than in every later request for the Action catalog.
+    """
+    try:
+        model.model_json_schema()
+    # boundary: a third-party model (or its custom ``__get_pydantic_json_schema__``) may raise anything
+    except Exception as exc:
+        reason = (str(exc).strip().splitlines() or [type(exc).__name__])[0][:200]
+        return [f"{action_type}: its fields have no JSON schema ({reason})"]
+    return []
 
 
 def _replay_problems(model: type[BaseAction], names: Collection[str]) -> list[str]:

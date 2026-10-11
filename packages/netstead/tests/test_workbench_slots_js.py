@@ -402,3 +402,9 @@ def test_view_for_a_workspace_and_the_derived_network_mark(node_module):
         ' networkBadge({derived_from: "n1"}), networkBadge({derived_from: null}), networkBadge(null)]',
     )
     assert got == ["split", "table", "table", "derived", "", ""]
+
+
+def test_an_action_without_a_schema_gets_no_form_command(node_module):
+    catalog = [{"type": "hello.opaque", "name": "Opaque", "description": "", "plugin": "hello", "schema": None}]
+    got = node_module("commands.js", ["actionCommands"], f'actionCommands({json.dumps(catalog)}, [{{id: "hello"}}])')
+    assert got == []
