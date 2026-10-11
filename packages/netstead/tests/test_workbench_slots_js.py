@@ -173,3 +173,144 @@ def test_panels_for_a_workspace_include_shared_ones_and_disposers_undo(node_modu
     assert before == [["details", "hello.p"], ["details", "cards.d"]]
     assert after == ["details"]
     assert bad == "workspace cards.edit: layout.view must be one of map, split, table"
+
+
+COMMANDS_JS = """
+const cmds = [
+  {id: "open", title: "Open / Import…", contexts: ["palette"], run() {}},
+  {id: "zoom_selection", title: "Zoom to selection", contexts: ["palette"], when: c => c.selectionCount > 0, run() {}},
+  {id: "hello.greet", title: "Say hello", contexts: ["palette"], run() {}},
+  {id: "hello.rec", title: "Say hello to this record", contexts: ["feature", "row"], run() {}},
+  {id: "hello.lane", title: "Lane only", contexts: ["row"], when: c => c.target.table === "lane", run() {}},
+  {id: "hello.sel", title: "Hello selection", contexts: ["selection"], run() {}},
+  {id: "hello.both", title: "Both", contexts: ["feature", "selection"], run() {}},
+  {id: "bad.when", title: "Broken", contexts: ["palette"], when: () => { throw new Error("boom"); }, run() {}},
+];
+const server = {networks: [{id: "n1", version: 3, derived_from: null}], active: "n1",
+                selection: {net_id: "n1", link_ids: [1, 2]}};
+const shape = groups => groups.map(g => [g.title, g.items.map(i => (i.command || i).id)]);
+"""
+
+
+def _commands(node_module, body: str, names: list[str]):
+    return node_module("commands.js", names, f"(() => {{ {COMMANDS_JS} {body} }})()")
+
+
+def test_command_context_describes_the_network_selection_and_view(node_module):
+    got = _commands(
+        node_module,
+        'const c = commandContext({server, focus: {table: "link", id: 7, from: "map"}, highlights: new Set([5])});'
+        "return [c.network, c.selectionCount, c.highlights, c.workspace, c.target];",
+        ["commandContext"],
+    )
+    assert got == [{"id": "n1", "version": 3, "derived_from": None}, 2, [5], "inspect", None]
+
+
+def test_menu_sections_for_a_feature_then_the_selection_without_repeats(node_module):
+    got = _commands(
+        node_module,
+        'return [shape(menuSections(cmds, "feature", commandContext({server}, {table: "link", id: 7}))),'
+        ' shape(menuSections(cmds, "row",'
+        ' commandContext({server: {...server, selection: null}}, {table: "lane", id: 3})))];',
+        ["commandContext", "menuSections"],
+    )
+    assert got == [
+        [["link 7", ["hello.rec", "hello.both"]], ["Selection (2 links)", ["hello.sel"]]],
+        [["lane 3", ["hello.rec", "hello.lane"]]],
+    ]
+
+
+def test_palette_groups_reach_the_focused_record_and_contain_a_broken_when(node_module):
+    got = _commands(
+        node_module,
+        'const ctx = commandContext({server, focus: {table: "link", id: 7, from: "map"}});'
+        "const errors = []; const groups = paletteGroups(cmds, ctx, '', (c, e) => errors.push([c.id, e.message]));"
+        "return [shape(groups), errors, groups[1].items[0].ctx.target, shape(paletteGroups(cmds, ctx, 'hello'))];",
+        ["commandContext", "paletteGroups"],
+    )
+    everything, errors, target, hello = got
+    assert everything == [
+        ["Commands", ["open", "zoom_selection", "hello.greet"]],
+        ["For link 7", ["hello.rec", "hello.both"]],
+        ["Selection (2 links)", ["hello.sel"]],
+    ]
+    assert errors == [["bad.when", "boom"]]
+    assert target == {"table": "link", "id": 7}
+    assert hello == [
+        ["Commands", ["hello.greet"]],
+        ["For link 7", ["hello.rec"]],
+        ["Selection (2 links)", ["hello.sel"]],
+    ]
+
+
+def test_match_score_and_the_palette_shortcut(node_module):
+    got = node_module(
+        "commands.js",
+        ["matchScore", "isPaletteShortcut"],
+        '[[matchScore("Say hello", "hello"), matchScore("Hello selection", "hello"), matchScore("Othello", "hello"),'
+        ' matchScore("Zoom to selection", "zts"), matchScore("Open", "x"), matchScore("Open", "")],'
+        ' [isPaletteShortcut({key: "k", ctrlKey: true}), isPaletteShortcut({key: "K", metaKey: true}),'
+        ' isPaletteShortcut({key: "k"}), isPaletteShortcut({key: "k", ctrlKey: true, shiftKey: true})]]',
+    )
+    assert got == [[2, 3, 1, 0.5, -1, 0], [True, True, False, False]]
+
+
+def test_run_command_reports_sync_and_async_failures(node_module):
+    expr = """await (async () => {
+      const errors = [], report = (c, e) => errors.push([c.id, e.message]);
+      await runCommand({id: "x", run: () => { throw new Error("bad"); }}, {}, report);
+      await runCommand({id: "y", run: async () => { throw new Error("later"); }}, {}, report);
+      return errors;
+    })()"""
+    assert node_module("commands.js", ["runCommand"], expr) == [["x", "bad"], ["y", "later"]]
+
+
+def test_every_plugin_action_gets_a_form_command(node_module):
+    catalog = [
+        {
+            "type": "open_network",
+            "name": "OpenNetwork",
+            "description": "Open",
+            "plugin": None,
+            "mutates": False,
+            "schema": {},
+        },
+        {
+            "type": "hello.greet",
+            "name": "Greet",
+            "description": "Greet someone.",
+            "plugin": "hello",
+            "mutates": False,
+            "schema": {"properties": {}},
+        },
+    ]
+    got = node_module(
+        "commands.js", ["actionCommands"], f'actionCommands({json.dumps(catalog)}, [{{id: "hello", name: "Hello"}}])'
+    )
+    assert got == [
+        {
+            "owner": "hello",
+            "id": "hello.greet:form",
+            "title": "Hello: Greet…",
+            "contexts": ["palette"],
+            "entry": {
+                "type": "hello.greet",
+                "label": "Hello: Greet",
+                "description": "Greet someone.",
+                "schema": {"properties": {}},
+            },
+        }
+    ]
+
+
+def test_a_selection_with_no_links_offers_no_selection_commands(node_module):
+    """An utterance that resolved to nothing leaves a selection with ``link_ids: []``: nothing to act on."""
+    got = _commands(
+        node_module,
+        "const empty = {...server, selection: {net_id: 'n1', link_ids: []}};"
+        'const ctx = commandContext({server: empty}, {table: "link", id: 7});'
+        'return [shape(menuSections(cmds, "feature", ctx)), selectionSections(cmds, ctx),'
+        " shape(paletteGroups(cmds, ctx, '')).map(g => g[0])];",
+        ["commandContext", "menuSections", "selectionSections", "paletteGroups"],
+    )
+    assert got == [[["link 7", ["hello.rec", "hello.both"]]], [], ["Commands"]]
