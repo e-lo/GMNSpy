@@ -1,4 +1,5 @@
 // Workbench boot: wire modules to the store and the server's SSE stream.
+import { wireActionForm } from "./actform.js";
 import { getBuffer, getJSON, netPath, subscribe } from "./api.js";
 import { wirePalette } from "./cmdpalette.js";
 import { registerCoreCommands } from "./corecmds.js";
@@ -146,6 +147,7 @@ async function boot() {
   wireContextMenus({ onError: (command, e) => toast(`${command.title}: ${(e && e.message) || e}`) }); // Task 14 routes this to the Plugins section
   registerCoreCommands();
   wirePalette({ onError: (command, e) => toast(`${command.title}: ${(e && e.message) || e}`) }); // Task 14 routes this too
+  wireActionForm();
   wireStore(); wirePanels(); wireSide(); wireTable(); wireHeader(); wireHistory(); wireMapButtons(); wireJobs(); wireWizard(); wireLLM(); wireSettings();
   registerSection("llm", "Language models", "llm-panel", () => renderLLMPanel());
   renderRecent();

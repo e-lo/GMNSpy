@@ -259,6 +259,21 @@
   </div>
 </div>
 <!-- /cmdk -->
+<div id="actform" class="modal" role="dialog" aria-modal="true" aria-labelledby="actform-title" aria-describedby="actform-desc" hidden>
+  <div class="modal-card">
+    <div class="modal-head">
+      <h3 id="actform-title">Action</h3>
+      <button class="mini ghost" id="actform-close" aria-label="Close">&#10005;</button>
+    </div>
+    <div class="modal-body">
+      <p class="llm-note" id="actform-desc"></p>
+      <div id="actform-body"></div>
+      <p class="wz-note" id="actform-result" role="status"></p>
+    </div>
+    <div class="modal-foot"><span></span><button class="mini" id="actform-run">Run</button></div>
+  </div>
+</div>
+<!-- /actform -->
 <div id="ctxmenu" role="menu" aria-label="Commands" hidden></div>
 <div id="toast" role="status"></div>
 </body>

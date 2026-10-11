@@ -292,3 +292,11 @@
   #cmd-slot { display:flex; justify-content:flex-end; min-width:0; container-type:inline-size; }
   @container (max-width: 112px) { #cmd-btn { display:none; } }
   @media (max-width: 640px) { #cmd-btn { display:none; } }
+  /* ---- schema forms (wb.schemaForm, Action forms) ---- */
+  .sf-field { display:grid; grid-template-columns:minmax(110px, 200px) 1fr; gap:4px 10px; align-items:center; padding:5px 0; }
+  .sf-field input:not([type=checkbox]), .sf-field select, .sf-field textarea { background:#0c0e12; color:var(--ink);
+    border:1px solid var(--edge); border-radius:6px; padding:5px 8px; min-width:0; font:inherit; }
+  .sf-field input[type=checkbox] { justify-self:start; }
+  .sf-help { grid-column:2; color:var(--muted); font-size:12px; }
+  .sf-group { margin:10px 0 2px; font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.06em; }
+  .sf-req { color:var(--accent); }

@@ -288,3 +288,15 @@ def test_dialogs_share_one_focus_trap():
     assert 'from "./modal.js"' in (JS_DIR / "cmdpalette.js").read_text()
     main = (JS_DIR / "main.js").read_text()
     assert "wirePalette(" in main and "registerCoreCommands()" in main
+
+
+def test_schema_forms_reuse_the_shared_field_model_and_the_action_dialog_exists():
+    formview = (JS_DIR / "formview.js").read_text()
+    for name in ("fieldsFrom", "inputHTML", "parseControl", "setPath", "formErrors"):
+        assert name in formview
+    html = (STATIC_DIR / "index.html").read_text()
+    dialog = html[html.index('id="actform"') : html.index("<!-- /actform -->")]
+    for suffix in ("title", "desc", "body", "result", "run", "close"):
+        element_id = f"actform-{suffix}"
+        assert f'id="{element_id}"' in dialog
+    assert "wireActionForm()" in (JS_DIR / "main.js").read_text()
