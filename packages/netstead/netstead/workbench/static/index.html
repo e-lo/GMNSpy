@@ -25,7 +25,7 @@
         <button data-mode="table">Table</button>
       </div>
       <span id="count"></span>
-      <span class="spacer"></span>
+      <span class="spacer" id="cmd-slot"><button id="cmd-btn" class="mini ghost" title="Command palette (Ctrl+K, ⌘K on a Mac)" aria-keyshortcuts="Control+K Meta+K">Commands…</button></span>
       <button id="jobs-btn" class="mini ghost" aria-label="Background jobs">Jobs <span id="jobs-count" class="pcount">0</span></button>
       <button id="settings-btn" class="mini ghost">Settings…</button>
     </div>
@@ -251,6 +251,14 @@
   </div>
 </div>
 <!-- /settings -->
+<div id="cmdk" class="modal" role="dialog" aria-modal="true" aria-label="Command palette" hidden>
+  <div class="modal-card cmdk-card">
+    <input id="cmdk-input" role="combobox" aria-expanded="true" aria-controls="cmdk-list" aria-autocomplete="list"
+           aria-label="Command" placeholder="Type a command…" autocomplete="off" spellcheck="false" />
+    <ul id="cmdk-list" role="listbox" aria-label="Commands"></ul>
+  </div>
+</div>
+<!-- /cmdk -->
 <div id="ctxmenu" role="menu" aria-label="Commands" hidden></div>
 <div id="toast" role="status"></div>
 </body>

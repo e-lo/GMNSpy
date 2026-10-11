@@ -279,3 +279,16 @@
   #ctxmenu button { display:block; width:100%; text-align:left; background:none; color:var(--ink); border:0; border-radius:6px;
                     padding:6px 10px; font-weight:500; font-size:12.5px; }
   #ctxmenu button:hover, #ctxmenu button:focus { background:#20242e; outline:none; }
+  /* ---- the command palette ---- */
+  .cmdk-card { width:min(560px, calc(100vw - 32px)); align-self:flex-start; margin-top:12vh; }
+  #cmdk-input { margin:12px; padding:9px 12px; font-size:14px; }
+  #cmdk-list { list-style:none; margin:0; padding:0 6px 8px; max-height:50vh; overflow:auto; }
+  #cmdk-list .cmdk-head { padding:8px 10px 2px; font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.06em; }
+  #cmdk-list [role="option"] { padding:7px 10px; border-radius:6px; cursor:pointer; font-size:13px; }
+  #cmdk-list [role="option"].on { background:#20242e; color:var(--accent); }
+  #cmdk-list .empty { padding:7px 10px; }
+  /* "Commands…" lives in the header's spacer and shows only when the spacer has room for it, so it never makes the
+     header wrap (its layout is unchanged at every width); Ctrl+K still opens the palette when it is hidden. */
+  #cmd-slot { display:flex; justify-content:flex-end; min-width:0; container-type:inline-size; }
+  @container (max-width: 112px) { #cmd-btn { display:none; } }
+  @media (max-width: 640px) { #cmd-btn { display:none; } }

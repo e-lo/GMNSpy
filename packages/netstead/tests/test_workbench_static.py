@@ -270,3 +270,21 @@ def test_context_menus_are_wired_on_the_map_the_grid_and_the_selection():
     assert 'openContextMenu("row"' in table and "oncontextmenu" in table
     main = (JS_DIR / "main.js").read_text()
     assert 'openContextMenu("feature"' in main and "wireContextMenus(" in main
+
+
+def test_the_palette_is_an_accessible_combobox_dialog():
+    html = (STATIC_DIR / "index.html").read_text()
+    palette = html[html.index('id="cmdk"') : html.index("<!-- /cmdk -->")]
+    assert 'role="dialog" aria-modal="true"' in palette
+    assert 'id="cmdk-input" role="combobox"' in palette and 'aria-controls="cmdk-list"' in palette
+    assert 'id="cmdk-list" role="listbox"' in palette
+    row = html[html.index("<header>") : html.index('id="nl-row"')]
+    assert 'id="cmd-btn"' in row and 'aria-keyshortcuts="Control+K Meta+K"' in row
+
+
+def test_dialogs_share_one_focus_trap():
+    settings = (JS_DIR / "settings.js").read_text()
+    assert "function trapTab" not in settings and 'from "./modal.js"' in settings
+    assert 'from "./modal.js"' in (JS_DIR / "cmdpalette.js").read_text()
+    main = (JS_DIR / "main.js").read_text()
+    assert "wirePalette(" in main and "registerCoreCommands()" in main

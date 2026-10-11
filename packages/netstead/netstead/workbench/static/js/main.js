@@ -1,5 +1,7 @@
 // Workbench boot: wire modules to the store and the server's SSE stream.
 import { getBuffer, getJSON, netPath, subscribe } from "./api.js";
+import { wirePalette } from "./cmdpalette.js";
+import { registerCoreCommands } from "./corecmds.js";
 import { openContextMenu, wireContextMenus } from "./ctxmenu.js";
 import { $, toast } from "./dom.js";
 import { rememberRecent, renderHeader, renderRecent, wireHeader } from "./header.js";
@@ -142,6 +144,8 @@ async function boot() {
   registerCoreSlots();
   wireWorkspaces();
   wireContextMenus({ onError: (command, e) => toast(`${command.title}: ${(e && e.message) || e}`) }); // Task 14 routes this to the Plugins section
+  registerCoreCommands();
+  wirePalette({ onError: (command, e) => toast(`${command.title}: ${(e && e.message) || e}`) }); // Task 14 routes this too
   wireStore(); wirePanels(); wireSide(); wireTable(); wireHeader(); wireHistory(); wireMapButtons(); wireJobs(); wireWizard(); wireLLM(); wireSettings();
   registerSection("llm", "Language models", "llm-panel", () => renderLLMPanel());
   renderRecent();

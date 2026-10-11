@@ -2,6 +2,7 @@
 // Other modules add their own sections with registerSection (the Language models panel is one).
 import { dispatch, getJSON } from "./api.js";
 import { $, esc, toast } from "./dom.js";
+import { trapTab } from "./modal.js";
 import { clearHint, resetScope, scopeNote, sectionsFrom } from "./settingsform.js";
 import { inputHTML, parseControl } from "./schemaform.js";
 
@@ -26,18 +27,6 @@ export async function openSettings(section) {
   showSection(section || current || (sections[0] && sections[0].name));
   const first = $("set-nav").querySelector("button.on") || $("set-close");
   if (!$("settings").contains(document.activeElement)) first.focus();
-}
-
-const focusables = () => [...$("settings").querySelectorAll("button, input, select, textarea, a[href], [tabindex]")]
-  .filter(el => !el.disabled && el.tabIndex >= 0 && el.getClientRects().length);
-
-function trapTab(e) {
-  if (e.key !== "Tab") return;
-  const els = focusables();
-  if (!els.length) return;
-  const first = els[0], last = els[els.length - 1];
-  if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
-  else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
 }
 
 export async function refreshSettings() {
@@ -144,6 +133,6 @@ export function wireSettings() {
     const b = e.target.closest("button[data-reset]");
     if (b) save(b.dataset.reset, null, b.dataset.scope);
   };
-  $("settings").addEventListener("keydown", trapTab);
+  $("settings").addEventListener("keydown", e => trapTab($("settings"), e));
   document.addEventListener("keydown", e => { if (e.key === "Escape" && settingsOpen()) closeSettings(); });
 }
