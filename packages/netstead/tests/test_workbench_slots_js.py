@@ -882,3 +882,17 @@ def test_the_map_menu_opens_on_a_click_never_after_a_right_drag(node_module):
     })()"""
     got = node_module("gesture.js", ["createClickGuard"], expr)
     assert got == [None, "open", None, None, None, "open", None, None]
+
+
+def test_views_are_saved_per_workspace_and_inspect_restores_its_own(node_module):
+    got = node_module(
+        "tabs.js",
+        ["rememberView", "restoredView"],
+        """(() => {
+          let v = rememberView({}, "inspect", "map");
+          v = rememberView(v, "cards.edit", "split");  // a plugin workspace's layout, saved under its own id
+          return [v, restoredView(v, "split"), restoredView({}, "table"), restoredView({}, null),
+                  restoredView({ inspect: "bogus" }, "nope")];
+        })()""",
+    )
+    assert got == [{"inspect": "map", "cards.edit": "split"}, "map", "table", None, None]

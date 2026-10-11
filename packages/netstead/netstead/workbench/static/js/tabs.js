@@ -51,5 +51,15 @@ export function tabLabel(title, badge) {
 export const viewFor = (workspace, remembered, current) =>
   remembered[workspace.id] || (workspace.layout && workspace.layout.view) || current;
 
+// The saved views (localStorage "netstead.views": workspace id -> view) after `workspace` was shown in `mode`. Each
+// workspace has its own entry, so a plugin workspace's layout never becomes Inspect's view after a reload.
+export const rememberView = (views, workspace, mode) => ({ ...views, [workspace]: mode });
+
+// The view Inspect reopens in: its own saved one, else the single key used before views were per workspace.
+export function restoredView(views, legacy) {
+  const ok = v => ["map", "split", "table"].includes(v);
+  return ok(views && views.inspect) ? views.inspect : ok(legacy) ? legacy : null;
+}
+
 // The network switcher's mark for a derived (non-base) network, such as a plugin's preview: "" for a base network.
 export const networkBadge = summary => (summary && summary.derived_from ? "derived" : "");

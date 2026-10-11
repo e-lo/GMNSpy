@@ -4,12 +4,12 @@
 import { $, esc, toast } from "./dom.js";
 import { ALL_WORKSPACES, CORE, panelsFor, slots } from "./slots.js";
 import { store } from "./store.js";
-import { currentViewMode, setViewMode } from "./table.js";
+import { currentViewMode, savedViews, setViewMode } from "./table.js";
 import { nextIndex, normalizeBadge, tabLabel, viewFor, workspaceBadge } from "./tabs.js";
 
 const WS_KEY = "netstead.workspace";
 const rendered = new Set(); // panels whose render(el) has run (once, the first time each shows)
-const views = {};           // workspace id -> the view mode the user left it in
+const views = {};           // workspace id -> the view mode the user left it in (this page; savedViews() across reloads)
 let lastShown = null;
 let report = (owner, phase, error) => toast(`${owner}: ${(error && error.message) || error}`);
 
@@ -62,7 +62,7 @@ export function showWorkspace(id) {
   const target = slots.workspaces.get(id) ? id : "inspect";
   if (target === s.workspace) { renderStrips(); return; }
   views[s.workspace] = currentViewMode();
-  const mode = viewFor(slots.workspaces.get(target), views, currentViewMode());
+  const mode = viewFor(slots.workspaces.get(target), { ...savedViews(), ...views }, currentViewMode());
   store.set({ workspace: target });
   if (mode !== currentViewMode()) setViewMode(mode);
   try { localStorage.setItem(WS_KEY, target); } catch (e) { /* storage unavailable: the workspace isn't remembered */ }

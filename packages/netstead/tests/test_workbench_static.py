@@ -334,3 +334,10 @@ def test_settings_has_a_plugins_section_registered_like_language_models():
 def test_the_network_switcher_marks_derived_networks():
     header = (JS_DIR / "header.js").read_text()
     assert 'from "./tabs.js"' in header and "networkBadge(" in header
+
+
+def test_the_view_mode_is_saved_per_workspace_not_in_one_key():
+    table = (JS_DIR / "table.js").read_text()
+    save = "localStorage.setItem(VIEWS_KEY, JSON.stringify(rememberView(savedViews(), store.get().workspace, mode)))"
+    assert save in table
+    assert "localStorage.setItem(LEGACY_VIEW_KEY" not in table  # the old single key is only read

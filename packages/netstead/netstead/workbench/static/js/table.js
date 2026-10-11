@@ -8,10 +8,12 @@ import { clampOffset, coerceId, pageOffset, rowMarks, rowsRequest, scopeHint } f
 import { resizeSoon } from "./map.js";
 import { renderRelatedBadges } from "./related.js";
 import { activeSelection, store } from "./store.js";
+import { rememberView, restoredView } from "./tabs.js";
 
 const TBL = { loaded: false, name: null, schema: null, offset: 0, limit: 100, sort: null, dir: "asc", filters: {},
   total: 0, seq: 0 };
-const VIEW_KEY = "netstead.viewmode";
+const VIEWS_KEY = "netstead.views";         // workspace id -> its view (map | split | table)
+const LEGACY_VIEW_KEY = "netstead.viewmode"; // the one view remembered before workspaces
 let filterTimer = null, located = null;
 // Row reloads are coalesced (a box-select changes highlights, focus and related in one burst), and skipped
 // while the table is hidden: `dirty` makes the next showing reload.
@@ -25,10 +27,21 @@ export const tableVisible = () => $("stage").dataset.mode !== "map";
 export const tableShowing = name => tableVisible() && TBL.name === name;
 export const currentViewMode = () => $("stage").dataset.mode;
 
+// Each workspace's last view, as saved in this browser ({} when none or unreadable).
+export function savedViews() {
+  try {
+    const v = JSON.parse(localStorage.getItem(VIEWS_KEY) || "{}");
+    return v && typeof v === "object" && !Array.isArray(v) ? v : {};
+  } catch (e) { return {}; } // storage unavailable or garbled
+}
+
+// Saved under the active workspace: switching to a plugin workspace with a layout never changes Inspect's view.
 export function setViewMode(mode) {
   $("stage").dataset.mode = mode;
   for (const b of document.querySelectorAll("#viewmode button")) b.classList.toggle("on", b.dataset.mode === mode);
-  try { localStorage.setItem(VIEW_KEY, mode); } catch (e) { /* storage unavailable: mode just isn't remembered */ }
+  try {
+    localStorage.setItem(VIEWS_KEY, JSON.stringify(rememberView(savedViews(), store.get().workspace, mode)));
+  } catch (e) { /* storage unavailable: mode just isn't remembered */ }
   if (mode !== "map" && !TBL.loaded) loadTables().catch(fail);
   else if (mode !== "map" && dirty) refreshRows();
   resizeSoon();
@@ -215,6 +228,10 @@ export function syncScopeControls(s) {
   $("tbl-hops").classList.toggle("on", s.relHops > 1);
 }
 
+// At startup (Inspect is showing): Inspect's own saved view.
 export function restoreViewMode() {
-  try { const m = localStorage.getItem(VIEW_KEY); if (m) setViewMode(m); } catch (e) { /* storage unavailable */ }
+  let legacy = null;
+  try { legacy = localStorage.getItem(LEGACY_VIEW_KEY); } catch (e) { /* storage unavailable */ }
+  const m = restoredView(savedViews(), legacy);
+  if (m) setViewMode(m);
 }
