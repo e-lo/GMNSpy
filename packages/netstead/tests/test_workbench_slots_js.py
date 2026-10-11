@@ -606,16 +606,20 @@ export async function run() {
   wb.registerPanel({ id: "hello.p", title: "P", workspace: "hello.ws", render() {} });
   wb.registerCommand({ id: "hello.c", title: "C", run() {} });
   wb.registerLayer("roadway", "hello.l", () => null);
-  wb.store.subscribe(["plugins.hello"], s => { seen.push(["store", s.plugins.hello.n]); frozen.push(Object.isFrozen(s.plugins.hello)); });
-  wb.selection.subscribe(sel => { seen.push(["selection", sel && sel.link_ids]); frozen.push(Object.isFrozen(sel.link_ids)); });
+  wb.store.subscribe(["plugins.hello"], s => {
+    seen.push(["store", s.plugins.hello.n]); frozen.push(Object.isFrozen(s.plugins.hello));
+  });
+  wb.selection.subscribe(sel => {
+    seen.push(["selection", sel && sel.link_ids]); frozen.push(Object.isFrozen(sel.link_ids));
+  });
   wb.on("greeted", p => seen.push(["event", p]));
   wb.on("other.thing", () => { throw new Error("listener bug"); });
   let refused = null;
   try { wb.registerCommand({ id: "c2", title: "x", run() {} }); } catch (e) { refused = e.message; }
   await wb.api.get("/count"); await wb.api.post("/echo", { a: 1 }); await wb.api.dispatch({ type: "hello.greet" });
   // Each escapes /api/plugins/hello once resolved (".." encoded, or a backslash, which a URL reads as "/").
-  const badPaths = ["/../state", "/%2e%2e/state", "/%2E%2e/other/x", "/.%2e/state", "/..\\\\state", "/x\\\\..\\\\..\\\\state",
-    "//evil.example/x", "count", "/a/../../state", "/%2e%2e"].map(p => {
+  const badPaths = ["/../state", "/%2e%2e/state", "/%2E%2e/other/x", "/.%2e/state", "/..\\\\state",
+    "/x\\\\..\\\\..\\\\state", "//evil.example/x", "count", "/a/../../state", "/%2e%2e"].map(p => {
     try { return ["allowed", pluginPath("hello", p)]; } catch (e) { return e.message; }
   });
   const badPath = badPaths[0];
@@ -1127,7 +1131,8 @@ export async function paths() {
   const importModule = s => (s.id === "badimport" ? Promise.reject(new Error("SyntaxError: x"))
     : s.id === "hangimport" ? never() : Promise.resolve(mods[s.id]));
   const ids = ["ok", "badimport", "noact", "throws", "rejects", "hang", "hangimport", "late"];
-  const results = await Promise.all(ids.map(id => activateOne(st(id), { importModule, createWb, timeoutMs: 40, report })));
+  const deps = { importModule, createWb, timeoutMs: 40, report };
+  const results = await Promise.all(ids.map(id => activateOne(st(id), deps)));
   const atLimit = reports.length;
   await wait(120);
   return { results, activated, rolled: [...rolled].sort(), atLimit, reports: [...reports].sort() };
