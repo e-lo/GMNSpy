@@ -352,3 +352,53 @@ def test_layer_registry_orders_core_and_plugin_layers_and_contains_failures(node
     assert hidden == [layer for layer in layers if layer != "hello.dots"]
     assert transit == ["hello.stops"] and toggleable == ["hello.dots"]
     assert refused == ['unknown component "rail": use roadway or transit', 'hello: id "dots" must start with "hello."']
+
+
+def test_tab_keys_wrap_and_jump(node_module):
+    got = node_module(
+        "tabs.js",
+        ["nextIndex"],
+        '[nextIndex(0, "ArrowRight", 3), nextIndex(2, "ArrowRight", 3), nextIndex(0, "ArrowLeft", 3),'
+        ' nextIndex(1, "Home", 3), nextIndex(0, "End", 3), nextIndex(0, "ArrowDown", 3),'
+        ' nextIndex(0, "ArrowDown", 3, "vertical"), nextIndex(0, "ArrowUp", 3, "vertical"), nextIndex(0, "a", 3),'
+        ' nextIndex(0, "End", 0)]',
+    )
+    assert got == [1, 0, 2, 0, 2, None, 1, 2, None, None]
+
+
+def test_badges_normalise_roll_up_and_read_aloud(node_module):
+    got = node_module(
+        "tabs.js",
+        ["normalizeBadge", "workspaceBadge", "tabLabel"],
+        "[normalizeBadge(null), normalizeBadge(0), normalizeBadge(3),"
+        ' normalizeBadge({dirty: true, title: "2 unsaved"}), normalizeBadge({text: ""}),'
+        ' workspaceBadge(null, [null, {text: "4"}, {dirty: true, title: "Draft card"}]),'
+        ' workspaceBadge(null, [{text: "4"}]), workspaceBadge("!", [{dirty: true}]),'
+        ' tabLabel("Edits", {text: 2, dirty: true, title: "2 unsaved"}), tabLabel("Issues", 5),'
+        ' tabLabel("Details", null)]',
+    )
+    assert got == [
+        None,
+        None,
+        {"text": "3", "dirty": False, "title": ""},
+        {"text": "", "dirty": True, "title": "2 unsaved"},
+        None,
+        {"text": "", "dirty": True, "title": "Draft card"},  # a dirty panel marks its workspace tab
+        None,  # a count alone doesn't
+        {"text": "!", "dirty": False, "title": ""},
+        "Edits, 2 unsaved",
+        "Issues, 5",
+        "Details",
+    ]
+
+
+def test_view_for_a_workspace_and_the_derived_network_mark(node_module):
+    got = node_module(
+        "tabs.js",
+        ["viewFor", "networkBadge"],
+        '[viewFor({id: "cards.edit", layout: {view: "split"}}, {}, "map"),'
+        ' viewFor({id: "cards.edit", layout: {view: "split"}}, {"cards.edit": "table"}, "map"),'
+        ' viewFor({id: "inspect", layout: {}}, {}, "table"),'
+        ' networkBadge({derived_from: "n1"}), networkBadge({derived_from: null}), networkBadge(null)]',
+    )
+    assert got == ["split", "table", "table", "derived", "", ""]
