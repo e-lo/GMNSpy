@@ -2,7 +2,7 @@
 import { dispatch } from "./api.js";
 import { $, esc, toast } from "./dom.js";
 import { fitLinks } from "./map.js";
-import { networkBadge } from "./tabs.js";
+import { derivedTitle, networkBadge } from "./tabs.js";
 import { openWizard } from "./wizard.js";
 
 // Recents live in this browser's localStorage: a per-user convenience that needs no server code.
@@ -60,7 +60,7 @@ export function renderHeader(server) {
     ? server.networks.map(n => {
       const mark = networkBadge(n); // a base network's option is exactly as before
       return `<option value="${esc(n.id)}"${n.id === server.active ? " selected" : ""}` +
-        `${mark ? ` title="derived from ${esc(n.derived_from)}"` : ""}>${esc(n.label)}${mark ? ` • ${esc(mark)}` : ""}</option>`;
+        `${mark ? ` title="${esc(derivedTitle(n, server.networks))}"` : ""}>${esc(n.label)}${mark ? ` • ${esc(mark)}` : ""}</option>`;
     }).join("")
     : '<option value="">No network open</option>';
   sel.disabled = !server.networks.length;

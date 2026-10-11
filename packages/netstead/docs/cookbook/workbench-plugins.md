@@ -471,6 +471,11 @@ under the plugin in **Settings → Plugins**. A failure that would repeat on eve
 layer, a `when`, a listener) is reported once per message. A command's `run` is reported every time the
 user runs it, so they always see why nothing happened, but it is listed once.
 
+Only calls core makes into your code are contained this way. An error thrown from your own timer
+(`setTimeout`, `setInterval`), an event handler you attached yourself, or a promise you don't return to
+core reaches the browser console but isn't attributed to your plugin or listed in Settings → Plugins.
+Catch those yourself (and `wb.toast` if the user should know).
+
 Every string a plugin hands core (titles, badges, menu labels, schema text) is shown as text, never
 as markup. Markup you write into your own panel's `el` is yours to escape.
 

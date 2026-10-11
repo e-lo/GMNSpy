@@ -430,6 +430,21 @@ def test_view_for_a_workspace_and_the_derived_network_mark(node_module):
     assert got == ["split", "table", "table", "derived", "", ""]
 
 
+def test_the_derived_mark_names_its_base_network_or_says_it_is_closed(node_module):
+    nets = [
+        {"id": "n1", "label": "Leavenworth <base>"},
+        {"id": "n2", "label": "Preview", "derived_from": "n1"},
+        {"id": "n3", "label": "Orphan", "derived_from": "gone"},
+        {"id": "n4", "label": "Base"},
+    ]
+    got = node_module(
+        "tabs.js",
+        ["derivedTitle"],
+        f"(n => [derivedTitle(n[1], n), derivedTitle(n[2], n), derivedTitle(n[3], n)])({json.dumps(nets)})",
+    )
+    assert got == ["derived from Leavenworth <base>", "derived from gone (closed)", ""]
+
+
 def test_an_action_without_a_schema_gets_no_form_command(node_module):
     catalog = [{"type": "hello.opaque", "name": "Opaque", "description": "", "plugin": "hello", "schema": None}]
     got = node_module("commands.js", ["actionCommands"], f'actionCommands({json.dumps(catalog)}, [{{id: "hello"}}])')

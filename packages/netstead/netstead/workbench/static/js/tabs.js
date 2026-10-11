@@ -67,3 +67,9 @@ export function restoredView(views, legacy) {
 
 // The network switcher's mark for a derived (non-base) network, such as a plugin's preview: "" for a base network.
 export const networkBadge = summary => (summary && summary.derived_from ? "derived" : "");
+// The mark's tooltip: the base network's label while it is open, else its id and "(closed)". Text, not markup.
+export function derivedTitle(summary, networks) {
+  if (!networkBadge(summary)) return "";
+  const base = networks.find(n => n.id === summary.derived_from);
+  return base ? `derived from ${base.label}` : `derived from ${summary.derived_from} (closed)`;
+}
