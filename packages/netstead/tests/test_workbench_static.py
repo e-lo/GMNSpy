@@ -341,3 +341,15 @@ def test_the_view_mode_is_saved_per_workspace_not_in_one_key():
     save = "localStorage.setItem(VIEWS_KEY, JSON.stringify(rememberView(savedViews(), store.get().workspace, mode)))"
     assert save in table
     assert "localStorage.setItem(LEGACY_VIEW_KEY" not in table  # the old single key is only read
+
+
+def test_menus_and_tabs_name_their_groups_and_states():
+    ctxmenu = (JS_DIR / "ctxmenu.js").read_text()
+    assert '<div role="group" aria-label="${esc(sec.title)}">' in ctxmenu and '"aria-expanded"' in ctxmenu
+    palette = (JS_DIR / "cmdpalette.js").read_text()
+    assert '<li role="group" aria-label="${esc(g.title)}">' in palette
+    html = (STATIC_DIR / "index.html").read_text()
+    assert 'id="sel-cmds" aria-haspopup="menu" aria-expanded="false"' in html
+    workspaces = (JS_DIR / "workspaces.js").read_text()
+    assert "stripVisibility(" in workspaces and "setPanelRole(" in workspaces
+    assert 'onStripKey(e, slots.workspaces.list(), showWorkspace, "wtab", { manual: true })' in workspaces

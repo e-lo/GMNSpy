@@ -39,8 +39,10 @@ function refresh() {
   active = 0;
   let i = 0;
   $("cmdk-list").innerHTML = groups.length
-    ? groups.map(g => `<li role="presentation" class="cmdk-head">${esc(g.title)}</li>` + g.items.map(it =>
-      `<li role="option" id="cmdk-opt-${i}" data-i="${i++}" aria-selected="false">${esc(commandLabel(it.command))}</li>`).join("")).join("")
+    ? groups.map(g => `<li role="group" aria-label="${esc(g.title)}"><div class="cmdk-head" aria-hidden="true">${esc(g.title)}</div>` +
+      '<ul role="presentation">' + g.items.map(it =>
+      `<li role="option" id="cmdk-opt-${i}" data-i="${i++}" aria-selected="false">${esc(commandLabel(it.command))}</li>`).join("") +
+      "</ul></li>").join("")
     : '<li role="presentation" class="empty">No matching commands.</li>';
   mark();
 }

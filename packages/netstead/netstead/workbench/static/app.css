@@ -287,6 +287,7 @@
   #cmdk-list [role="option"] { padding:7px 10px; border-radius:6px; cursor:pointer; font-size:13px; }
   #cmdk-list [role="option"].on { background:#20242e; color:var(--accent); }
   #cmdk-list .empty { padding:7px 10px; }
+  #cmdk-list ul { list-style:none; margin:0; padding:0; }
   /* "Commands…" lives in the header's spacer and shows only when the spacer has room for it, so it never makes the
      header wrap (its layout is unchanged at every width); Ctrl+K still opens the palette when it is hidden. */
   #cmd-slot { display:flex; justify-content:flex-end; min-width:0; container-type:inline-size; }

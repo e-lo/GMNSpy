@@ -6,7 +6,7 @@ import { $, esc, toast } from "./dom.js";
 import { ALL_WORKSPACES, CORE, panelsFor, slots } from "./slots.js";
 import { store } from "./store.js";
 import { currentViewMode, savedViews, setViewMode } from "./table.js";
-import { nextIndex, normalizeBadge, tabLabel, viewFor, workspaceBadge } from "./tabs.js";
+import { nextIndex, normalizeBadge, stripVisibility, tabLabel, viewFor, workspaceBadge } from "./tabs.js";
 
 const WS_KEY = "netstead.workspace";
 const rendered = new Set(); // panels whose render(el) has run (once, the first time each shows)
@@ -113,15 +113,26 @@ function redraw(el, html) {
   if (focused && document.getElementById(focused)) document.getElementById(focused).focus();
 }
 
+// A tab's panel carries role="tabpanel" only while its strip shows, so with no plugins the page's roles are as before.
+function setPanelRole(el, tabId) {
+  if (tabId) { el.setAttribute("role", "tabpanel"); el.setAttribute("aria-labelledby", tabId); }
+  else { el.removeAttribute("role"); el.removeAttribute("aria-labelledby"); }
+}
+
 export function renderStrips() {
   const s = store.get(), workspaces = slots.workspaces.list();
-  $("ws-tabs").hidden = workspaces.length < 2;
-  redraw($("ws-tabs"), $("ws-tabs").hidden ? "" : workspaces.map(w => tabHTML("wtab", w, w.id === s.workspace,
-    workspaceBadge(badgeOf(w), panelsFor(slots.panels.list(), w.id).map(badgeOf)), "stage")).join(""));
   const panels = currentPanels(), current = selectedPanel(panels);
-  $("dock-tabs").hidden = panels.length < 2;
-  redraw($("dock-tabs"), $("dock-tabs").hidden ? "" : panels.map(p => tabHTML("dtab", p, p === current, badgeOf(p), `dock-${p.id}`)).join(""));
-  for (const pane of $("side").querySelectorAll(".dock-pane")) pane.hidden = !current || pane.dataset.panel !== current.id;
+  const show = stripVisibility(workspaces.length, panels.length);
+  $("ws-tabs").hidden = !show.workspaces;
+  redraw($("ws-tabs"), show.workspaces ? workspaces.map(w => tabHTML("wtab", w, w.id === s.workspace,
+    workspaceBadge(badgeOf(w), panelsFor(slots.panels.list(), w.id).map(badgeOf)), "stage")).join("") : "");
+  setPanelRole($("stage"), show.workspaces ? `wtab-${s.workspace}` : null);
+  $("dock-tabs").hidden = !show.dock;
+  redraw($("dock-tabs"), show.dock ? panels.map(p => tabHTML("dtab", p, p === current, badgeOf(p), `dock-${p.id}`)).join("") : "");
+  for (const pane of $("side").querySelectorAll(".dock-pane")) {
+    pane.hidden = !current || pane.dataset.panel !== current.id;
+    setPanelRole(pane, show.dock ? `dtab-${pane.dataset.panel}` : null);
+  }
   if (current) showPane(current);
 }
 
@@ -146,11 +157,15 @@ function failed(p, pane, e) {
   pane.innerHTML = `<p class="empty">This panel failed to load: ${esc((e && e.message) || e)}</p>`;
 }
 
-function onStripKey(e, items, currentId, activate, prefix) {
-  const n = nextIndex(items.findIndex(x => x.id === currentId), e.key, items.length);
+// Arrow keys, Home and End move along a strip from the focused tab. The dock's tabs activate as focus moves (a
+// panel is cheap to show); workspace tabs only move focus, and Enter or Space (the button's click) switches, because
+// a switch can change the whole stage's layout.
+function onStripKey(e, items, activate, prefix, { manual = false } = {}) {
+  const from = e.target.closest('[role="tab"]');
+  const n = nextIndex(items.findIndex(x => from && x.id === from.dataset.id), e.key, items.length);
   if (n === null) return;
   e.preventDefault();
-  activate(items[n].id);
+  if (!manual) activate(items[n].id);
   const tab = document.getElementById(`${prefix}-${items[n].id}`);
   if (tab) tab.focus();
 }
@@ -159,8 +174,8 @@ export function wireWorkspaces({ onError } = {}) {
   if (onError) report = onError;
   $("ws-tabs").onclick = e => { const b = e.target.closest('[role="tab"]'); if (b) showWorkspace(b.dataset.id); };
   $("dock-tabs").onclick = e => { const b = e.target.closest('[role="tab"]'); if (b) showPanel(b.dataset.id); };
-  $("ws-tabs").onkeydown = e => onStripKey(e, slots.workspaces.list(), store.get().workspace, showWorkspace, "wtab");
-  $("dock-tabs").onkeydown = e => onStripKey(e, currentPanels(), (selectedPanel(currentPanels()) || {}).id, showPanel, "dtab");
+  $("ws-tabs").onkeydown = e => onStripKey(e, slots.workspaces.list(), showWorkspace, "wtab", { manual: true });
+  $("dock-tabs").onkeydown = e => onStripKey(e, currentPanels(), showPanel, "dtab");
   store.subscribe(["workspace", "dockPanel", "server"], () => renderStrips());
   renderStrips();
 }

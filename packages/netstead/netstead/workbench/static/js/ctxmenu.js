@@ -27,7 +27,9 @@ export function openContextMenu(context, target, at) {
 
 function openSelectionMenu() {
   const ctx = contextNow(null), r = $("sel-cmds").getBoundingClientRect();
-  show(selectionSections(slots.commands.list(), ctx, report), ctx, { x: r.left, y: r.bottom + 4 });
+  if (show(selectionSections(slots.commands.list(), ctx, report), ctx, { x: r.left, y: r.bottom + 4 })) {
+    $("sel-cmds").setAttribute("aria-expanded", "true");
+  }
 }
 
 // Section titles and command labels may come from plugins: both are escaped.
@@ -38,8 +40,10 @@ function show(sections, ctx, at) {
   menuCtx = ctx;
   let i = 0;
   const menu = $("ctxmenu");
-  menu.innerHTML = sections.map(sec => `<div class="ctx-head" role="presentation">${esc(sec.title)}</div>` +
-    sec.items.map(c => `<button role="menuitem" tabindex="-1" data-i="${i++}">${esc(commandLabel(c))}</button>`).join("")).join("");
+  menu.innerHTML = sections.map(sec => `<div role="group" aria-label="${esc(sec.title)}">` +
+    `<div class="ctx-head" aria-hidden="true">${esc(sec.title)}</div>` +
+    sec.items.map(c => `<button role="menuitem" tabindex="-1" data-i="${i++}">${esc(commandLabel(c))}</button>`).join("") +
+    "</div>").join("");
   menu.hidden = false;
   const box = menu.getBoundingClientRect();
   menu.style.left = `${Math.max(4, Math.min(at.x, innerWidth - box.width - 4))}px`;
@@ -51,6 +55,7 @@ function show(sections, ctx, at) {
 export function closeMenu({ restore = true } = {}) {
   if (!menuOpen()) return;
   $("ctxmenu").hidden = true;
+  $("sel-cmds").setAttribute("aria-expanded", "false");
   if (restore && opener && opener.isConnected) opener.focus();
   opener = null;
 }

@@ -955,3 +955,14 @@ def test_the_palette_shortcut_is_cmd_k_on_a_mac_and_ctrl_k_elsewhere(node_module
         ]""",
     )
     assert got == [[True, True, False, False], [True, False, True, False], [True, False]]
+
+
+def test_strips_and_their_tabpanel_roles_show_only_with_two_tabs(node_module):
+    got = node_module(
+        "tabs.js", ["stripVisibility"], "[stripVisibility(1, 1), stripVisibility(2, 1), stripVisibility(1, 3)]"
+    )
+    assert got == [
+        {"workspaces": False, "dock": False},
+        {"workspaces": True, "dock": False},
+        {"workspaces": False, "dock": True},
+    ]

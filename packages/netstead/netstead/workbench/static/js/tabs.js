@@ -47,6 +47,10 @@ export function tabLabel(title, badge) {
   return parts.join(", ");
 }
 
+// Which tab strips show: each only with two or more tabs, so a Workbench with no plugins has neither (nor their
+// tabpanel roles).
+export const stripVisibility = (workspaceCount, panelCount) => ({ workspaces: workspaceCount >= 2, dock: panelCount >= 2 });
+
 // The view (map | split | table) a workspace opens in: where the user left it, else its layout's, else the current.
 export const viewFor = (workspace, remembered, current) =>
   remembered[workspace.id] || (workspace.layout && workspace.layout.view) || current;
