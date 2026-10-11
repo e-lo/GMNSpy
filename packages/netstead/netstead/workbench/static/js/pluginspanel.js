@@ -51,5 +51,8 @@ export function wirePluginsPanel() {
       toast(err.message);
     }
     await renderPluginsPanel().catch(err => toast(err.message));
+    // The list was redrawn: keep keyboard focus on the switch that was used.
+    const again = $("plugins-list").querySelector(`input[data-plugin="${CSS.escape(el.dataset.plugin)}"]`);
+    if (again) again.focus();
   };
 }
