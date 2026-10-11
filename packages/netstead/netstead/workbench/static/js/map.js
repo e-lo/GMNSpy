@@ -172,7 +172,7 @@ export function addLayer(owner, component, id, factory, options) {
   const dispose = layerRegistry.register(owner, component, id, factory, options);
   const changed = () => store.set({ layerSeq: store.get().layerSeq + 1 });
   changed();
-  return () => { dispose(); changed(); };
+  return () => { if (dispose()) changed(); };
 }
 
 function getTooltip({ layer, index }) {

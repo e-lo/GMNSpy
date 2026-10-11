@@ -14,7 +14,8 @@ export function createLayerRegistry() {
   let seq = 0;
   const sorted = () => [...items.values()].sort((a, b) => a.order - b.order || a.seq - b.seq);
   return {
-    // factory(ctx) -> a deck.gl layer, an array of them, or nothing. Returns a function that unregisters it.
+    // factory(ctx) -> a deck.gl layer, an array of them, or nothing. Returns a function that unregisters it (true
+    // when it did: a stale disposer never removes a later registration with the same id).
     register(owner, component, id, factory, { order, title = null } = {}) {
       if (!COMPONENTS.includes(component)) {
         throw new Error(`unknown component ${JSON.stringify(component)}: use ${COMPONENTS.join(" or ")}`);
@@ -23,8 +24,9 @@ export function createLayerRegistry() {
       if (typeof factory !== "function") throw new Error(`layer ${id}: factory must be a function`);
       if (items.has(id)) throw new Error(`layer ${JSON.stringify(id)} is already registered`);
       const fallback = owner === CORE ? CORE_ORDER[id] ?? 0 : PLUGIN_ORDER;
-      items.set(id, { owner, component, id, factory, title, order: order ?? fallback, seq: seq++ });
-      return () => items.delete(id);
+      const entry = { owner, component, id, factory, title, order: order ?? fallback, seq: seq++ };
+      items.set(id, entry);
+      return () => items.get(id) === entry && items.delete(id);
     },
     removeOwner(owner) { for (const [id, l] of items) if (l.owner === owner) items.delete(id); },
     ids: () => sorted().map(l => l.id),

@@ -425,3 +425,48 @@ def test_field_kind_keeps_only_finite_numeric_bounds(node_module):
         {"kind": "int", "nullable": False, "min": None, "max": 5},
         {"kind": "float", "nullable": False, "min": 0, "max": None},
     ]
+
+
+def test_slots_remove_owner_clears_all_three_registries_and_stale_disposers_are_no_ops(node_module):
+    expr = """(() => {
+      const sl = createSlots(), ids = () => [sl.workspaces, sl.panels, sl.commands].map(r => r.list().map(x => x.id));
+      sl.addWorkspace("core", {id: "inspect", title: "Inspect"});
+      sl.addWorkspace("hello", {id: "hello.ws", title: "W"});
+      sl.addPanel("hello", {id: "hello.p", title: "P", workspace: "*"});
+      const stale = sl.addCommand("hello", {id: "hello.c", title: "C", run() {}});
+      const before = ids();
+      sl.removeOwner("hello");
+      const after = ids();
+      sl.addCommand("other", {id: "other.c", title: "Mine", run() {}});
+      const again = sl.addCommand("hello", {id: "hello.c", title: "Again", run() {}});
+      const removed = [stale(), sl.commands.list().map(c => c.title)];  // the first disposer must not remove "Again"
+      return [before, after, removed, again(), again(), sl.commands.list().map(c => c.id)];
+    })()"""
+    before, after, removed, first, second, left = node_module("slots.js", ["createSlots"], expr)
+    assert before == [["inspect", "hello.ws"], ["hello.p"], ["hello.c"]]
+    assert after == [["inspect"], [], []]
+    assert removed == [False, ["Mine", "Again"]]
+    assert (first, second, left) == (True, False, ["other.c"])
+
+
+def test_check_id_wants_a_name_after_the_plugin_prefix(node_module):
+    expr = """(() => { try { checkId("hello", "hello."); return null; } catch (e) { return e.message; } })()"""
+    assert node_module("slots.js", ["checkId"], expr) == 'hello: id "hello." must name something after "hello."'
+
+
+def test_layer_registry_remove_owner_and_disposers(node_module):
+    expr = """(() => {
+      const reg = createLayerRegistry(), L = id => () => ({id});
+      reg.register("core", "roadway", "base", L("base"));
+      const stale = reg.register("hello", "roadway", "hello.a", L("hello.a"));
+      reg.register("hello", "transit", "hello.t", L("hello.t"));
+      reg.removeOwner("hello");
+      const afterOwner = reg.ids();
+      const again = reg.register("hello", "roadway", "hello.a", L("hello.a2"));
+      const staleResult = stale();
+      const kept = reg.build("roadway", {}).layers.map(l => l.id);
+      return [afterOwner, staleResult, kept, again(), reg.ids()];
+    })()"""
+    after_owner, stale, kept, first, left = node_module("layers.js", ["createLayerRegistry"], expr)
+    assert after_owner == ["base"] and stale is False and kept == ["base", "hello.a2"]
+    assert first is True and left == ["base"]

@@ -24,7 +24,7 @@ export function addWorkspace(owner, spec) {
   const dispose = slots.addWorkspace(owner, spec);
   renderStrips();
   return () => {
-    dispose();
+    if (!dispose()) return; // already gone, or the id belongs to a later registration now
     if (store.get().workspace === spec.id) showWorkspace("inspect"); else renderStrips();
   };
 }
@@ -47,7 +47,7 @@ export function addPanel(owner, spec) {
   return {
     refreshBadge: () => renderStrips(),
     dispose() {
-      dispose();
+      if (!dispose()) return; // already gone, or the id belongs to a later registration now
       const pane = paneFor(spec.id);
       if (pane) pane.remove();
       rendered.delete(spec.id);

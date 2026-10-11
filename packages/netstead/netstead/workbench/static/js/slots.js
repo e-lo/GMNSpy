@@ -13,6 +13,7 @@ export function checkId(owner, id) {
   if (owner !== CORE && !id.startsWith(`${owner}.`)) {
     throw new Error(`${owner}: id ${JSON.stringify(id)} must start with "${owner}."`);
   }
+  if (owner !== CORE && id === `${owner}.`) throw new Error(`${owner}: id ${JSON.stringify(id)} must name something after "${owner}."`);
 }
 
 // One ordered, owner-tagged collection: lower `order` first, then registration order.
@@ -28,7 +29,8 @@ export function createRegistry(kind) {
       return item;
     },
     get: id => items.get(id) || null,
-    remove: id => items.delete(id),
+    // With `item`, only that registration goes: a stale disposer must not remove a later one with the same id.
+    remove: (id, item) => (item === undefined || items.get(id) === item) && items.delete(id),
     removeOwner(owner) { for (const [id, item] of items) if (item.owner === owner) items.delete(id); },
     list: () => [...items.values()].sort((a, b) => a.order - b.order || a.seq - b.seq),
   };
@@ -75,12 +77,13 @@ export function commandSpec(spec) {
 // The dock's panels in workspace `id`: its own plus the shared ("*") ones, in order.
 export const panelsFor = (panels, id) => panels.filter(p => [].concat(p.workspace).some(w => w === id || w === ALL_WORKSPACES));
 
-// The three registries, with checked adders that return a function undoing the registration.
+// The three registries, with checked adders that return a function undoing the registration (true when it did:
+// it is a no-op once the id was removed, or registered again by someone else).
 export function createSlots() {
   const workspaces = createRegistry("workspace"), panels = createRegistry("panel"), commands = createRegistry("command");
   const adder = (registry, check) => (owner, spec) => {
     const item = registry.add(owner, check(spec));
-    return () => registry.remove(item.id);
+    return () => registry.remove(item.id, item);
   };
   return {
     workspaces, panels, commands,
