@@ -115,3 +115,61 @@ def test_input_html_marks_required_fields_under_another_prefix(node_module):
     assert got == (
         '<input id="sf1-name" data-key="name" aria-required="true" value="" placeholder="default" spellcheck="false">'
     )
+
+
+def test_registry_orders_entries_and_namespaces_plugin_ids(node_module):
+    expr = """(() => {
+      const r = createRegistry("panel");
+      r.add("core", {id: "details", title: "Details", order: 0});
+      r.add("hello", {id: "hello.b", title: "B", order: 50});
+      r.add("hello", {id: "hello.a", title: "A", order: 50});
+      r.add("cards", {id: "cards.x", title: "X", order: 10});
+      const errors = [];
+      for (const [owner, id] of [["hello", "panel"], ["hello", "cards.y"], ["core", "details"]])
+        try { r.add(owner, {id, title: "?"}); } catch (e) { errors.push(e.message); }
+      r.removeOwner("cards");
+      return [r.list().map(p => p.id), errors];
+    })()"""
+    ids, errors = node_module("slots.js", ["createRegistry"], expr)
+    assert ids == ["details", "hello.b", "hello.a"]
+    assert errors == [
+        'hello: id "panel" must start with "hello."',
+        'hello: id "cards.y" must start with "hello."',
+        'panel "details" is already registered',
+    ]
+
+
+def test_command_specs_default_to_the_palette_and_reject_bad_shapes(node_module):
+    expr = """(() => {
+      const errors = [];
+      for (const s of [{id: "hello.x", title: "X", run() {}, contexts: ["menu"]}, {id: "hello.x", title: "X"},
+                       {id: "hello.x", title: "X", run() {}, when: true}])
+        try { commandSpec(s); } catch (e) { errors.push(e.message); }
+      return [commandSpec({id: "hello.x", title: "X", run() {}}).contexts, errors];
+    })()"""
+    contexts, errors = node_module("slots.js", ["commandSpec"], expr)
+    assert contexts == ["palette"]
+    assert errors == [
+        "command hello.x: unknown context menu (use palette, feature, row, selection)",
+        'command "hello.x": run required',
+        "command hello.x: when must be a function",
+    ]
+
+
+def test_panels_for_a_workspace_include_shared_ones_and_disposers_undo(node_module):
+    expr = """(() => {
+      const sl = createSlots();
+      sl.addPanel("core", {id: "details", title: "Details", workspace: "*"});
+      const off = sl.addPanel("hello", {id: "hello.p", title: "P", workspace: "inspect", order: 5});
+      sl.addPanel("cards", {id: "cards.d", title: "Draft", workspace: ["cards.edit"]});
+      const ids = w => panelsFor(sl.panels.list(), w).map(p => p.id);
+      const before = [ids("inspect"), ids("cards.edit")];
+      off();
+      let bad = null;
+      try { workspaceSpec({id: "cards.edit", title: "Edit", layout: {view: "globe"}}); } catch (e) { bad = e.message; }
+      return [before, panelsFor(sl.panels.list(), "inspect").map(p => p.id), bad];
+    })()"""
+    before, after, bad = node_module("slots.js", ["createSlots", "panelsFor", "workspaceSpec"], expr)
+    assert before == [["details", "hello.p"], ["details", "cards.d"]]
+    assert after == ["details"]
+    assert bad == "workspace cards.edit: layout.view must be one of map, split, table"
