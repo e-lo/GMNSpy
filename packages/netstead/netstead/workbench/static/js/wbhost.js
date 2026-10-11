@@ -2,12 +2,16 @@
 // injected parts, so it is import-free and DOM-free and unit-tested under node; plugins.js passes the real ones.
 // Everything a plugin registers or subscribes through it is tracked, so a failed activation is rolled back whole.
 
-// "/count" -> "/api/plugins/hello/count". A plugin's fetches stay under its own routes.
+// "/count" -> "/api/plugins/hello/count". A plugin's fetches stay under its own routes: the path is resolved the way
+// the browser will resolve it (so "%2e%2e" and "\\" count as ".." and "/"), and must still be under the plugin's base.
 export function pluginPath(pluginId, path) {
-  if (typeof path !== "string" || !path.startsWith("/") || path.startsWith("//") || path.split(/[/?#]/).includes("..")) {
-    throw new Error(`${pluginId}: wb.api paths start with "/" and stay under /api/plugins/${pluginId}`);
-  }
-  return `/api/plugins/${pluginId}${path}`;
+  const base = `/api/plugins/${pluginId}`;
+  const refuse = () => new Error(`${pluginId}: wb.api paths start with "/" and stay under ${base}`);
+  if (typeof path !== "string" || !path.startsWith("/") || path.startsWith("//")) throw refuse();
+  let url;
+  try { url = new URL(base + path, "http://x"); } catch (e) { throw refuse(); }
+  if (url.origin !== "http://x" || !(url.pathname === base || url.pathname.startsWith(`${base}/`))) throw refuse();
+  return url.pathname + url.search + url.hash;
 }
 
 // "greeted" -> "hello.greeted" (the plugin's own event); "catalog.added" and "core.history" stay as they are.

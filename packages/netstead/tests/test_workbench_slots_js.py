@@ -597,8 +597,12 @@ export async function run() {
   let refused = null;
   try { wb.registerCommand({ id: "c2", title: "x", run() {} }); } catch (e) { refused = e.message; }
   await wb.api.get("/count"); await wb.api.post("/echo", { a: 1 }); await wb.api.dispatch({ type: "hello.greet" });
-  let badPath = null;
-  try { wb.api.get("/../state"); } catch (e) { badPath = e.message; }
+  // Each escapes /api/plugins/hello once resolved (".." encoded, or a backslash, which a URL reads as "/").
+  const badPaths = ["/../state", "/%2e%2e/state", "/%2E%2e/other/x", "/.%2e/state", "/..\\\\state", "/x\\\\..\\\\..\\\\state",
+    "//evil.example/x", "count", "/a/../../state", "/%2e%2e"].map(p => {
+    try { return ["allowed", pluginPath("hello", p)]; } catch (e) { return e.message; }
+  });
+  const badPath = badPaths[0];
   store.set({ server: server(null) });                                                   // nothing watched changed
   store.set({ server: { ...server({ net_id: "n1", link_ids: [4] }), plugins: { hello: { n: 1 } } } });
   hub.emit("hello.greeted", { name: "Ada" }); hub.emit("other.thing", 1); hub.emit("greeted", "not mine");
@@ -618,6 +622,8 @@ export async function run() {
   hub.emit("hello.greeted", "after rollback");
   return { before, after, refused, badPath, late, lateListeners, seen, calls,
     has: [wb.hasAction("hello.greet"), wb.hasAction("cards.x")],
+    badPaths,
+    okPaths: [pluginPath("hello", "/a/../b?q=1#h"), pluginPath("hello", "/x%2Fy")],
     pure: [pluginPath("hello", "/count?x=1"), eventName("hello", "greeted"), eventName("hello", "core.history"),
            keysChanged({ a: { b: 1 } }, { a: { b: 1 }, c: 2 }, ["a.b"]),
            keysChanged({ a: { b: 1 } }, { a: { b: 2 } }, ["a.b"])] };
@@ -640,6 +646,9 @@ def test_wb_registers_namespaced_tracks_and_rolls_back(node_module, tmp_path):
     assert got["after"] == [0, 0, 0, 0]
     assert got["refused"] == 'hello: id "c2" must start with "hello."'
     assert got["badPath"] == 'hello: wb.api paths start with "/" and stay under /api/plugins/hello'
+    assert got["badPaths"] == [got["badPath"]] * 10
+    # Resolved, and returned as the path the browser would request.
+    assert got["okPaths"] == ["/api/plugins/hello/b?q=1#h", "/api/plugins/hello/x%2Fy"]
     assert got["late"] == "hello: activation was rolled back; nothing more can be registered"
     assert got["lateListeners"] == [got["late"]] * 3
     assert got["seen"] == [["store", 1], ["selection", [4]], ["event", {"name": "Ada"}]]
