@@ -90,6 +90,7 @@ def test_input_html_is_what_the_settings_dialog_always_rendered(node_module):
         {"key": "io.allowed_roots", "kind": "list", "value": ["/a", "/b"]},
         {"key": "viz.basemap", "kind": "text", "value": None, "default": None},
         {"key": "validation.rules", "kind": "json", "value": {"a": 1}},
+        {"key": "x.n", "kind": "float", "min": '0" onfocus="alert(1)', "max": None, "value": None, "default": None},
     ]
     got = node_module("schemaform.js", ["inputHTML"], f"{json.dumps(fields)}.map(f => inputHTML(f))")
     assert got == [
@@ -103,6 +104,9 @@ def test_input_html_is_what_the_settings_dialog_always_rendered(node_module):
         '<input id="set-viz-basemap" data-key="viz.basemap" value="" placeholder="default" spellcheck="false">',
         '<textarea id="set-validation-rules" data-key="validation.rules" rows="3" spellcheck="false">'
         "{\n &quot;a&quot;: 1\n}</textarea>",
+        # A bound that reached the markup unchecked (fieldKind drops these) is still escaped (review I-3).
+        '<input type="number" id="set-x-n" data-key="x.n" step="any" min="0&quot; onfocus=&quot;alert(1)" value="" '
+        'placeholder="default">',
     ]
 
 
@@ -408,3 +412,16 @@ def test_an_action_without_a_schema_gets_no_form_command(node_module):
     catalog = [{"type": "hello.opaque", "name": "Opaque", "description": "", "plugin": "hello", "schema": None}]
     got = node_module("commands.js", ["actionCommands"], f'actionCommands({json.dumps(catalog)}, [{{id: "hello"}}])')
     assert got == []
+
+
+def test_field_kind_keeps_only_finite_numeric_bounds(node_module):
+    got = node_module(
+        "schemaform.js",
+        ["fieldKind"],
+        '[fieldKind({type: "integer", minimum: "1\\" onfocus=\\"x", maximum: 5}),'
+        ' fieldKind({type: "number", exclusiveMinimum: 0, maximum: null})]',
+    )
+    assert got == [
+        {"kind": "int", "nullable": False, "min": None, "max": 5},
+        {"kind": "float", "nullable": False, "min": 0, "max": None},
+    ]

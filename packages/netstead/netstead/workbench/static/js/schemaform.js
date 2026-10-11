@@ -8,6 +8,9 @@ const esc = v => String(v).replace(/[&<>"']/g, c => ESC[c]);
 
 export const resolveRef = (schema, node) => (node && node.$ref ? schema.$defs[node.$ref.split("/").pop()] : node);
 
+// A schema bound, kept only when it is a finite number: plugin schemas pass `json_schema_extra` through verbatim.
+const bound = v => (typeof v === "number" && Number.isFinite(v) ? v : null);
+
 export function fieldKind(prop) {
   const options = prop.anyOf ? prop.anyOf.filter(o => o.type !== "null") : [prop];
   const nullable = Boolean(prop.anyOf && prop.anyOf.some(o => o.type === "null"));
@@ -17,7 +20,7 @@ export function fieldKind(prop) {
   if (p.type === "boolean") return { kind: "bool", nullable };
   if (p.type === "integer" || p.type === "number") {
     return { kind: p.type === "integer" ? "int" : "float", nullable,
-      min: p.minimum ?? p.exclusiveMinimum ?? null, max: p.maximum ?? p.exclusiveMaximum ?? null };
+      min: bound(p.minimum) ?? bound(p.exclusiveMinimum), max: bound(p.maximum) ?? bound(p.exclusiveMaximum) };
   }
   if (p.type === "string") return { kind: "text", nullable };
   if (p.type === "array" && p.items && p.items.type === "string") return { kind: "list", nullable };
@@ -116,7 +119,7 @@ export function inputHTML(f, idPrefix = "set-") {
       `${esc(o === "" ? "(default)" : o)}</option>`).join("")}</select>`;
   }
   if (f.kind === "int" || f.kind === "float") {
-    const bounds = (f.min != null ? ` min="${f.min}"` : "") + (f.max != null ? ` max="${f.max}"` : "");
+    const bounds = (f.min != null ? ` min="${esc(f.min)}"` : "") + (f.max != null ? ` max="${esc(f.max)}"` : "");
     return `<input type="number" ${attrs} step="${f.kind === "int" ? 1 : "any"}"${bounds} value="${esc(f.value ?? "")}" ` +
       `placeholder="${esc(f.default ?? "default")}">`;
   }
