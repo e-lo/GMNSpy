@@ -1,6 +1,6 @@
 # Workbench Plugins, Part 2 (front-end slots): Implementation Plan
 
-Status: **proposed** · Date: 2026-10-08 · Owner: Elizabeth Sall · Parent: [Workbench plugins design](2026-10-05-workbench-plugins-design.md)
+Status: **accepted** (open questions decided 2026-10-10) · Date: 2026-10-08 · Owner: Elizabeth Sall · Parent: [Workbench plugins design](2026-10-05-workbench-plugins-design.md)
 
 > **For agentic workers:** REQUIRED SUB-SKILL: use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to carry out this plan task by task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -53,7 +53,7 @@ and 6. Scope comes from [Part 1's plan](2026-10-05-workbench-plugins-p1-plan.md)
 
 ---
 
-## Open questions (each with a recommendation)
+## Open questions (each with a recommendation; all decided 2026-10-10)
 
 1. **Do workspace tabs replace the Map / Split / Table toggle, or sit beside it?**
    - **Recommended: beside it.** A workspace says *which tools* (its dock panels); the toggle says *how the shared map
@@ -64,11 +64,13 @@ and 6. Scope comes from [Part 1's plan](2026-10-05-workbench-plugins-p1-plan.md)
      (`netstead.viewmode`) still applies.
    - *Alternative:* fold the toggle into the workspace (Edit is always Split). Rejected: it takes a control away from
      the user, and Inspect would lose its three modes.
+   - **Decided 2026-10-10: beside it** (user). Workspace tabs sit beside the Map / Split / Table toggle, and each workspace remembers its own view.
 2. **Palette shortcut.**
    - **Recommended: Ctrl+K (⌘K on a Mac), plus a "Commands…" header button.** Ctrl+K is the common web convention
      and a page can claim it; Ctrl+Shift+P opens a private window in Firefox and can't be. It works from text boxes
      too (the utterance box), and does nothing while the Settings or Open/Import dialog is open. The button gives a
      discoverable, pointer-only path and hides at 640 px or narrower (the shortcut still works).
+   - **Decided 2026-10-10: Ctrl+K / ⌘K, plus a "Commands…" header button** (the recommendation).
 3. **Where does the dock live, relative to today's right drawer?**
    - **Recommended: the dock *is* the right drawer.** `#side` keeps its place and its 330 px width; a tab strip appears
      at its top only when the current workspace has two or more panels. Its current content becomes the core
@@ -76,6 +78,7 @@ and 6. Scope comes from [Part 1's plan](2026-10-05-workbench-plugins-p1-plan.md)
      "Details | Issues | Edits" becomes three panels in the Inspect dock.
    - *Alternatives:* a bottom dock under the table (competes with Split mode for height), or a left dock (moves
      the map). Both change what users see today.
+   - **Decided 2026-10-10: the dock is the existing `#side` drawer** (the recommendation); its tab strip shows only with two or more panels.
 4. **Do core's Details, Settings and Layers become dock panels now?**
    - **Recommended: Details now; Settings and Layers stay where they are.**
      - **Details** becomes the core dock panel (above). Its markup and ids don't change; the dock adopts it.
@@ -85,31 +88,38 @@ and 6. Scope comes from [Part 1's plan](2026-10-05-workbench-plugins-p1-plan.md)
        workspace). The Layers popover gains an **Overlays** group listing titled plugin layers with a show/hide
        switch; it renders nothing while there are none. This is how "core's layers panel is re-registered through the
        same slots" (design, "Front end") is met: plugin layers appear in it from the registry.
+   - **Decided 2026-10-10: only Details moves into the dock now** (user). Settings stays a dialog and gains a Plugins section; Layers and Map display stay popovers, and Layers gains an Overlays group.
 5. **Is the workspace strip visible when Inspect is the only workspace?**
    - **Recommended: no.** It appears when a second workspace registers. Same rule for the dock's tab strip. A
      Workbench with no plugins then looks exactly as it does today.
+   - **Decided 2026-10-10: no** (the recommendation). The workspace strip is hidden while Inspect is the only workspace.
 6. **Which settings layer does the Plugins switch write?**
    - **Recommended: user scope**, like the Language-models section (the Save-to menu is hidden on registered sections).
      When a project file or a `NETSTEAD_*` variable sets `app.disabled_plugins`, the section says so (P1b's
      `scopeNote`), because a user value then doesn't take effect.
    - The switch shows the *saved* setting; the status column shows how *this run* started. When they differ the row
      says "restart to apply" (it is a restart key; there is no hot reload).
+   - **Decided 2026-10-10: user scope** (the recommendation). The switch writes user scope, notes any project or `NETSTEAD_*` override, and says "restart to apply".
 7. **Sequencing with P2 (Validate + Edit).**
    - **Recommended: Part 1 → Part 2 → P2.** P2's drawer tabs then register through `registerPanel` instead of
      hand-writing a tab bar (see [What P2 changes](#what-p2-changes) for the exact edits to P2's Task 12, 13 and 15).
    - *If P2 must land first:* P2 keeps its Task 12 as written, and this plan's Task 9 then adopts P2's three panes as
      core panels (`details`, `issues`, `edits`) and deletes P2's `#side-tabs` markup, CSS and `showTab`.
+   - **Decided 2026-10-10: Part 1 → Part 2 → P2** (user).
 8. **Generated forms for plugin Actions ("declarative first").**
    - **Recommended: yes.** Every plugin Action gets one palette command, "‹Plugin›: ‹Action›…", that opens a dialog
      with its schema form and a Run button. A plugin that ships no JavaScript is still usable, as the design promises.
      Core Actions don't get one: they already have UI.
+   - **Decided 2026-10-10: yes** (user). Every plugin Action gets an auto-generated palette form.
 9. **Does a right-click move the focus?**
    - **Recommended: no.** The menu targets the right-clicked record (`ctx.target`) and leaves focus, details and the
      grid alone. A right-click with no applicable command does nothing new: on the map MapLibre keeps its right-drag
      rotate, and on a grid row the browser's own menu opens as today.
+   - **Decided 2026-10-10: no** (the recommendation). A right-click doesn't move focus.
 10. **Plugin API version.**
     - **Recommended: bump `HOST_API` to `"1.1"`** in this part (`wb` is new plugin API; a minor bump only adds).
       P2's plan bumps it for its Host additions; it then becomes `"1.2"` (P2's Task 5 changes one string).
+    - **Decided 2026-10-10: `HOST_API` goes to `"1.1"` in Part 2** (the recommendation).
 
 ## Decisions (technical, made here)
 

@@ -85,7 +85,7 @@ These records exist on branches. Add them to the tables above when they merge.
 |---|---|---|---|
 | `2026-10-05-workbench-plugins-design.md` — entry-point plugin API (`netstead.workbench.plugins`), core owns network nouns, ProjectCard editing moves to an external plugin repo | design | `feat/workbench-plugins`, PR pending | accepted; Part 1 implemented. **Amends the Workbench design:** the in-core `changes/` package it planned is superseded; core stays card-agnostic |
 | `2026-10-05-workbench-plugins-p1-plan.md` — Part 1, Python plugin core | plan | `feat/workbench-plugins`, PR pending | implemented (PR pending) |
-| `2026-10-08-workbench-plugins-p2-plan.md` — Part 2, front-end slots: the `activate(wb)` loader, workspace tabs, the dock (today's right drawer), commands (palette, map feature, table row, selection), the map layer registry, `wb.schemaForm`, Settings → Plugins | plan | branch `docs/workbench-plugins-p2-plan` | proposed; 10 open questions, each with a recommendation. Builds on Part 1; P2's drawer tabs register into its dock |
+| `2026-10-08-workbench-plugins-p2-plan.md` — Part 2, front-end slots: the `activate(wb)` loader, workspace tabs, the dock (today's right drawer), commands (palette, map feature, table row, selection), the map layer registry, `wb.schemaForm`, Settings → Plugins | plan | branch `feat/workbench-plugins-p2` | accepted; its 10 open questions decided 2026-10-10. In progress. Builds on Part 1; P2's drawer tabs register into its dock |
 
 ## Gaps to close
 
