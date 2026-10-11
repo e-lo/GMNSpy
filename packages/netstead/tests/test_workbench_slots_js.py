@@ -314,3 +314,41 @@ def test_a_selection_with_no_links_offers_no_selection_commands(node_module):
         ["commandContext", "menuSections", "selectionSections", "paletteGroups"],
     )
     assert got == [[["link 7", ["hello.rec", "hello.both"]]], [], ["Commands"]]
+
+
+def test_layer_registry_orders_core_and_plugin_layers_and_contains_failures(node_module):
+    expr = """(() => {
+      const reg = createLayerRegistry(), L = id => ({id});
+      for (const id of ["marker", "focus", "highlighted", "related", "selection", "base"])
+        reg.register("core", "roadway", id, () => [L(id + "-deck")]);      // registered out of order on purpose
+      reg.register("hello", "roadway", "hello.dots", () => L("hello.dots"), {title: "Hello dots"});
+      reg.register("hello", "roadway", "hello.top", () => L("hello.top"), {order: 700});
+      reg.register("hello", "roadway", "hello.bad", () => L("links"));
+      reg.register("hello", "roadway", "hello.throws", () => { throw new Error("nope"); });
+      reg.register("hello", "transit", "hello.stops", () => L("hello.stops"));
+      reg.register("hello", "roadway", "hello.none", () => null);
+      const all = reg.build("roadway", {}), hidden = reg.build("roadway", {}, new Set(["hello.dots"]));
+      const refused = [];
+      try { reg.register("hello", "rail", "hello.x", () => null); } catch (e) { refused.push(e.message); }
+      try { reg.register("hello", "roadway", "dots", () => null); } catch (e) { refused.push(e.message); }
+      return [all.layers.map(l => l.id), all.errors, hidden.layers.map(l => l.id),
+              reg.build("transit", {}).layers.map(l => l.id), reg.toggleable().map(l => l.id), refused];
+    })()"""
+    layers, errors, hidden, transit, toggleable, refused = node_module("layers.js", ["createLayerRegistry"], expr)
+    assert layers == [
+        "base-deck",
+        "selection-deck",
+        "related-deck",
+        "hello.dots",
+        "highlighted-deck",
+        "focus-deck",
+        "marker-deck",
+        "hello.top",
+    ]
+    assert errors == [
+        {"owner": "hello", "id": "hello.bad", "error": 'deck layer id "links" must start with "hello."'},
+        {"owner": "hello", "id": "hello.throws", "error": "nope"},
+    ]
+    assert hidden == [layer for layer in layers if layer != "hello.dots"]
+    assert transit == ["hello.stops"] and toggleable == ["hello.dots"]
+    assert refused == ['unknown component "rail": use roadway or transit', 'hello: id "dots" must start with "hello."']
