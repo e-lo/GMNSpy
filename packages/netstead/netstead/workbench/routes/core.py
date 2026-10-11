@@ -13,7 +13,7 @@ from pydantic import ValidationError
 
 from netstead.viz.styling import basemap_style
 
-from ..actions import parse_action
+from ..actions import script_imports
 from ..events import sse_format
 from ..session import Session
 
@@ -41,13 +41,22 @@ def core_router(session: Session) -> APIRouter:
 
     @router.get("/history")
     def history() -> dict[str, Any]:
-        return {"entries": [e.to_dict() for e in list(session.history)]}
+        """Every entry, plus the import lines that head them as a script ("copy session as Python").
+
+        A nested entry (``parent_seq`` set) is written as a comment, since replaying its parent repeats
+        it, so it needs no import.
+        """
+        entries = list(session.history)
+        return {
+            "entries": [e.to_dict() for e in entries],
+            "imports": script_imports(e.imports for e in entries if e.ok and e.parent_seq is None),
+        }
 
     @router.post("/actions")
     def actions(body: dict = Body(...)) -> JSONResponse:  # noqa: B008  (FastAPI Body default)
         """Apply an action. A job action (open/build) answers 202 with its job; the outcome arrives over SSE."""
         try:
-            action = parse_action(body)
+            action = session.actions.parse(body)
         except ValidationError as exc:
             detail = exc.errors(include_url=False, include_context=False, include_input=False)  # input may be a key
             return JSONResponse({"error": "invalid action", "detail": jsonable_encoder(detail)}, status_code=422)

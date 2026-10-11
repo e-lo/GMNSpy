@@ -88,3 +88,50 @@ def test_remove(net, rdu_source):
     h = reg.add(net, source=rdu_source)
     reg.remove(h.id)
     assert len(reg) == 0
+
+
+def test_derived_copy_is_copy_on_write(rdu_source):
+    from corral.editing import Edit
+    from corral.editing.apply import apply_edit
+    from netstead import Network
+    from netstead.workbench.registry import as_pandas, derived_copy
+
+    base = Network.from_source(rdu_source)
+    copy_ = derived_copy(base)
+    first = int(as_pandas(base.links)["link_id"].iloc[0])
+    payload = {"predicate": lambda t: t.link_id == first, "set": {"lanes": 9}}
+    edit = Edit(op="update_rows", table="link", payload=payload)
+    apply_edit(copy_, edit)
+    lanes = lambda net: int(as_pandas(net.links).set_index("link_id").loc[first, "lanes"])  # noqa: E731
+    assert lanes(copy_) == 9 and lanes(base) != 9
+    assert copy_.dirty_tracker is None and copy_.spec_version == base.spec_version
+    assert not base.links.dirty and copy_.links.dirty
+
+
+def test_summary_reports_derived_from(rdu_source):
+    from netstead import Network
+    from netstead.workbench.registry import NetworkRegistry
+
+    reg = NetworkRegistry()
+    handle = reg.add(Network.from_source(rdu_source), source=rdu_source)
+    assert handle.summary()["derived_from"] is None
+    handle.derived_from = "base"
+    assert handle.summary()["derived_from"] == "base"
+
+
+def test_artifact_built_across_a_restore_is_not_cached(rdu_source):
+    """A rollback sets ``version`` back; an artifact built from the rolled-back tables must still not be kept."""
+    from netstead.workbench.registry import derived_copy
+
+    h = NetworkRegistry().add(derived_copy(Network.from_source(rdu_source)), source=rdu_source)
+    before = {"link": (h.roadway.links.expr, h.roadway.links.dirty)}
+    h.replace_tables({"link": (h.roadway.links.expr.limit(1), True)})
+    assert h.version == 1 and h.roadway.links.dirty
+
+    def build_then_roll_back():
+        h.restore(before, 0)  # the rollback lands while the artifact is being built
+        h.replace_tables({"link": (h.roadway.links.expr.limit(2), True)})  # version is 1 again
+        return "built from the rolled-back tables"
+
+    assert h.cached("probe", build_then_roll_back) == "built from the rolled-back tables"
+    assert h.cached("probe", lambda: "fresh") == "fresh"

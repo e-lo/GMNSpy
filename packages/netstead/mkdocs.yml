@@ -144,6 +144,7 @@ nav:
       - Build from OpenStreetMap: cookbook/build-from-osm.md
       - View a network on a map: cookbook/view-your-network.md
       - Explore in the Workbench: cookbook/workbench.md
+      - Write a Workbench plugin: cookbook/workbench-plugins.md
       - Local language models (Ollama): cookbook/local-llm-ollama.md
       - Triage and fix findings: cookbook/fix-findings.md
       - Query and update linked tables: cookbook/query-and-update.md

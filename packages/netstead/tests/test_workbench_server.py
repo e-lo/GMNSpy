@@ -1,5 +1,9 @@
 """Tests for the workbench FastAPI app."""
 
+import json
+import re
+import shutil
+
 import pytest
 from fastapi.testclient import TestClient
 from netstead.select.parse import StubParser
@@ -182,3 +186,40 @@ def test_config_follows_a_basemap_change_without_a_restart(client):
     assert r.status_code == 200
     after = client.get("/api/config").json()["style"]
     assert after != before and after["sources"]["basemap"]["type"] == "raster"
+
+
+#: The "copy session as Python" header before plugins: a core-only script must keep it byte for byte.
+_CORE_SCRIPT_HEADER = (
+    "from netstead.workbench import Session, OpenNetwork, BuildNetwork, CloseNetwork, SetActiveNetwork,"
+    " Select, ClearSelection, Style, Navigate, SetSetting"
+)
+
+
+def test_history_imports_head_a_core_script_unchanged(client):
+    client.post("/api/actions", json={"type": "select", "utterance": UTTERANCE})
+    client.post("/api/actions", json={"type": "set_active_network", "net_id": "nope"})  # a failure
+    assert client.get("/api/history").json()["imports"] == [_CORE_SCRIPT_HEADER]
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node not installed")
+def test_session_script_for_core_actions_is_byte_identical(client, tmp_path, run_node):
+    """``sessionScript`` (history.js) on the live payload equals the pre-plugin script exactly."""
+    from netstead.workbench.server import STATIC_DIR
+
+    client.post("/api/actions", json={"type": "select", "utterance": UTTERANCE})
+    client.post("/api/actions", json={"type": "set_active_network", "net_id": "nope"})
+    history = client.get("/api/history").json()
+    lines = [_CORE_SCRIPT_HEADER, "", "app = Session()  # or reuse a live session"]
+    lines += [e["python"] if e["ok"] else f"# failed: {e['python']}  # {e['error']}" for e in history["entries"]]
+
+    source = (STATIC_DIR / "js" / "history.js").read_text(encoding="utf-8")
+    source = re.sub(r"^import .*$", "", source, flags=re.M)  # sessionScript itself uses none of the imports
+    (tmp_path / "history.mjs").write_text(source, encoding="utf-8")
+    probe = tmp_path / "probe.mjs"
+    probe.write_text(
+        'import { sessionScript } from "./history.mjs";\n'
+        f"process.stdout.write(JSON.stringify(sessionScript({json.dumps(history)})));\n"
+    )
+    proc = run_node([str(probe)])
+    assert proc.returncode == 0, proc.stderr
+    assert json.loads(proc.stdout) == "\n".join(lines)

@@ -11,20 +11,24 @@ the ``to_python`` replay snippet.
 
 from __future__ import annotations
 
-import re
-from collections.abc import Iterator, Mapping
+import functools
+import operator
+from collections.abc import Iterable, Iterator, Mapping
 from pathlib import PurePath
-from typing import Annotated, Any, ClassVar, Literal
+from typing import TYPE_CHECKING, Annotated, Any, ClassVar, Literal, get_args, get_origin
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, model_validator
 
-from netstead.llm.secrets import looks_like_secret
+from netstead.llm.secrets import has_url_userinfo, is_secret_name, looks_like_secret
 
 from .area import Area
 from .registry import Component, default_label
 
 __all__ = [
+    "CORE_ACTIONS",
     "Action",
+    "ActionRegistry",
+    "BaseAction",
     "BuildNetwork",
     "ClearSelection",
     "CloseNetwork",
@@ -35,26 +39,56 @@ __all__ = [
     "SetSetting",
     "Style",
     "action_json_schema",
+    "import_line",
     "is_secret_name",
     "parse_action",
+    "script_imports",
     "to_python",
 ]
 
 RGB = Annotated[list[Annotated[int, Field(ge=0, le=255)]], Field(min_length=3, max_length=3)]
 
 
-class _Action(BaseModel):
+class BaseAction(BaseModel):
+    """Base class for every Workbench Action, core and plugin.
+
+    A subclass declares ``type: Literal["<type>"] = "<type>"`` (plugins: ``"<plugin id>.<name>"``)
+    and its fields. ``mutates`` marks actions the assistant must draft before applying;
+    ``runs_as_job`` (core only) runs the slow work on a background job thread; ``replay_overrides``
+    are fields forced in the ``to_python`` replay snippet.
+
+    Field values must round-trip through ``repr`` (str, numbers, bools, None, lists/dicts/tuples of
+    those, nested pydantic models): "copy session as Python" writes each field as ``name=<repr(value)>``,
+    so a value whose ``repr`` isn't valid Python makes the copied script fail.
+    """
+
     model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)  # errors never echo a value (keys)
     mutates: ClassVar[bool] = False
     runs_as_job: ClassVar[bool] = False
     replay_overrides: ClassVar[dict[str, Any]] = {}
+    if TYPE_CHECKING:  # every concrete Action declares its own ``type`` field; not a field of the base
+        type: str
+
+    @classmethod
+    def action_type(cls) -> str | None:
+        """The ``type`` discriminator this class carries: ``x`` for exactly ``type: Literal["x"] = "x"``.
+
+        ``None`` for anything else (no ``type``, ``type: str``, a multi-value ``Literal``, a default that
+        isn't its one value): such a class can't be a member of the discriminated Action union.
+        """
+        field_info = cls.model_fields.get("type")
+        if field_info is None or get_origin(field_info.annotation) is not Literal:
+            return None
+        default = field_info.default
+        valid = isinstance(default, str) and default and get_args(field_info.annotation) == (default,)
+        return default if valid else None
 
     def job_label(self) -> str:
         """The label a ``runs_as_job`` action's background job shows in the jobs panel."""
         return self.type.replace("_", " ")
 
 
-class OpenNetwork(_Action):
+class OpenNetwork(BaseAction):
     """Load a GMNS network from a local path (inside ``io.allowed_roots``) or URL and make it active."""
 
     type: Literal["open_network"] = "open_network"
@@ -68,21 +102,21 @@ class OpenNetwork(_Action):
         return f"open {default_label(self.source)}"
 
 
-class CloseNetwork(_Action):
+class CloseNetwork(BaseAction):
     """Close an open network."""
 
     type: Literal["close_network"] = "close_network"
     net_id: str
 
 
-class SetActiveNetwork(_Action):
+class SetActiveNetwork(BaseAction):
     """Switch which open network the map and tables show."""
 
     type: Literal["set_active_network"] = "set_active_network"
     net_id: str
 
 
-class Select(_Action):
+class Select(BaseAction):
     """Select features by natural-language utterance or explicit ids (``net_id`` defaults to active)."""
 
     type: Literal["select"] = "select"
@@ -98,13 +132,13 @@ class Select(_Action):
         return self
 
 
-class ClearSelection(_Action):
+class ClearSelection(BaseAction):
     """Clear the current selection."""
 
     type: Literal["clear_selection"] = "clear_selection"
 
 
-class Style(_Action):
+class Style(BaseAction):
     """Partially update the map style; omitted fields are unchanged."""
 
     type: Literal["style"] = "style"
@@ -117,7 +151,7 @@ class Style(_Action):
     show_legend: bool | None = None
 
 
-class Navigate(_Action):
+class Navigate(BaseAction):
     """Move the map camera to a bbox, the active network, or the selection."""
 
     type: Literal["navigate"] = "navigate"
@@ -132,7 +166,7 @@ class Navigate(_Action):
         return self
 
 
-class SetSetting(_Action):
+class SetSetting(BaseAction):
     """Change a setting (dotted key) for this session, or persist it to the user/project file.
 
     Refuses API-key-shaped values *at validation*, before anything is recorded: keys are set
@@ -158,35 +192,13 @@ class SetSetting(_Action):
             raise ValueError(
                 "keys, tokens and passwords are never settings; set API keys in Settings → Language models"
             )
-        if any(_URL_USERINFO.match(text) for text in (self.key, *_strings(self.value))):
+        if any(has_url_userinfo(text) for text in (self.key, *_strings(self.value))):
             raise ValueError("URLs in settings must not contain a username, password or token")
         base_urls = [self.value] if names[0] == "base_url" else []
         base_urls += _values_under(self.value, "base_url")
         if any(isinstance(u, str) and ("?" in u or "#" in u) for u in base_urls):
             raise ValueError("base_url must not contain a query string or fragment")
         return self
-
-
-#: Setting names that could only hold a credential (last key segment, or any key nested in the value).
-_SECRET_NAME = re.compile(
-    r"(?i)(^|[_.-])(api_?key|key|token|secret|password|passwd|authorization|bearer|credential)s?$"
-)
-#: Legitimate names that match :data:`_SECRET_NAME`: ``credentials`` only names keyring hosts;
-#: ``key_env`` names env vars.
-_SECRET_NAME_ALLOWED = frozenset({"credentials", "key_env"})
-
-
-def is_secret_name(name: str) -> bool:
-    """Whether a setting named ``name`` could only hold a credential (``api_key``, ``token``, ...).
-
-    >>> is_secret_name("api_key"), is_secret_name("credentials"), is_secret_name("basemap")
-    (True, False, False)
-    """
-    return bool(_SECRET_NAME.search(name)) and name.lower() not in _SECRET_NAME_ALLOWED
-
-
-#: ``scheme://user[:pass]@`` at the start of a string: a URL carrying credentials.
-_URL_USERINFO = re.compile(r"^\s*[A-Za-z][A-Za-z0-9+.-]*://[^/?#@]*@")
 
 
 def _nested_keys(value: Any) -> Iterator[str]:
@@ -229,7 +241,7 @@ def _values_under(value: Any, name: str) -> Iterator[Any]:
 _OUTPUT_SUFFIXES = frozenset({".zip", ".duckdb", ".csv", ".parquet"})
 
 
-class BuildNetwork(_Action):
+class BuildNetwork(BaseAction):
     """Build a GMNS network from OSM or Overture, write it to ``output_dir``, then open it from disk.
 
     Give exactly one of ``area`` (fetch from the service) or ``input_file`` (a local ``.osm`` /
@@ -284,20 +296,142 @@ Action = Annotated[
     | SetSetting,
     Field(discriminator="type"),
 ]
-_ADAPTER: TypeAdapter[Action] = TypeAdapter(Action, config=ConfigDict(hide_input_in_errors=True))
+#: The Actions every session understands, in registry order (``to_python`` imports them from ``netstead.workbench``).
+CORE_ACTIONS: tuple[type[BaseAction], ...] = (
+    OpenNetwork,
+    BuildNetwork,
+    CloseNetwork,
+    SetActiveNetwork,
+    Select,
+    ClearSelection,
+    Style,
+    Navigate,
+    SetSetting,
+)
+
+
+class ActionRegistry:
+    """The Action types one session understands: the core ones plus any its plugins register.
+
+    The parsing adapter is rebuilt on every change, so a model pydantic can't put in the union is
+    refused by :meth:`register` itself, never by a later :meth:`parse` (which every request uses).
+    """
+
+    def __init__(self, models: Iterable[type[BaseAction]] = CORE_ACTIONS) -> None:
+        """Start with ``models`` registered (default: :data:`CORE_ACTIONS`)."""
+        self._models: dict[str, type[BaseAction]] = {}
+        for model in models:
+            self._models[self._check(model)] = model
+        self._adapter: TypeAdapter[Any] | None = self._build_adapter()
+
+    def register(self, model: type[BaseAction]) -> None:
+        """Add ``model``; raises ``TypeError`` for a non-Action, ``ValueError`` for a bad or taken ``type``."""
+        action_type = self._check(model)
+        self._models[action_type] = model
+        try:
+            self._adapter = self._build_adapter()
+        except Exception as exc:  # pydantic refuses the union: leave the registry exactly as it was
+            del self._models[action_type]
+            raise ValueError(f"{model.__name__} can't join the Action union: {exc}") from exc
+
+    def unregister(self, action_type: str) -> None:
+        """Remove ``action_type`` (``KeyError`` if it isn't registered); used to undo a failed plugin install."""
+        del self._models[action_type]
+        self._adapter = self._build_adapter()
+
+    def _check(self, model: type[BaseAction]) -> str:
+        """``model``'s ``type``, if it may be registered next to the ones already here."""
+        if not (isinstance(model, type) and issubclass(model, BaseAction)):
+            raise TypeError(f"{model!r} is not a BaseAction subclass")
+        action_type = model.action_type()
+        if action_type is None:
+            raise ValueError(f'{model.__name__} needs a `type: Literal["<type>"] = "<type>"` field (one value)')
+        if action_type in self._models:
+            raise ValueError(f"action type {action_type!r} is already registered")
+        return action_type
+
+    def has(self, action_type: str) -> bool:
+        """Whether ``action_type`` is registered."""
+        return action_type in self._models
+
+    def types(self) -> list[str]:
+        """Registered types, in registration order."""
+        return list(self._models)
+
+    def model(self, action_type: str) -> type[BaseAction]:
+        """The class registered for ``action_type`` (``KeyError`` if none)."""
+        return self._models[action_type]
+
+    def parse(self, data: Mapping[str, Any]) -> BaseAction:
+        """Validate a JSON dict into a registered Action (raises ``pydantic.ValidationError``)."""
+        return self._get_adapter().validate_python(data)
+
+    def json_schema(self) -> dict[str, Any]:
+        """JSON schema of every registered Action (the assistant's tool vocabulary)."""
+        return self._get_adapter().json_schema()
+
+    def _get_adapter(self) -> TypeAdapter[Any]:
+        if self._adapter is None:
+            raise ValueError("no Action types are registered")
+        return self._adapter
+
+    def _build_adapter(self) -> TypeAdapter[Any] | None:
+        """The adapter for the current models (``None`` when there are none; one model needs no union)."""
+        models = list(self._models.values())
+        if not models:
+            return None
+        if len(models) == 1:  # a discriminator needs a union (BaseAction's own config hides inputs)
+            return TypeAdapter(models[0])
+        union = functools.reduce(operator.or_, models)
+        return TypeAdapter(Annotated[union, Field(discriminator="type")], config=ConfigDict(hide_input_in_errors=True))
+
+
+#: The core-only registry behind the module-level helpers (a session has its own, see ``Session.actions``).
+_CORE_REGISTRY = ActionRegistry()
 
 
 def parse_action(data: dict[str, Any]) -> Action:
-    """Validate a JSON dict into an Action (raises ``pydantic.ValidationError``)."""
-    return _ADAPTER.validate_python(data)
+    """Validate a JSON dict into a core Action (raises ``pydantic.ValidationError``).
+
+    Core only: a session that has plugins parses with its own registry, ``session.actions.parse``.
+    """
+    return _CORE_REGISTRY.parse(data)  # type: ignore[return-value]  # core registry: always a core Action
 
 
 def action_json_schema() -> dict[str, Any]:
-    """JSON schema of the Action union (the assistant's tool vocabulary)."""
-    return _ADAPTER.json_schema()
+    """JSON schema of the *core* Action union.
+
+    Not the assistant's tool vocabulary once plugins exist: exposing Actions to the NL assistant (P3)
+    must use the session's own ``session.actions.json_schema()``, which includes its plugins' Actions.
+    """
+    return _CORE_REGISTRY.json_schema()
 
 
-def to_python(action: _Action) -> str:
+def import_line(action: BaseAction) -> str:
+    """The ``from ... import ...`` line a replayed ``to_python`` snippet needs for ``action``."""
+    return _import_line(type(action))
+
+
+def _import_line(cls: type[BaseAction]) -> str:
+    module = "netstead.workbench" if cls in CORE_ACTIONS else cls.__module__
+    return f"from {module} import {cls.__name__}"
+
+
+def script_imports(lines: Iterable[str]) -> list[str]:
+    """The import lines heading a replayed session script, given its entries' :func:`import_line` values.
+
+    The first line is always ``Session`` plus every core Action from ``netstead.workbench`` (so a
+    core-only script is unchanged from before plugins existed); each other line follows once, in order.
+
+    >>> script_imports(["from netstead.workbench import Select", "from hello import Greet"])[1:]
+    ['from hello import Greet']
+    """
+    core = {_import_line(model) for model in CORE_ACTIONS}
+    head = ", ".join(["Session", *(model.__name__ for model in CORE_ACTIONS)])
+    return [f"from netstead.workbench import {head}", *dict.fromkeys(ln for ln in lines if ln and ln not in core)]
+
+
+def to_python(action: BaseAction) -> str:
     """The Python call that replays ``action`` against a live workbench handle named ``app``.
 
     Top-level fields equal to their default are omitted; nested models (an ``area``) are written

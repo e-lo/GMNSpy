@@ -2,15 +2,18 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from fastapi import FastAPI, Request
+from fastapi import APIRouter, FastAPI, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 
+from .plugins import HOST_API
+from .redact import describe_error
 from .routes.core import core_router
 from .routes.io import io_router
 from .routes.llm import llm_router
@@ -18,6 +21,8 @@ from .routes.network import network_router
 from .session import Session
 
 __all__ = ["STATIC_DIR", "build_app", "is_loopback_host"]
+
+logger = logging.getLogger(__name__)
 
 STATIC_DIR = Path(__file__).parent / "static"
 
@@ -115,9 +120,38 @@ def build_app(session: Session) -> FastAPI:
     app.include_router(network_router(session))
     # Key writes are refused on an exposed bind: there is no auth beyond the loopback guard (design T10).
     app.include_router(llm_router(session, allow_key_writes=is_loopback_host(session.settings.app.host)))
+    _mount_plugins(app, session)
+
+    @app.get("/api/plugins")
+    def plugins() -> dict:
+        return {"host_api": HOST_API, "plugins": [s.to_dict() for s in session.plugin_status]}
 
     @app.get("/", response_class=HTMLResponse)
     def index() -> str:
         return (STATIC_DIR / "index.html").read_text(encoding="utf-8")
 
     return app
+
+
+def _mount_plugins(app: FastAPI, session: Session) -> None:
+    """Attach each installed plugin's router (``/api/plugins/<id>``) and static dir (``/plugins/<id>``).
+
+    Both sit behind the same Host-header and Origin guards as every core route (the middleware wraps
+    the whole app). The session built and checked them when it installed the plugin; here both are
+    staged inside one failure boundary before either is attached, so a plugin is mounted whole or
+    not at all. If staging fails the plugin is unloaded (no Actions, no state) and marked ``error``.
+    """
+    for plugin_id, (router, static_dir) in session.plugin_mounts().items():
+        try:
+            staged = APIRouter()
+            if router is not None:
+                staged.include_router(router, prefix=f"/api/plugins/{plugin_id}")
+            static = StaticFiles(directory=static_dir) if static_dir is not None else None
+        # boundary: third-party code must not stop the app (not even with ``sys.exit``)
+        except (Exception, SystemExit) as exc:
+            logger.exception("mounting workbench plugin %r failed", plugin_id)
+            session.unload_plugin(plugin_id, describe_error(exc))
+            continue
+        app.include_router(staged)
+        if static is not None:
+            app.mount(f"/plugins/{plugin_id}", static, name=f"plugin-{plugin_id}")

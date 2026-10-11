@@ -201,3 +201,9 @@ def test_related_module_feeds_the_map_and_the_rail():
     assert "relatedLayers(" in (JS_DIR / "map.js").read_text()
     main = (JS_DIR / "main.js").read_text()
     assert 'from "./related.js"' in main and "scheduleRelated" in main
+
+
+def test_history_script_imports_come_from_the_server():
+    js = (JS_DIR / "history.js").read_text(encoding="utf-8")
+    assert "...imports" in js
+    assert "SetActiveNetwork, Select" not in js  # no hard-coded core import list

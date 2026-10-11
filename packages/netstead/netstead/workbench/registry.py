@@ -10,8 +10,8 @@ from __future__ import annotations
 
 import re
 import threading
-from collections.abc import Callable, Iterator
-from dataclasses import dataclass, field
+from collections.abc import Callable, Iterator, Mapping
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Literal
 
@@ -21,7 +21,15 @@ from netstead import Network
 
 from .redact import scrub, scrub_source
 
-__all__ = ["COMPONENTS", "Component", "NetworkHandle", "NetworkRegistry", "as_pandas", "default_label"]
+__all__ = [
+    "COMPONENTS",
+    "Component",
+    "NetworkHandle",
+    "NetworkRegistry",
+    "as_pandas",
+    "default_label",
+    "derived_copy",
+]
 
 Component = Literal["roadway", "transit"]
 COMPONENTS: tuple[Component, ...] = ("roadway", "transit")
@@ -58,6 +66,17 @@ def as_pandas(table: Any) -> pd.DataFrame:
     return table.to_pandas() if hasattr(table, "to_pandas") else table.execute()
 
 
+def derived_copy(net: Network) -> Network:
+    """A copy of ``net`` whose tables can be edited without touching ``net`` (copy-on-write).
+
+    The :class:`~corral.dataset.Table` wrappers are copied; their expressions are immutable, so
+    they are shared, not duplicated. The copy has no sync-state tracker: it was never read from,
+    and must never be written back to, the base network's source.
+    """
+    tables = {name: replace(table, metadata=dict(table.metadata)) for name, table in net.tables.items()}
+    return replace(net, tables=tables, dirty_tracker=None, metadata=dict(net.metadata))
+
+
 def _extra_tables(net: Network) -> dict[str, Any]:
     """Additional GMNS tables the network carries, kept lazy (best-effort), keyed by singular name."""
     out: dict[str, Any] = {}
@@ -82,25 +101,29 @@ class NetworkHandle:
     transit: Any | None = None
     version: int = 0
     lineage: list[str] = field(default_factory=list)
+    derived_from: str | None = None  # the id of the network this one is a copy-on-write copy of
     _cache: dict[tuple[str, int], Any] = field(default_factory=dict, repr=False)
     _lock: threading.RLock = field(default_factory=threading.RLock, repr=False)
+    #: Increases on every change of the tables, including a rollback that sets ``version`` back:
+    #: caches are keyed by it, so an artifact built before a rollback is never stored after one.
+    _generation: int = field(default=0, repr=False)
 
     def cached(self, key: str, build: Callable[[], Any]) -> Any:
         """Return ``build()`` memoised for the current version.
 
         ``build`` runs *outside* the handle lock, so a slow DuckDB read for one artifact never
         blocks a cached read of another. Two threads may both build a missing artifact; the first
-        stored wins. A result built while the network was mutated (``bump``) is returned but not
-        cached, since it may describe the old version.
+        stored wins. A result built while the network was mutated (``bump``) or rolled back
+        (``restore``) is returned but not cached, since it may describe other tables.
         """
         with self._lock:
-            version = self.version
-            slot = (key, version)
+            generation = self._generation
+            slot = (key, generation)
             if slot in self._cache:
                 return self._cache[slot]
         value = build()
         with self._lock:
-            if self.version != version:
+            if self._generation != generation:
                 return value
             return self._cache.setdefault(slot, value)
 
@@ -108,14 +131,42 @@ class NetworkHandle:
         """Seed the current version's cache with artifacts built elsewhere (e.g. frames loaded off the lock)."""
         with self._lock:
             for key, value in artifacts.items():
-                self._cache[(key, self.version)] = value
+                self._cache[(key, self._generation)] = value
 
     def bump(self) -> int:
         """Mark the network mutated: increment ``version`` and drop every cached artifact."""
         with self._lock:
             self.version += 1
+            self._generation += 1
             self._cache.clear()
             return self.version
+
+    def replace_tables(self, tables: Mapping[str, tuple[Any, bool]]) -> int:
+        """Swap in new roadway table ``(expr, dirty)`` pairs in one step, then :meth:`bump`; return the version.
+
+        Each replaced table's sync stamp is dropped (as corral's ``apply_edit`` does), since the stamp no
+        longer describes the table.
+        """
+        with self._lock:
+            self._set_tables(tables)
+            tracker = self.roadway.dirty_tracker
+            if tracker is not None:
+                for name in tables:
+                    tracker.mark_dirty(name)
+            return self.bump()
+
+    def restore(self, tables: Mapping[str, tuple[Any, bool]], version: int) -> None:
+        """Put back roadway table ``(expr, dirty)`` pairs and the ``version`` they had (a rollback); drop caches."""
+        with self._lock:
+            self._set_tables(tables)
+            self.version = version
+            self._generation += 1
+            self._cache.clear()
+
+    def _set_tables(self, tables: Mapping[str, tuple[Any, bool]]) -> None:
+        for name, (expr, dirty) in tables.items():
+            table = self.roadway.tables[name]
+            table.expr, table.dirty = expr, dirty
 
     def links_df(self) -> pd.DataFrame:
         """The roadway ``link`` table as pandas (cached per version)."""
@@ -148,6 +199,7 @@ class NetworkHandle:
             "links": len(self.links_df()),
             "nodes": len(self.nodes_df()),
             "lineage": list(self.lineage),
+            "derived_from": self.derived_from,
         }
 
 

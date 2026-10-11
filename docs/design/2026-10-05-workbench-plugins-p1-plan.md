@@ -14,7 +14,19 @@
 
 **Spec:** `docs/design/2026-10-05-workbench-plugins-design.md`.
 
-**Status:** not started. Depends on PR #211 (Workbench P0 + P1a) and PR #212 (P1b).
+**Status:** implemented (PR pending). Depends on PR #211 (Workbench P0 + P1a) and PR #212 (P1b).
+
+**Implemented with these deviations:**
+- `BaseAction.action_type()` requires the exact shape `type: Literal["<type>"] = "<type>"` (one value), checked strictly rather than inferred loosely.
+- A plugin installs atomically: its router and static dir are built and checked (mount-able) at install time, not deferred to when the app attaches them.
+- `mutate` applies the edits to a derived copy of the network and swaps it in on success, rather than mutating in place; a failing Action rolls that swap (and any nested `derive`) back.
+- A nested `host.dispatch` records its entry with `parent_seq` pointing at the outer Action, and "copy as Python" comments it as `# via <outer type>: ...` rather than inlining it.
+- A `mutate` called outside any Action is recorded as a non-replayable history entry, not silently applied.
+- Per-session caches (the LLM parser, the settings payload) are keyed off a private generation counter, invalidated by bumping it, rather than cleared field by field.
+- `Settings.plugins` values are checked for secret-shaped keys and values at validation time, and redacted again defensively wherever settings are read back.
+- Tests that need a real installed entry point are marked `@pytest.mark.plugin_discovery` and skip when the example package isn't installed (CI installs it).
+- The CLI (`netstead app`) still builds and serves exactly one `Session`; multi-session serving stayed out of scope.
+- The public API grew beyond the spec's sketch: `Session.network`, `selection_copy`, `plugin_mounts`, `unload_plugin`, `mutate(origin=...)`, `NetworkHandle.replace_tables`/`restore`, and `HistoryEntry.parent_seq`.
 
 **Part 2 (separate plan, written after P1b merges):** front-end slots (workspace tabs, dock, commands, layer registry, `schemaForm`), the browser plugin loader that calls `activate(wb)`, and the Plugins settings UI. That plan is kept separate because P1b is rewriting `index.html`, `main.js`, `map.js` and `table.js`, and the settings dialog, right now.
 

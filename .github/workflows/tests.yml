@@ -113,6 +113,11 @@ jobs:
         # file. Tests with `pytest.importorskip("…")` still skip cleanly
         # when an extra is genuinely missing.
         run: uv sync --all-packages --all-extras
+      - name: Install the example Workbench plugin
+        # Installed (not just imported from source) so the netstead tests
+        # discover it through its real `netstead.workbench.plugins` entry
+        # point. `uv run` syncs inexactly, so later steps keep it.
+        run: uv pip install -e examples/workbench-plugin-hello
       # CI always runs the FULL suite: `-m ""` overrides the default
       # `not slow and not perf` filter in pyproject addopts. `-n auto` is
       # pytest-xdist (dev dep); addopts pins --dist=loadfile.

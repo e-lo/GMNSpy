@@ -27,15 +27,18 @@ silent fallback to another provider.
 from __future__ import annotations
 
 import copy
+import functools
 import logging
 import threading
 import time
 from collections import deque
-from collections.abc import Mapping
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
+from corral.editing import Edit, EditResult
+from corral.editing.apply import apply_edit
 from corral.engines.ibis_engine import IbisEngine
 
 from netstead import Network
@@ -50,6 +53,7 @@ from netstead.config import (
 )
 from netstead.llm import LLMError, MissingKey, ProviderRegistry, build_registry
 from netstead.llm.context import assistant_context, find_project_context, read_capped
+from netstead.llm.secrets import redact_settings
 from netstead.select.intent import SelectionIntent
 from netstead.select.parse import LLMParser, make_parser, payload_from_intent
 from netstead.select.prompt import PromptContext, close_match_hint, vocabulary_from_links
@@ -58,7 +62,8 @@ from netstead.viz.styling import styleable_columns
 
 from . import build
 from .actions import (
-    Action,
+    ActionRegistry,
+    BaseAction,
     BuildNetwork,
     ClearSelection,
     CloseNetwork,
@@ -68,8 +73,8 @@ from .actions import (
     SetActiveNetwork,
     SetSetting,
     Style,
+    import_line,
     is_secret_name,
-    parse_action,
     to_python,
 )
 from .errors import ActionError, ApprovalRequired, JobCancelled, NotSupportedYet, PathNotAllowed
@@ -77,8 +82,11 @@ from .estimate import Estimate, needs_approval
 from .events import EventBus
 from .jobs import Job, JobContext, JobRunner
 from .paths import allowed_roots, open_locator
-from .redact import scrub
-from .registry import NetworkHandle, NetworkRegistry, as_pandas
+from .plugins.discovery import PluginStatus, discover
+from .plugins.host import Host, PluginSettingsError, validate_plugin_settings
+from .plugins.spec import HOST_API, WorkbenchPlugin, api_compatible, problems
+from .redact import describe_error, scrub
+from .registry import NetworkHandle, NetworkRegistry, as_pandas, derived_copy
 from .selection import selection_payload, unparsed_payload
 
 __all__ = [
@@ -123,15 +131,64 @@ class HistoryEntry:
     seq: int
     action: dict[str, Any]
     python: str
+    imports: str  # the ``from ... import ...`` line ``python`` needs (a plugin's Action lives in its own package)
     ok: bool
     error: str | None
     error_type: str | None
     result: Any
     ts: float
+    #: Set on an Action dispatched from inside another Action's handler (``host.dispatch``): the ``seq``
+    #: of the Action that dispatched it. Replaying the parent repeats it, so scripts show it as a comment.
+    parent_seq: int | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """JSON-safe copy."""
         return asdict(self)
+
+
+@dataclass
+class _Nested:
+    """An Action dispatched inside another, recorded after the outermost one finishes."""
+
+    entry: HistoryEntry
+    children: list[_Nested]
+
+
+@dataclass
+class _Running:
+    """An Action whose handler is running (innermost last in ``Session._running``)."""
+
+    action: BaseAction
+    undo_mark: int  # ``len(Session._undo)`` when it started: a failure undoes everything after it
+    view: tuple[str | None, dict[str, Any] | None, dict[str, Any]]  # active, selection, style before it ran
+    children: list[_Nested] = field(default_factory=list)
+
+
+@dataclass
+class _Mutated:
+    """Undo record for one :meth:`Session.mutate` inside an Action."""
+
+    handle: NetworkHandle
+    tables: dict[str, tuple[Any, bool]]  # name -> (expr, dirty) before
+    stamps: dict[str, Any]  # name -> its sync stamp before (``None``: unstamped)
+    version: int
+    lineage: int  # lineage length before
+
+    def undo(self, session: Session) -> None:
+        self.handle.restore(self.tables, self.version)
+        del self.handle.lineage[self.lineage :]
+        _restore_stamps(self.handle, self.stamps)
+
+
+@dataclass
+class _Derived:
+    """Undo record for one :meth:`Session.derive` inside an Action."""
+
+    net_id: str
+
+    def undo(self, session: Session) -> None:
+        if self.net_id in session.registry.ids():
+            session.registry.remove(self.net_id)
 
 
 class Session:
@@ -147,6 +204,7 @@ class Session:
         http: Any = None,
         llm_transport: Any = None,
         keyring: Any = "auto",
+        plugins: Iterable[WorkbenchPlugin] | None = None,
     ) -> None:
         """Load settings (raises :class:`~netstead.config.SettingsError` on bad config) and start empty.
 
@@ -154,6 +212,9 @@ class Session:
         :mod:`requests`); ``None`` means ``requests`` itself. Tests inject a fake. ``llm_transport``
         (an ``httpx`` transport) and ``keyring`` (``"auto"``, ``None`` or a keyring-like object) do
         the same for the LLM providers; the defaults use the network and the OS keyring.
+        ``plugins``: plugins to install (default ``None``: discover the installed
+        ``netstead.workbench.plugins`` entry points). A plugin that can't install is recorded in
+        :attr:`plugin_status`, never raised.
         """
         self.project_dir = project_dir
         self._environ = environ
@@ -184,6 +245,26 @@ class Session:
         self.jobs = JobRunner(lambda event: self.events.publish(event))  # late-bound, like every other publish
         self._lock = threading.RLock()
         self._committed: dict[str, int] = {}  # job id -> history seq its ``_commit`` recorded
+        #: Actions whose handlers are running (more than one: nested ``host.dispatch``). Only the thread
+        #: holding the lock touches it, so "empty" means "not inside any Action" for that thread.
+        self._running: list[_Running] = []
+        #: What ``mutate``/``derive`` changed inside the running Actions, undone if one of them fails.
+        self._undo: list[_Mutated | _Derived] = []
+        #: The Actions this session understands: the core ones, plus any its plugins register.
+        self.actions = ActionRegistry()
+        #: ``type`` -> handler run under the lock. Core handlers are this class's ``_do_<type>`` methods
+        #: (job actions use ``_job_<type>``); plugins add theirs when installed.
+        self._handlers: dict[str, Callable[..., Any]] = {
+            t: self._core_handler(t) for t in self.actions.types() if not self.actions.model(t).runs_as_job
+        }
+        #: Installed plugins by id, and the :class:`Host` each one was given.
+        self.plugins: dict[str, WorkbenchPlugin] = {}
+        self._hosts: dict[str, Host] = {}
+        #: Each installed plugin's ``(router, static_dir)``, built and checked at install (see :meth:`plugin_mounts`).
+        self._plugin_mounts: dict[str, tuple[Any, Path | None]] = {}
+        #: One status per plugin seen at startup: loaded, disabled, incompatible or error (with the reason).
+        self.plugin_status: list[PluginStatus] = []
+        self._install_plugins(plugins)
 
     # ------------------------------------------------------------------ public API
 
@@ -253,7 +334,118 @@ class Session:
             self.settings, environ=self._environ, keyring=self._keyring, transport=self._llm_transport
         )
 
-    def dispatch(self, action: Action | dict[str, Any]) -> Any:
+    def _install_plugins(self, plugins: Iterable[WorkbenchPlugin] | None) -> None:
+        """Install ``plugins`` (default: discover installed entry points); record a status for each."""
+        disabled = set(self.settings.app.disabled_plugins)
+        if plugins is None:
+            plugins, self.plugin_status = discover(disabled)
+        for plugin in plugins:
+            self.plugin_status.append(self._install(plugin, disabled))
+
+    def _install(self, plugin: WorkbenchPlugin, disabled: set[str]) -> PluginStatus:
+        """Check ``plugin``, run its ``on_load``, build its router, then register its Actions (all or none).
+
+        Never raises. A router factory that fails (or returns something other than an ``APIRouter``)
+        or a ``static_dir`` that isn't a directory is an install failure like any other: no Actions,
+        no state, status ``error``.
+        """
+        frontend = f"/plugins/{plugin.id}/{plugin.frontend}" if plugin.static_dir is not None else None
+        status = PluginStatus(plugin.id, plugin.name, plugin.version, plugin.requires_api, "loaded", frontend=frontend)
+        if plugin.id in disabled:
+            return replace(status, state="disabled", frontend=None)
+        if not api_compatible(plugin.requires_api):
+            reason = f"needs plugin API {plugin.requires_api}; this netstead provides {HOST_API}"
+            return replace(status, state="incompatible", error=reason, frontend=None)
+        errors = problems(plugin, self.actions, self.plugins)
+        host = Host(self, plugin)
+        if not errors:
+            try:
+                host.settings  # noqa: B018  (validates [plugins.<id>] now, so a bad file is reported at startup)
+                if plugin.on_load is not None:
+                    plugin.on_load(host)
+            except PluginSettingsError as exc:
+                errors.append(str(exc))
+            # boundary: third-party code must not stop the session, not even with ``sys.exit``
+            # (KeyboardInterrupt still propagates: the user asked to stop).
+            except (Exception, SystemExit) as exc:
+                logger.exception("workbench plugin %r failed to load", plugin.id)
+                errors.append(describe_error(exc))
+        mount: tuple[Any, Path | None] = (None, None)
+        if not errors:
+            try:
+                mount = _build_mount(plugin, host)
+            except (Exception, SystemExit) as exc:  # boundary: third-party code, as for ``on_load``
+                logger.exception("workbench plugin %r failed to build its routes", plugin.id)
+                errors.append(describe_error(exc))
+        if not errors:
+            errors = self._register_actions(plugin, host)
+        if errors:
+            return replace(status, state="error", error="; ".join(errors), frontend=None)
+        self.plugins[plugin.id] = plugin
+        self._hosts[plugin.id] = host
+        self._plugin_mounts[plugin.id] = mount
+        return status
+
+    def plugin_mounts(self) -> dict[str, tuple[Any, Path | None]]:
+        """``plugin id -> (APIRouter or None, static dir or None)`` for every installed plugin, to attach to the app."""
+        with self._lock:
+            return dict(self._plugin_mounts)
+
+    def unload_plugin(self, plugin_id: str, error: str) -> None:
+        """Take an installed plugin out (Actions, state, mounts) and mark it ``error``: its mount failed to attach."""
+        with self._lock:
+            plugin = self.plugins.pop(plugin_id)
+            self._hosts.pop(plugin_id, None)
+            self._plugin_mounts.pop(plugin_id, None)
+            for spec in plugin.actions:
+                action_type = spec.model.action_type()
+                if action_type is not None and self.actions.has(action_type):
+                    self.actions.unregister(action_type)
+                    self._handlers.pop(action_type, None)
+            failed = {"state": "error", "error": error, "frontend": None}
+            self.plugin_status = [
+                replace(s, **failed) if s.id == plugin_id and s.state == "loaded" else s for s in self.plugin_status
+            ]
+
+    def _register_actions(self, plugin: WorkbenchPlugin, host: Host) -> list[str]:
+        """Register every one of ``plugin``'s Actions and handlers, or (on any failure) none; return the errors."""
+        registered: list[str] = []
+        try:
+            for spec in plugin.actions:
+                action_type = spec.model.action_type()
+                self.actions.register(spec.model)
+                registered.append(action_type)  # type: ignore[arg-type]  # register() refused a None type
+                self._handlers[action_type] = functools.partial(spec.handler, host)  # type: ignore[index]
+        except (TypeError, ValueError) as exc:  # ``problems`` should have caught it; never half-install
+            for action_type in registered:
+                self.actions.unregister(action_type)
+                self._handlers.pop(action_type, None)
+            return [str(exc)]
+        return []
+
+    def _plugin_state(self) -> dict[str, Any]:
+        """Each plugin's contributed state; a failing ``state()`` is logged and shown, never raised."""
+        out: dict[str, Any] = {}
+        for plugin_id, plugin in self.plugins.items():
+            if plugin.state is None:
+                continue
+            try:
+                out[plugin_id] = copy.deepcopy(plugin.state(self._hosts[plugin_id]))
+            except Exception as exc:  # boundary: third-party code
+                logger.exception("workbench plugin %r state() failed", plugin_id)
+                out[plugin_id] = {"error": describe_error(exc)}
+        return out
+
+    def _check_plugin_settings(self, settings: Settings) -> None:
+        """Raise :class:`ActionError` if ``settings`` breaks any installed plugin's settings model."""
+        for plugin_id, plugin in self.plugins.items():
+            if plugin.settings_model is not None:
+                try:
+                    validate_plugin_settings(plugin.settings_model, settings.plugins.get(plugin_id, {}), plugin_id)
+                except PluginSettingsError as exc:
+                    raise ActionError(str(exc)) from None
+
+    def dispatch(self, action: BaseAction | dict[str, Any]) -> Any:
         """Apply ``action`` (waiting for a job action to finish) and return its result.
 
         Raises the recorded failure's type: :class:`~netstead.workbench.errors.ApprovalRequired` (with
@@ -269,18 +461,21 @@ class Session:
 
     do = dispatch
 
-    def dispatch_recorded(self, action: Action | dict[str, Any]) -> HistoryEntry:
+    def dispatch_recorded(self, action: BaseAction | dict[str, Any]) -> HistoryEntry:
         """Apply ``action``, record and publish it, and return the entry (never raises ``ActionError``).
 
         A ``runs_as_job`` action is submitted as a background job and this call waits for it.
         """
-        if isinstance(action, dict):
-            action = parse_action(action)
+        action = self._coerce(action)
         if action.runs_as_job:
             # The job thread needs the lock (``_commit``/``_finish``) and we wait for it below, so a
             # caller already holding the lock (e.g. a handler) would deadlock: fail loudly instead.
             if self._lock._is_owned():  # type: ignore[attr-defined]  # RLock's owner check
-                raise RuntimeError("cannot run a job action while holding the session lock (it would deadlock)")
+                raise RuntimeError(
+                    f"{action.type} runs as a job, so it can't be dispatched from inside an Action handler "
+                    "(it would deadlock waiting for the session lock); a plugin does slow work with "
+                    "host.submit_job instead"
+                )
             job = self.submit(action)
             # Wait OUTSIDE the session lock: the job thread takes it in ``_commit`` and ``_finish``,
             # so waiting while holding it would deadlock. Never call this with the lock held.
@@ -288,7 +483,7 @@ class Session:
             if job.history_seq is None:  # on_finish itself failed (already logged by the runner)
                 raise RuntimeError(f"job {job.id} finished without a history entry")
             return self.history[job.history_seq - 1]
-        handler = getattr(self, f"_do_{action.type}")
+        handler = self._handlers[action.type]
         # An optional ``_prepare_<type>`` does the slow, read-only part (an LLM call) WITHOUT the lock,
         # so other actions and state reads proceed meanwhile; the handler then applies its result and
         # the entry is recorded in one critical section, as before. Its failure is recorded like the
@@ -302,6 +497,8 @@ class Session:
             except Exception as exc:  # boundary: recorded below, under the lock
                 failure = exc
         with self._lock:
+            running = _Running(action, len(self._undo), (self.active, self.selection, dict(self.style)))
+            self._running.append(running)
             try:
                 if failure is not None:
                     raise failure
@@ -311,17 +508,73 @@ class Session:
                 result, ok, error, error_type = exc.payload, False, str(exc), type(exc).__name__
             except Exception as exc:  # boundary: an unexpected handler failure is still a recorded, user-facing error
                 logger.exception("workbench action %s failed", action.type)
-                error = f"internal error: {type(exc).__name__}: {exc}"
+                if self._is_plugin_action(action.type):
+                    # A plugin's exception message (or a pydantic input value) must not reach the
+                    # browser verbatim: it can carry secrets the plugin was handling.
+                    error = f"internal error: {describe_error(exc)}"
+                else:
+                    error = f"internal error: {type(exc).__name__}: {exc}"
                 result, ok, error_type = None, False, "InternalError"
-            return self._record(action, ok=ok, result=result, error=error, error_type=error_type)
+            except BaseException:  # SystemExit, KeyboardInterrupt: propagate, but never half-applied
+                self._running.pop()
+                self._roll_back(running)
+                raise
+            self._running.pop()
+            changed = len(self._undo) > running.undo_mark or bool(running.children)
+            if not ok:
+                self._roll_back(running)
+            elif not self._running:
+                self._undo.clear()  # the outermost Action succeeded: nothing left to undo
+            entry = self._entry(action, ok=ok, result=result, error=error, error_type=error_type)
+            if self._running:  # nested: recorded when the outermost Action is, pointing at its parent
+                self._running[-1].children.append(_Nested(entry, running.children))
+                return entry
+            self._record_tree(entry, running.children, state=ok or changed)
+            return entry
 
-    def submit(self, action: Action | dict[str, Any]) -> Job:
+    def _roll_back(self, running: _Running) -> None:
+        """Undo what ``running`` (and every Action nested in it) changed; mark its nested entries rolled back.
+
+        Restores the tables, version, lineage and sync stamps of each mutated network, unregisters
+        the networks it derived, and puts back the active network, selection and style. A plugin's
+        own state (its closure, files it wrote) is the plugin's to keep consistent.
+        """
+        while len(self._undo) > running.undo_mark:
+            self._undo.pop().undo(self)
+        active, selection, style = running.view
+        ids = self.registry.ids()
+        self.active = active if active in ids else (ids[0] if ids else None)
+        self.selection = selection if selection is None or selection.get("net_id") in ids else None
+        self.style = style
+        _mark_rolled_back(running.children, running.action.type)
+
+    def _is_plugin_action(self, action_type: str) -> bool:
+        """Whether ``action_type`` belongs to an installed plugin (``"<plugin id>.<name>"``), not core."""
+        plugin_id, _, rest = action_type.partition(".")
+        return bool(rest) and plugin_id in self.plugins
+
+    def _core_handler(self, action_type: str) -> Callable[..., Any]:
+        """The handler-table entry for a core Action: calls ``_do_<type>``, looked up at call time.
+
+        Late-bound so an instance-level override of the method (a test's ``monkeypatch``) still takes effect.
+        """
+        name = f"_do_{action_type}"
+        return lambda *args: getattr(self, name)(*args)
+
+    def _coerce(self, action: BaseAction | dict[str, Any]) -> BaseAction:
+        """Parse a dict with this session's registry; refuse an instance of a class it doesn't know."""
+        if isinstance(action, dict):
+            return self.actions.parse(action)
+        if not self.actions.has(action.type) or self.actions.model(action.type) is not type(action):
+            raise ValueError(f"action type {action.type!r} is not registered in this session")
+        return action
+
+    def submit(self, action: BaseAction | dict[str, Any]) -> Job:
         """Start a ``runs_as_job`` action on a background job and return the :class:`Job` at once.
 
         The history entry is recorded when the job finishes (so ``seq`` follows completion order).
         """
-        if isinstance(action, dict):
-            action = parse_action(action)
+        action = self._coerce(action)
         if not action.runs_as_job:
             raise ValueError(f"{action.type} is not a job action; use dispatch()")
         run = getattr(self, f"_job_{action.type}")
@@ -332,7 +585,7 @@ class Session:
             on_finish=lambda job: self._finish(action, job),
         )
 
-    def _commit(self, action: Action, ctx: JobContext, loaded: _Loaded) -> dict[str, Any]:
+    def _commit(self, action: BaseAction, ctx: JobContext, loaded: _Loaded) -> dict[str, Any]:
         """Register ``loaded`` and record the success entry in ONE critical section; return the job result.
 
         Doing both under one lock acquisition is what keeps history order equal to registry order:
@@ -349,7 +602,7 @@ class Session:
             self._committed[ctx.job_id] = entry.seq
         return result
 
-    def _finish(self, action: Action, job: Job) -> None:
+    def _finish(self, action: BaseAction, job: Job) -> None:
         """Job callback: link the committed entry to the job, or record a failure/cancellation entry."""
         with self._lock:
             seq = self._committed.pop(job.id, None)
@@ -365,32 +618,65 @@ class Session:
         self.jobs.update(job, history_seq=seq)
 
     def _record(
-        self, action: Action, *, ok: bool, result: Any, error: str | None, error_type: str | None
+        self, action: BaseAction, *, ok: bool, result: Any, error: str | None, error_type: str | None
     ) -> HistoryEntry:
-        """Append and publish a history entry (then a ``state`` event on success). Call with the lock held.
+        """Append and publish a history entry (then a ``state`` event on success). Call with the lock held."""
+        entry = self._entry(action, ok=ok, result=result, error=error, error_type=error_type)
+        entry.seq = len(self.history) + 1
+        self._append(entry, state=ok)
+        return entry
 
-        Publishing is best-effort: once the entry is appended the action *happened*, so a failing
-        publish (or ``state()``) is logged, never raised. Raising here would make a job's
-        ``_finish`` record the same action a second time.
-        """
-        entry = HistoryEntry(
-            seq=len(self.history) + 1,
+    @staticmethod
+    def _entry(action: BaseAction, *, ok: bool, result: Any, error: str | None, error_type: str | None) -> HistoryEntry:
+        """A history entry for ``action``, not yet numbered or appended."""
+        return HistoryEntry(
+            seq=0,
             action=action.model_dump(mode="json"),
             python=to_python(action),
+            imports=import_line(action),
             ok=ok,
             error=error,
             error_type=error_type,
             result=copy.deepcopy(result),
             ts=time.time(),
         )
+
+    def _record_tree(self, entry: HistoryEntry, children: list[_Nested], *, state: bool) -> None:
+        """Record an outermost Action after the Actions nested in it (innermost first), linked by ``parent_seq``."""
+        ordered: list[HistoryEntry] = []
+
+        def walk(node: HistoryEntry, kids: list[_Nested]) -> None:
+            for kid in kids:
+                walk(kid.entry, kid.children)
+            ordered.append(node)
+
+        walk(entry, children)
+        for seq, item in enumerate(ordered, start=len(self.history) + 1):
+            item.seq = seq
+
+        def link(node: HistoryEntry, kids: list[_Nested]) -> None:
+            for kid in kids:
+                kid.entry.parent_seq = node.seq
+                link(kid.entry, kid.children)
+
+        link(entry, children)
+        for item in ordered:
+            self._append(item, state=state and item is entry)
+
+    def _append(self, entry: HistoryEntry, *, state: bool) -> None:
+        """Append a numbered entry and publish it (then a ``state`` event if asked). Call with the lock held.
+
+        Publishing is best-effort: once the entry is appended the action *happened*, so a failing
+        publish (or ``state()``) is logged, never raised. Raising here would make a job's
+        ``_finish`` record the same action a second time.
+        """
         self.history.append(entry)
         try:
             self.events.publish({"type": "history", "entry": entry.to_dict()})
-            if ok:
+            if state:
                 self.events.publish({"type": "state", "state": self.state()})
         except Exception:  # boundary: the browser misses one update; the history stays correct
             logger.exception("publishing history entry %d failed", entry.seq)
-        return entry
 
     def add_network(
         self, net: Network, *, source: str = "<python>", label: str | None = None, net_id: str | None = None
@@ -402,6 +688,89 @@ class Session:
             self.events.publish({"type": "state", "state": self.state()})
         return handle
 
+    def mutate(
+        self, net_id: str | None, edits: Sequence[Edit], *, note: str, origin: str | None = None
+    ) -> list[EditResult]:
+        """Apply corral ``edits`` to a network's roadway, in order and all-or-nothing; return their results.
+
+        The edits run on a copy-on-write draft of the roadway, so the network itself never holds a
+        half-applied state: a failing edit discards the draft and re-raises, leaving the tables, their
+        sync stamps and the caches as they were. On success the changed tables are swapped in at once,
+        the ``version`` is bumped (dropping caches), ``note`` is appended to the lineage, and ``state``
+        is published. Inside an Action, the change is undone if that Action (or one it is nested in)
+        fails. Outside any Action (a job, a plugin route, Python) nothing would record it, so it gets a
+        history entry of its own, ``<origin>.mutate``, whose ``python`` is a comment: it is visible but
+        not replayable. ``origin`` (a plugin id; default ``"python"``) also prefixes the lineage note.
+        The returned :class:`~corral.editing.EditResult` objects carry the rollback data
+        :func:`corral.editing.apply.reverse_edit` needs, so a caller can undo them later.
+        """
+        with self._lock:
+            handle = self._handle(net_id)
+            roadway = handle.roadway
+            draft = derived_copy(roadway)  # shares the immutable table expressions; copies the wrappers
+            applied = [apply_edit(draft, edit) for edit in edits]
+            changed = {name: (draft.tables[name].expr, draft.tables[name].dirty) for name in {e.table for e in edits}}
+            if self._running:
+                tracker = roadway.dirty_tracker
+                self._undo.append(
+                    _Mutated(
+                        handle,
+                        tables={name: (roadway.tables[name].expr, roadway.tables[name].dirty) for name in changed},
+                        stamps={name: tracker.get_table_stamp(name) for name in changed} if tracker else {},
+                        version=handle.version,
+                        lineage=len(handle.lineage),
+                    )
+                )
+            handle.replace_tables(changed)
+            handle.lineage.append(f"{origin}: {note}" if origin else note)
+            if self._running:
+                self.events.publish({"type": "state", "state": self.state()})
+            else:
+                self._record_outside_action(handle.id, note, origin or "python")
+        return applied
+
+    def _record_outside_action(self, net_id: str, note: str, origin: str) -> None:
+        """Record a ``mutate`` no Action covers, so nothing changes silently (not replayable: a comment)."""
+        text = " ".join(note.split())  # one line: it becomes a comment in a script
+        entry = HistoryEntry(
+            seq=len(self.history) + 1,
+            action={"type": f"{origin}.mutate", "net_id": net_id, "note": text},
+            python=f"# {origin} changed {net_id} outside an Action: {text} (not replayable)",
+            imports="",
+            ok=True,
+            error=None,
+            error_type=None,
+            result=None,
+            ts=time.time(),
+        )
+        self._append(entry, state=True)
+
+    def derive(self, net_id: str | None, *, label: str, note: str) -> str:
+        """Register a copy-on-write copy of a network as a new one (a preview, a scenario); return its id.
+
+        The base is never touched by edits to the copy. The copy records ``derived_from`` and inherits
+        the base's lineage plus ``note``. The active network does not change.
+        """
+        with self._lock:
+            base = self._handle(net_id)
+            handle = self.registry.add(derived_copy(base.roadway), source=base.source, label=label)
+            handle.derived_from = base.id
+            handle.lineage = [*base.lineage, note]
+            if self._running:
+                self._undo.append(_Derived(handle.id))
+            self.events.publish({"type": "state", "state": self.state()})
+        return handle.id
+
+    def network(self, net_id: str | None = None) -> NetworkHandle:
+        """The handle for ``net_id`` (default: the active network); :class:`ActionError` if there is none."""
+        with self._lock:
+            return self._handle(net_id)
+
+    def selection_copy(self) -> dict[str, Any] | None:
+        """A deep copy of the shared selection payload (``None`` when nothing is selected)."""
+        with self._lock:
+            return copy.deepcopy(self.selection)
+
     def state(self) -> dict[str, Any]:
         """JSON-safe snapshot pushed to the browser."""
         with self._lock:
@@ -410,6 +779,7 @@ class Session:
                 "active": self.active,
                 "selection": copy.deepcopy(self.selection),
                 "style": copy.deepcopy(self.style),
+                "plugins": self._plugin_state(),
             }
 
     def settings_payload(self) -> dict[str, Any]:
@@ -419,8 +789,10 @@ class Session:
         lists keys read only at launch; ``notes`` explains sections nothing reads yet.
         """
         sources = dict(self.loaded.sources)
+        values = self.settings.model_dump(mode="json")
+        values["plugins"] = redact_settings(values["plugins"])  # validated secret-free; belt and braces
         return {
-            "values": self.settings.model_dump(mode="json"),
+            "values": values,
             "sources": sources,
             "schema": Settings.model_json_schema(),
             "paths": {"user": str(self.loaded.user_path), "project": str(self.loaded.project_path)},
@@ -512,6 +884,9 @@ class Session:
     def _do_close_network(self, action: CloseNetwork) -> None:
         self._handle(action.net_id)
         self.registry.remove(action.net_id)
+        for handle in self.registry:  # a later network may reuse the id: never leave a copy pointing at it
+            if handle.derived_from == action.net_id:
+                handle.derived_from = f"{action.net_id} (closed)"
         # Its few-shot examples go too: a later network may reuse the id.
         self._examples = deque((e for e in self._examples if e[0] != action.net_id), maxlen=_MAX_EXAMPLES)
         if self.selection and self.selection["net_id"] == action.net_id:
@@ -685,13 +1060,21 @@ class Session:
             if action.scope == "session":
                 overrides = {**self._overrides, action.key: action.value}
                 loaded = load_settings(project_dir=self.project_dir, overrides=overrides, environ=self._environ)
+                self._check_plugin_settings(loaded.settings)
                 self._overrides = overrides
             else:
+                if key.split(".", 1)[0] == "plugins":  # check first: a saved file a plugin rejects breaks startup
+                    preview = load_settings(
+                        project_dir=self.project_dir,
+                        overrides={**self._overrides, action.key: action.value},
+                        environ=self._environ,
+                    )
+                    self._check_plugin_settings(preview.settings)
                 save_setting(
                     action.key, action.value, scope=action.scope, project_dir=self.project_dir, environ=self._environ
                 )
                 loaded = load_settings(project_dir=self.project_dir, overrides=self._overrides, environ=self._environ)
-            value = get_value(loaded.settings, action.key)
+            value = _value_or_unset(loaded.settings, action.key)
         except SettingsError as exc:
             raise ActionError(str(exc)) from exc
         self.loaded = loaded
@@ -709,10 +1092,11 @@ _CONFIG_ONLY_REASON = (
     "The folders the app may read and write. Set them in a config file, a NETSTEAD_IO__ALLOWED_ROOTS "
     "env var, or on the command line: if an action could widen them, the sandbox would protect nothing."
 )
-#: Shown beside a secret-named key (none exist today; keys live in the OS keyring).
+#: Shown beside a secret-named key. Config validation refuses them (keys live in the OS keyring), so this
+#: only appears if one slips into the sources some other way.
 _SECRET_REASON = "Credentials are never settings. Set API keys in Settings → Language models."
 #: Keys the server reads only at launch: a change applies the next time `netstead app` starts.
-_RESTART_KEYS = ("app.host", "app.port", "app.console")
+_RESTART_KEYS = ("app.host", "app.port", "app.console", "app.disabled_plugins")
 #: Sections in the schema that nothing reads yet (see the P1b plan, open question 8).
 _SECTION_NOTES = {
     "engine": "Not used by the workbench yet: networks open with DuckDB's own defaults.",
@@ -761,6 +1145,59 @@ class _ParsedSelect:
     result: Any
     parsed_by: dict[str, Any] | None
     error: Exception | None = None  # the parser could not read the utterance (a "could not parse" selection)
+
+
+def _build_mount(plugin: WorkbenchPlugin, host: Host) -> tuple[Any, Path | None]:
+    """``(router, static_dir)`` for ``plugin``, checked: raises if either can't be served."""
+    static_dir = Path(plugin.static_dir) if plugin.static_dir is not None else None
+    if static_dir is not None and not static_dir.is_dir():
+        raise ValueError(f"static_dir {static_dir.name!r} is not a directory")
+    if plugin.router is None:
+        return None, static_dir
+    from fastapi import APIRouter  # the server's dependency: only needed when a plugin brings routes
+
+    router = plugin.router(host)
+    if not isinstance(router, APIRouter):
+        raise TypeError(f"router(host) returned {type(router).__name__}, not a fastapi APIRouter")
+    return router, static_dir
+
+
+def _mark_rolled_back(children: list[_Nested], parent_type: str) -> None:
+    """Nested entries that succeeded but were undone with their parent: history must not call them applied."""
+    for child in children:
+        if child.entry.ok:
+            child.entry.ok, child.entry.error_type = False, "RolledBack"
+            child.entry.error = f"rolled back: {parent_type} failed"
+        _mark_rolled_back(child.children, parent_type)
+
+
+def _restore_stamps(handle: NetworkHandle, stamps: Mapping[str, Any]) -> None:
+    """Put back the sync stamps a rolled-back mutate dropped (the tables are back to what they described).
+
+    corral's ``DirtyTracker`` has no public "restore a stamp" method, and re-stamping can't stand in
+    for one (``hash_table`` is not stable across reads of some sources), so the saved stamp object is
+    written back into the tracker's table map. A tracker without that map leaves the table unstamped,
+    which corral treats as "unknown".
+    """
+    tracker = handle.roadway.dirty_tracker
+    if tracker is None:
+        return
+    stamped = getattr(tracker, "_tables", None)
+    for name, stamp in stamps.items():
+        if stamp is not None and isinstance(stamped, dict):
+            stamped[name] = stamp
+        else:
+            tracker.mark_dirty(name)
+
+
+def _value_or_unset(settings: Settings, key: str) -> Any:
+    """``get_value`` for ``key``; a removed plugin setting (no model default at this layer) reads as ``None``."""
+    try:
+        return get_value(settings, key)
+    except SettingsError:
+        if key.strip().lower().split(".", 1)[0] == "plugins":
+            return None
+        raise
 
 
 def _follows_endpoint(mode: str, endpoint_local: bool) -> bool:

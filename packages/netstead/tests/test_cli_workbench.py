@@ -147,3 +147,22 @@ def test_app_provider_alias_and_model_flag(served):
     assert result.exit_code == 0, result.output
     select = served[0].settings.select
     assert (select.provider, select.model) == ("anthropic", "claude-haiku-4-5-20251001")
+
+
+def test_widening_roots_builds_one_session_so_plugins_load_once(served, monkeypatch, rdu_source, tmp_path):
+    """Plugins are third-party code with ``on_load`` side effects: discover and install them exactly once."""
+    from netstead.workbench import session as session_module
+
+    calls = []
+    real_discover = session_module.discover
+
+    def counting_discover(*args, **kwargs):
+        calls.append(args)
+        return real_discover(*args, **kwargs)
+
+    monkeypatch.setattr(session_module, "discover", counting_discover)
+    monkeypatch.setenv("NETSTEAD_IO__ALLOWED_ROOTS", json.dumps([str(tmp_path / "elsewhere")]))
+    result = runner.invoke(app, ["app", rdu_source])
+    assert result.exit_code == 0, result.output
+    assert "allowing" in result.output and len(calls) == 1
+    assert str(Path(rdu_source).resolve()) in served[0].settings.io.allowed_roots

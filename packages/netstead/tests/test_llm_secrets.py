@@ -188,3 +188,13 @@ def test_looks_like_secret_scans_dict_keys_and_sets():
     assert looks_like_secret(f"FOO_{key}")  # 'sk-' right after '_' still counts
     assert looks_like_secret(f"bar-{key}")  # ... and right after '-'
     assert looks_like_secret(f"SK-ANT-{'A' * 25}")  # case-insensitive prefix
+
+
+def test_redact_settings_replaces_secret_named_and_key_shaped_values():
+    from netstead.llm.secrets import redact_settings
+
+    key = "sk-" + "a" * 30
+    data = {"foo": {"prefix": "Hi", "api_key": "x", "list": [key, "https://u:p@h/"], key: 1, "n": 2}}
+    assert redact_settings(data) == {
+        "foo": {"prefix": "Hi", "api_key": "[redacted]", "list": ["[redacted]", "[redacted]"], "n": 2}
+    }

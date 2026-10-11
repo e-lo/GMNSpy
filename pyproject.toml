@@ -213,6 +213,7 @@ markers = [
     "perf: performance regression bench; skipped by default, run with -m \"\" (full) or -m perf",
     "integration: cross-package integration",
     "live_llm: calls real LLM provider APIs; skipped unless NETSTEAD_LIVE_LLM=anthropic,openai,gemini,ollama (any subset)",
+    "plugin_discovery: lets Session() discover installed Workbench plugin entry points (off by default in tests)",
 ]
 
 # ---------------------------------------------------------------------------

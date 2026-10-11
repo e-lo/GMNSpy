@@ -31,9 +31,13 @@ __all__ = [
     "KeyringLike",
     "SecretStore",
     "SecretStoreError",
+    "has_url_userinfo",
+    "is_secret_name",
     "looks_like_secret",
     "origin_of",
     "redact",
+    "redact_settings",
+    "settings_secret_problem",
 ]
 
 #: Keyring service name for every netstead LLM key (one entry per :attr:`KeySlot.name`).
@@ -117,6 +121,94 @@ def looks_like_secret(value: Any) -> bool:
     if isinstance(value, list | tuple | set | frozenset):
         return any(looks_like_secret(v) for v in value)
     return False
+
+
+#: Setting names that could only hold a credential (last key segment, or any key nested in the value).
+_SECRET_NAME = re.compile(
+    r"(?i)(^|[_.-])(api_?key|key|token|secret|password|passwd|authorization|bearer|credential)s?$"
+)
+#: Legitimate names that match :data:`_SECRET_NAME`: ``credentials`` only names keyring hosts;
+#: ``key_env`` names env vars.
+_SECRET_NAME_ALLOWED = frozenset({"credentials", "key_env"})
+#: ``scheme://user[:pass]@`` at the start of a string: a URL carrying credentials.
+_URL_USERINFO = re.compile(r"^\s*[A-Za-z][A-Za-z0-9+.-]*://[^/?#@]*@")
+
+
+def is_secret_name(name: str) -> bool:
+    """Whether a setting named ``name`` could only hold a credential (``api_key``, ``token``, ...).
+
+    >>> is_secret_name("api_key"), is_secret_name("credentials"), is_secret_name("basemap")
+    (True, False, False)
+    """
+    return bool(_SECRET_NAME.search(name)) and name.lower() not in _SECRET_NAME_ALLOWED
+
+
+def has_url_userinfo(text: str) -> bool:
+    """Whether ``text`` is a URL carrying a username, password or token (``scheme://user:pw@host``).
+
+    >>> has_url_userinfo("https://u:p@example.com/"), has_url_userinfo("https://example.com/")
+    (True, False)
+    """
+    return bool(_URL_USERINFO.match(text))
+
+
+def settings_secret_problem(value: Any, path: str) -> str | None:
+    """Why the settings subtree ``value`` at dotted ``path`` holds a credential, or ``None`` if it doesn't.
+
+    The rules the Workbench's ``SetSetting`` applies, for settings that arrive another way (a file, an
+    env var): a secret-named key at any depth, a key-shaped string (keys included), a URL with userinfo,
+    a ``base_url`` with a query string or fragment. The answer names where, never the value; a key
+    that is itself key-shaped is not named either.
+
+    >>> settings_secret_problem({"foo": {"api_key": "x"}}, "plugins")
+    'plugins.foo.api_key: keys, tokens and passwords are never settings'
+    >>> settings_secret_problem({"foo": {"prefix": "Hi"}}, "plugins") is None
+    True
+    """
+    if isinstance(value, Mapping):
+        for key, item in value.items():
+            name = str(key)
+            if looks_like_secret(name):
+                return f"a key under {path} looks like an API key"
+            where = f"{path}.{name}"
+            if is_secret_name(name):
+                return f"{where}: keys, tokens and passwords are never settings"
+            if name == "base_url" and isinstance(item, str) and ("?" in item or "#" in item):
+                return f"{where}: base_url must not contain a query string or fragment"
+            if (problem := settings_secret_problem(item, where)) is not None:
+                return problem
+    elif isinstance(value, list | tuple):
+        for index, item in enumerate(value):
+            if (problem := settings_secret_problem(item, f"{path}[{index}]")) is not None:
+                return problem
+    elif isinstance(value, str):
+        if looks_like_secret(value):
+            return f"{path}: the value looks like an API key; keys are never settings"
+        if has_url_userinfo(value):
+            return f"{path}: URLs in settings must not contain a username, password or token"
+    return None
+
+
+def redact_settings(value: Any) -> Any:
+    """A copy of a settings subtree with anything :func:`settings_secret_problem` objects to replaced.
+
+    Defence in depth for payloads sent to the browser: a secret-named key's value, and a key-shaped or
+    userinfo-carrying string, become ``"[redacted]"``; a key-shaped key is dropped with its value.
+
+    >>> redact_settings({"a": {"token": "t", "n": 1}})
+    {'a': {'token': '[redacted]', 'n': 1}}
+    """
+    if isinstance(value, Mapping):
+        return {
+            k: "[redacted]" if is_secret_name(str(k)) else redact_settings(v)
+            for k, v in value.items()
+            if not looks_like_secret(str(k))
+        }
+    if isinstance(value, list | tuple):
+        return [redact_settings(v) for v in value]
+    if isinstance(value, str) and (looks_like_secret(value) or has_url_userinfo(value)):
+        return "[redacted]"
+    return value
 
 
 @dataclass(frozen=True)

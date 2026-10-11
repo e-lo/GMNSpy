@@ -237,3 +237,61 @@ def test_settings_error_carries_no_input_or_context(tmp_path, isolated_env):
         load_settings(project_dir=tmp_path, environ=isolated_env, overrides={"select.model": ["MARKERtok"]})
     assert "MARKER" not in str(info.value)
     assert info.value.__cause__ is None and info.value.__context__ is None
+
+
+def test_plugin_tables_are_free_form_and_layered(tmp_path):
+    env = {"NETSTEAD_CONFIG_DIR": str(tmp_path / "cfg"), "NETSTEAD_PLUGINS__HELLO__PREFIX": "Hi"}
+    (tmp_path / "netstead.toml").write_text("[plugins.hello]\ncount = 3\n", encoding="utf-8")
+    loaded = load_settings(project_dir=tmp_path, environ=env)
+    assert loaded.settings.plugins == {"hello": {"count": 3, "prefix": "Hi"}}
+    assert loaded.sources["plugins.hello.prefix"] == "env" and loaded.sources["plugins.hello.count"] == "project"
+
+
+def test_disabled_plugins_defaults_empty(tmp_path):
+    loaded = load_settings(project_dir=tmp_path, environ={"NETSTEAD_CONFIG_DIR": str(tmp_path / "cfg")})
+    assert loaded.settings.app.disabled_plugins == []
+
+
+_KEY = "sk-ant-api03-" + "MARKER" * 6
+
+
+@pytest.mark.parametrize(
+    ("name", "value", "where"),
+    [
+        ("NETSTEAD_PLUGINS__FOO__API_KEY", "MARKERvalue", "plugins.foo.api_key"),
+        ("NETSTEAD_PLUGINS__FOO__PREFIX", _KEY, "plugins.foo.prefix"),
+        ("NETSTEAD_PLUGINS__FOO__ENDPOINT", "https://user:MARKER@example.com/", "plugins.foo.endpoint"),
+        ("NETSTEAD_PLUGINS__FOO__AUTH", '{"password": "MARKER"}', "plugins.foo.auth.password"),
+        ("NETSTEAD_PLUGINS__FOO__BASE_URL", "https://example.com/v1?sig=MARKER", "plugins.foo.base_url"),
+    ],
+)
+def test_a_secret_in_plugin_settings_from_env_is_refused(tmp_path, name, value, where):
+    env = {"NETSTEAD_CONFIG_DIR": str(tmp_path / "cfg"), name: value}
+    with pytest.raises(SettingsError) as info:
+        load_settings(project_dir=tmp_path, environ=env)
+    assert where in str(info.value) and "env layer" in str(info.value)
+    assert "MARKER" not in str(info.value) and info.value.__context__ is None
+
+
+@pytest.mark.parametrize(
+    "toml",
+    [
+        '[plugins.foo]\ntoken = "MARKER"\n',
+        f'[plugins.foo]\nprefix = "{_KEY}"\n',
+        '[plugins.foo.nested]\nclient_secret = "MARKER"\n',
+        '[plugins.foo]\nmirrors = ["https://ok.example.com", "https://u:MARKER@example.com"]\n',
+        f'[plugins.foo]\n"{_KEY}" = 1\n',  # a key-shaped key is not named either
+    ],
+)
+def test_a_secret_in_plugin_settings_from_toml_is_refused(tmp_path, isolated_env, toml):
+    (tmp_path / "netstead.toml").write_text(toml, encoding="utf-8")
+    with pytest.raises(SettingsError) as info:
+        load_settings(project_dir=tmp_path, environ=isolated_env)
+    assert "plugins" in str(info.value) and "project layer" in str(info.value)
+    assert "MARKER" not in str(info.value) and info.value.__context__ is None
+
+
+def test_save_setting_refuses_a_plugin_secret_before_writing(tmp_path, isolated_env):
+    with pytest.raises(SettingsError, match=r"plugins\.foo\.token"):
+        save_setting("plugins.foo.token", "MARKER", scope="project", project_dir=tmp_path, environ=isolated_env)
+    assert not (tmp_path / "netstead.toml").exists()

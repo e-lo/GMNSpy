@@ -180,6 +180,21 @@ def _no_system_keyring(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("netstead.llm.secrets.system_keyring", lambda: None)
 
 
+@pytest.fixture(autouse=True)
+def _no_installed_workbench_plugins(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A default ``Session()`` discovers no entry-point plugins, so a run matches CI's (which installs ``hello``).
+
+    Tests that exercise real discovery opt in with ``@pytest.mark.plugin_discovery``.
+    """
+    if request.node.get_closest_marker("plugin_discovery") is not None:
+        return
+    try:
+        from netstead.workbench.plugins import discovery
+    except ImportError:  # the workbench extra isn't installed: nothing can discover plugins
+        return
+    monkeypatch.setattr(discovery, "entry_points", lambda **kwargs: [])
+
+
 @pytest.fixture
 def run_node():
     """Run ``node`` with captured text output, launched via ``posix_spawn`` rather than fork.

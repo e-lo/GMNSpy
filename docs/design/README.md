@@ -83,8 +83,8 @@ These records exist on branches. Add them to the tables above when they merge.
 
 | Record | Kind | Where | Status |
 |---|---|---|---|
-| `2026-10-05-workbench-plugins-design.md` — entry-point plugin API (`netstead.workbench.plugins`), core owns network nouns, ProjectCard editing moves to an external plugin repo | design | PR #217 | accepted. **Amends the Workbench design:** the in-core `changes/` package it planned is superseded; core stays card-agnostic |
-| `2026-10-05-workbench-plugins-p1-plan.md` — Part 1, Python plugin core | plan | PR #217 | not started; #211 and #212 have merged, so it can start |
+| `2026-10-05-workbench-plugins-design.md` — entry-point plugin API (`netstead.workbench.plugins`), core owns network nouns, ProjectCard editing moves to an external plugin repo | design | `feat/workbench-plugins`, PR pending | accepted; Part 1 implemented. **Amends the Workbench design:** the in-core `changes/` package it planned is superseded; core stays card-agnostic |
+| `2026-10-05-workbench-plugins-p1-plan.md` — Part 1, Python plugin core | plan | `feat/workbench-plugins`, PR pending | implemented (PR pending) |
 
 ## Gaps to close
 

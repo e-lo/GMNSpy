@@ -177,7 +177,7 @@ def test_add_network_from_python(session, rdu_source):
 
 def test_state_shape(opened):
     st = opened.state()
-    assert set(st) == {"networks", "active", "selection", "style"}
+    assert set(st) == {"networks", "active", "selection", "style", "plugins"}
     assert st["networks"][0]["links"] == 178
 
 
@@ -704,7 +704,7 @@ def test_settings_payload_marks_readonly_restart_and_unused_sections(opened):
     p = opened.settings_payload()
     assert set(p["readonly"]) == {"io.allowed_roots"}
     assert "config file" in p["readonly"]["io.allowed_roots"]
-    assert set(p["restart"]) == {"app.host", "app.port", "app.console"}
+    assert set(p["restart"]) == {"app.host", "app.port", "app.console", "app.disabled_plugins"}
     assert set(p["notes"]) == {"engine", "validation", "credentials"}
 
 
@@ -722,3 +722,121 @@ def test_settings_payload_marks_readonly_restart_and_unused_sections(opened):
 )
 def test_refusal_reason(key, refused):
     assert (refusal_reason(key) is not None) is refused
+
+
+def test_history_entry_carries_its_import_line(opened):
+    assert opened.history[-1].imports == "from netstead.workbench import OpenNetwork"
+
+
+def test_session_has_its_own_action_registry(session):
+    assert session.actions.has("open_network") and session.actions.types()[0] == "open_network"
+
+
+def test_dispatch_refuses_an_unregistered_action_instance(session):
+    from typing import Literal
+
+    from netstead.workbench.actions import BaseAction
+
+    class Stray(BaseAction):
+        type: Literal["stray.thing"] = "stray.thing"
+
+    with pytest.raises(ValueError, match="not registered"):
+        session.dispatch(Stray())
+
+
+# ---------------------------------------------------------------------------- mutate / derive
+
+
+def _lanes(handle, link_id):
+    return int(handle.links_df().set_index("link_id").loc[link_id, "lanes"])
+
+
+def _set_lanes(link_id, lanes):
+    from corral.editing import Edit
+
+    return Edit(
+        op="update_rows", table="link", payload={"predicate": lambda t: t.link_id == link_id, "set": {"lanes": lanes}}
+    )
+
+
+def test_derive_registers_a_copy_with_lineage(opened):
+    base = opened.registry.get("rdu-i40")
+    new_id = opened.derive("rdu-i40", label="Preview", note="preview: widen")
+    derived = opened.registry.get(new_id)
+    assert derived.derived_from == "rdu-i40" and derived.lineage == ["preview: widen"]
+    assert opened.active == "rdu-i40" and derived.links_df().shape == base.links_df().shape
+
+
+def test_mutate_applies_bumps_and_never_touches_the_base(opened):
+    first = int(opened.registry.get("rdu-i40").links_df()["link_id"].iloc[0])
+    before = _lanes(opened.registry.get("rdu-i40"), first)
+    new_id = opened.derive(None, label="Preview", note="preview")
+    results = opened.mutate(new_id, [_set_lanes(first, 9)], note="lanes=9")
+    derived = opened.registry.get(new_id)
+    assert results[0].diff.rows_changed == 1 and derived.version == 1
+    assert _lanes(derived, first) == 9 and _lanes(opened.registry.get("rdu-i40"), first) == before
+    assert derived.lineage == ["preview", "lanes=9"]
+
+
+def test_mutate_publishes_state(opened):
+    published = []
+    opened.events.publish = published.append
+    first = int(opened.registry.get("rdu-i40").links_df()["link_id"].iloc[0])
+    opened.mutate(None, [_set_lanes(first, 9)], note="lanes=9")
+    assert [e["type"] for e in published] == ["history", "state"]  # outside an Action: recorded, not replayable
+    assert published[0]["entry"]["action"] == {"type": "python.mutate", "net_id": "rdu-i40", "note": "lanes=9"}
+    assert published[1]["state"]["networks"][0]["version"] == 1
+
+
+def test_mutate_is_all_or_nothing(opened):
+    from corral.editing import Edit, UnsupportedEditOp
+
+    handle = opened.registry.get("rdu-i40")
+    first = int(handle.links_df()["link_id"].iloc[0])  # its row holds NULLs (name, ref, free_speed)
+    before = _lanes(handle, first)
+    with pytest.raises(UnsupportedEditOp):
+        opened.mutate("rdu-i40", [_set_lanes(first, 9), Edit(op="explode", table="link")], note="bad")
+    assert handle.version == 0 and _lanes(handle, first) == before and handle.lineage == []
+    assert not handle.roadway.links.dirty
+
+
+def test_mutate_rolls_back_every_table_of_a_cascade(opened):
+    """A delete with its FK cascade (links, then their node) is one atomic mutate; a failure restores both."""
+    from corral.editing import Edit, UnknownTable
+
+    handle = opened.registry.get("rdu-i40")
+    links, nodes = handle.links_df(), handle.nodes_df()
+    node = int(links["from_node_id"].iloc[0])
+    cascade = [
+        Edit(
+            op="delete_rows",
+            table="link",
+            payload={"predicate": lambda t: (t.from_node_id == node) | (t.to_node_id == node)},
+        ),
+        Edit(op="delete_rows", table="node", payload={"predicate": lambda t: t.node_id == node}),
+    ]
+    with pytest.raises(UnknownTable):
+        opened.mutate(None, [*cascade, Edit(op="delete_rows", table="nope", payload={})], note="bad")
+    assert handle.links_df().shape == links.shape and handle.nodes_df().shape == nodes.shape  # NULL rows not doubled
+    results = opened.mutate(None, cascade, note=f"delete node {node}")
+    assert results[0].diff.rows_removed >= 1 and results[1].diff.rows_removed == 1
+    assert node not in set(handle.nodes_df()["node_id"]) and handle.version == 1
+
+
+def test_mutate_results_can_be_reversed(opened):
+    """What P2's undo needs: each returned EditResult reverses its edit (on a row without NULLs here)."""
+    from corral.editing.apply import reverse_edit
+
+    handle = opened.registry.get("rdu-i40")
+    full = handle.links_df().dropna()
+    link = int(full["link_id"].iloc[0])
+    before = _lanes(handle, link)
+    (result,) = opened.mutate(None, [_set_lanes(link, before + 1)], note="lanes+1")
+    reverse_edit(handle.roadway, result)
+    handle.bump()
+    assert _lanes(handle, link) == before and len(handle.links_df()) == len(handle.links_df().drop_duplicates())
+
+
+def test_mutate_unknown_network_is_an_action_error(opened):
+    with pytest.raises(ActionError, match="unknown network"):
+        opened.mutate("nope", [], note="x")
