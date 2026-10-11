@@ -1,6 +1,6 @@
 // The `wb` object a plugin's activate(wb) receives (plugins design, "The wb host object"). It is built from
 // injected parts, so it is import-free and DOM-free and unit-tested under node; plugins.js passes the real ones.
-// Everything a plugin registers through it is tracked, so a failed activation is rolled back whole.
+// Everything a plugin registers or subscribes through it is tracked, so a failed activation is rolled back whole.
 
 // "/count" -> "/api/plugins/hello/count". A plugin's fetches stay under its own routes.
 export function pluginPath(pluginId, path) {
@@ -41,7 +41,9 @@ export function createWb(pluginId, deps) {
   };
   const serverNow = () => deps.store.get().server;
   const selectionOf = server => deps.activeSelection({ server }) || null;
+  // Listeners are refused after a rollback too: an activate that timed out may resume and subscribe later.
   const watch = (changed, fn, phase) => {
+    open();
     let prev = serverNow();
     const cb = safe(fn, phase);
     return track(deps.store.subscribe(["server"], s => {
@@ -79,7 +81,7 @@ export function createWb(pluginId, deps) {
     schemaForm: (el, schema, value, options) => deps.schemaForm(el, schema, value, options),
     actionSchema: type => deps.actionSchema(type),
     hasAction: type => deps.actionTypes.has(type),
-    on(name, fn) { return track(deps.events.on(eventName(pluginId, name), safe(fn, `event ${name}`))); },
+    on(name, fn) { open(); return track(deps.events.on(eventName(pluginId, name), safe(fn, `event ${name}`))); },
     showPanel: id => deps.dock.showPanel(id),
     toast: message => deps.toast(`${pluginId}: ${message}`),
   };

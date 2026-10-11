@@ -609,8 +609,14 @@ export async function run() {
                  layers.ids().length];
   let late = null;
   try { wb.registerCommand({ id: "hello.late", title: "L", run() {} }); } catch (e) { late = e.message; }
+  // An activate that timed out and resumes later can't attach listeners either (they would never be removed).
+  const lateListeners = [() => wb.on("greeted", () => seen.push(["late"])),
+    () => wb.store.subscribe(["plugins.hello"], () => seen.push(["late"])),
+    () => wb.selection.subscribe(() => seen.push(["late"]))]
+    .map(f => { try { f(); return null; } catch (e) { return e.message; } });
+  store.set({ server: { ...server({ net_id: "n1", link_ids: [9] }), plugins: { hello: { n: 2 } } } });
   hub.emit("hello.greeted", "after rollback");
-  return { before, after, refused, badPath, late, seen, calls,
+  return { before, after, refused, badPath, late, lateListeners, seen, calls,
     has: [wb.hasAction("hello.greet"), wb.hasAction("cards.x")],
     pure: [pluginPath("hello", "/count?x=1"), eventName("hello", "greeted"), eventName("hello", "core.history"),
            keysChanged({ a: { b: 1 } }, { a: { b: 1 }, c: 2 }, ["a.b"]),
@@ -635,6 +641,7 @@ def test_wb_registers_namespaced_tracks_and_rolls_back(node_module, tmp_path):
     assert got["refused"] == 'hello: id "c2" must start with "hello."'
     assert got["badPath"] == 'hello: wb.api paths start with "/" and stay under /api/plugins/hello'
     assert got["late"] == "hello: activation was rolled back; nothing more can be registered"
+    assert got["lateListeners"] == [got["late"]] * 3
     assert got["seen"] == [["store", 1], ["selection", [4]], ["event", {"name": "Ada"}]]
     assert got["calls"] == [
         ["get", "/api/plugins/hello/count"],

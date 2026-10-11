@@ -456,7 +456,7 @@ Every call into plugin code is contained, so one plugin's bug never breaks core 
 
 | Call | When it throws (or its promise rejects) |
 |---|---|
-| `activate(wb)` (or the module import, or no `activate`, or more than 5 s) | Everything it registered is removed, and later registrations through that `wb` are refused. |
+| `activate(wb)` (or the module import, or no `activate`, or more than 5 s) | Everything it registered is removed, and later registrations and listeners (`wb.on`, `subscribe`) through that `wb` are refused. |
 | A panel's `render` | The panel shows "This panel failed to load: …". |
 | A `badge` | No badge. |
 | `onShow`, a `wb.on` or `wb.store` / `wb.selection` listener | Skipped for that call. |
