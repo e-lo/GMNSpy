@@ -207,3 +207,10 @@ def test_history_script_imports_come_from_the_server():
     js = (JS_DIR / "history.js").read_text(encoding="utf-8")
     assert "...imports" in js
     assert "SetActiveNetwork, Select" not in js  # no hard-coded core import list
+
+
+def test_settings_and_schema_forms_share_one_field_model():
+    settings = (JS_DIR / "settings.js").read_text()
+    assert "function inputHTML" not in settings and 'from "./schemaform.js"' in settings
+    settingsform = (JS_DIR / "settingsform.js").read_text()
+    assert "function fieldKind" not in settingsform and 'from "./schemaform.js"' in settingsform
