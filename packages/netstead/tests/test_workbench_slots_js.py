@@ -544,3 +544,14 @@ def test_a_choice_parses_back_to_its_option_value(node_module):
         {"ok": True, "value": False},
         {"ok": True, "value": None},
     ]
+
+
+def test_command_context_hands_out_a_frozen_copy_of_the_state(node_module):
+    got = _commands(
+        node_module,
+        "const c = commandContext({server}); let refused = false;"
+        "try { c.state.active = 'other'; } catch (e) { refused = true; }"  # strict mode (ES module): throws
+        "return [refused, c.state !== server, server.active, c.state.active, commandContext({server: null}).state];",
+        ["commandContext"],
+    )
+    assert got == [True, True, "n1", "n1", None]

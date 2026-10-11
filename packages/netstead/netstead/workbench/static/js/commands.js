@@ -6,14 +6,15 @@ import { activeSelection } from "./store.js";
 const MAP_TABLES = new Set(["link", "node"]);
 
 // What a command's `when(ctx)` and `run(ctx)` see. `target` is the right-clicked map feature or grid row
-// ({table, id}), or the focused record for the palette's "For …" group; null otherwise.
+// ({table, id}), or the focused record for the palette's "For …" group; null otherwise. `state` is a frozen shallow
+// copy of the server state: a command can't swap out the page's own (changes go through Actions).
 export function commandContext({ server, focus = null, highlights = new Set(), workspace = "inspect" }, target = null) {
   const net = server ? server.networks.find(n => n.id === server.active) : null;
   const selection = activeSelection({ server }) || null;
   return {
     network: net ? { id: net.id, version: net.version, derived_from: net.derived_from ?? null } : null,
     selection, selectionCount: selection ? selection.link_ids.length : 0,
-    focus, highlights: [...highlights], workspace, target, state: server,
+    focus, highlights: [...highlights], workspace, target, state: server ? Object.freeze({ ...server }) : server,
   };
 }
 
