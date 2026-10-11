@@ -847,3 +847,23 @@ def test_a_nullable_bool_menu_parses_to_null_true_or_false(node_module):
         'parseInput({kind: "bool", label: "C"}, true)]',
     )
     assert [g["value"] for g in got] == [None, True, False, True]
+
+
+def test_adding_and_removing_a_command_bumps_command_seq(node_module, tmp_path):
+    root = tmp_path / "seq"
+    root.mkdir()
+    for name in ("commands.js", "slots.js", "store.js"):
+        shutil.copy(JS_DIR / name, root / name)
+    (root / "harness.js").write_text(
+        'import { addCommandTo } from "./commands.js";\nimport { createSlots } from "./slots.js";\n'
+        'import { createStore } from "./store.js";\n'
+        "export function run() {\n"
+        "  const slots = createSlots(), store = createStore({ commandSeq: 0 }), seen = [];\n"
+        '  const off = addCommandTo(slots, store, "hello", { id: "hello.c", title: "C", run() {} });\n'
+        "  seen.push(store.get().commandSeq, slots.commands.list().length);\n"
+        "  seen.push(off(), store.get().commandSeq, off(), store.get().commandSeq);\n"
+        "  return seen;\n}\n",
+        encoding="utf-8",
+    )
+    # registered: 1; removed: 2; a second dispose removes nothing and doesn't bump
+    assert node_module(root / "harness.js", ["run"], "run()") == [1, 1, True, 2, False, 2]

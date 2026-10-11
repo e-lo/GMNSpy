@@ -3,7 +3,7 @@
 // finishing) rolls back what it registered, is listed in Settings → Plugins, and never stops the others.
 import { openActionForm } from "./actform.js";
 import { dispatch, getJSON, postJSON } from "./api.js";
-import { actionCommands } from "./commands.js";
+import { actionCommands, addCommandTo } from "./commands.js";
 import { toast } from "./dom.js";
 import { schemaForm } from "./formview.js";
 import { hub } from "./hub.js";
@@ -31,12 +31,7 @@ export function reportPluginError(owner, phase, error) {
 }
 
 // A command registered by anyone; menus and the "Selection actions" button re-check what applies.
-export function addCommand(owner, spec) {
-  const off = slots.addCommand(owner, spec);
-  const changed = () => store.set({ commandSeq: store.get().commandSeq + 1 });
-  changed();
-  return () => { off(); changed(); };
-}
+export const addCommand = (owner, spec) => addCommandTo(slots, store, owner, spec);
 
 export async function loadPlugins() {
   const [{ host_api: hostApi, plugins }, { actions }] = await Promise.all([getJSON("/api/plugins"), getJSON("/api/actions")]);

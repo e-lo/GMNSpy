@@ -64,7 +64,7 @@ function choose(i) {
 // "Selection actions" shows only while a selection command applies (core registers none).
 function syncSelectionButton() {
   const ctx = contextNow(null);
-  $("sel-cmds-wrap").hidden = !(ctx.selection && applicable(slots.commands.list(), "selection", ctx).length);
+  $("sel-cmds-wrap").hidden = !(ctx.selection && applicable(slots.commands.list(), "selection", ctx, report).length);
 }
 
 export function wireContextMenus({ onError }) {

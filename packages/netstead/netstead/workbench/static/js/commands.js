@@ -93,6 +93,19 @@ export function paletteGroups(commands, ctx, query, onError) {
   return groups;
 }
 
+// Register a command in `slots` (core's or a plugin's) and bump `store`'s commandSeq, on adding and on removing it,
+// so menus and the "Selection actions" button re-check what applies. Returns the disposer (true when it removed).
+export function addCommandTo(slots, store, owner, spec) {
+  const off = slots.addCommand(owner, spec);
+  const changed = () => store.set({ commandSeq: store.get().commandSeq + 1 });
+  changed();
+  return () => {
+    const removed = off();
+    if (removed) changed();
+    return removed;
+  };
+}
+
 // Run a command; a throw or a rejected promise goes to `onError(command, error)`.
 export async function runCommand(command, ctx, onError) {
   try { await command.run(ctx); } catch (e) { onError(command, e); }
